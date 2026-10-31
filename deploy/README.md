@@ -1,13 +1,39 @@
 # deploy/
 
-[オプション] 自前サーバーへ self-hosted runner でデプロイする構成
+このディレクトリには 2 種類のものがある。混同しないこと。
+
+| 種類 | ファイル | 状態 |
+| --- | --- | --- |
+| **常駐運用のスクリプト**(サーバー機で使う) | `start_spinebox.ps1` / `install_task.ps1` / `firewall_rule.ps1` | 導入済み。下の「常駐運用」 |
+| **CD のテンプレート**(`.example`) | `auto_deploy.ps1.example` / `watchdog.ps1.example` | **未導入**。CD の方式と時期は未決事項(GOAL.md)。下の「CD テンプレート」以降 |
+
+## 常駐運用(サーバー機で SpineBox を常駐させる)
+
+手順の全体・落とし穴・ログの場所は [wiki/operations/server-setup.md](../wiki/operations/server-setup.md)。
+
+| ファイル | 内容 |
+| --- | --- |
+| `start_spinebox.ps1` | `python -m spinebox` を起動し、終了したら再起動する(間隔は倍々で最大 60 秒)。起動ごとのログを `logs/` に残す |
+| `install_task.ps1` | タスクスケジューラへの登録・解除・状態確認(`-Action Register / Unregister / Status`)。OS 起動時にログオン不要で開始 |
+| `firewall_rule.ps1` | LAN 内(プライベートプロファイル・同一サブネット)だけに開く受信規則の追加・削除・確認 |
+
+- 登録・規則の追加は管理者権限の PowerShell が要る。`-WhatIf` で内容の表示だけできる(システムは変更しない)
+- リポジトリ・Python・設定ファイルのパスは引数で渡す(特定のドライブ文字・ユーザー名を前提にしない)
+- SpineBox は認証を持たない。**インターネットへ公開しない**(ルーターのポート開放をしない)
+- `.ps1` は UTF-8 (BOM 付き)で保存する(下の「落とし穴」と同じ理由。`tests/test_deploy_scripts.py` が検査する)
+
+## CD テンプレート
+
+[オプション・未導入] 自前サーバーへ self-hosted runner でデプロイする構成
 （`docs/development_workflow.md` の「CD 方式 B」）で使うテンプレート。
-ホスティング先の自動デプロイに任せる場合（方式 A）はこのディレクトリごと削除してよい。
+ホスティング先の自動デプロイに任せる場合（方式 A）はこのディレクトリの `.example` を削除してよい。
 
 | ファイル | 内容 |
 | --- | --- |
 | `auto_deploy.ps1.example` | CD 本体。変更検知・drift 検知・CI 再確認・バックアップ・再起動・反映確認・ロールバック・通知・履歴 |
 | `watchdog.ps1.example` | プロセス死活監視。落ちていたら再起動、応答はするが異常なら通知のみ |
+
+`/healthz` は SpineBox では実装済み(`{"ok": true, "commit": ...}`。下の「`/healthz` に出すもの」の要件を満たす)。
 
 ## 導入手順
 

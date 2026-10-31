@@ -2,7 +2,8 @@
 
 ローカルの自炊本(漫画中心・小説も)を管理し、ブラウザで読むための Web アプリ。日本語のみを想定する。
 
-**開発中。** まだアプリのコードは無い。開発基盤は
+**開発中。** バックエンド(`spinebox/`)とフロントエンド(`frontend/`)の骨格がある。サーバー機での常駐運用は
+[wiki/operations/server-setup.md](wiki/operations/server-setup.md)。開発基盤は
 [エージェントルール汎用テンプレート](https://github.com/kant0123/ai-coding-template) から導入した。
 
 ## 何を目指しているか

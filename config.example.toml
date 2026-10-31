@@ -16,7 +16,8 @@ data_dir = "./data"
 cache_limit_bytes = 2147483648
 
 # 待ち受け。LAN の別端末から使うときだけサーバー機の LAN 側アドレス(または 0.0.0.0)にする。
-# インターネットへ直接公開しない。
+# インターネットへ直接公開しない(認証が無い。ルーターのポート開放もしない)。
+# LAN に公開するときは Windows ファイアウォールの規則も要る(deploy/firewall_rule.ps1、wiki/operations/server-setup.md)。
 host = "127.0.0.1"
 port = 8000
 

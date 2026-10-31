@@ -72,3 +72,26 @@ def test_example_config_parses():
     assert s.library_roots == ()
     assert s.cache_limit_bytes == 2 * GIB
     assert s.host == "127.0.0.1"
+
+
+def _run_main(monkeypatch, tmp_path, host):
+    import sys
+    import types
+
+    from spinebox import __main__ as entry
+
+    conf = tmp_path / "c.toml"
+    conf.write_text(f'host = "{host}"\nport = 9001\ndata_dir = "{(tmp_path / "d").as_posix()}"\n', encoding="utf-8")
+    monkeypatch.setenv(CONFIG_ENV, str(conf))
+    calls = []
+    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=lambda app, **kw: calls.append(kw)))
+    assert entry.main() == 0
+    return calls
+
+
+def test_main_warns_only_when_listening_beyond_loopback(monkeypatch, tmp_path, capsys):
+    assert _run_main(monkeypatch, tmp_path, "127.0.0.1") == [{"host": "127.0.0.1", "port": 9001}]
+    assert capsys.readouterr().err == ""
+    _run_main(monkeypatch, tmp_path, "0.0.0.0")
+    err = capsys.readouterr().err
+    assert "0.0.0.0:9001" in err and "インターネット" in err

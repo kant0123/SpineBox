@@ -177,6 +177,45 @@ def test_frontend_dist_is_served_with_spa_fallback(make_client, library, tmp_pat
     assert c.get("/api/volumes").status_code == 200
 
 
+def test_healthz_reports_ok_and_commit(make_client, library, monkeypatch):
+    monkeypatch.setattr("spinebox.app.current_commit", lambda root: "abc1234")
+    c, _ = make_client(library)
+    r = c.get("/healthz")
+    assert r.status_code == 200 and r.json() == {"ok": True, "commit": "abc1234"}
+
+
+def test_healthz_commit_is_null_when_unknown(make_client, library, monkeypatch):
+    monkeypatch.setattr("spinebox.app.current_commit", lambda root: None)
+    c, _ = make_client(library)
+    assert c.get("/healthz").json() == {"ok": True, "commit": None}
+
+
+def test_healthz_is_not_shadowed_by_spa_and_is_503_without_db(make_client, library, tmp_path, monkeypatch):
+    monkeypatch.setattr("spinebox.app.current_commit", lambda root: "abc1234")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>spinebox</html>", encoding="utf-8")
+    c, settings = make_client(library, frontend_dist=dist)
+    assert c.get("/healthz").json()["ok"] is True
+    # DB が開けなくなったら 200 で隠さない(ファイルの場所をフォルダで塞いで接続を失敗させる)
+    for suffix in ("", "-wal", "-shm"):
+        settings.db_path.with_name(settings.db_path.name + suffix).unlink(missing_ok=True)
+    settings.db_path.mkdir()
+    r = c.get("/healthz")
+    assert r.status_code == 503 and r.json()["ok"] is False
+
+
+def test_spa_fallback_serves_deep_links_but_not_unknown_api(make_client, library, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>spinebox</html>", encoding="utf-8")
+    c, _ = make_client(library, frontend_dist=dist)
+    for path in ("/read/3", "/read/3/", "/some/deep/link"):
+        r = c.get(path)
+        assert r.status_code == 200 and "spinebox" in r.text, path
+    assert c.get("/api/nothing").status_code == 404
+
+
 def test_without_frontend_dist_only_api(make_client, library, tmp_path):
     c, _ = make_client(library, frontend_dist=tmp_path / "missing")
     assert c.get("/").status_code == 404
