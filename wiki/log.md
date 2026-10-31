@@ -77,6 +77,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 新規: [[server-setup]]
 - 備考: #19。`/healthz`(稼働中コミット付き)、`deploy/` の常駐スクリプト 3 本、`/read/<id>` 直リンクの正準化。開発機ではタスク登録・ファイアウォール規則を実行しておらず(システム設定の変更)、サーバー機での確認は #20。再起動ループは通常プロセスで確かめた。
 
+## [2026-11-01] ingest | PR #24 hook テストが Git の bin を PATH に持たない Windows で bash 未検出になる問題を修正
+- 更新: [[local-ci]]
+- 備考: #6。`command_match.test.mjs` の `spawnSync('bash')` が PowerShell(PATH に Git の cmd のみ)で ENOENT になり 8 件落ちていた。`find_bash.mjs` `findBash()` で git の場所から bash.exe を解決。PowerShell で修正前 53 件中 8 失敗 → 修正後 60 件(+find_bash 7 件)全成功を確認。
+
 ## [2026-11-01] ingest | PR #22 フェーズ 1 の 7-Zip CLI 連携(7z / rar・内側アーカイブの遅延取り出し)と _参考 サンプル結合
 - 更新: [[archive-reading]], [[extraction-cache]], [[backend]], [[overview]], [[server-setup]]
 - 備考: #16。実データは 7z → rar → rar → zip と深さ 3 に入れ子になっていたため、`max_depth` の既定を 1 から 3 にして、内側アーカイブを再帰で開くようにした(Issue の想定は「rar の中に巻フォルダ」だった)。`_参考/サンプル本` でスキャンが 10 巻・キャッシュ空・全巻の全ページが 200・原本のサイズ/mtime/sha256 不変を確認。

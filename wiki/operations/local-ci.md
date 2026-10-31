@@ -29,6 +29,11 @@ GitHub Actions がジョブを起動しない(課金・使用上限)ときに、
 
 - `python` に pytest、`node`・`npm` が入っていること。`gh` が認証済みであること。
   `frontend/node_modules` が無ければ `test` ジョブが `npm ci` から始める(初回はネットワークが要る。[[frontend]])。
+- hook のテスト(`.claude/hooks/test/command_match.test.mjs`)は `check_*.sh` を bash で起動する。
+  Windows の PowerShell は PATH に Git の `cmd` しか無く bash.exe が見えないことがあり、素の `spawnSync('bash')` は
+  ENOENT(status null)で 8 件落ちていた(#6)。`.claude/hooks/test/find_bash.mjs:33 findBash()` が `where git` の
+  場所から Git 同梱の bash.exe を探すので、PATH を直さなくてよい。Windows では PATH 上の bash より Git の bash.exe を
+  優先する(`System32` の bash.exe は WSL のもので、Windows のパスを渡す hook は動かない)。Linux・macOS は `bash` のまま。
 - worktree の変更をすべてコミットし、push 済みであること。未コミット・未追跡のファイルがある、または HEAD が
   リモートに無いときは、結果が head のものだと言えないので何も載せずに exit 2 で終わる。
 
