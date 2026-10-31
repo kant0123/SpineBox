@@ -65,4 +65,4 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] ingest | バックエンド骨格(設定・DB・zip 目次読み・展開キャッシュ・スキャン・閲覧 API)
 - 更新: [[overview]]
 - 新規: [[backend]], [[archive-reading]], [[extraction-cache]]
-- 備考: #14。spinebox/ パッケージと tests/ を追加。スキャンは目次だけ読み内側アーカイブを取り出さない、蔵書のバイト列・mtime がスキャンと全ページ閲覧で変わらない、キャッシュの LRU をテストで確認。7z / rar は後続の [Local] Issue。
+- 備考: #14、PR #18。spinebox/ パッケージと tests/ を追加。スキャンは目次だけ読み内側アーカイブを取り出さない、蔵書のバイト列・mtime がスキャンと全ページ閲覧で変わらない、キャッシュの LRU をテストで確認。7z / rar は後続の [Local] Issue。
