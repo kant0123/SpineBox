@@ -54,6 +54,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[overview]]
 - 備考: #8。ローカルの実サンプル(_参考/)や 7z.exe・agy CLI が不要な純粋ロジック・DB・API・UI 実装を [Cloud] として優先切り出しし、ブランチ push までをクラウドセッションで行い、実機確認・PR 作成・ci_local.py・agy_review.py・マージをローカルで引き取るハイブリッド手順を KICKOFF.md に定義。
 
-## [2026-11-01] ingest | KICKOFF.md に Opus(中) と Sonnet(高) のモデル・エフォート指定を明記
+## [2026-11-01] ingest | PR #11 KICKOFF.md に Opus(中) と Sonnet(高) のモデル・エフォート指定を明記
 - 更新: [[overview]]
 - 備考: #10。オーケストレーター Opus（中）と実装サブエージェント Sonnet 5.5（高）の役割分担表を追加し、コーナーケース抜け防止とレビュー手戻り削減のため付録プロンプトにも Sonnet 5.5 / エフォート高の指定を明記。
