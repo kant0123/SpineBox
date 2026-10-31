@@ -3,7 +3,8 @@
 - 画像フォルダの巻: フォルダ直下の画像をそのまま読む
 - アーカイブ内フォルダの巻: 外側アーカイブの目次から、そのフォルダ直下の画像エントリをメモリに読む
 - 内側アーカイブの巻: ここで初めて内側アーカイブを展開キャッシュへ取り出し(ハッシュ名)、
-  その中の画像をメモリに読む。今は zip/cbz の内側まで(7z/rar は後続 Issue)
+  その中の画像をメモリに読む。zip / cbz / 7z / rar(7z / rar は 7-Zip CLI)。内側にさらにアーカイブが
+  あれば、入れ子の深さの上限まで同じ方法で開いて続ける
 
 どの経路も蔵書には読み取りしかしない。ページの並びは毎回目次から作り直す(DB にはページ数だけ持つ)。
 """
@@ -16,12 +17,13 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from . import db
-from .archive import ArchiveError, LimitExceeded, UnsupportedArchive, list_entries, open_archive
+from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
+                      open_archive)
 from .archive.base import reader_available
-from .archive.safety import depth_problem, entry_limit_problem
+from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import ExtractionCache, cache_key
 from .config import Settings
-from .pages import is_image, page_sort_key, sort_pages
+from .pages import is_image, natural_key, page_sort_key, sort_pages
 from .scanner import record_issues, resolve_source_path, root_is_accessible
 
 
@@ -108,50 +110,73 @@ class Library:
 
     def _open_archive_volume(self, conn, stack: ExitStack, row, path: Path, version: str) -> OpenVolume:
         limits = self.settings.limits
+        sevenzip = self.settings.sevenzip_path
         try:
-            outer = stack.enter_context(open_archive(path))
+            outer = stack.enter_context(open_archive(path, sevenzip_path=sevenzip))
             listing = list_entries(outer, limits)
             container = row["container_path"]
             if container is None:
                 prefix = row["entry_prefix"]
                 entries = sorted((e for e in listing.entries if e.parent == prefix and is_image(e.name)),
                                  key=lambda e: page_sort_key(e.name))
-                reader = outer
+                pages = [(outer, e) for e in entries]
             else:
-                reader, entries = self._open_inner(conn, stack, row, path, outer, listing, container)
+                pages = self._open_inner(conn, stack, row, path, outer, listing, container)
         except (UnsupportedArchive, LimitExceeded, ArchiveError) as e:
             raise VolumeUnreadable(str(e)) from e
 
         def read(i: int) -> bytes:
+            reader, entry = pages[i]
             try:
-                return reader.read_entry(entries[i], limits)
+                return reader.read_entry(entry, limits)
             except (LimitExceeded, ArchiveError) as e:
                 raise VolumeUnreadable(str(e)) from e
 
-        return OpenVolume(row["id"], [e.name for e in entries], version, read)
+        return OpenVolume(row["id"], [e.name for _, e in pages], version, read)
 
     def _open_inner(self, conn, stack, row, path, outer, listing, container: str):
-        limits = self.settings.limits
-        problem = depth_problem(1, limits)
-        if problem:
-            raise LimitExceeded(problem)
+        """内側アーカイブを取り出して開き、(リーダー, エントリ) のページ列を返す。
+
+        内側にさらにアーカイブがあり、深さの上限に収まるなら、それも開いて名前の自然順に続ける
+        (7z の中の rar の中の rar の中の zip、という実データがある。巻への分解はフェーズ 2)。
+        """
         matches = [e for e in listing.entries if e.name == container]
         if not matches:
             raise VolumeNotFound(row["id"])
-        entry = matches[0]
-        if not reader_available(container):
+        st = path.stat()
+        root_key = cache_key("inner", str(path), st.st_size, st.st_mtime_ns)
+        issues: list[Skip] = []
+        pages = self._expand(stack, outer, matches[0], root_key, 1, issues)
+        with db.transaction(conn) as c:
+            record_issues(c, row["source_id"], container, issues)
+        return pages
+
+    def _expand(self, stack, parent, entry, parent_key: str, depth: int, issues: list[Skip]):
+        limits = self.settings.limits
+        sevenzip = self.settings.sevenzip_path
+        problem = depth_problem(depth, limits)
+        if problem:
+            raise LimitExceeded(problem)
+        if not reader_available(entry.name, sevenzip):
             # 取り出してから未対応と分かるのは無駄なので先に判定する
-            raise UnsupportedArchive(f"内側アーカイブは未対応の形式: {container}")
+            raise UnsupportedArchive(f"内側アーカイブは未対応の形式(または 7-Zip が見つからない): {entry.name}")
         problem = entry_limit_problem(entry.size, limits)
         if problem:
             raise LimitExceeded(problem)
-        st = path.stat()
-        key = cache_key("inner", str(path), st.st_size, st.st_mtime_ns, container, entry.index)
+        key = cache_key("inner", parent_key, entry.name, entry.index)
         cached = stack.enter_context(
-            self.cache.use(key, lambda f: outer.copy_entry(entry, f, limits.max_entry_bytes)))
-        inner = stack.enter_context(open_archive(cached, container))
-        inner_listing = list_entries(inner, limits)
-        with db.transaction(conn) as c:
-            record_issues(c, row["source_id"], container, inner_listing.skipped)
-        entries = sorted((e for e in inner_listing.entries if is_image(e.name)), key=lambda e: page_sort_key(e.name))
-        return inner, entries
+            self.cache.use(key, lambda f: parent.copy_entry(entry, f, limits.max_entry_bytes)))
+        inner = stack.enter_context(open_archive(cached, entry.name, sevenzip_path=sevenzip))
+        listing = list_entries(inner, limits)
+        label = "" if depth == 1 else entry.name + "/"
+        issues.extend(Skip(label + (s.entry_name or ""), s.reason) if label else s for s in listing.skipped)
+        images = sorted((e for e in listing.entries if is_image(e.name)), key=lambda e: page_sort_key(e.name))
+        pages = [(inner, e) for e in images]
+        for nested in sorted((e for e in listing.entries if is_archive_name(e.name)),
+                             key=lambda e: natural_key(e.name)):
+            problem = depth_problem(depth + 1, limits)
+            if problem:
+                issues.append(Skip(f"{entry.name}/{nested.name}" if depth > 1 else nested.name, problem))
+                continue
+            pages += self._expand(stack, inner, nested, key, depth + 1, issues)
+        return pages

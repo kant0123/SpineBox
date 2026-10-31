@@ -15,7 +15,7 @@ def test_defaults_without_config(tmp_path, monkeypatch):
     assert s.data_dir == tmp_path / "data"
     assert s.cache_limit_bytes == 2 * GIB
     assert (s.host, s.port, s.sevenzip_path) == ("127.0.0.1", 8000, "7z")
-    assert s.limits.max_depth == 1
+    assert s.limits.max_depth == 3
 
 
 def test_env_var_and_relative_paths(tmp_path, monkeypatch):

@@ -69,7 +69,7 @@ def test_unchanged_archive_is_not_reopened(conn, library, make_settings, monkeyp
     scan(conn, settings)
     opened = []
     real = scanner.open_archive
-    monkeypatch.setattr(scanner, "open_archive", lambda p, *a: opened.append(p.name) or real(p, *a))
+    monkeypatch.setattr(scanner, "open_archive", lambda p, *a, **kw: opened.append(p.name) or real(p, *a, **kw))
     scan(conn, settings)
     # 読めなかったもの(壊れた zip・7z)は次のスキャンで再挑戦する。読めたものは開かない
     assert sorted(opened) == ["broken.zip", "solid.7z"]

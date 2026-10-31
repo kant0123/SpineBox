@@ -15,7 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from spinebox.archive.sevenzip import find_sevenzip  # noqa: E402
 from spinebox.config import ExtractionLimits, Settings  # noqa: E402
+
+# 7-Zip を使わない(見つからない)設定。テストの既定にして、実行環境の 7z の有無に結果を左右させない
+NO_SEVENZIP = "spinebox-test-no-such-7z"
 
 
 class RawName(zipfile.ZipInfo):
@@ -103,7 +107,30 @@ def library(tmp_path) -> Path:
 
 @pytest.fixture
 def make_settings(tmp_path):
-    def make(*roots: Path, cache_limit_bytes: int = 2 * 1024 ** 3, **limits) -> Settings:
+    def make(*roots: Path, cache_limit_bytes: int = 2 * 1024 ** 3, sevenzip_path: str = NO_SEVENZIP,
+             **limits) -> Settings:
         return Settings(library_roots=tuple(roots), data_dir=tmp_path / "data",
-                        cache_limit_bytes=cache_limit_bytes, limits=ExtractionLimits(**limits))
+                        cache_limit_bytes=cache_limit_bytes, sevenzip_path=sevenzip_path,
+                        limits=ExtractionLimits(**limits))
     return make
+
+
+@pytest.fixture(scope="session")
+def sevenzip() -> str:
+    """実機の 7-Zip CLI のパス。見つからなければ 7z 依存のテストを skip する(CI の ubuntu など)。"""
+    found = find_sevenzip_for_tests()
+    if found is None:
+        pytest.skip("7-Zip CLI が見つからない(環境変数 SPINEBOX_TEST_7Z=<パス> か PATH の 7z / 7zz。none で強制 skip)")
+    return found
+
+
+def find_sevenzip_for_tests() -> str | None:
+    forced = os.environ.get("SPINEBOX_TEST_7Z")
+    if forced == "none":
+        return None  # 7z の無い環境(CI)の挙動を手元で確かめる用
+    candidates = [forced, "7z", "7zz", "7za",
+                  "C:/Program Files/7-Zip/7z.exe", "C:/Program Files (x86)/7-Zip/7z.exe"]
+    for c in candidates:
+        if c and find_sevenzip(c):
+            return find_sevenzip(c)
+    return None

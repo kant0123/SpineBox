@@ -208,7 +208,7 @@ class Scanner:
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
         try:
-            with open_archive(path) as reader:
+            with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
                 listing = list_entries(reader, self.settings.limits)
             issues.extend(listing.skipped)
             specs, more = archive_volume_specs(listing, path.name, self.settings.limits)

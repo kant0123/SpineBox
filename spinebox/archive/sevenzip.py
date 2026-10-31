@@ -1,0 +1,237 @@
+"""7z / rar のリーダー(7-Zip CLI。`7z.exe`)。
+
+目次は `7z l -slt -ba` の出力(`キー = 値` の行が空行で区切られる)を読み、1 エントリの取り出しは
+`7z e -so` の標準出力をそのまま受け取る。ディスクに展開しない・元の階層を作らない。
+エントリ名は 7z が出したままの文字列(Windows では `\\` 区切り)を取り出しの指定にだけ使い、
+ディスク上のパスには使わない。名前の検証と展開上限は `base.list_entries()` が行う。
+
+7z の出力は信用しすぎない(wiki/concepts/recurring-review-findings の「外部コマンドの異常系」):
+文字コードは `-sccUTF-8` で固定し、CRLF・前置き・空出力・非ゼロ終了・タイムアウトを `ArchiveError` にする。
+ファイル名のワイルドカード解釈は `-spd` で止める(`*` `?` を含む名前を別のエントリに誤爆させない)。
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+from pathlib import Path
+from typing import BinaryIO
+
+from .base import ArchiveEntry, ArchiveError, ArchiveReader, LimitExceeded, UnsupportedArchive
+
+EXTS = (".7z", ".cb7", ".rar", ".cbr")
+LIST_TIMEOUT_SEC = 300
+EXTRACT_TIMEOUT_SEC = 1800
+_CHUNK = 1024 * 1024
+_STDERR_TAIL = 400
+# 目次の「リンク」を表すキー。リンクは画像として読まない
+_LINK_KEYS = ("Symbolic Link", "Hard Link")
+
+_COMMON = ["-y", "-bd", "-spd", "-sccUTF-8", "-scsUTF-8"]
+_CREATIONFLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+
+
+def find_sevenzip(configured: str) -> str | None:
+    """設定 `sevenzip_path` から実行ファイルを探す。パスならそのファイル、名前だけなら PATH から。"""
+    if not configured:
+        return None
+    if os.sep in configured or "/" in configured or Path(configured).is_absolute():
+        return configured if Path(configured).is_file() else None
+    return shutil.which(configured)
+
+
+def sevenzip_available(configured: str) -> bool:
+    return find_sevenzip(configured) is not None
+
+
+def list_command(exe: str, archive: Path) -> list[str]:
+    return [exe, "l", "-slt", "-ba", *_COMMON, "--", str(archive)]
+
+
+def extract_command(exe: str, archive: Path, raw_path: str) -> list[str]:
+    # -bso0 -bsp0: 標準出力にはデータだけを流す
+    return [exe, "e", "-so", "-bso0", "-bsp0", *_COMMON, "--", str(archive), raw_path]
+
+
+# --- 目次の解釈 ---------------------------------------------------------------
+
+
+def parse_listing(output: bytes) -> list[dict[str, str]]:
+    """`-slt` の出力を、`Path` を持つ記録(キー → 値)のリストにする。
+
+    CRLF・BOM・先頭の前置き(`-ba` が効かない版の見出し。`----------` より前)に耐える。
+    `splitlines()` は U+2028 等でも割れて名前を壊すので使わない。
+    """
+    text = output.decode("utf-8", errors="replace").lstrip("﻿").replace("\r\n", "\n")
+    lines = text.split("\n")
+    if "----------" in lines:
+        lines = lines[lines.index("----------") + 1:]
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    last_key: str | None = None
+    for line in lines + [""]:
+        if not line:
+            if "Path" in current:
+                records.append(current)
+            current, last_key = {}, None
+            continue
+        key, sep, value = line.partition(" = ")
+        if not sep:
+            if line.endswith(" =") and "=" not in line[:-2]:
+                key, value = line[:-2], ""  # `Created = ` の末尾の空白が落ちた行
+            elif last_key is not None:
+                current[last_key] += "\n" + line  # 名前に改行を含むときの続き
+                continue
+            else:
+                continue
+        current[key] = value
+        last_key = key
+    return records
+
+
+def _is_dir(record: dict[str, str]) -> bool:
+    if record.get("Folder") == "+":
+        return True
+    attrs = record.get("Attributes", "").split()
+    return bool(attrs) and "D" in attrs[0]
+
+
+def entries_from_records(records: list[dict[str, str]]) -> tuple[list[ArchiveEntry], dict[int, str]]:
+    """(目次, index → 7z が出した名前)。リンクは除く。サイズを読めないファイルは ArchiveError。"""
+    entries: list[ArchiveEntry] = []
+    raw_paths: dict[int, str] = {}
+    for record in records:
+        if any(record.get(k) for k in _LINK_KEYS):
+            continue
+        path = record["Path"]
+        is_dir = _is_dir(record)
+        size_text = record.get("Size", "").strip()
+        try:
+            size = int(size_text) if size_text else 0
+        except ValueError:
+            raise ArchiveError(f"7z の目次のサイズを解釈できない: {path!r}: {size_text!r}") from None
+        if not size_text and not is_dir:
+            raise ArchiveError(f"7z の目次にサイズが無い: {path!r}")
+        index = len(entries)
+        raw_paths[index] = path
+        # 7z はフォルダ名の末尾に区切りを付けない。zip と同じく末尾 `/` でフォルダと分かる名前にそろえる
+        name = path + "/" if is_dir and not path.endswith(("/", "\\")) else path
+        entries.append(ArchiveEntry(index, name, path.encode("utf-8", "surrogatepass"), "utf-8 (7z)", size, is_dir))
+    return entries, raw_paths
+
+
+# --- 外部コマンドの実行 -------------------------------------------------------
+
+
+def _tail(data: bytes) -> str:
+    return data.decode("utf-8", errors="replace").strip()[-_STDERR_TAIL:]
+
+
+def _popen(cmd: list[str], **kw) -> subprocess.Popen:
+    try:
+        return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, creationflags=_CREATIONFLAGS, **kw)
+    except OSError as e:
+        raise ArchiveError(f"7-Zip を起動できない: {e}") from e
+
+
+def _run_capture(cmd: list[str], timeout: float) -> bytes:
+    """標準出力を全部受け取る。非ゼロ終了・タイムアウトは ArchiveError。"""
+    with tempfile.TemporaryFile() as err:
+        proc = _popen(cmd, stdout=subprocess.PIPE, stderr=err)
+        try:
+            out, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise ArchiveError(f"7-Zip が {timeout:g} 秒で終わらない") from None
+        except BaseException:
+            proc.kill()
+            proc.communicate()
+            raise
+        if proc.returncode != 0:
+            err.seek(0)
+            raise ArchiveError(f"7-Zip が失敗した(終了コード {proc.returncode}): {_tail(err.read())}")
+    return out
+
+
+def _stream(cmd: list[str], dest: BinaryIO, max_bytes: int, timeout: float) -> int:
+    """標準出力を dest へ流し、書いたバイト数を返す。max_bytes を超えたら止めて LimitExceeded。"""
+    with tempfile.TemporaryFile() as err:
+        proc = _popen(cmd, stdout=subprocess.PIPE, stderr=err)
+        timed_out = threading.Event()
+
+        def on_timeout() -> None:
+            timed_out.set()
+            proc.kill()
+
+        timer = threading.Timer(timeout, on_timeout)
+        timer.start()
+        written = 0
+        try:
+            assert proc.stdout is not None
+            while chunk := proc.stdout.read(_CHUNK):
+                written += len(chunk)
+                if written > max_bytes:
+                    raise LimitExceeded(f"エントリの展開サイズが上限を超える(> {max_bytes} バイト)")
+                dest.write(chunk)
+            proc.wait()
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+        finally:
+            timer.cancel()
+            if proc.stdout:
+                proc.stdout.close()
+        if timed_out.is_set():
+            raise ArchiveError(f"7-Zip が {timeout:g} 秒で終わらない")
+        if proc.returncode != 0:
+            err.seek(0)
+            raise ArchiveError(f"7-Zip が失敗した(終了コード {proc.returncode}): {_tail(err.read())}")
+    return written
+
+
+# --- リーダー -----------------------------------------------------------------
+
+
+class SevenZipReader(ArchiveReader):
+    def __init__(self, path: Path, exe: str):
+        self._path = Path(path)
+        self._exe = exe
+        self._raw_paths: dict[int, str] = {}
+        self._entries: list[ArchiveEntry] | None = None
+
+    def raw_entries(self) -> list[ArchiveEntry]:
+        if self._entries is None:
+            output = _run_capture(list_command(self._exe, self._path), LIST_TIMEOUT_SEC)
+            if not output.strip():
+                raise ArchiveError("7-Zip の目次が空(壊れたアーカイブか、7-Zip の異常)")
+            records = parse_listing(output)
+            if not records:
+                raise ArchiveError("7-Zip の目次を解釈できない")
+            self._entries, self._raw_paths = entries_from_records(records)
+        return self._entries
+
+    def copy_entry(self, entry: ArchiveEntry, dest: BinaryIO, max_bytes: int) -> int:
+        if entry.size > max_bytes:
+            raise LimitExceeded(f"エントリの展開サイズが上限を超える({entry.size} > {max_bytes} バイト)")
+        self.raw_entries()
+        raw_path = self._raw_paths[entry.index]
+        written = _stream(extract_command(self._exe, self._path, raw_path), dest, max_bytes, EXTRACT_TIMEOUT_SEC)
+        if written != entry.size:
+            # 同名のエントリが複数ある・目次と中身が食い違う等。別のものを返さない
+            raise ArchiveError(f"取り出したサイズが目次と合わない({written} != {entry.size} バイト)")
+        return written
+
+    def close(self) -> None:
+        pass
+
+
+def make_reader(path: Path, sevenzip_path: str) -> SevenZipReader:
+    exe = find_sevenzip(sevenzip_path)
+    if exe is None:
+        raise UnsupportedArchive(f"未対応: 7-Zip が見つからない(sevenzip_path = {sevenzip_path!r})")
+    return SevenZipReader(path, exe)

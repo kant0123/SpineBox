@@ -21,7 +21,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 これから作るものの仕様は Issue に置く。実装したら、その PR でここに構成要素を足す。
 
 - [[backend]] — `spinebox/`。FastAPI の単一プロセス。設定・SQLite・スキャン・閲覧 API。フロントと共有する API 契約もここ
-- [[archive-reading]] — `spinebox/archive/`。アーカイブの目次読みと 1 エントリの読み出し(今は zip / cbz。7z / rar は後続)
+- [[archive-reading]] — `spinebox/archive/`。アーカイブの目次読みと 1 エントリの読み出し(zip / cbz は標準 zipfile、7z / rar は 7-Zip CLI)
 - [[extraction-cache]] — 内側アーカイブを開いたときだけ使う、ハッシュ名・容量上限つきの展開キャッシュ
 - [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 

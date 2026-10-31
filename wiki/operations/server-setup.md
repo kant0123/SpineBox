@@ -2,7 +2,7 @@
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
 updated: 2026-11-01
-related: [overview, backend, frontend]
+related: [overview, backend, frontend, archive-reading]
 ---
 
 # サーバー機のセットアップと常駐運用
@@ -13,7 +13,7 @@ related: [overview, backend, frontend]
 
 ## 前提
 
-- Python 3.12、Node.js 22(フロントのビルド用)、7-Zip(7z / rar を読むようになったら。#16)、git
+- Python 3.12、Node.js 22(フロントのビルド用)、7-Zip(7z / rar を読むのに必須。無くても zip / cbz は読める)、git
 - 管理者権限の PowerShell(登録・ファイアウォールだけ。起動・状態確認は不要)
 - インターネットへ公開しない。認証が無いので、ルーターのポート開放はしない
 
@@ -23,10 +23,12 @@ related: [overview, backend, frontend]
 git clone https://github.com/kant0123/SpineBox.git ; cd SpineBox
 py -3.12 -m pip install -r requirements.txt
 npm --prefix frontend ci ; npm --prefix frontend run build   # frontend/dist ができる。バックエンドが / で配信する
-copy config.example.toml config.local.toml                    # 編集: library_roots / host / port
+copy config.example.toml config.local.toml                    # 編集: library_roots / host / port / sevenzip_path
 py -3.12 -m spinebox                                          # 手動で起動して確かめる
 ```
 
+- `sevenzip_path` は 7z.exe のパス(例 `C:/Program Files/7-Zip/7z.exe`)を書く。常駐タスクの実行ユーザー(SYSTEM 等)の PATH に
+  7z が無いことが多いので、名前だけにせずパスで指定する。見つからないと 7z / rar は「未対応」として一覧から外れる([[archive-reading]])
 - `host` の既定は `127.0.0.1`(自機だけ)。LAN で使うときはサーバー機の LAN アドレスか `0.0.0.0` を**明示して**設定する。
   127.0.0.1 以外のときは起動時に注意を stderr へ出す(`spinebox/__main__.py:15 main`)
 - `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:41 create_app` の `healthz`)。DB を開けなければ 503。
