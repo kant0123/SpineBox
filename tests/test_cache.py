@@ -75,7 +75,8 @@ def test_reload_restores_order_and_cleans_tmp(tmp_path):
     d.mkdir()
     for i, key in enumerate(["old", "new"]):
         (d / f"{key}{SUFFIX}").write_bytes(b"x" * 10)
-        os.utime(d / f"{key}{SUFFIX}", ns=(10**18 + i, 10**18 + i))
+        t = 10**18 + i * 10**9  # NTFS の時刻分解能(100ns)より十分離す
+        os.utime(d / f"{key}{SUFFIX}", ns=(t, t))
     (d / f"{TMP_PREFIX}abc").write_bytes(b"partial")
     cache = ExtractionCache(d, 15)
     assert cache.keys() == ["old", "new"]

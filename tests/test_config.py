@@ -22,8 +22,9 @@ def test_env_var_and_relative_paths(tmp_path, monkeypatch):
     conf_dir = tmp_path / "conf"
     conf_dir.mkdir()
     conf = conf_dir / "spinebox.toml"
+    abs_root = tmp_path / "abs_comics"  # Windows では /srv/x は絶対パスではないので OS 依存にしない
     conf.write_text(
-        'library_roots = ["books", "/srv/comics"]\n'
+        f'library_roots = ["books", "{abs_root.as_posix()}"]\n'
         'data_dir = "state"\ncache_limit_bytes = 1024\nhost = "0.0.0.0"\nport = 9000\n'
         '[limits]\nmax_entries = 5\nmax_depth = 0\n', encoding="utf-8")
     monkeypatch.setenv(CONFIG_ENV, str(conf))
@@ -31,7 +32,7 @@ def test_env_var_and_relative_paths(tmp_path, monkeypatch):
     s = load_settings()
     # 相対パスはカレントではなく設定ファイルの場所が起点
     assert s.library_roots[0] == conf_dir / "books"
-    assert s.library_roots[1] == Path("/srv/comics")
+    assert s.library_roots[1] == abs_root
     assert s.data_dir == conf_dir / "state"
     assert (s.cache_limit_bytes, s.host, s.port) == (1024, "0.0.0.0", 9000)
     assert (s.limits.max_entries, s.limits.max_depth) == (5, 0)
