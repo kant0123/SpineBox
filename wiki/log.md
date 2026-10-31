@@ -42,6 +42,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 新規: [[local-ci]]
 - 備考: #1。最初の push で Actions が課金・上限によりジョブを起動しなかった。scripts/ci_local.py が test・wiki-lint を手元で実行して commit status (local/*) を載せ、review/agy_review.py は「起動しなかった」チェックに限りそれで代替する。test.yml もこのスクリプトを呼ぶ形にし、これまで CI で実行されていなかった review/tests・hook のテストも走るようになった。
 
-## [2026-11-01] ingest | PR #? ゴール定義ファイル GOAL.md を追加
+## [2026-11-01] ingest | PR #4 ゴール定義ファイル GOAL.md を追加
 - 更新: [[overview]]
 - 備考: #3。目的・作らないもの・段階計画(フェーズ 0〜4)と完了条件・試作で確かめた前提・未決事項を GOAL.md に置いた。Wiki は現状、GOAL.md はこれから作るものの基準という分担。
