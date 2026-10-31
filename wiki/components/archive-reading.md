@@ -2,7 +2,7 @@
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、危険なエントリ名と展開上限、7z / rar の差し込み口
 updated: 2026-11-01
-related: [backend, extraction-cache]
+related: [overview, backend, extraction-cache]
 ---
 
 # アーカイブの読み取り

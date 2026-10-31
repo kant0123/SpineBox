@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ。容量上限つき LRU、使用中は消さない、スキャンでは使わない
 updated: 2026-11-01
-related: [backend, archive-reading]
+related: [overview, backend, archive-reading]
 ---
 
 # 展開キャッシュ
