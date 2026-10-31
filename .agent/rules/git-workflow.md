@@ -1,6 +1,6 @@
 # Git ワークフロー & 完了の定義
 
-> `CLAUDE.md` の「Git ワークフロー」「完了の定義」「[オプション] agy レビュー」節の写し。
+> `CLAUDE.md` の「Git ワークフロー」「完了の定義」「agy レビュー」節の写し。
 > 規約を変えるときは `CLAUDE.md` と同じ PR でここも直す(片方だけ直すと食い違う)。
 > 手順は `.agent/skills/` の各スキル(`worktree-start` / `wiki-ingest` / `pr-finish` / `agy-review` / `file-issue`)。
 
@@ -21,7 +21,7 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
    - 失敗しても手で `rm -rf` / `Remove-Item` しない(git が working tree と認識しなくなり回復しない)。復旧は `scripts/worktree-cleanup.ps1`。
 5. **事前承認済みの操作**:
    - push・PR 作成・マージ・ブランチ削除・worktree 削除は事前承認済み。`git status` で意図しない変更が混ざっていないか確認してから実行する。
-   - CI 成功(agy レビューを採用しているならその完了)まで確認したら、マージしてよいかを改めて聞かない。
+   - CI 成功と agy レビューの完了まで確認したら、マージしてよいかを改めて聞かない。
 6. **失敗時はマージしない**:
    - CI が失敗したらマージせず原因を調べる。修正が困難なら PR は開いたまま報告する(勝手に close しない)。
    - Actions がジョブを起動しない(課金・上限。注記「The job was not started」)ときだけ、コミット・push 済みの状態で `python scripts/ci_local.py` を実行し、head に `local/*` を載せて代替する。Actions で実際に動いて落ちたチェックは代替しない。
@@ -33,7 +33,7 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
 
 コミットメッセージは `feat:` / `fix:` / `docs:` / `chore:` プレフィックス + 概要。
 
-## [オプション] agy レビュー
+## agy レビュー
 
 PR の CI が緑になった後、マージの前に、差分を agy (Antigravity CLI) 経由で Gemini に 1 回レビューさせる。
 手順は `agy-review` スキル、仕組みは `review/README.md`。
@@ -63,4 +63,4 @@ PR の CI が緑になった後、マージの前に、差分を agy (Antigravit
 - Wiki を更新した場合、**コミット後に** `node scripts/wiki-lint.js` が通っている。
 - 作業中に見つけてこの PR で直さないと決めた問題を、すべて Issue 化している(1 件も無ければ、それ自体を確認済みとする)。
 - 変更内容の要約と手動確認結果を報告している。起票した Issue があれば番号を挙げている。
-- agy レビューを採用している場合、PR の最新 head が agy レビューを通っている(APPROVE、または差し戻しを評価して誤検知を起票済み)。結果を PR 本文の「レビュー」節に書いている。
+- **PR の最新 head が agy レビューを通っている**(APPROVE、または差し戻しを評価して誤検知を起票済み)。結果を PR 本文の「レビュー」節に書いている。
