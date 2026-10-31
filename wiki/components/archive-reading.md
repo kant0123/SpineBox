@@ -2,7 +2,7 @@
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
 updated: 2026-11-01
-related: [overview, backend, extraction-cache]
+related: [overview, backend, extraction-cache, server-setup]
 ---
 
 # アーカイブの読み取り
