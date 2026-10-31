@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-01
-related: [recurring-review-findings, local-ci, backend, archive-reading, extraction-cache]
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache]
 ---
 
 # SpineBox 全体像
@@ -17,11 +17,13 @@ related: [recurring-review-findings, local-ci, backend, archive-reading, extract
 
 ## 構成
 
+開発基盤(エージェント規約・CI・agy レビュー・この Wiki)に加えて、アプリは次の構成要素から成る。
+これから作るものの仕様は Issue に置く。実装したら、その PR でここに構成要素を足す。
+
 - [[backend]] — `spinebox/`。FastAPI の単一プロセス。設定・SQLite・スキャン・閲覧 API。フロントと共有する API 契約もここ
 - [[archive-reading]] — `spinebox/archive/`。アーカイブの目次読みと 1 エントリの読み出し(今は zip / cbz。7z / rar は後続)
 - [[extraction-cache]] — 内側アーカイブを開いたときだけ使う、ハッシュ名・容量上限つきの展開キャッシュ
-
-ほかに開発基盤(エージェント規約・CI・agy レビュー・この Wiki)がある。これから作るものの仕様は Issue に置く。
+- [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 
 ## 主要な設計判断
 

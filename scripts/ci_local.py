@@ -11,6 +11,7 @@ GitHub Actions が課金・上限で起動しないとき (注記「The job was 
 終了コード: 0 = 全ジョブ成功 / 1 = 失敗したジョブがある / 2 = 前提を満たさない (結果を載せられない)
 """
 import argparse
+import shutil
 import socket
 import subprocess
 import sys
@@ -29,7 +30,24 @@ def jobs(root: Path = ROOT) -> dict:
     test = [[sys.executable, "-m", "pytest", *pytest_targets, "-v"]]
     if node_tests:
         test.append(["node", "--test", *node_tests])
+    test += frontend_commands(root)
     return {"test": test, "wiki-lint": [["node", "scripts/wiki-lint.js"]]}
+
+
+def frontend_commands(root: Path) -> list:
+    """frontend/ の単体テスト。frontend/ が無ければ何もしない。
+
+    node_modules が無いときは飛ばさずに `npm ci` から始める (飛ばすと「検査していないのに成功」が
+    載る)。npm は Windows では npm.cmd なので、名前のままでは subprocess が見つけられない。
+    """
+    if not (root / "frontend" / "package.json").is_file():
+        return []
+    npm = shutil.which("npm") or "npm"
+    cmds = []
+    if not (root / "frontend" / "node_modules").is_dir():
+        cmds.append([npm, "ci", "--prefix", "frontend"])
+    cmds.append([npm, "--prefix", "frontend", "test"])
+    return cmds
 
 
 def run(cmd, **kw):

@@ -2,7 +2,7 @@
 type: operation
 summary: Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件
 updated: 2026-11-01
-related: [overview]
+related: [overview, frontend]
 ---
 
 # ローカル CI
@@ -27,7 +27,8 @@ GitHub Actions がジョブを起動しない(課金・使用上限)ときに、
 
 ## 前提
 
-- `python` に pytest、`node` が入っていること。`gh` が認証済みであること。
+- `python` に pytest、`node`・`npm` が入っていること。`gh` が認証済みであること。
+  `frontend/node_modules` が無ければ `test` ジョブが `npm ci` から始める(初回はネットワークが要る。[[frontend]])。
 - worktree の変更をすべてコミットし、push 済みであること。未コミット・未追跡のファイルがある、または HEAD が
   リモートに無いときは、結果が head のものだと言えないので何も載せずに exit 2 で終わる。
 
