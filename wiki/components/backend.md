@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-01
-related: [overview, archive-reading, extraction-cache]
+related: [overview, archive-reading, extraction-cache, server-setup]
 ---
 
 # バックエンド
@@ -20,7 +20,8 @@ related: [overview, archive-reading, extraction-cache]
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:40 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:41 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:198 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
 | `spinebox/scanner.py:144 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
 | `spinebox/library.py:78 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ) |
@@ -38,6 +39,9 @@ related: [overview, archive-reading, extraction-cache]
 | `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress"}`。内側アーカイブの巻はここで初めて取り出す |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422 |
+
+`GET /healthz`(`/api` の外、フロントは使わない)は稼働確認用で、`{"ok": true, "commit": 短い SHA か null}`。
+DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`commit` はプロセスが起動時に読んだコミット。使い方は [[server-setup]]。
 
 エラーは `{"detail": "..."}`。404 = 巻・ページが無い(missing を含む)、**409 = オフライン**(`"offline": true` 付き。
 再スキャン前でもルートが見えなければ 409)、422 = 読めない巻(未対応形式・壊れた・展開上限・キャッシュ上限超え)。
@@ -72,6 +76,7 @@ related: [overview, archive-reading, extraction-cache]
 
 ## 経緯
 
+- #19 で `/healthz` と常駐・LAN 公開の運用([[server-setup]])を足した。`host` の既定は 127.0.0.1 のまま、127.0.0.1 以外にしたときは起動時に注意を出す
 - #14 で骨格を作った。zip / cbz だけを対象にした
 - #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:154 _expand` は入れ子を再帰で開く。
   実データ(`_参考/サンプル本`)で、スキャンが 10 巻を一覧に出し、キャッシュは空のまま、全巻の全ページが 200 で返ることを確かめた

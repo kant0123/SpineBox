@@ -17,3 +17,14 @@ export function parseRoute(hash: string): Route {
 
 export const readHref = (id: string | number) => `#/read/${encodeURIComponent(String(id))}`;
 export const libraryHref = "#/";
+
+/**
+ * `/read/<id>` を直接開いた(ブックマーク・共有されたリンク)ときに、画面の正準の形 `/#/read/<id>` を返す。
+ * バックエンドは未知のパスに index.html を返すので画面は開くが、ルートはハッシュで決まるため、
+ * パスのままだと一覧になってしまう。ハッシュがあるときはそちらを正とし、何もしない(null)。
+ */
+export function canonicalUrl(pathname: string, hash: string): string | null {
+  if (hash.replace(/^#/, "") !== "") return null;
+  const m = pathname.match(/^\/read\/([^/]+)\/?$/);
+  return m ? `/#/read/${m[1]}` : null;
+}

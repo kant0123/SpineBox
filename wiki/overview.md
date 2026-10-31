@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-01
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache]
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup]
 ---
 
 # SpineBox 全体像
@@ -43,4 +43,5 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 ## 運用
 
 サーバー機 `DESKTOP-80AKMUB`(Windows)で常駐させ、ほかの端末から LAN 越しにブラウザで使う単一ユーザーのアプリ。
-開発機(`DESKTOP-R9O3S3K`)とは別マシン。CD はまだ無い。
+開発機(`DESKTOP-R9O3S3K`)とは別マシン。CD はまだ無い。常駐(タスクスケジューラ)・LAN 公開(ファイアウォール)・
+更新・ログの手順は [[server-setup]](`deploy/` のスクリプト。サーバー機での実機確認は #20 で待ち)。
