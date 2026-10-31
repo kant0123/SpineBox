@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import db
+from .buildinfo import current_commit
 from .cache import CacheTooLarge, ExtractionCache
 from .config import Settings
 from .library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_offline
@@ -47,6 +48,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     app.state.settings = settings
     app.state.cache = cache
     app.state.scan_lock = scan_lock
+    commit = current_commit(REPO_ROOT)  # 起動時に一度だけ。古いプロセスが生き残っているかを見分けるため
 
     def get_conn() -> Iterator[sqlite3.Connection]:
         c = db.connect(settings.db_path)
@@ -70,6 +72,19 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.exception_handler(CacheTooLarge)
     def _too_large(request: Request, exc: CacheTooLarge):
         return JSONResponse({"detail": f"この巻を読めません: {exc}"}, status_code=422)
+
+    @app.get("/healthz")
+    def healthz():
+        """稼働確認(watchdog・CD の反映確認用)。DB に触れなければ 503 にして、異常を 200 で隠さない。"""
+        try:
+            c = db.connect(settings.db_path)
+            try:
+                c.execute("SELECT 1").fetchone()
+            finally:
+                c.close()
+        except sqlite3.Error:
+            return JSONResponse({"ok": False, "commit": commit, "detail": "DB に接続できません"}, status_code=503)
+        return {"ok": True, "commit": commit}
 
     @app.post("/api/scan")
     def scan(conn: sqlite3.Connection = Depends(get_conn)):
