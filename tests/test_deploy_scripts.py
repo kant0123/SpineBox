@@ -2,12 +2,17 @@
 
 タスクの登録・規則の追加はシステムの設定変更なので、テストでは実行しない(`-WhatIf` で内容の表示だけ確かめる)。
 再起動ループはユーザー権限の通常プロセスとして、偽の `spinebox` パッケージ(すぐ終了する)で確かめる。
+孤児の後始末のテストが止めるのは、テスト自身が起動したプロセスだけ(偽の `spinebox` が待ち受ける空きポートを使う)。
 """
 from __future__ import annotations
 
+import ctypes
+import os
 import shutil
+import socket
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -62,6 +67,7 @@ def test_restart_loop_restarts_and_logs_each_run(tmp_path):
     assert r.returncode == 3, r.stderr.decode("utf-8", "replace")  # 最後に起動したプロセスの終了コード
     supervisor = (logs / "supervisor.log").read_text(encoding="utf-8")
     assert supervisor.count("起動:") == 3 and supervisor.count("終了: code=3") == 3
+    assert supervisor.count("ポートの事前確認を省略します") == 3  # この偽の spinebox は --print-bind を話さない。確認できなくても起動は止めない
     # 間隔は 1 秒 → 2 秒(上限)と延びる。最後の 1 回のあとは待たない
     assert supervisor.count("1 秒後に再起動します") == 1 and supervisor.count("2 秒後に再起動します") == 1
     # 起動ごとに別のログファイル(前回のログを上書きしない)。標準出力は UTF-8 で残る
@@ -130,3 +136,185 @@ def test_firewall_add_whatif_changes_nothing_and_rejects_bad_port():
     after = run_ps(["-Command", f"(Get-NetFirewallRule -DisplayName '{name}' -ErrorAction SilentlyContinue | Measure-Object).Count"])
     assert after.stdout.decode("ascii", "replace").strip() == "0"
     assert run_ps(["-File", str(DEPLOY / "firewall_rule.ps1"), "-Action", "Add", "-WhatIf", "-Port", "99999"]).returncode != 0
+
+
+# --- 子プロセスの後始末(#23) ---
+
+FAKE_SERVER = """import os, socket, sys, time
+port = int(os.environ["FAKE_PORT"])
+if "--print-bind" in sys.argv:
+    print("127.0.0.1 %d" % port)
+    sys.exit(0)
+s = socket.socket()
+try:
+    s.bind(("127.0.0.1", port))
+except OSError:
+    print("bind 失敗", flush=True)
+    sys.exit(98)
+s.listen()
+open(os.environ["FAKE_PIDFILE"], "w").write(str(os.getpid()))
+time.sleep(float(os.environ.get("FAKE_LIFETIME", "600")))
+"""
+
+# 親(この -c のプロセス)をすぐ終わらせて、子の `-m spinebox` を孤児にする
+ORPHAN_SPAWNER = ("import subprocess, sys; subprocess.Popen([sys.executable, '-m', 'spinebox'], "
+                  "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)")
+
+
+def fake_server_repo(tmp_path):
+    """指定ポートで待ち受け、FAKE_LIFETIME 秒で終わる偽の spinebox。--print-bind も話す。"""
+    repo = tmp_path / "repo"
+    (repo / "spinebox").mkdir(parents=True)
+    (repo / "spinebox" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "spinebox" / "__main__.py").write_text(FAKE_SERVER, encoding="utf-8")
+    return repo
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def pid_alive(pid):
+    k32 = ctypes.windll.kernel32
+    handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        return code.value == 259  # STILL_ACTIVE
+    finally:
+        k32.CloseHandle(handle)
+
+
+def wait_for(cond, timeout=30.0):
+    end = time.time() + timeout
+    while time.time() < end:
+        if cond():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def kill_own(pid):
+    """テスト自身が起動したプロセスの後片付け(PID 指定)。"""
+    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+
+
+def read_pid(path):
+    try:
+        return int(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def spawn_orphan(repo, env, pidfile):
+    subprocess.run([sys.executable, "-c", ORPHAN_SPAWNER], cwd=repo, env=env, timeout=60, check=True)
+    assert wait_for(lambda: read_pid(pidfile) is not None), "孤児が起動しなかった"
+    return read_pid(pidfile)
+
+
+def run_wrapper_once(tmp_path, repo, env, *extra):
+    """偽の spinebox を 1 回だけ起動するラッパーを回す(自分の偽 spinebox は 1 秒で終わる)。"""
+    logs = tmp_path / "logs"
+    r = run_ps(["-File", str(DEPLOY / "start_spinebox.ps1"), "-RepoPath", str(repo), "-PythonPath", sys.executable,
+                "-LogDir", str(logs), "-MaxRuns", "1", *extra],
+               env={**env, "FAKE_PIDFILE": str(tmp_path / "new.pid"), "FAKE_LIFETIME": "1"})
+    return r, (logs / "supervisor.log").read_text(encoding="utf-8")
+
+
+@needs_windows_ps
+def test_killing_the_wrapper_also_stops_the_python_child(tmp_path):
+    # 受け入れ基準: ラッパーを強制終了しても python が孤児として残らない(Job Object)
+    repo = fake_server_repo(tmp_path)
+    pidfile = tmp_path / "child.pid"
+    env = {**os.environ, "FAKE_PORT": str(free_port()), "FAKE_PIDFILE": str(pidfile)}
+    wrapper = subprocess.Popen(
+        [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(DEPLOY / "start_spinebox.ps1"),
+         "-RepoPath", str(repo), "-PythonPath", sys.executable, "-LogDir", str(tmp_path / "logs")],
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    child = None
+    try:
+        assert wait_for(lambda: read_pid(pidfile) is not None), "python の子が起動しなかった"
+        child = read_pid(pidfile)
+        assert pid_alive(child)
+        wrapper.kill()  # TerminateProcess。finally も走らない強制終了
+        wrapper.wait(timeout=30)
+        assert wait_for(lambda: not pid_alive(child), timeout=15), "ラッパーを終了しても python が残った"
+        assert "Job Object)を有効にしました" in (tmp_path / "logs" / "supervisor.log").read_text(encoding="utf-8")
+    finally:
+        if wrapper.poll() is None:
+            wrapper.kill()
+        if child and pid_alive(child):
+            kill_own(child)
+
+
+@needs_windows_ps
+def test_orphan_holding_the_port_is_stopped_before_start(tmp_path):
+    # 受け入れ基準: 前回の孤児(親が既に居ない `-m spinebox`)がポートを握っていたら、検出してログに出し、止めて起動する
+    repo = fake_server_repo(tmp_path)
+    port = free_port()
+    env = {**os.environ, "FAKE_PORT": str(port), "FAKE_PIDFILE": str(tmp_path / "orphan.pid")}
+    orphan = spawn_orphan(repo, env, tmp_path / "orphan.pid")
+    try:
+        assert pid_alive(orphan)
+        r, supervisor = run_wrapper_once(tmp_path, repo, env)
+        assert r.returncode == 0, supervisor  # 孤児を止めたあとで bind できた(失敗なら 98)
+        assert f"ポート {port} を前回の孤児が握っているため止めます: PID={orphan}" in supervisor
+        assert not pid_alive(orphan)
+    finally:
+        if pid_alive(orphan):
+            kill_own(orphan)
+
+
+@needs_windows_ps
+def test_orphan_is_only_logged_with_no_reap_orphan(tmp_path):
+    repo = fake_server_repo(tmp_path)
+    env = {**os.environ, "FAKE_PORT": str(free_port()), "FAKE_PIDFILE": str(tmp_path / "orphan.pid")}
+    orphan = spawn_orphan(repo, env, tmp_path / "orphan.pid")
+    try:
+        r, supervisor = run_wrapper_once(tmp_path, repo, env, "-NoReapOrphan")
+        assert r.returncode == 98  # bind に失敗して終了コードが残る(孤児には触らない)
+        assert f"-NoReapOrphan のため止めません): PID={orphan}" in supervisor
+        assert pid_alive(orphan)
+    finally:
+        if pid_alive(orphan):
+            kill_own(orphan)
+
+
+@needs_windows_ps
+def test_process_with_a_live_parent_on_the_port_is_not_stopped(tmp_path):
+    # 手で起動した SpineBox(親のシェルが生きている)や別のプログラムは、孤児ではないので止めない
+    repo = fake_server_repo(tmp_path)
+    env = {**os.environ, "FAKE_PORT": str(free_port()), "FAKE_PIDFILE": str(tmp_path / "manual.pid")}
+    manual = subprocess.Popen([sys.executable, "-m", "spinebox"], cwd=repo, env=env, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # 親 = このテストのプロセス
+    try:
+        assert wait_for(lambda: read_pid(tmp_path / "manual.pid") is not None), "偽の spinebox が起動しなかった"
+        manual_pid = read_pid(tmp_path / "manual.pid")
+        r, supervisor = run_wrapper_once(tmp_path, repo, env)
+        assert r.returncode == 98
+        assert f"孤児ではないので止めません): PID={manual_pid}" in supervisor
+        assert pid_alive(manual_pid)
+    finally:
+        kill_own(manual.pid)
+
+
+@needs_windows_ps
+def test_stop_action_without_a_registered_task_stops_nothing():
+    name = "SpineBoxTest-" + uuid.uuid4().hex[:8]
+    r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Stop", "-TaskName", name])
+    out = r.stdout.decode("cp932", "replace") + r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0 and "登録されていません" in out
+
+
+@needs_windows_ps
+def test_free_port_logs_nothing_about_conflicts(tmp_path):
+    # ポートが空いているとき(通常の起動)は、事前確認が黙って通る。確認を省略した旨のログも出ない
+    repo = fake_server_repo(tmp_path)
+    env = {**os.environ, "FAKE_PORT": str(free_port()), "FAKE_PIDFILE": str(tmp_path / "x.pid")}
+    r, supervisor = run_wrapper_once(tmp_path, repo, env)
+    assert r.returncode == 0, supervisor
+    assert "警告" not in supervisor and "省略" not in supervisor

@@ -81,6 +81,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[local-ci]]
 - 備考: #6。`command_match.test.mjs` の `spawnSync('bash')` が PowerShell(PATH に Git の cmd のみ)で ENOENT になり 8 件落ちていた。`find_bash.mjs` `findBash()` で git の場所から bash.exe を解決。PowerShell で修正前 53 件中 8 失敗 → 修正後 60 件(+find_bash 7 件)全成功を確認。
 
+## [2026-11-01] ingest | PR #25 常駐ラッパーを止めても python の子プロセスが孤児として残らないようにする
+- 更新: [[server-setup]], [[backend]]
+- 備考: #23。ラッパー自身を kill-on-close の Job Object に入れて強制終了でも python が道連れになるようにし、起動前にポートを握る前回の孤児(`-m spinebox` で親が居ない)を検出して止める。親が生きているプロセスは止めない。`install_task.ps1 -Action Stop` を追加。`Stop-ScheduledTask` 単体の挙動はサーバー機で未確認(#20)。
+
 ## [2026-11-01] ingest | PR #22 フェーズ 1 の 7-Zip CLI 連携(7z / rar・内側アーカイブの遅延取り出し)と _参考 サンプル結合
 - 更新: [[archive-reading]], [[extraction-cache]], [[backend]], [[overview]], [[server-setup]]
 - 備考: #16。実データは 7z → rar → rar → zip と深さ 3 に入れ子になっていたため、`max_depth` の既定を 1 から 3 にして、内側アーカイブを再帰で開くようにした(Issue の想定は「rar の中に巻フォルダ」だった)。`_参考/サンプル本` でスキャンが 10 巻・キャッシュ空・全巻の全ページが 200・原本のサイズ/mtime/sha256 不変を確認。

@@ -95,3 +95,30 @@ def test_main_warns_only_when_listening_beyond_loopback(monkeypatch, tmp_path, c
     _run_main(monkeypatch, tmp_path, "0.0.0.0")
     err = capsys.readouterr().err
     assert "0.0.0.0:9001" in err and "インターネット" in err
+
+
+def test_print_bind_prints_host_and_port_without_starting(monkeypatch, tmp_path, capsys):
+    # 常駐ラッパーが、起動前に孤児がポートを握っていないか調べるために使う
+    import sys
+    import types
+
+    from spinebox import __main__ as entry
+
+    conf = tmp_path / "c.toml"
+    conf.write_text(f'host = "0.0.0.0"\nport = 9002\ndata_dir = "{(tmp_path / "d").as_posix()}"\n', encoding="utf-8")
+    monkeypatch.setenv(CONFIG_ENV, str(conf))
+    calls = []
+    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=lambda app, **kw: calls.append(kw)))
+    assert entry.main(["--print-bind"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "0.0.0.0 9002\n" and captured.err == "" and calls == []  # 注意文も出さず、起動しない
+
+
+def test_print_bind_reports_a_config_error(monkeypatch, tmp_path, capsys):
+    from spinebox import __main__ as entry
+
+    conf = tmp_path / "c.toml"
+    conf.write_text('port = "x"\n', encoding="utf-8")
+    monkeypatch.setenv(CONFIG_ENV, str(conf))
+    assert entry.main(["--print-bind"]) == 2
+    assert capsys.readouterr().out == ""

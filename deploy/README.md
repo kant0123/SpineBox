@@ -13,8 +13,8 @@
 
 | ファイル | 内容 |
 | --- | --- |
-| `start_spinebox.ps1` | `python -m spinebox` を起動し、終了したら再起動する(間隔は倍々で最大 60 秒)。起動ごとのログを `logs/` に残す |
-| `install_task.ps1` | タスクスケジューラへの登録・解除・状態確認(`-Action Register / Unregister / Status`)。OS 起動時にログオン不要で開始 |
+| `start_spinebox.ps1` | `python -m spinebox` を起動し、終了したら再起動する(間隔は倍々で最大 60 秒)。起動ごとのログを `logs/` に残す。強制終了されても python が孤児にならず、前回の孤児がポートを握っていれば止める |
+| `install_task.ps1` | タスクスケジューラへの登録・解除・状態確認・停止(`-Action Register / Unregister / Status / Stop`)。OS 起動時にログオン不要で開始 |
 | `firewall_rule.ps1` | LAN 内(プライベートプロファイル・同一サブネット)だけに開く受信規則の追加・削除・確認 |
 
 - 登録・規則の追加は管理者権限の PowerShell が要る。`-WhatIf` で内容の表示だけできる(システムは変更しない)

@@ -21,6 +21,7 @@ related: [overview, archive-reading, extraction-cache, server-setup]
 | パス | 役割 |
 | --- | --- |
 | `spinebox/app.py:41 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:198 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
 | `spinebox/scanner.py:144 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
