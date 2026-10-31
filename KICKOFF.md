@@ -4,6 +4,13 @@
 
 `CLAUDE.md` の単発作業向けサブエージェント制限を上書きし、本セッションでは**余っているクラウドセッションクレジット（Claude Code on the web / `claude --remote`）を優先活用するハイブリッド体制**で進行します。
 
+### モデルおよびエフォート（Thinking Effort）の役割分担
+
+| 役割 | 担当モデル | 推奨エフォート | 主な狙い・選定理由 |
+| --- | --- | :---: | --- |
+| **全体統括・オーケストレーター**（親） | **Opus** | **中 (Medium)** | 思考の空回りを防ぎ、状況把握・Issue 起票・進行判断・git 同期をテンポよく回すため |
+| **実装サブエージェント**（子 / クラウド・ローカル共通） | **Sonnet 5.5** | **高 (High)** | 安全検証（Zip Slip/Bomb）・文字コード（UTF-8/cp932）・キャッシュ等のコーナーケース抜けを防ぎ、`agy-review` の 1 発 APPROVE と差し戻し時の確実な原因特定・再現テスト作成を行うため |
+
 ### 1. 段階的 Issue 化と実行環境（`[Cloud]` / `[Local]`）の振り分け
 
 - 全体計画は `GOAL.md` を正とします。最初から全機能を細分化せず、現在のコードベースと `wiki/` を踏まえて**直近の 1〜3 タスクだけ**を `gh issue create` で起票してください（重複を防ぐため先に `gh issue list --state open` を確認）。
@@ -30,7 +37,7 @@
 
 ### 3. `[Local]` タスクの実行手順（ローカル Sonnet サブエージェント直列委譲）
 
-- `[Local]` 区分の Issue は、ローカルの Sonnet サブエージェントを起動し、`worktree-start` → 実装・テスト → `wiki-ingest` → CI・`agy-review` → `pr-finish`（PR マージ・リモートブランチ削除・worktree 削除・`gh issue close <番号> --comment`）までを 1 Issue 単位で完遂させます。
+- `[Local]` 区分の Issue は、ローカルの **Sonnet 5.5 サブエージェント（エフォート: 高 / High）** を起動し、`worktree-start` → 実装・テスト → `wiki-ingest` → CI・`agy-review` → `pr-finish`（PR マージ・リモートブランチ削除・worktree 削除・`gh issue close <番号> --comment`）までを 1 Issue 単位で完遂させます。
 - **複数 Issue のまとめ委譲は禁止**です。ローカルの Sonnet サブエージェントへの委譲プロンプトには以下の必須指示を含めてください：
   - **サブエージェント自身による再委譲の禁止**
   - 着手時に `CLAUDE.md`・`GOAL.md`・`wiki/index.md`・`wiki/concepts/recurring-review-findings.md` および各スキル（`.claude/skills/` 配下）を読むこと
@@ -58,10 +65,11 @@
 
 ## 付録: クラウドセッション投入用プロンプトテンプレート
 
-`[Cloud]` 区分の Issue を Claude Code クラウドセッション（Web / `claude --remote`）に投げるときは、以下のテンプレートを使用してください。
+`[Cloud]` 区分の Issue を Claude Code クラウドセッション（Web / `claude --remote`）に投げるときは、**モデルに Sonnet 5.5（または 3.7 Sonnet）、エフォート: 高（High）** を指定し、以下のテンプレートを使用してください。
 
 ```markdown
 Issue #<番号> を実装してください。
+※ モデル: Sonnet 5.5 (または 3.7 Sonnet) / エフォート: 高 (High) で実行してください。
 
 1. 着手前に `CLAUDE.md`、`GOAL.md`、`wiki/index.md`、`wiki/concepts/recurring-review-findings.md`、`.claude/skills/wiki-ingest/SKILL.md` を読み、不変条件（特に「蔵書を扱う不変条件」）を確認してください。
 2. `gh issue view <番号>`（gh が使えない環境ではプロンプト記載の受け入れ基準）を確認し、`origin/main` から `<feature または fix>/issue-<番号>-<短い名前>` ブランチを作成して作業してください。
