@@ -11,6 +11,7 @@
 ## 0. プロジェクト概要
 
 - プロジェクト名: SpineBox — ローカルの自炊本(漫画中心・小説も)を管理し、ブラウザで読む Web アプリ。日本語のみ想定
+- ゴール: `GOAL.md`(目的・作らないもの・段階計画と完了条件)。Issue を起こすときは、どの段階のどの完了条件に向かう作業かを書く
 - 技術スタック: Python 3.12 / FastAPI / SQLite(FTS5 trigram)/ React + Vite / アーカイブは Python 標準 zipfile + 7-Zip CLI(`7z.exe`)
 - 本番環境: サーバー機 `DESKTOP-80AKMUB`(Windows)で常駐する単一ユーザー・単一プロセス。
   開発機(`DESKTOP-R9O3S3K`)とは別マシンで、蔵書もサーバー機側にある。ほかの端末(スマホ等)から LAN 越しにブラウザで使う。
