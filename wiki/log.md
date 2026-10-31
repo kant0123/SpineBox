@@ -49,3 +49,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] ingest | PR #7 GOAL.md・CLAUDE.md・KICKOFF.md をブラッシュアップし .agent/rules と同期
 - 更新: [[overview]]
 - 備考: #5。複数フォルダ指定とオフライン時の DB 保護、話数・横断検索、1 巻 = 1 CBZ 化の判断理由、公開 DB 併用時の優先順位、フェーズ 1 の初期既定値を GOAL.md に明記。CLAUDE.md・review/domain_invariants.json・.agent/rules/ を同期し、自律オーケストレーション用の KICKOFF.md を追加。
+
+## [2026-11-01] ingest | KICKOFF.md にクラウドセッションクレジットの活用箇所と受け渡し手順を明記
+- 更新: [[overview]]
+- 備考: #8。ローカルの実サンプル(_参考/)や 7z.exe・agy CLI が不要な純粋ロジック・DB・API・UI 実装を [Cloud] として優先切り出しし、ブランチ push までをクラウドセッションで行い、実機確認・PR 作成・ci_local.py・agy_review.py・マージをローカルで引き取るハイブリッド手順を KICKOFF.md に定義。
