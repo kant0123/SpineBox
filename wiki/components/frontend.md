@@ -1,0 +1,77 @@
+---
+type: component
+summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、モック API、CI への組み込み
+updated: 2026-11-01
+related: [overview, local-ci]
+---
+
+# フロントエンド(`frontend/`)
+
+蔵書一覧と、右綴じ・見開きのリーダー。React + Vite + TypeScript。`npm run build` の出力 `frontend/dist` を
+バックエンドが `/` で配信する。
+
+## 責務
+
+- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・リーダー(ページ画像の表示・先読み・
+  読書位置の保存と再開)。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
+- しない: ページの並び順・ページ数・オフライン判定。どれもバックエンドが決めた `pages[]`・`offline` をそのまま使う
+
+## 入口となるファイル
+
+| パス | 役割 |
+| --- | --- |
+| `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
+| `frontend/src/reader/Reader.tsx:29 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
+| `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
+| `frontend/src/api.ts:56 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/mock/mockBackend.ts:49 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用 |
+
+## 決めたこと(コードからは理由が読めないもの)
+
+- **ページ番号は 0 始まり。** `progress.page` も `pages[].index` と同じ番号で送る(画面の表示だけ +1)。
+  #14 と同時に作ったため、契約の文面に始まりの番号が無かった。バックエンドと食い違ったら API 契約側を正にして合わせる
+- **位置は「画面」ではなく「ページ」で持つ。** 回転や表紙単独の切替で見開きの組み方が変わっても、読んでいたページを
+  含む画面から再開できる(`spreadIndexOf()` で範囲外のページも端に寄せるので、ページ数が減った巻も開ける)
+- **見開きは表紙単独 ON が既定。** ON なら `[0] [1,2] [3,4] …`、OFF なら `[0,1] [2,3] …`。端数の 1 ページは最後に単独。
+  DOM 上は若い番号が先で、CSS の `flex-direction: row-reverse` で右に置く(右綴じ)。見開きにするのは横長かつ幅 600px 以上のときだけ
+- **操作の向き(右綴じ):** 左 1/3 タップ・`←` キーが次、右 1/3・`→` が前、中央がメニュー。スワイプは**右へ払う(指を左から右へ)と次**。
+  Issue #15 の文面は「左スワイプ = 次」だったが、右綴じでは次のページが左から来るので、それを引き寄せる向きにした。
+  逆が良ければ `swipeAction()` の符号だけを変える
+- **一度既読になった巻は、前のページへ戻っても `finished=true` のまま送る。** 読み返しで既読が消えないようにするため
+- **保存は 800ms のデバウンスで最後の位置だけ。** 一覧へ戻る・タブが裏に回る(`pagehide`/`visibilitychange`)ときは待たずに
+  `fetch(..., {keepalive: true})` で送る。スマホはタブを閉じずに切り替えることが多く、デバウンス中の位置が失われるため
+- **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
+  `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない
+- **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
+  入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
+- **汎用カルーセルライブラリは使わない**(GOAL.md の初期既定)。ページ送りは状態の差し替えだけで、アニメーションは無い
+
+## 落とし穴
+
+- `.stage` の `touch-action: pinch-zoom` は、1 本指の横の払いをブラウザのスクロールに取られないためのもの。消すとスマホでスワイプが効かない
+- モック(`src/mock/`)は `vite.config.ts` からだけ読む。アプリ側から import すると本番のバンドルに入る
+- 単体テストの jsdom には `PointerEvent` が無いので、タップ・スワイプは判定関数の単体テストと実ブラウザで確かめる
+  (結線のテスト `src/App.test.tsx` はキーボードで操作している)
+
+## CI への組み込み
+
+`scripts/ci_local.py:37 frontend_commands()` が `test` ジョブの最後に `npm --prefix frontend test` を足す([[local-ci]])。
+
+- `frontend/package.json` が無ければ足さない。`node_modules` が無ければ**飛ばさずに** `npm ci` から始める
+  (飛ばすと検査していないのに成功が載る)
+- npm は Windows では `npm.cmd` なので、`shutil.which()` で解決したパスで呼ぶ(名前のままだと `subprocess` が見つけられない)
+- Actions(`.github/workflows/test.yml`)は先に `npm ci --prefix frontend` を実行するので、スクリプト側の `npm ci` は走らない
+
+## 動かし方
+
+```bash
+cd frontend && npm ci
+npm run dev:mock   # バックエンド無しでモック API と一緒に起動
+npm run dev        # /api を http://127.0.0.1:8000 へ中継
+npm test           # vitest
+npm run build      # frontend/dist
+```
+
+## 経緯
+
+- #15 で作成。バックエンド(#14)と並行して、API はモックで開発した。実機(375px)の確認はサーバー機側で行う
