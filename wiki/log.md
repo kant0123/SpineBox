@@ -80,3 +80,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] ingest | PR #24 hook テストが Git の bin を PATH に持たない Windows で bash 未検出になる問題を修正
 - 更新: [[local-ci]]
 - 備考: #6。`command_match.test.mjs` の `spawnSync('bash')` が PowerShell(PATH に Git の cmd のみ)で ENOENT になり 8 件落ちていた。`find_bash.mjs` `findBash()` で git の場所から bash.exe を解決。PowerShell で修正前 53 件中 8 失敗 → 修正後 60 件(+find_bash 7 件)全成功を確認。
+
+## [2026-11-01] ingest | PR #25 常駐ラッパーを止めても python の子プロセスが孤児として残らないようにする
+- 更新: [[server-setup]], [[backend]]
+- 備考: #23。ラッパー自身を kill-on-close の Job Object に入れて強制終了でも python が道連れになるようにし、起動前にポートを握る前回の孤児(`-m spinebox` で親が居ない)を検出して止める。親が生きているプロセスは止めない。`install_task.ps1 -Action Stop` を追加。`Stop-ScheduledTask` 単体の挙動はサーバー機で未確認(#20)。
