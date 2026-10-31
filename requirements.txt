@@ -1,0 +1,6 @@
+# SpineBox の実行に要るもの。CI(.github/workflows/test.yml)はこのファイルがあれば pip install する。
+fastapi>=0.110
+uvicorn>=0.29
+# TestClient が使う(テスト用)
+httpx>=0.27
+pytest>=8

@@ -66,3 +66,8 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[overview]], [[local-ci]]
 - 新規: [[frontend]]
 - 備考: #15。API はモックで開発(#14 と並行)。ページ番号は 0 始まり、スワイプは右へ払うと次(Issue の「左スワイプ = 次」から変えた理由は [[frontend]])。ci_local.py の test ジョブにフロントのテストを足し、node_modules が無ければ npm ci から始める。
+
+## [2026-11-01] ingest | バックエンド骨格(設定・DB・zip 目次読み・展開キャッシュ・スキャン・閲覧 API)
+- 更新: [[overview]]
+- 新規: [[backend]], [[archive-reading]], [[extraction-cache]]
+- 備考: #14、PR #18。spinebox/ パッケージと tests/ を追加。スキャンは目次だけ読み内側アーカイブを取り出さない、蔵書のバイト列・mtime がスキャンと全ページ閲覧で変わらない、キャッシュの LRU をテストで確認。7z / rar は後続の [Local] Issue。

@@ -1,0 +1,133 @@
+"""SQLite の接続とマイグレーション。
+
+スキーマは `PRAGMA user_version` を版数にして、MIGRATIONS を先頭から順に適用する。
+既存のマイグレーションは書き換えず、変更は末尾に足す。
+
+蔵書レコード・読書位置は**消さない**のが前提(CLAUDE.md「蔵書を扱う不変条件」)。
+見えなくなったルート・ソースは offline / missing の印を付けるだけで、DELETE は scan_issues
+(再導出できる記録)にしか使わない。
+"""
+from __future__ import annotations
+
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+MIGRATIONS: list[list[str]] = [
+    # 1: 初期スキーマ
+    [
+        """
+        CREATE TABLE library_roots (
+            id INTEGER PRIMARY KEY,
+            path TEXT NOT NULL UNIQUE,
+            online INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            last_checked_at TEXT,
+            last_online_at TEXT
+        )
+        """,
+        """
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY,
+            root_id INTEGER NOT NULL REFERENCES library_roots(id),
+            rel_path TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('folder', 'archive')),
+            size INTEGER,
+            mtime_ns INTEGER,
+            scan_version INTEGER,
+            offline INTEGER NOT NULL DEFAULT 0,
+            missing INTEGER NOT NULL DEFAULT 0,
+            scanned_at TEXT,
+            UNIQUE (root_id, rel_path)
+        )
+        """,
+        """
+        CREATE TABLE volumes (
+            id INTEGER PRIMARY KEY,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            container_path TEXT,
+            entry_prefix TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL,
+            name_raw BLOB,
+            name_encoding TEXT,
+            page_count INTEGER,
+            missing INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        "CREATE UNIQUE INDEX volumes_locator ON volumes (source_id, COALESCE(container_path, ''), entry_prefix)",
+        """
+        CREATE TABLE reading_progress (
+            volume_id INTEGER PRIMARY KEY REFERENCES volumes(id),
+            page INTEGER NOT NULL,
+            finished INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE scan_issues (
+            id INTEGER PRIMARY KEY,
+            source_id INTEGER REFERENCES sources(id),
+            container_path TEXT,
+            entry_name TEXT,
+            reason TEXT NOT NULL,
+            recorded_at TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX scan_issues_source ON scan_issues (source_id)",
+    ],
+]
+
+
+class SchemaTooNew(RuntimeError):
+    """DB がこのコードより新しい版数で作られている。"""
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def connect(path: Path | str) -> sqlite3.Connection:
+    """接続を開く。トランザクションは呼び出し側が `with transaction(conn):` で明示する。"""
+    if str(path) != ":memory:":
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    if str(path) != ":memory:":
+        conn.execute("PRAGMA journal_mode = WAL")
+    return conn
+
+
+class transaction:
+    """BEGIN IMMEDIATE ... COMMIT / ROLLBACK。"""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def __enter__(self) -> sqlite3.Connection:
+        self.conn.execute("BEGIN IMMEDIATE")
+        return self.conn
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.conn.execute("ROLLBACK" if exc_type else "COMMIT")
+
+
+def migrate(conn: sqlite3.Connection) -> int:
+    """未適用のマイグレーションを順に適用し、適用後の版数を返す。"""
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current > len(MIGRATIONS):
+        raise SchemaTooNew(f"DB の版数 {current} はこのコードの対応版数 {len(MIGRATIONS)} より新しい")
+    for version in range(current + 1, len(MIGRATIONS) + 1):
+        with transaction(conn):
+            for statement in MIGRATIONS[version - 1]:
+                conn.execute(statement)
+            conn.execute(f"PRAGMA user_version = {version}")
+    return len(MIGRATIONS)
+
+
+def open_db(path: Path | str) -> sqlite3.Connection:
+    conn = connect(path)
+    migrate(conn)
+    return conn
