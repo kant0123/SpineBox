@@ -102,6 +102,90 @@ def test_ci_state_error_is_not_green(monkeypatch, proc):
         ar.ci_state(1)
 
 
+# --- ci_state: Actions が起動しなかったチェックをローカル CI で代替する ---------------
+NOT_STARTED = ("The job was not started because recent account payments have failed "
+               "or your spending limit needs to be increased.")
+
+
+def fake_github(monkeypatch, pr_checks, runs, annotations, statuses):
+    """gh の呼び出しを、引数の中身で振り分けて返す偽物に差し替える。"""
+    def fake_run(cmd, **kw):
+        joined = " ".join(cmd)
+        if cmd[:3] == ["gh", "pr", "checks"]:
+            return Proc(1 if any(c["bucket"] == "fail" for c in pr_checks) else 0, json.dumps(pr_checks))
+        if "/check-runs?" in joined:
+            return Proc(0, json.dumps(runs))
+        if "/annotations" in joined:
+            run_id = int(joined.split("/check-runs/")[1].split("/")[0])
+            return Proc(0, "\n".join(annotations.get(run_id, [])))
+        if joined.endswith("[.statuses[] | {context, state}]"):
+            return Proc(0, json.dumps(statuses))
+        raise AssertionError(f"想定外の呼び出し: {joined}")
+    monkeypatch.setattr(ar, "run", fake_run)
+
+
+def pr_checks_of(*pairs):
+    return [{"name": n, "bucket": b} for n, b in pairs]
+
+
+def test_not_started_check_is_excused_by_local_success(monkeypatch):
+    fake_github(monkeypatch,
+                pr_checks_of(("test", "fail"), ("wiki-lint", "fail"), ("local/test", "pass"), ("local/wiki-lint", "pass")),
+                runs=[{"id": 1, "name": "test", "conclusion": "failure"},
+                      {"id": 2, "name": "wiki-lint", "conclusion": "failure"}],
+                annotations={1: [NOT_STARTED], 2: [NOT_STARTED]},
+                statuses=[{"context": "local/test", "state": "success"}, {"context": "local/wiki-lint", "state": "success"}])
+    green, detail = ar.ci_state(1, SHA)
+    assert green is True and "ローカル CI" in detail
+
+
+@pytest.mark.parametrize("statuses", [
+    [],                                                  # ローカル CI を回していない
+    [{"context": "local/test", "state": "failure"}],    # ローカルでも落ちた
+    [{"context": "local/test", "state": "pending"}],    # まだ実行中
+    [{"context": "test", "state": "success"}],          # local/ 接頭辞の無い status は代替にならない
+])
+def test_not_started_check_without_local_success_is_not_green(monkeypatch, statuses):
+    fake_github(monkeypatch, pr_checks_of(("test", "fail")),
+                runs=[{"id": 1, "name": "test", "conclusion": "failure"}],
+                annotations={1: [NOT_STARTED]}, statuses=statuses)
+    assert ar.ci_state(1, SHA)[0] is False
+
+
+def test_really_failed_check_is_not_excused(monkeypatch):
+    """Actions で実際に動いて落ちたチェックは、ローカルが成功でも緑にしない。"""
+    fake_github(monkeypatch, pr_checks_of(("test", "fail"), ("local/test", "pass")),
+                runs=[{"id": 1, "name": "test", "conclusion": "failure"}],
+                annotations={1: ["Process completed with exit code 1."]},
+                statuses=[{"context": "local/test", "state": "success"}])
+    assert ar.ci_state(1, SHA)[0] is False
+
+
+def test_same_name_with_one_real_failure_is_not_excused(monkeypatch):
+    """push と pull_request で同名の実行が 2 つあり、片方は実際に落ちている。"""
+    fake_github(monkeypatch, pr_checks_of(("test", "fail"), ("local/test", "pass")),
+                runs=[{"id": 1, "name": "test", "conclusion": "failure"},
+                      {"id": 2, "name": "test", "conclusion": "failure"}],
+                annotations={1: [NOT_STARTED], 2: ["Process completed with exit code 1."]},
+                statuses=[{"context": "local/test", "state": "success"}])
+    assert ar.ci_state(1, SHA)[0] is False
+
+
+def test_pending_check_is_not_excused(monkeypatch):
+    """落ちたチェックと実行中のチェックが混ざっているなら、代替を考えずに緑にしない。"""
+    fake_github(monkeypatch, pr_checks_of(("test", "fail"), ("wiki-lint", "pending"), ("local/test", "pass")),
+                runs=[{"id": 1, "name": "test", "conclusion": "failure"}],
+                annotations={1: [NOT_STARTED]},
+                statuses=[{"context": "local/test", "state": "success"}])
+    assert ar.ci_state(1, SHA)[0] is False
+
+
+def test_without_sha_no_excuse_is_attempted(monkeypatch):
+    """sha を渡さない呼び出し (従来どおり) では GitHub に問い合わせず、落ちたチェックは落ちたまま。"""
+    fake_github(monkeypatch, pr_checks_of(("test", "fail")), runs=[], annotations={}, statuses=[])
+    assert ar.ci_state(1)[0] is False
+
+
 # --- check_merge: マージ可否 ---------------------------------------------------
 def review(sha, verdict):
     return f"<!-- agy-review sha={sha} verdict={verdict} -->\n"
@@ -568,3 +652,13 @@ def test_call_agy_model_mismatch_hint(monkeypatch, tmp_path, err, expect_hint):
     with pytest.raises(ar.ReviewError) as e:
         ar.call_agy("P", "bad-model", 1, tmp_path)
     assert ("--model のモデル名" in str(e.value)) is expect_hint
+
+
+def test_startup_failure_is_classified_and_success_runs_are_ignored(monkeypatch):
+    """conclusion が startup_failure の実行も判定対象。成功した別の実行 (注記を読まない) は無視する。"""
+    fake_github(monkeypatch, pr_checks_of(("test", "fail"), ("other", "pass"), ("local/test", "pass")),
+                runs=[{"id": 1, "name": "test", "conclusion": "startup_failure"},
+                      {"id": 2, "name": "other", "conclusion": "success"}],
+                annotations={1: [NOT_STARTED], 2: ["読まれてはいけない"]},
+                statuses=[{"context": "local/test", "state": "success"}])
+    assert ar.ci_state(1, SHA)[0] is True

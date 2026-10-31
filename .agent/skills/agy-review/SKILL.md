@@ -34,6 +34,8 @@ python review/agy_review.py --pr <PR番号>
 
 スクリプトは CI が緑でなければ実行を拒否する(exit 2)。テストで落ちる差分をレビューしても
 修正で差分が変わるので無駄になるため。
+Actions がジョブを起動しなかったチェックは、同じ head の `local/<同名>` が成功していれば緑とみなす
+(載せ方は `pr-finish` の「Actions がジョブを起動しないとき」)。
 
 結果は PR コメントに投稿され、標準出力にも出る。**head SHA ごとに記録される**ので、
 push するたびに「未レビュー」に戻る。
@@ -42,7 +44,7 @@ push するたびに「未レビュー」に戻る。
 | --- | --- | --- |
 | 0 | APPROVE(指摘なし、または NITPICK のみ) | `pr-finish` に戻ってマージ |
 | 3 | CHANGES_REQUESTED(CRITICAL か WARNING がある) | 手順 2 |
-| 2 | CI が緑でない | CI を直す |
+| 2 | CI が緑でない | CI を直す。Actions が起動していないだけなら `python scripts/ci_local.py` |
 | 1 | agy / gh の失敗 | エラーを読んで再実行。**レビューを飛ばしてマージしない** |
 
 NITPICK は採否を自由に決めてよく、記録も要らない。

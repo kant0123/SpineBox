@@ -19,7 +19,7 @@ description: >
 始める前に、worktree の中にいて、実装と Wiki 更新が済んでいること。
 
 ```bash
-python -m pytest tests/ -v
+python scripts/ci_local.py --no-report   # CI と同じ検査
 git status
 ```
 
@@ -85,6 +85,23 @@ gh pr checks <PR番号> --watch
 
 失敗したらマージせず原因を調べる。修正が困難なら PR は開いたまま状況を報告する
 (勝手に close しない)。
+
+### Actions がジョブを起動しないとき
+
+チェックが即座に失敗し、注記が「The job was not started because recent account payments have failed
+or your spending limit needs to be increased.」なら、コードではなく Actions の課金・上限の問題。
+同じ検査を手元で回し、結果を head のコミットに載せて代替する。
+
+```bash
+git status                       # 未コミット・未追跡が無いこと(あると載せない)
+python scripts/ci_local.py       # test・wiki-lint を実行し、local/test・local/wiki-lint を載せる
+gh pr checks <PR番号>            # local/* が pass になっていることを確かめる
+```
+
+- 載るのは**実行したときの HEAD**。push 前・未コミットの変更があるときは前提エラー(exit 2)で何も載せない。
+- **代替できるのは「起動しなかった」チェックだけ。** Actions で実際に動いて落ちたなら、ローカルが通っても
+  直すのが先(`review/agy_review.py` も代替を認めない)。環境差が疑わしいなら、その旨を報告する。
+- 修正を push したら head が変わるので、ローカル CI もやり直す。
 
 ## 4. agy レビュー
 

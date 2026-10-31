@@ -94,7 +94,7 @@ Git Bash で動く(AlexaLogDB で確認)。テンプレート自身が LF に固
 
 hook は導入 PR 自体を守れないので、この PR だけ手で順に確認する。
 
-1. push して CI が緑になるのを待つ。
+1. push して CI が緑になるのを待つ。Actions がジョブを起動しない(課金・上限)ときは `python scripts/ci_local.py` で代替する(`wiki/operations/local-ci.md`)。
 2. worktree から `python review/agy_review.py --pr <番号>` を実行する。差し戻しは通常どおり評価する。
 3. PR 本文の「レビュー」節に、手動で実行したことを書いてマージする。
 4. メインツリーへの反映を待つ(本番同居 CD ならデプロイの `status: deployed` と `/healthz` の `commit`)。
