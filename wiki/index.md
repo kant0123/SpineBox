@@ -23,6 +23,10 @@ Wiki 全ページのカタログ。質問に答えるとき・作業に着手す
 
 - [[overview]] — システム全体像と各ページへの入口
 
+## Components — モジュール・機能単位 (`components/`)
+
+- [[frontend]] — 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、モック API、CI への組み込み
+
 ## Concepts — 横断的な仕組み・設計判断 (`concepts/`)
 
 - [[recurring-review-findings]] — レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む

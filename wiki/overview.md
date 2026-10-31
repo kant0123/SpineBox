@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-01
-related: [recurring-review-findings, local-ci]
+related: [recurring-review-findings, local-ci, frontend]
 ---
 
 # SpineBox 全体像
@@ -17,8 +17,10 @@ related: [recurring-review-findings, local-ci]
 
 ## 構成
 
-まだアプリのコードは無い。リポジトリにあるのは開発基盤(エージェント規約・CI・agy レビュー・この Wiki)だけ。
+開発基盤(エージェント規約・CI・agy レビュー・この Wiki)に加えて、アプリは次の構成要素から成る。
 これから作るものの仕様は Issue に置く。実装したら、その PR でここに構成要素を足す。
+
+- [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 
 ## 主要な設計判断
 
