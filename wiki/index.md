@@ -23,8 +23,14 @@ Wiki 全ページのカタログ。質問に答えるとき・作業に着手す
 
 - [[overview]] — システム全体像と各ページへの入口
 
+## Components — モジュール・機能単位 (`components/`)
+
+- [[archive-reading]] — アーカイブの目次読みと 1 エントリの読み出し。名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、危険なエントリ名と展開上限、7z / rar の差し込み口
+- [[backend]] — FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
+
 ## Concepts — 横断的な仕組み・設計判断 (`concepts/`)
 
+- [[extraction-cache]] — 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ。容量上限つき LRU、使用中は消さない、スキャンでは使わない
 - [[recurring-review-findings]] — レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
 
 ## Operations — 運用手順・障害対応 (`operations/`)

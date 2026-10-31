@@ -1,0 +1,260 @@
+"""蔵書フォルダのスキャン。
+
+各ルートを走査して、次を 1 巻の候補として volumes に登録する。
+
+- (a) 画像を直接含むフォルダ
+- (b) zip/cbz の中で画像を直接含むフォルダごと(1 アーカイブに複数巻フォルダがあればフォルダ単位)
+- (c) アーカイブの中の内側アーカイブ。**取り出さない・読まない**(目次に名前が出るだけ)。
+  ページ数は開くまで NULL
+
+蔵書には読み取りしかしない。サイズ・mtime・SCAN_VERSION が前回と同じアーカイブは開き直さない。
+ルートが見えない・読めないときはオフラインにするだけで、レコードは消さない。見つからなくなった
+ソース・巻も missing の印を付けるだけで消さない(読書位置ごと失わないため)。
+"""
+from __future__ import annotations
+
+import os
+import sqlite3
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+
+from . import db
+from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
+                      open_archive)
+from .archive.safety import Skip, depth_problem
+from .config import Settings
+from .pages import is_image
+
+# 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
+SCAN_VERSION = 1
+
+
+@dataclass
+class ScanResult:
+    volumes: int
+    offline_roots: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class VolumeSpec:
+    container_path: str | None
+    entry_prefix: str
+    title: str
+    name_raw: bytes
+    name_encoding: str
+    page_count: int | None
+
+
+def _fs_name_bytes(name: str) -> bytes:
+    return name.encode("utf-8", "surrogateescape")
+
+
+def _rel(root: Path, path: str) -> str:
+    rel = os.path.relpath(path, root)
+    return "" if rel == "." else rel.replace(os.sep, "/")
+
+
+def root_is_accessible(root: Path) -> bool:
+    try:
+        if not root.is_dir():
+            return False
+        with os.scandir(root):
+            return True
+    except OSError:
+        return False
+
+
+def resolve_source_path(root: Path, rel_path: str) -> Path:
+    """DB の相対パスをルート配下の絶対パスにする。ルートの外を指す値は拒む。"""
+    root_norm = os.path.normpath(os.path.abspath(root))
+    full = os.path.normpath(os.path.join(root_norm, *rel_path.split("/"))) if rel_path else root_norm
+    if full != root_norm and not full.startswith(root_norm.rstrip(os.sep) + os.sep):
+        raise ValueError(f"ルートの外を指すパス: {rel_path!r}")
+    return Path(full)
+
+
+def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[VolumeSpec], list[Skip]]:
+    """検証済みの目次から巻の候補を切り出す。内側アーカイブは名前を見るだけ。"""
+    specs: list[VolumeSpec] = []
+    skipped: list[Skip] = []
+    groups: dict[str, list] = defaultdict(list)
+    for e in listing.entries:
+        if is_image(e.name):
+            groups[e.parent].append(e)
+    dirs = {d.name: d for d in listing.dirs}
+    for prefix, pages in groups.items():
+        if prefix:
+            defining = dirs.get(prefix) or min(pages, key=lambda e: e.index)
+            title = PurePosixPath(prefix.rstrip("/")).name
+            raw, enc = defining.raw_name, defining.encoding
+        else:
+            title = PurePosixPath(archive_name).stem
+            raw, enc = _fs_name_bytes(archive_name), "filesystem"
+        specs.append(VolumeSpec(None, prefix, title, raw, enc, len(pages)))
+    for e in listing.entries:
+        if not is_archive_name(e.name):
+            continue
+        problem = depth_problem(1, limits)
+        if problem:
+            skipped.append(Skip(e.name, problem))
+            continue
+        specs.append(VolumeSpec(e.name, "", PurePosixPath(e.name).stem, e.raw_name, e.encoding, None))
+    return specs, skipped
+
+
+class Scanner:
+    def __init__(self, conn: sqlite3.Connection, settings: Settings):
+        self.conn = conn
+        self.settings = settings
+
+    # --- ルート -------------------------------------------------------------
+
+    def _sync_roots(self) -> list[tuple[int, Path]]:
+        configured = [Path(p) for p in self.settings.library_roots]
+        paths = [str(p) for p in configured]
+        with db.transaction(self.conn) as c:
+            for p in paths:
+                c.execute("INSERT OR IGNORE INTO library_roots (path) VALUES (?)", (p,))
+            c.execute("UPDATE library_roots SET enabled = 0")
+            c.executemany("UPDATE library_roots SET enabled = 1 WHERE path = ?", [(p,) for p in paths])
+        ids = dict(self.conn.execute("SELECT path, id FROM library_roots").fetchall())
+        return [(ids[str(p)], p) for p in configured]
+
+    def scan(self) -> ScanResult:
+        result = ScanResult(volumes=0)
+        for root_id, root in self._sync_roots():
+            if root_is_accessible(root):
+                self._scan_root(root_id, root)
+            else:
+                self._mark_root_offline(root_id)
+                result.offline_roots.append(str(root))
+        result.volumes = self.conn.execute(
+            """SELECT COUNT(*) FROM volumes v JOIN sources s ON s.id = v.source_id
+               JOIN library_roots r ON r.id = s.root_id
+               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0"""
+        ).fetchone()[0]
+        return result
+
+    def _mark_root_offline(self, root_id: int) -> None:
+        with db.transaction(self.conn) as c:
+            c.execute("UPDATE library_roots SET online = 0, last_checked_at = ? WHERE id = ?", (db.now(), root_id))
+            c.execute("UPDATE sources SET offline = 1 WHERE root_id = ?", (root_id,))
+
+    def _scan_root(self, root_id: int, root: Path) -> None:
+        found: set[str] = set()
+        error_dirs: list[str] = []
+
+        def onerror(err: OSError) -> None:
+            if err.filename:
+                error_dirs.append(_rel(root, err.filename))
+
+        for dirpath, dirnames, filenames in os.walk(root, onerror=onerror, followlinks=False):
+            dirnames.sort()
+            images = sorted(f for f in filenames if is_image(f))
+            if images:
+                rel = _rel(root, dirpath)
+                found.add(rel)
+                self._scan_folder(root_id, root, rel, Path(dirpath), images)
+            for name in sorted(filenames):
+                if is_archive_name(name):
+                    rel = _rel(root, os.path.join(dirpath, name))
+                    found.add(rel)
+                    self._scan_archive(root_id, rel, Path(dirpath) / name)
+
+        def under_error_dir(rel: str) -> bool:
+            return any(e == "" or rel == e or rel.startswith(e + "/") for e in error_dirs)
+
+        with db.transaction(self.conn) as c:
+            for sid, rel in c.execute("SELECT id, rel_path FROM sources WHERE root_id = ?", (root_id,)).fetchall():
+                if rel not in found and not under_error_dir(rel):
+                    c.execute("UPDATE sources SET missing = 1, offline = 0 WHERE id = ?", (sid,))
+            now = db.now()
+            c.execute("UPDATE library_roots SET online = 1, last_checked_at = ?, last_online_at = ? WHERE id = ?",
+                      (now, now, root_id))
+
+    # --- ソース -------------------------------------------------------------
+
+    def _upsert_source(self, c, root_id: int, rel: str, kind: str) -> sqlite3.Row:
+        c.execute("INSERT OR IGNORE INTO sources (root_id, rel_path, kind) VALUES (?, ?, ?)", (root_id, rel, kind))
+        c.execute("UPDATE sources SET offline = 0, missing = 0, kind = ? WHERE root_id = ? AND rel_path = ?",
+                  (kind, root_id, rel))
+        return c.execute("SELECT * FROM sources WHERE root_id = ? AND rel_path = ?", (root_id, rel)).fetchone()
+
+    def _scan_folder(self, root_id: int, root: Path, rel: str, path: Path, images: list[str]) -> None:
+        try:
+            st = path.stat()
+            size = sum((path / f).stat().st_size for f in images)
+        except OSError:
+            return
+        name = path.name if rel else (root.name or str(root))
+        spec = VolumeSpec(None, "", name, _fs_name_bytes(name), "filesystem", len(images))
+        with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "folder")
+            self._replace_volumes(c, src["id"], [spec])
+            c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                      (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+
+    def _scan_archive(self, root_id: int, rel: str, path: Path) -> None:
+        try:
+            st = path.stat()
+        except OSError:
+            return
+        with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "archive")
+        if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
+                and src["scan_version"] == SCAN_VERSION):
+            return  # 前回から変わっていない。開かない
+        issues: list[Skip] = []
+        specs: list[VolumeSpec] | None = None
+        try:
+            with open_archive(path) as reader:
+                listing = list_entries(reader, self.settings.limits)
+            issues.extend(listing.skipped)
+            specs, more = archive_volume_specs(listing, path.name, self.settings.limits)
+            issues.extend(more)
+        except UnsupportedArchive as e:
+            issues.append(Skip(None, str(e)))
+        except LimitExceeded as e:
+            issues.append(Skip(None, f"展開上限によりスキップ: {e}"))
+        except ArchiveError as e:
+            issues.append(Skip(None, f"読めないアーカイブ: {e}"))
+        with db.transaction(self.conn) as c:
+            record_issues(c, src["id"], None, issues)
+            if specs is not None:
+                self._replace_volumes(c, src["id"], specs)
+                c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                          (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+            # 読めなかったときはサイズ・mtime を更新しない(次のスキャンで再挑戦する。既存の巻はそのまま)
+
+    def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec]) -> None:
+        """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。"""
+        now = db.now()
+        existing = {(r["container_path"], r["entry_prefix"]): r["id"]
+                    for r in c.execute("SELECT id, container_path, entry_prefix FROM volumes WHERE source_id = ?",
+                                       (source_id,))}
+        seen = set()
+        for s in specs:
+            key = (s.container_path, s.entry_prefix)
+            seen.add(key)
+            if key in existing:
+                c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?, page_count = ?,
+                             missing = 0, updated_at = ? WHERE id = ?""",
+                          (s.title, s.name_raw, s.name_encoding, s.page_count, now, existing[key]))
+            else:
+                c.execute("""INSERT INTO volumes (source_id, container_path, entry_prefix, title, name_raw,
+                             name_encoding, page_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          (source_id, s.container_path, s.entry_prefix, s.title, s.name_raw, s.name_encoding,
+                           s.page_count, now, now))
+        for key, vid in existing.items():
+            if key not in seen:
+                c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))
+
+
+def record_issues(c, source_id: int, container_path: str | None, issues: list[Skip]) -> None:
+    """そのソース(と内側アーカイブ)の記録を今回の結果で置き換える。scan_issues は再導出できる記録なので消してよい。"""
+    c.execute("DELETE FROM scan_issues WHERE source_id = ? AND container_path IS ?", (source_id, container_path))
+    now = db.now()
+    c.executemany(
+        "INSERT INTO scan_issues (source_id, container_path, entry_name, reason, recorded_at) VALUES (?, ?, ?, ?, ?)",
+        [(source_id, container_path, s.entry_name, s.reason, now) for s in issues])

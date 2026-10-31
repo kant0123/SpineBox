@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-01
-related: [recurring-review-findings, local-ci]
+related: [recurring-review-findings, local-ci, backend, archive-reading, extraction-cache]
 ---
 
 # SpineBox 全体像
@@ -17,12 +17,17 @@ related: [recurring-review-findings, local-ci]
 
 ## 構成
 
-まだアプリのコードは無い。リポジトリにあるのは開発基盤(エージェント規約・CI・agy レビュー・この Wiki)だけ。
-これから作るものの仕様は Issue に置く。実装したら、その PR でここに構成要素を足す。
+- [[backend]] — `spinebox/`。FastAPI の単一プロセス。設定・SQLite・スキャン・閲覧 API。フロントと共有する API 契約もここ
+- [[archive-reading]] — `spinebox/archive/`。アーカイブの目次読みと 1 エントリの読み出し(今は zip / cbz。7z / rar は後続)
+- [[extraction-cache]] — 内側アーカイブを開いたときだけ使う、ハッシュ名・容量上限つきの展開キャッシュ
+
+ほかに開発基盤(エージェント規約・CI・agy レビュー・この Wiki)がある。これから作るものの仕様は Issue に置く。
 
 ## 主要な設計判断
 
-実装と同時にここへ足す。
+- 蔵書は読み取り専用。スキャンは目次だけ読み、内側アーカイブは巻を開いたときだけ [[extraction-cache]] に取り出す
+- 見えなくなった蔵書のレコード・読書位置は消さず、offline / missing の印を付けるだけ([[backend]])
+- エントリ名はディスク上のパスに使わない。名前は生バイト列と使った文字コードごと残す([[archive-reading]])
 
 ## 触る前に知っておくこと
 

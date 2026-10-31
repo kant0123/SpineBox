@@ -61,3 +61,8 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] ingest | PR #13 KICKOFF.md を全フェーズ一括の自律開発向けにし、GOAL.md の未決事項を確定
 - 更新: [[overview]]
 - 備考: #12。フェーズ 1〜4 を順に進め、進捗は GOAL.md のチェックボックスと Issue を正とする。実機でしか確かめられない完了条件は question ラベルの Issue にして先へ進む。整理処理の実データ確認は _参考/ のコピーで行う。楽天ブックス API・Web 小説 API は使わない、命名テンプレートの既定は「<作品名>/<作品名> 第NN巻.cbz」と確定し、GOAL.md の初期既定に移した。
+
+## [2026-11-01] ingest | バックエンド骨格(設定・DB・zip 目次読み・展開キャッシュ・スキャン・閲覧 API)
+- 更新: [[overview]]
+- 新規: [[backend]], [[archive-reading]], [[extraction-cache]]
+- 備考: #14。spinebox/ パッケージと tests/ を追加。スキャンは目次だけ読み内側アーカイブを取り出さない、蔵書のバイト列・mtime がスキャンと全ページ閲覧で変わらない、キャッシュの LRU をテストで確認。7z / rar は後続の [Local] Issue。
