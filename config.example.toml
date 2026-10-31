@@ -20,7 +20,9 @@ cache_limit_bytes = 2147483648
 host = "127.0.0.1"
 port = 8000
 
-# 7-Zip CLI のパス(7z / rar の読み取りで使う予定。今は値を持つだけ)
+# 7-Zip CLI のパス(7z / rar の読み取りに使う)。サーバー機の 7z.exe のパスを書く。名前だけなら PATH から探す。
+# 見つからないとき 7z / rar は「未対応」として一覧から外れる(zip / cbz は読める)
+# sevenzip_path = "C:/Program Files/7-Zip/7z.exe"
 sevenzip_path = "7z"
 
 # 展開の上限。超えたアーカイブ・エントリは理由を記録してスキップする
@@ -31,5 +33,5 @@ max_total_bytes = 68719476736   # 64 GiB
 max_entry_bytes = 2147483648    # 2 GiB
 # 1 アーカイブのエントリ数
 max_entries = 100000
-# アーカイブの入れ子の深さ(1 = 外側の中の内側アーカイブまで開く)
-max_depth = 1
+# アーカイブの入れ子の深さ(1 = 外側の中の内側アーカイブまで開く)。蔵書に 7z の中の rar の中の rar の中の zip がある
+max_depth = 3

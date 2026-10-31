@@ -25,7 +25,7 @@ class ExtractionLimits:
     max_total_bytes: int = 64 * GIB
     max_entry_bytes: int = 2 * GIB
     max_entries: int = 100_000
-    max_depth: int = 1
+    max_depth: int = 3
 
 
 @dataclass(frozen=True)

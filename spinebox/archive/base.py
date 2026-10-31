@@ -4,8 +4,8 @@
 呼び出し側が渡したファイルへ行い、エントリ名をディスク上のパスに使わない。
 エントリ名の検証と展開上限の判定は形式によらないので `list_entries()` でまとめて行う。
 
-形式は拡張子で選ぶ。7z / rar は後続の Issue で `register_reader()` から差し込む
-(今は UnsupportedArchive になり、スキャンは「未対応」として記録して一覧から外す)。
+形式は拡張子で選ぶ。zip / cbz は標準 zipfile、7z / rar(cb7 / cbr)は 7-Zip CLI(`sevenzip.py`)。
+7-Zip が見つからないときは UnsupportedArchive になり、スキャンは「未対応」として記録して一覧から外す。
 """
 from __future__ import annotations
 
@@ -111,12 +111,15 @@ def list_entries(reader: ArchiveReader, limits: ExtractionLimits) -> Listing:
     return listing
 
 
-ReaderFactory = Callable[[Path], ArchiveReader]
-_READERS: dict[str, ReaderFactory] = {}
+# factory(path, sevenzip_path) -> reader。available(sevenzip_path) -> この形式を今読めるか
+ReaderFactory = Callable[[Path, str], ArchiveReader]
+ReaderAvailable = Callable[[str], bool]
+_READERS: dict[str, tuple[ReaderFactory, ReaderAvailable]] = {}
+DEFAULT_SEVENZIP = "7z"
 
 
-def register_reader(ext: str, factory: ReaderFactory) -> None:
-    _READERS[ext.lower()] = factory
+def register_reader(ext: str, factory: ReaderFactory, available: ReaderAvailable | None = None) -> None:
+    _READERS[ext.lower()] = (factory, available or (lambda sevenzip_path: True))
 
 
 def is_archive_name(name: str) -> bool:
@@ -127,24 +130,30 @@ def _ext(name: str) -> str:
     return PurePosixPath(name.replace("\\", "/")).suffix.lower()
 
 
-def reader_available(name: str) -> bool:
-    return _ext(name) in _READERS
+def reader_available(name: str, sevenzip_path: str = DEFAULT_SEVENZIP) -> bool:
+    """name の形式を今読めるか(7z / rar は 7-Zip が見つかるときだけ)。"""
+    entry = _READERS.get(_ext(name))
+    return entry is not None and entry[1](sevenzip_path)
 
 
-def open_archive(path: Path, name: str | None = None) -> ArchiveReader:
+def open_archive(path: Path, name: str | None = None, *, sevenzip_path: str = DEFAULT_SEVENZIP) -> ArchiveReader:
     """path のアーカイブを読み取り専用で開く。形式は name(省略時は path)の拡張子で選ぶ。"""
     ext = _ext(name or path.name)
-    factory = _READERS.get(ext)
-    if factory is None:
+    entry = _READERS.get(ext)
+    if entry is None:
         raise UnsupportedArchive(f"未対応の形式({ext or '拡張子なし'})")
-    return factory(path)
+    return entry[0](path, sevenzip_path)
 
 
 def _register_builtin() -> None:
+    from .sevenzip import EXTS as SEVENZIP_EXTS
+    from .sevenzip import make_reader, sevenzip_available
     from .zipreader import ZipReader
 
-    register_reader(".zip", ZipReader)
-    register_reader(".cbz", ZipReader)
+    for ext in (".zip", ".cbz"):
+        register_reader(ext, lambda path, sevenzip_path: ZipReader(path))
+    for ext in SEVENZIP_EXTS:
+        register_reader(ext, make_reader, sevenzip_available)
 
 
 _register_builtin()
