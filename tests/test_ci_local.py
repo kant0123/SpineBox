@@ -33,6 +33,44 @@ def test_tests_dir_is_included_only_when_present(tmp_path):
     assert "tests" in ci_local.jobs(tmp_path)["test"][0]
 
 
+def _npm_cmds(cmds):
+    return [c[1:] for c in cmds if Path(c[0]).stem.lower() == "npm" or c[0] == "npm"]
+
+
+def test_frontend_is_skipped_only_when_absent(tmp_path):
+    (tmp_path / "review" / "tests").mkdir(parents=True)
+    assert _npm_cmds(ci_local.jobs(tmp_path)["test"]) == []
+    (tmp_path / "frontend").mkdir()  # package.json の無い frontend/ はテスト対象にしない
+    assert _npm_cmds(ci_local.jobs(tmp_path)["test"]) == []
+
+
+def test_frontend_without_node_modules_installs_first(tmp_path):
+    """node_modules が無いからといって飛ばさない (飛ばすと検査していない成功が載る)。"""
+    (tmp_path / "frontend").mkdir()
+    (tmp_path / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+    assert _npm_cmds(ci_local.jobs(tmp_path)["test"]) == [
+        ["ci", "--prefix", "frontend"], ["--prefix", "frontend", "test"]]
+    (tmp_path / "frontend" / "node_modules").mkdir()
+    assert _npm_cmds(ci_local.jobs(tmp_path)["test"]) == [["--prefix", "frontend", "test"]]
+
+
+def test_frontend_tests_run_after_python_tests(tmp_path):
+    (tmp_path / "frontend" / "node_modules").mkdir(parents=True)
+    (tmp_path / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+    test = ci_local.jobs(tmp_path)["test"]
+    assert test[0][1:3] == ["-m", "pytest"] and test[-1][1:] == ["--prefix", "frontend", "test"]
+
+
+def test_npm_is_resolved_to_full_path(monkeypatch, tmp_path):
+    """Windows では npm.cmd なので、which で解決したパスを使う。"""
+    (tmp_path / "frontend").mkdir()
+    (tmp_path / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(ci_local.shutil, "which", lambda name: r"C:\nodejs\npm.CMD" if name == "npm" else None)
+    assert all(c[0] == r"C:\nodejs\npm.CMD" for c in ci_local.frontend_commands(tmp_path))
+    monkeypatch.setattr(ci_local.shutil, "which", lambda name: None)
+    assert all(c[0] == "npm" for c in ci_local.frontend_commands(tmp_path))
+
+
 # --- precondition_error: 結果を HEAD のものとして載せてよいか -------------------------
 def fake_git(monkeypatch, status="", remote="  origin/x\n", status_rc=0):
     def fake_run(cmd, **kw):
