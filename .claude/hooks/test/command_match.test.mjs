@@ -13,9 +13,12 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 import { findInvocations } from '../command_match.mjs';
+import { findBash } from './find_bash.mjs';
 
 const HOOKS = fileURLToPath(new URL('..', import.meta.url));
 const MERGE = ['gh', 'pr', 'merge'];
+// Windows で PATH に Git の bin ディレクトリ (bash.exe) が無くても bash.exe を使えるよう、場所を解決しておく (#6)。
+const BASH = findBash();
 
 const sandbox = mkdtempSync(join(tmpdir(), 'command-match-test-'));
 after(() => rmSync(sandbox, { recursive: true, force: true }));
@@ -110,7 +113,7 @@ describe('CLI', () => {
 
 /** hook に PreToolUse の入力(JSON)を渡して実行する。 */
 function runHook(script, command, cwd, extra = {}) {
-  return spawnSync('bash', [join(HOOKS, script)], {
+  return spawnSync(BASH, [join(HOOKS, script)], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
     encoding: 'utf8',
     cwd,
@@ -185,9 +188,9 @@ describe('check_agy_review.sh', () => {
 
   test('入力が JSON でなければ、従来の部分一致で止める(フェイルクローズ)', () => {
     const root = makeReviewRepo('agy-raw', 0);
-    const r = spawnSync('bash', [join(HOOKS, 'check_agy_review.sh')], { input: 'gh pr merge --merge', encoding: 'utf8', cwd: root });
+    const r = spawnSync(BASH, [join(HOOKS, 'check_agy_review.sh')], { input: 'gh pr merge --merge', encoding: 'utf8', cwd: root });
     assert.equal(r.status, 2);
-    const r2 = spawnSync('bash', [join(HOOKS, 'check_agy_review.sh')], { input: 'gh pr merge 9 --merge', encoding: 'utf8', cwd: root });
+    const r2 = spawnSync(BASH, [join(HOOKS, 'check_agy_review.sh')], { input: 'gh pr merge 9 --merge', encoding: 'utf8', cwd: root });
     assert.equal(r2.status, 0);
     assert.equal(calls(root), '--check --pr 9\n');
   });
