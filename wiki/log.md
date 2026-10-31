@@ -76,3 +76,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[overview]], [[backend]], [[frontend]]
 - 新規: [[server-setup]]
 - 備考: #19。`/healthz`(稼働中コミット付き)、`deploy/` の常駐スクリプト 3 本、`/read/<id>` 直リンクの正準化。開発機ではタスク登録・ファイアウォール規則を実行しておらず(システム設定の変更)、サーバー機での確認は #20。再起動ループは通常プロセスで確かめた。
+
+## [2026-11-01] ingest | PR #(未確定) 常駐ラッパーを止めても python の子プロセスが孤児として残らないようにする
+- 更新: [[server-setup]], [[backend]]
+- 備考: #23。ラッパー自身を kill-on-close の Job Object に入れて強制終了でも python が道連れになるようにし、起動前にポートを握る前回の孤児(`-m spinebox` で親が居ない)を検出して止める。親が生きているプロセスは止めない。`install_task.ps1 -Action Stop` を追加。`Stop-ScheduledTask` 単体の挙動はサーバー機で未確認(#20)。
