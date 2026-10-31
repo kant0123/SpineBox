@@ -1,0 +1,49 @@
+{
+  "_comment": "このファイルは .claude/settings.json (チーム共有) または .claude/settings.local.json (個人用・gitignore 対象) にコピーして使う。プレースホルダーを実プロジェクトに合わせて調整すること。",
+
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(python -m pytest *)",
+      "Bash(python review/agy_review.py *)",
+      "Bash(node scripts/wiki-lint.js *)"
+    ]
+  },
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": "[オプション] gh pr create 前に wiki/ の更新有無を確認する。使わないなら削除。",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check_wiki_updated.sh"
+          }
+        ]
+      },
+      {
+        "_comment": "[オプション] gh pr merge 前に、PR の head に対する agy レビューの記録 (差し戻しなら評価の記録も) があるかを確認し、無ければマージを差し止める。review/ を採用しないなら削除。",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check_agy_review.sh"
+          }
+        ]
+      },
+      {
+        "_comment": "[オプション] 触ろうとしているファイルを参照している Wiki ページを差し込み、作業途中でも関連ページを読ませる。同じページは 1 セッション 1 回。wiki/ を採用しないなら削除。",
+        "matcher": "Edit|Write|MultiEdit|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/wiki_context.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

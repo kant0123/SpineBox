@@ -1,0 +1,90 @@
+# [オプション] CD: self-hosted runner による自動デプロイ
+#
+# 開発機と本番機が同一マシンという構成(小規模な自宅サーバー運用など)を想定した
+# push 型デプロイ。CI(`tests`)が main への push で成功したことを契機に、
+# 本番機に常駐させた self-hosted runner 上でデプロイスクリプトを実行する。
+#
+# 【重要・既定では何もしない】
+#   本ワークフローはリポジトリ変数 `SELF_HOSTED_DEPLOY` が `true` のときだけ
+#   ジョブを実行する。runner を用意し変数を設定するまでは常にスキップされる
+#   (登録前のジョブがキューに滞留して失敗する事故を防ぐため)。
+#
+# 【安全設計】
+#   - 実デプロイは deploy/auto_deploy.ps1(deploy/auto_deploy.ps1.example を実体化したもの)
+#     に委譲する。CI 再確認・デプロイ前バックアップ・ヘルスチェック・失敗時ロールバック・
+#     通知・履歴記録はすべて ps1 側の実装に任せる。push 契機でも二重の安全網が働く。
+#   - runner が [self-hosted] ラベルでオンラインな場合のみ実行される。
+#
+# 使うには: このファイルを .github/workflows/deploy.yml にコピーし、
+# deploy/auto_deploy.ps1.example を deploy/auto_deploy.ps1 として実体化・調整し、
+# CLAUDE.md の「[オプション] 本番同居チェックアウトの追加ルール」を有効化すること。
+
+name: deploy
+
+on:
+  workflow_run:
+    workflows: ["tests"]
+    types:
+      - completed
+    # main の tests 完了時だけ起動する(ブランチ push・PR の tests では起動しない)。
+    branches:
+      - main
+
+# 同一 runner で複数デプロイが重ならないよう直列化する。
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && vars.SELF_HOSTED_DEPLOY == 'true' }}
+    runs-on: [self-hosted]
+    timeout-minutes: 20
+
+    steps:
+      # 起動は Windows PowerShell 5.1(OS 標準で必ずある)。shell: pwsh にしないのは、Store 版 pwsh が
+      # ユーザー単位のエイリアスで解決され、サービス実行アカウントからは見えないため
+      # (pwsh: command not found)。-ExecutionPolicy Bypass は GitHub の既定のシェル行に無く、
+      # Restricted のアカウントでは全ステップが落ちる(deploy/README.md「落とし穴」)。
+      #
+      # pwsh が見えるならデプロイスクリプトはそちらで動かす(BOM の有無に依存しない)。
+      # 見えなければ 5.1 で動かすので、.ps1 は必ず BOM 付きで保存する。
+      # 引数は渡さず環境変数で受け渡す。5.1 から外部コマンドに渡すと空文字列が消え、
+      # 引用符を含む値(APP_RESTART_CMD)が途中で割れる。スクリプトの既定値が同じ環境変数を読む。
+      # run: の中は ASCII だけにする(一時ファイルを 5.1 がどの文字コードで読むかに依存しないため)。
+      #
+      # シェル行を自前で指定すると、組み込みの shell: powershell / pwsh が前に足す
+      # $ErrorActionPreference = 'stop' が付かない。無いと、スクリプトが見つからない・5.1 で動かした
+      # スクリプトが Write-Error だけで終わる、といった失敗でも $LASTEXITCODE が空のまま exit 0 になり、
+      # デプロイが緑に倒れる(手元の 5.1 で再現)。先頭で自分で付け、スクリプトの有無も先に確かめる。
+      - name: 自動デプロイを実行
+        id: deploy
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:APP_REPO_PATH) { $env:APP_REPO_PATH = 'C:\path\to\production\checkout' }
+          $script = Join-Path $env:APP_REPO_PATH 'deploy\auto_deploy.ps1'
+          if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+            Write-Host "::error::deploy script not found: $script"
+            exit 1
+          }
+          if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File $script
+          } else {
+            & $script
+          }
+          exit $LASTEXITCODE
+
+      # 実デプロイだったのか no-op だったのかを実行一覧から辿れるようにする。
+      # status: deployed / no-op / skipped / drift / down / rolled_back / failed / error
+      - name: 結果を注記
+        if: always()
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deployed = "${{ steps.deploy.outputs.deployed }}"
+          $status = "${{ steps.deploy.outputs.status }}"
+          Write-Host "::notice::deploy result: deployed=$deployed status=$status"

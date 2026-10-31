@@ -1,0 +1,173 @@
+---
+name: pr-finish
+description: >
+  実装が終わってから PR を作り、CI を通し、マージして後始末するまでの完了手順。
+  テスト実行、push、gh pr create の本文テンプレート、CI 確認、マージ、
+  リモートブランチと worktree の削除、Issue クローズまでを一続きで行う。
+  「PR を作って」「マージして」「終わらせて」と言われたときや、
+  worktree での実装と wiki 更新が済んだときに使う。
+  --fill / Fixes / --delete-branch を使わない理由など、素直にやると失敗する罠がまとまっている。
+---
+
+# 完了 — PR から Issue クローズまで
+
+`gh` の既定の使い方(`--fill`、`Fixes #`、`--delete-branch`)は**worktree ベースの運用では
+順に壊れる**。理由は各手順に書いた。
+
+## 前提の確認
+
+始める前に、worktree の中にいて、実装と Wiki 更新が済んでいること。
+
+```bash
+python -m pytest tests/ -v
+git status
+```
+
+- `git status` は**他セッションの変更が混ざっていないか**を見るため。混ざっていたら
+  自分の変更だけをファイル明示で `git add` する(`-A` / `.` は使わない)。
+- スキーマ変更があるなら、マイグレーションが含まれていて既存 DB がそのまま起動できることを確認する。
+- フロントを触ったなら実際に起動してブラウザで動作確認する。
+- **`wiki/concepts/recurring-review-findings.md` の「push 前に確かめること」を、自分の差分に対して
+  1 つずつ確かめる。** レビューで繰り返し差し戻された誤りの種類で、ここで気付けば差し戻しが 1 周減る。
+- **PR 本文に書くテスト件数・実行結果は、実行したコマンドの出力をそのまま転記する。**
+  記憶や前回の値で書かない(件数がずれても気づけない)。
+
+## 1. push
+
+```bash
+git push -u origin <branch>
+```
+
+## 2. PR を作る
+
+```bash
+gh pr create --title "<一文>" --body "<下記テンプレート>"
+```
+
+**`--fill` は使わない。** 本文をコミットメッセージから生成するため、規約が要求する
+「対応 Issue」「Wiki」の節を満たせない。`--body` で明示する。
+
+```markdown
+## 対応 Issue
+
+#<番号>
+
+## 変更内容
+
+<要約>
+
+## Wiki
+
+<更新したページ、または更新不要と判断した理由を一行>
+
+## レビュー
+
+- agy: <APPROVE / 差し戻し N 回 → APPROVE / 差し戻しを評価してマージ>
+- 起票: <kant0123/gemini-review#12 (誤検知) / #58 (スコープ外) / #61 (未確認) / なし>
+```
+
+「レビュー」節は作成時点では空欄でよく、マージ前に手順 4 の結果で埋める。
+
+- **`Fixes #<番号>` / `Closes #<番号>` を書かない。** クロージングキーワードがあると
+  マージ時に GitHub が Issue を自動クローズし、後段の `gh issue close --comment` が
+  `already closed` で失敗する。コマンド全体が中断するので `--comment` も投稿されず、
+  **実装内容の要約が Issue に残らない**。素の `#<番号>` 参照に留める。
+- `wiki/` に差分が無いと PreToolUse hook がブロックする。意図的なら理由を本文に書いた上で
+  `WIKI_SKIP=1 gh pr create ...` で再実行する。
+
+PR 番号が決まったら、`wiki/log.md` のエントリに `PR #<番号>` を埋めて追いコミット・push する。
+
+## 3. CI を待つ
+
+```bash
+gh pr checks <PR番号> --watch
+```
+
+失敗したらマージせず原因を調べる。修正が困難なら PR は開いたまま状況を報告する
+(勝手に close しない)。
+
+## 4. agy レビュー
+
+**CI が緑になってから** `agy-review` スキルに従う。詳しい手順はそちらにある。
+
+```bash
+python review/agy_review.py --pr <PR番号>
+```
+
+- APPROVE → 手順 5 へ。
+- 差し戻し → 指摘を評価する。妥当な指摘があれば直す場所まで戻って修正し、
+  push → 手順 3(CI)→ 手順 4(再レビュー)を繰り返す。
+  妥当と判定するのは成立を確かめた指摘だけ。確かめる手段が無い指摘は「未確認」として直さない。
+  すべて誤検知・スコープ外・未確認(WARNING)なら起票して `--triage` で評価を記録し、手順 5 へ。
+  未確認の CRITICAL が残るならマージせず、状況を人間に報告する(hook も差し止める)。
+
+レビュー記録の無いマージは `gh pr merge` の hook が差し止める。
+
+## 5. マージ
+
+```bash
+gh pr merge <PR番号> --merge
+```
+
+**`--delete-branch` を付けない。** worktree 内で実行すると `gh` がマージ後に `main` へ
+checkout しようとして失敗する(メインツリーが `main` を持っているため):
+
+```
+failed to run git: fatal: 'main' is already used by worktree at '...'
+```
+
+**このエラーが出ていてもマージ自体は成功している。** エラー終了のためリモートブランチ削除に
+到達しないだけ。エラーメッセージを見てマージ失敗と誤読しないこと。確認は:
+
+```bash
+gh pr view <PR番号> --json state,mergedAt
+```
+
+## 6. 後始末
+
+```bash
+git push origin --delete <branch>
+cd C:/Users/kntat/Documents/Git/SpineBox   # メインツリー
+git worktree remove ../SpineBox-<作業名>
+```
+
+**`git worktree remove` はメインツリーに `cd` してから実行する。** シェルの作業ディレクトリが
+削除対象の中にあると、Windows はプロセスのカレントディレクトリを削除できず必ず失敗する。
+`../SpineBox-<作業名>` は **worktree の中からでも自分自身に解決してしまう**ので、
+パスを見ただけでは気づけない。
+
+失敗したら**手で `rm -rf` / `Remove-Item` しない。** 一度失敗すると git はその worktree を
+working tree と認識しなくなり、`--force` でも `fatal: ... is not a working tree` で回復しない。
+掃除スクリプトを使う(Windows):
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1
+```
+
+`-RemoveDirs` は**未コミットの変更ごと消える**ので、中身を確認してから付ける。
+ディレクトリに ReadOnly 属性が付く環境(クラウドストレージのミラー同期・バックアップ
+ツールが親ディレクトリを掴んでいる場合など)では、素の `git worktree remove` は
+Permission denied で失敗し、以後 `git worktree prune` も同じ場所で失敗し続ける。
+
+## 7. Issue をクローズする
+
+```bash
+gh issue close <番号> --comment "<実装内容の要約>"
+```
+
+既にクローズ済みだった場合は `gh issue comment <番号> --body "<要約>"` で要約だけ残す。
+**クローズの成否にかかわらず、要約は必ず Issue に残す。**
+
+## 事前承認の範囲
+
+push・PR 作成・マージ・ブランチ削除・worktree 削除は `CLAUDE.md` が事前承認しており、
+都度の確認は不要。CI 成功(agy レビューを採用しているならレビューの完了)を確認したら、マージしてよいかを改めて聞かない。
+
+ただし**タスクが失敗・中断した場合は勝手にマージ / 削除せず、状況を報告する。**
+worktree も残す(作業内容を失わないため)。
+
+## 完了報告に含めるもの
+
+- 変更内容の要約と、手動確認の結果
+- 作業中に見つけてこの PR で直さないと決めた問題を Issue 化したなら、その番号
+  (1 件も無ければ、確認済みであること自体を述べる)

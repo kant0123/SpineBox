@@ -1,0 +1,25 @@
+.claude/settings.local.json
+.claude/worktrees/
+.claude/logs/
+__pycache__/
+*.pyc
+.env
+
+# agy レビューのレポート(生成物なのでコミットしない)
+review/work/*
+!review/work/.gitkeep
+
+# SpineBox: 蔵書・サンプル・実行時データ(DB・展開キャッシュ・設定)はコミットしない
+_参考/
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+config.local.*
+
+# Python / Node
+.venv/
+.pytest_cache/
+node_modules/
+dist/
