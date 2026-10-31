@@ -26,7 +26,8 @@ related: [recurring-review-findings, local-ci]
 
 ## 触る前に知っておくこと
 
-- 蔵書を壊さないための不変条件は `CLAUDE.md` の「蔵書を扱う不変条件」にある。差分がこれに触れていないかを PR ごとに確かめる
+- 蔵書を壊さないための不変条件は `CLAUDE.md`(および `.agent/rules/spinebox-invariants.md`)の「蔵書を扱う不変条件」にある。差分がこれに触れていないかを PR ごとに確かめる
+- フェーズ単位の自律オーケストレーションで着手するときの進行規約は `KICKOFF.md` にある
 - agy レビューは分野 `spinebox`(`review/domain_invariants.json`)の観点で見る
 - GitHub Actions は課金・上限でジョブが起動しないことがある。そのときの CI の代替は [[local-ci]]
 - 動作確認用の蔵書サンプルは `_参考/` にある(git 管理外)

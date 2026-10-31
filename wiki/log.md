@@ -45,3 +45,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] ingest | PR #4 ゴール定義ファイル GOAL.md を追加
 - 更新: [[overview]]
 - 備考: #3。目的・作らないもの・段階計画(フェーズ 0〜4)と完了条件・試作で確かめた前提・未決事項を GOAL.md に置いた。Wiki は現状、GOAL.md はこれから作るものの基準という分担。
+
+## [2026-11-01] ingest | PR #7 GOAL.md・CLAUDE.md・KICKOFF.md をブラッシュアップし .agent/rules と同期
+- 更新: [[overview]]
+- 備考: #5。複数フォルダ指定とオフライン時の DB 保護、話数・横断検索、1 巻 = 1 CBZ 化の判断理由、公開 DB 併用時の優先順位、フェーズ 1 の初期既定値を GOAL.md に明記。CLAUDE.md・review/domain_invariants.json・.agent/rules/ を同期し、自律オーケストレーション用の KICKOFF.md を追加。
