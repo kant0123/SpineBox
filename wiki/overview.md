@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-01
-related: [recurring-review-findings]
+related: [recurring-review-findings, local-ci]
 ---
 
 # SpineBox 全体像
@@ -27,6 +27,7 @@ related: [recurring-review-findings]
 
 - 蔵書を壊さないための不変条件は `CLAUDE.md` の「蔵書を扱う不変条件」にある。差分がこれに触れていないかを PR ごとに確かめる
 - agy レビューは分野 `spinebox`(`review/domain_invariants.json`)の観点で見る
+- GitHub Actions は課金・上限でジョブが起動しないことがある。そのときの CI の代替は [[local-ci]]
 - 動作確認用の蔵書サンプルは `_参考/` にある(git 管理外)
 - レビューで繰り返し差し戻された誤りの種類は [[recurring-review-findings]]。着手時と push 前に読む
 

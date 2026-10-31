@@ -121,6 +121,9 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
   確認したら、マージしてよいかを改めて聞かない。
 - **CI が失敗したらマージせず原因を調べる。** 修正が困難なら PR は開いたまま報告する(勝手に close
   しない)。タスクが失敗・中断した場合も勝手にマージ / 削除せず、worktree は残して報告する。
+- **Actions がジョブを起動しない(課金・上限。注記「The job was not started」)ときだけ、ローカル CI で代替する。**
+  worktree をコミット・push 済みの状態にして `python scripts/ci_local.py` を実行し、head に `local/*` を載せる。
+  Actions で実際に動いて落ちたチェックはローカルの成功で代替しない(`review/agy_review.py` も代替を認めない)。
 - **`gh pr create --fill`・`Fixes #` / `Closes #`・`gh pr merge --delete-branch` は使わない**
   (理由は `pr-finish`)。
 
@@ -150,7 +153,7 @@ Projects ボードは使わない。
 ## 完了の定義 (Definition of Done)
 
 - 変更に関係するテストをローカルで実行し、パスを確認している。
-- CI(`gh pr checks`)が全件パスしている。
+- CI(`gh pr checks`)が全件パスしている(Actions が起動しなかったチェックは、同じ head の `local/<同名>` の成功で代替できる)。
 - スキーマ変更がある場合、マイグレーションが含まれている。
 - フロント変更は実装後にブラウザで動作検証している。
 - **`wiki/` の該当ページと `wiki/log.md` を同じ PR で更新している**
@@ -185,7 +188,7 @@ PR の CI が緑になった後、マージの前に、差分を agy (Antigravit
 
 ## プロジェクト固有ルール
 
-- テストコマンド: `python -m pytest tests/ -v`(フロントを足したら `npm test` も)
+- テストコマンド: `python scripts/ci_local.py --no-report`(CI と同じ検査。`review/tests`・`tests/`・hook のテスト・wiki-lint)
 - 命名規約: Python は snake_case、DB のテーブル・カラムも snake_case
 - コミットメッセージの言語: 日本語(`feat:` などのプレフィックスは英語のまま)
 - 外部メタデータ取得のエラー方針: ベストエフォート。失敗・タイムアウトでスキャンや閲覧を止めない。

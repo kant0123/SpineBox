@@ -274,6 +274,7 @@ CI のワークフローではなく、**CI が緑になった後にエージェ
 結果を PR コメントに残す。手順は `agy-review` スキル、設計判断は [review/README.md](../review/README.md)。
 
 - **CI 緑が前提。** スクリプトは `gh pr checks` が緑でなければ実行を拒否する。
+  Actions がジョブを起動しなかったチェックは、同じ head の `local/<同名>`(`scripts/ci_local.py` が載せる)の成功で代替する。
 - **記録は head SHA ごと。** push すると未レビューに戻る。
 - 差し戻し(CRITICAL / WARNING)があれば、エージェントが指摘を評価する。妥当なら修正して
   push → CI → 再レビュー。すべて誤検知なら `kant0123/gemini-review` に起票し、

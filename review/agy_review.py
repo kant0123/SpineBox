@@ -139,11 +139,39 @@ def pr_info(pr):
     return json.loads(gh(*args))
 
 
-def ci_state(pr):
+NOT_STARTED_MARK = "The job was not started"  # Actions が課金・上限でジョブを起動しなかったときの注記
+LOCAL_STATUS_PREFIX = "local/"  # scripts/ci_local.py が載せる commit status の接頭辞
+
+
+def excused_by_local_ci(sha):
+    """Actions で起動しなかったチェックのうち、同じコミットのローカル CI が成功しているものの名前。
+
+    **実際に動いて落ちたチェックはローカルの成功で上書きしない。** 同じ名前の実行が複数あり
+    (push と pull_request)、1 つでも「起動しなかった」以外の理由で落ちていれば除外しない。
+    """
+    runs = json.loads(gh("api", f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs?per_page=100",
+                         "--jq", "[.check_runs[] | {id, name, conclusion}]") or "[]")
+    not_started, really_failed = set(), set()
+    for r in runs:
+        if r["conclusion"] not in ("failure", "startup_failure"):
+            continue
+        notes = gh("api", f"repos/{{owner}}/{{repo}}/check-runs/{r['id']}/annotations", "--jq", ".[].message")
+        (not_started if NOT_STARTED_MARK in notes else really_failed).add(r["name"])
+    statuses = json.loads(gh("api", f"repos/{{owner}}/{{repo}}/commits/{sha}/status",
+                             "--jq", "[.statuses[] | {context, state}]") or "[]")
+    local_ok = {s["context"][len(LOCAL_STATUS_PREFIX):] for s in statuses
+                if s["context"].startswith(LOCAL_STATUS_PREFIX) and s["state"] == "success"}
+    return (not_started - really_failed) & local_ok
+
+
+def ci_state(pr, sha=None):
     """(緑か, 説明) を返す。skip されたチェックは成功扱い。
 
     **チェックが 1 件も無い状態を緑にしない。** push 直後はチェックがまだ登録されておらず、
     それを緑と読むと CI を待たずにレビューへ進んでしまう。gh の失敗 (出力が空) も同様。
+
+    sha を渡すと、Actions が起動しなかったチェックを同名のローカル CI (`local/<名前>`) の
+    成功で代替する (`excused_by_local_ci()`)。
     """
     proc = run(["gh", "pr", "checks", str(pr), "--json", "name,bucket"])
     if not proc.stdout.strip():
@@ -156,9 +184,16 @@ def ci_state(pr):
         raise ReviewError(f"gh pr checks の出力を解釈できませんでした: {proc.stdout[:200]}")
     if not checks:
         return False, "チェックがまだ登録されていません"
-    bad = [f"{c['name']}={c['bucket']}" for c in checks if c["bucket"] not in ("pass", "skipping")]
+    bad_checks = [c for c in checks if c["bucket"] not in ("pass", "skipping")]
+    excused = set()
+    if bad_checks and sha and all(c["bucket"] == "fail" for c in bad_checks):
+        excused = excused_by_local_ci(sha)
+    bad = [f"{c['name']}={c['bucket']}" for c in bad_checks if c["name"] not in excused]
     if bad:
         return False, ", ".join(bad)
+    if excused:
+        return True, (f"{len(checks)} 件のうち Actions が起動しなかった {', '.join(sorted(excused))} を"
+                      "ローカル CI の成功で代替、ほかはすべて成功")
     return True, f"{len(checks)} 件すべて成功"
 
 
@@ -697,7 +732,7 @@ def cmd_review(args):
     if info["state"] != "OPEN":
         raise ReviewError(f"PR #{pr} は {info['state']} です。")
 
-    green, detail = ci_state(pr)
+    green, detail = ci_state(pr, sha)
     if not green:
         print(f"PR #{pr} の CI が緑ではありません ({detail})。CI が通ってからレビューしてください。")
         return 2

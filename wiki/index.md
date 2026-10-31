@@ -26,6 +26,10 @@ Wiki 全ページのカタログ。質問に答えるとき・作業に着手す
 ## Concepts — 横断的な仕組み・設計判断 (`concepts/`)
 
 - [[recurring-review-findings]] — レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
+
+## Operations — 運用手順・障害対応 (`operations/`)
+
+- [[local-ci]] — Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件
 <!-- wiki-index:end -->
 
 ## 未作成ページ (リンクだけ存在する / これから書く)

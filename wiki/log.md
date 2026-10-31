@@ -36,3 +36,8 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[overview]], [[recurring-review-findings]]
 - 備考: kant0123/ai-coding-template (4666bb3) から導入。CI・wiki-lint・agy レビュー・Issue 連携を採用。Projects ボードは不採用、CD は未導入(本番はサーバー機 DESKTOP-80AKMUB)。
   テンプレート側の履歴エントリはこのリポジトリの出来事ではないので持ち込んでいない。台帳の実例はテンプレート側の PR 番号である旨を注記した。
+
+## [2026-11-01] ingest | PR #2 Actions が起動しないときのローカル CI を追加
+- 更新: [[overview]]
+- 新規: [[local-ci]]
+- 備考: #1。最初の push で Actions が課金・上限によりジョブを起動しなかった。scripts/ci_local.py が test・wiki-lint を手元で実行して commit status (local/*) を載せ、review/agy_review.py は「起動しなかった」チェックに限りそれで代替する。test.yml もこのスクリプトを呼ぶ形にし、これまで CI で実行されていなかった review/tests・hook のテストも走るようになった。
