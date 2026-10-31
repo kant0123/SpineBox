@@ -72,6 +72,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 新規: [[backend]], [[archive-reading]], [[extraction-cache]]
 - 備考: #14、PR #18。spinebox/ パッケージと tests/ を追加。スキャンは目次だけ読み内側アーカイブを取り出さない、蔵書のバイト列・mtime がスキャンと全ページ閲覧で変わらない、キャッシュの LRU をテストで確認。7z / rar は後続の [Local] Issue。
 
-## [2026-11-01] ingest | PR #? フェーズ 1 の 7-Zip CLI 連携(7z / rar・内側アーカイブの遅延取り出し)と _参考 サンプル結合
+## [2026-11-01] ingest | PR #22 フェーズ 1 の 7-Zip CLI 連携(7z / rar・内側アーカイブの遅延取り出し)と _参考 サンプル結合
 - 更新: [[archive-reading]], [[extraction-cache]], [[backend]], [[overview]]
 - 備考: #16。実データは 7z → rar → rar → zip と深さ 3 に入れ子になっていたため、`max_depth` の既定を 1 から 3 にして、内側アーカイブを再帰で開くようにした(Issue の想定は「rar の中に巻フォルダ」だった)。`_参考/サンプル本` でスキャンが 10 巻・キャッシュ空・全巻の全ページが 200・原本のサイズ/mtime/sha256 不変を確認。
