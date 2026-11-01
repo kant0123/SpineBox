@@ -22,7 +22,7 @@ from . import db, works
 from .analysis import compute_findings
 from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
 from .buildinfo import current_commit
-from .cache import CacheTooLarge, ExtractionCache
+from .cache import CacheTooLarge, ExtractionCache, MemoryCache
 from .config import Settings
 from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_analyzable,
                       is_offline)
@@ -112,7 +112,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     _sync_works(conn)  # 作品への割り当てを取り直す(作品の機能が入る前の DB は、ここで初めて作品になる)
     conn.close()
     cache = ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)
-    library = Library(settings, cache)
+    memory = MemoryCache(settings.memory_cache_limit_bytes)
+    library = Library(settings, cache, memory)
     scan_lock = threading.Lock()
     duplicate_lock = threading.Lock()
     duplicate_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
@@ -145,6 +146,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     app = FastAPI(title="SpineBox", lifespan=lifespan)
     app.state.settings = settings
     app.state.cache = cache
+    app.state.memory = memory
     app.state.scan_lock = scan_lock
     app.state.duplicate_state = duplicate_state
     app.state.duplicate_lock = duplicate_lock

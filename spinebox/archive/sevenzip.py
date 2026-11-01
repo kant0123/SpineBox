@@ -2,6 +2,8 @@
 
 目次は `7z l -slt -ba` の出力(`キー = 値` の行が空行で区切られる)を読み、1 エントリの取り出しは
 `7z e -so` の標準出力をそのまま受け取る。ディスクに展開しない・元の階層を作らない。
+複数エントリは 1 回の `7z e -so` に名前を並べて取り出し、書庫内の順に連結された出力を目次のサイズで切り分け、
+CRC で確かめる(`read_entries`)。ソリッド 7z では 1 エントリごとに塊の先頭から展開し直すため、まとめると大きく効く。
 エントリ名は 7z が出したままの文字列(Windows では `\\` 区切り)を取り出しの指定にだけ使い、
 ディスク上のパスには使わない。名前の検証と展開上限は `base.list_entries()` が行う。
 
@@ -17,10 +19,14 @@ import subprocess
 import sys
 import tempfile
 import threading
+import zlib
+from collections import Counter
 from pathlib import Path
 from typing import BinaryIO
 
+from ..config import ExtractionLimits
 from .base import ArchiveEntry, ArchiveError, ArchiveReader, LimitExceeded, UnsupportedArchive
+from .safety import entry_limit_problem
 
 EXTS = (".7z", ".cb7", ".rar", ".cbr")
 LIST_TIMEOUT_SEC = 300
@@ -51,9 +57,9 @@ def list_command(exe: str, archive: Path) -> list[str]:
     return [exe, "l", "-slt", "-ba", *_COMMON, "--", str(archive)]
 
 
-def extract_command(exe: str, archive: Path, raw_path: str) -> list[str]:
+def extract_command(exe: str, archive: Path, *raw_paths: str) -> list[str]:
     # -bso0 -bsp0: 標準出力にはデータだけを流す
-    return [exe, "e", "-so", "-bso0", "-bsp0", *_COMMON, "--", str(archive), raw_path]
+    return [exe, "e", "-so", "-bso0", "-bsp0", *_COMMON, "--", str(archive), *raw_paths]
 
 
 # --- 目次の解釈 ---------------------------------------------------------------
@@ -99,10 +105,27 @@ def _is_dir(record: dict[str, str]) -> bool:
     return bool(attrs) and "D" in attrs[0]
 
 
+def _crc(record: dict[str, str]) -> int | None:
+    """目次の CRC(8 桁の 16 進)。無い・読めないなら None(まとめ取り出しの検証に使うだけ)。"""
+    text = record.get("CRC", "").strip()
+    if len(text) != 8:
+        return None
+    try:
+        return int(text, 16)
+    except ValueError:
+        return None
+
+
 def entries_from_records(records: list[dict[str, str]]) -> tuple[list[ArchiveEntry], dict[int, str]]:
     """(目次, index → 7z が出した名前)。リンクは除く。サイズを読めないファイルは ArchiveError。"""
+    entries, raw_paths, _ = _entries_from_records(records)
+    return entries, raw_paths
+
+
+def _entries_from_records(records):
     entries: list[ArchiveEntry] = []
     raw_paths: dict[int, str] = {}
+    crcs: dict[int, int] = {}
     for record in records:
         if any(record.get(k) for k in _LINK_KEYS):
             continue
@@ -117,10 +140,13 @@ def entries_from_records(records: list[dict[str, str]]) -> tuple[list[ArchiveEnt
             raise ArchiveError(f"7z の目次にサイズが無い: {path!r}")
         index = len(entries)
         raw_paths[index] = path
+        crc = _crc(record)
+        if crc is not None:
+            crcs[index] = crc
         # 7z はフォルダ名の末尾に区切りを付けない。zip と同じく末尾 `/` でフォルダと分かる名前にそろえる
         name = path + "/" if is_dir and not path.endswith(("/", "\\")) else path
         entries.append(ArchiveEntry(index, name, path.encode("utf-8", "surrogatepass"), "utf-8 (7z)", size, is_dir))
-    return entries, raw_paths
+    return entries, raw_paths, crcs
 
 
 # --- 外部コマンドの実行 -------------------------------------------------------
@@ -194,14 +220,42 @@ def _stream(cmd: list[str], dest: BinaryIO, max_bytes: int, timeout: float) -> i
     return written
 
 
+def _stream_split(cmd: list[str], sizes: list[int], timeout: float) -> list[bytes]:
+    """標準出力を sizes の順に切り分ける。合計が sizes の和と違えば ArchiveError(余分は読まずに止める)。"""
+    expected = sum(sizes)
+
+    class _Collect:
+        def __init__(self) -> None:
+            self.buf = bytearray()
+
+        def write(self, chunk: bytes) -> None:
+            self.buf += chunk
+
+    sink = _Collect()
+    try:
+        written = _stream(cmd, sink, expected, timeout)  # type: ignore[arg-type]
+    except LimitExceeded:
+        raise ArchiveError(f"まとめて取り出した量が目次の合計を超える(> {expected} バイト)") from None
+    if written != expected:
+        raise ArchiveError(f"まとめて取り出した量が目次の合計と合わない({written} != {expected} バイト)")
+    out, pos = [], 0
+    for size in sizes:
+        out.append(bytes(sink.buf[pos:pos + size]))
+        pos += size
+    return out
+
+
 # --- リーダー -----------------------------------------------------------------
 
 
 class SevenZipReader(ArchiveReader):
+    batch_reads = True
+
     def __init__(self, path: Path, exe: str):
         self._path = Path(path)
         self._exe = exe
         self._raw_paths: dict[int, str] = {}
+        self._crcs: dict[int, int] = {}
         self._entries: list[ArchiveEntry] | None = None
 
     def raw_entries(self) -> list[ArchiveEntry]:
@@ -212,8 +266,45 @@ class SevenZipReader(ArchiveReader):
             records = parse_listing(output)
             if not records:
                 raise ArchiveError("7-Zip の目次を解釈できない")
-            self._entries, self._raw_paths = entries_from_records(records)
+            self._entries, self._raw_paths, self._crcs = _entries_from_records(records)
         return self._entries
+
+    # 目次の持ち越し(RAM 層)。同じ版のファイルを開き直すたびに `7z l` を起動しないため
+    def listing_state(self) -> tuple:
+        self.raw_entries()
+        return (self._entries, self._raw_paths, self._crcs)
+
+    def restore_listing(self, state: tuple) -> None:
+        self._entries, self._raw_paths, self._crcs = state
+
+    def read_entries(self, entries: list[ArchiveEntry], limits: ExtractionLimits) -> dict[int, bytes]:
+        """1 回の `7z e -so` で取り出す。名前が目次で一意なものだけをまとめ、残りは 1 つずつ読む。
+
+        出力は書庫内の順(= index の順)に連結されるので、目次のサイズで切り分け、CRC があれば照合する。
+        合計・CRC が合わなければ ArchiveError(別のエントリの中身を返さない)。
+        """
+        self.raw_entries()
+        for e in entries:
+            problem = entry_limit_problem(e.size, limits)
+            if problem:
+                raise LimitExceeded(problem)
+        counts = Counter(self._raw_paths.values())
+        batch = sorted((e for e in entries if counts[self._raw_paths[e.index]] == 1), key=lambda e: e.index)
+        rest = [e for e in entries if counts[self._raw_paths[e.index]] != 1]
+        result: dict[int, bytes] = {}
+        if len(batch) == 1:
+            rest += batch
+        elif batch:
+            cmd = extract_command(self._exe, self._path, *(self._raw_paths[e.index] for e in batch))
+            parts = _stream_split(cmd, [e.size for e in batch], EXTRACT_TIMEOUT_SEC)
+            for e, data in zip(batch, parts):
+                crc = self._crcs.get(e.index)
+                if crc is not None and zlib.crc32(data) & 0xFFFFFFFF != crc:
+                    raise ArchiveError(f"まとめて取り出した中身の CRC が目次と合わない: {e.name}")
+                result[e.index] = data
+        for e in rest:
+            result[e.index] = self.read_entry(e, limits)
+        return result
 
     def copy_entry(self, entry: ArchiveEntry, dest: BinaryIO, max_bytes: int) -> int:
         if entry.size > max_bytes:
