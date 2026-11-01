@@ -73,6 +73,12 @@ button:disabled { opacity: 0.6; cursor: default; }
 .organize-op { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; list-style: none; }
 .organize-op-list { padding: 0; }
 .notice.warn { border-color: var(--warn); }
+.scan-issues { margin-top: 6px; }
+.scan-issues summary { cursor: pointer; color: var(--warn); }
+.scan-issues ul { margin: 6px 0 0; padding-left: 1.1em; max-height: 40vh; overflow-y: auto; }
+.scan-issues li { margin: 4px 0; }
+.scan-issue-path { display: block; font-size: 0.85rem; overflow-wrap: anywhere; }
+.scan-issue-reason { display: block; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
 
 .badge { align-self: flex-start; font-size: 0.75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); }
 .volume-extra { padding: 0 12px 10px; font-size: 0.85rem; }

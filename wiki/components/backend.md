@@ -25,8 +25,10 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | `spinebox/app.py:129 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:231 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:171 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
+| `spinebox/scanner.py:357 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:243 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:215 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:444 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:100 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:249 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:92 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:283 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
@@ -42,7 +44,7 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 
 | メソッドとパス | 返すもの |
 | --- | --- |
-| `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...]}`。件数は一覧に出る巻の数(オフラインの巻を含む。分解済みの親は数えず子を数える)。スキャン中の再実行は 409 |
+| `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...], "issues": [{"path", "container_path", "entry_name", "reason"}], "issues_total": 件数}`。件数は一覧に出る巻の数(オフラインの巻を含む。分解済みの親は数えず子を数える)。`issues` は「読めなかったもの」(`scan_issues` の現在の内容。最大 200 件で、切った分も `issues_total` には数える)。スキャン中の再実行は 409。DB が使えないなど続行できない失敗は 500 + `{"detail": "スキャンに失敗しました: 型: メッセージ"}`(トレースバックはログ) |
 | `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`format` は `images`(ページ画像の巻)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57) |
 | `GET /api/volumes/{id}` | `{"id", "title", "format", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する。小説は `pages: []` で、`sections: [{"index", "length"}]`(`length` は全体の進み具合の重み)と `encoding`(テキストの文字コード)が付く。文字コードを判定できないテキストは 422 |
 | `GET /api/volumes/{id}/sections/{index}` | 小説の区切り 1 つ `{"index", "html"}`。EPUB は無害化済み、テキストはエスケープしてから組み立てた HTML([[novel-reader]])。範囲外は 404、画像の巻は 422 |
@@ -98,6 +100,20 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
+- **想定外の例外はソース単位で捕まえ、止めない(#48)。** 想定した失敗(`ArchiveError` 系)は読む側が理由つきで捕まえるが、
+  それ以外(壊れた形のアーカイブ・DB に入らない名前・書き込みの制約違反など)も、1 件で全体を止めると画面は「スキャンに失敗しました」だけになり、
+  それまでの結果も返らない。ソース(ファイル・フォルダ)ごとに `Exception` を捕まえ、型とメッセージを `scan_issues` に、トレースバックをログ(`.err.log`)に残して次へ進む。
+  プログラムの誤りを隠さないため、ログには必ず出す。**例外は `sqlite3.OperationalError`(ロック・ディスク満杯・SQL の誤り)だけ止める**:
+  全ソースが同じ理由で失敗するだけで、記録そのものもできないため
+- **失敗したソースの既存の巻・サイズ・mtime には触れない。** 古い巻は残り(missing にならず、読書位置も残る)、サイズ・mtime を更新しないので次のスキャンで再挑戦する。
+  ソース名が DB に入らない(孤立サロゲートなど。`safe_text` でエスケープして表示する)ときは `source_id` が NULL の行になる。
+  その行の `entry_name` は走査中のパス(ルート付き)で、スキャンのたびに作り直す。読めなかったサブフォルダ・祖先へ戻るリンクもここに入る
+- **走査を最後まで終えられなかったら、見つからなかったソースを missing にしない。** `os.walk` 自体の例外や相対パスを作れなかったときは
+  「見えなかっただけ」の可能性があるので `complete = False` にして missing 化を飛ばす(読めないサブフォルダ配下を missing にしないのと同じ理由)
+- **`os.walk(followlinks=False)` は Windows のジャンクションを辿る。** 祖先を指すジャンクション(循環)は `_links_to_ancestor` で止める
+  (辿ると同じ本が深さ違いの別ソースとして、パスが長すぎて読めなくなるまで登録される)。祖先を指さないジャンクションは今までどおり辿る
+- 同名のエントリを持つ zip では、同じ名前の内側アーカイブを 1 つの巻にして残りは `scan_issues` に残す(`(source, container_path, entry_prefix)` が一意索引なので、
+  そのまま INSERT すると `IntegrityError` でスキャンが止まっていた)。巻にできるものが無いアーカイブ(画像も内側のアーカイブも無い zip)も理由を残す
 - **スキャンの巻の突き合わせ(`_replace_volumes`)は親を持たない巻だけを見る。** 子の巻まで見ると、スキャンが切り出さない子を毎回 missing にしてしまう
 - **`volumes_locator`(一意索引)は `inner_path` を含む。** 子の巻は親と同じ (source, container_path, entry_prefix) を持ちうる(親の内側アーカイブ直下の単位は `inner_path = "[]"`、親は NULL)
 - 相対パスは設定ファイルの場所が起点。サービスとして起動したときのカレントに左右されないため。
@@ -110,6 +126,10 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - #57 で小説(EPUB・テキスト)を足した([[novel-reader]])。マイグレーション 7(`volumes.format`・`reading_progress.position`)。
   小説のソースは 1 ファイルなので `sources.kind` は `archive`(CHECK を作り直さないため)。新しい種類のソースなので `SCAN_VERSION` は上げていない
 
+- #48 でスキャンの想定外の例外を、ソース単位で記録して続けるようにした。サーバー機の実蔵書で画面が「スキャンに失敗しました」のまま止まった件で、
+  サーバー機のトレースバックは未取得(利用者に依頼中)。合成データで確かめた再現は、同名の内側アーカイブを持つ zip(`IntegrityError`)と、
+  孤立サロゲート・不正バイトを含むファイル名(`UnicodeEncodeError`)で、どちらも修正前は 500 でスキャン全体が止まった。
+  応答に `issues`・`issues_total` を足し(契約は上の表)、画面で「読めなかったもの N 件」と理由を見せる。マイグレーションは足していない
 - #43 で作品の名寄せを足した([[work-grouping]])。マイグレーション 6(`works` / `work_fields` / `work_aliases` / `work_volumes` / `work_merge_proposals`)。
   `_参考/サンプル本` の実起動で、スキャンの直後は 3 作品、重複スキャンの後にお気楽領主が 1 作品(8 巻・自動統合・確信度 0.989)になることを確かめた
 

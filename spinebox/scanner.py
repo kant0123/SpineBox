@@ -11,12 +11,15 @@
   アーカイブの中の `.epub` / `.txt` は巻にしない(漫画のアーカイブに添えられた説明書きを小説と取り違えないため)
 
 蔵書には読み取りしかしない。サイズ・mtime・SCAN_VERSION が前回と同じアーカイブは開き直さない。
+ソース(ファイル・フォルダ)1 つで想定外の例外が出ても、そのソースの問題を scan_issues に記録して
+スキャンを最後まで進める(トレースバックはログへ。#48)。DB そのものが使えない sqlite3.OperationalError だけは止める。
 ルートが見えない・読めないときはオフラインにするだけで、レコードは消さない。見つからなくなった
 ソース・巻も missing の印を付けるだけで消さない(読書位置ごと失わないため)。
 整理処理の作業場・退避フォルダ(`Settings.organize_base`。既定 `<ルート>/.spinebox`)は走査しない。
 """
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from collections import defaultdict
@@ -32,6 +35,8 @@ from .naming import parse_number
 from .novel import FORMAT_EPUB, novel_format
 from .novel.epub import scan_problems as epub_scan_problems
 from .pages import is_image
+
+log = logging.getLogger(__name__)
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
 # 2: 巻の名前から番号の候補(number_*)を記録する(#30)
@@ -50,10 +55,17 @@ WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0
 """
 
 
+# 画面・API に返す「読めなかったもの」の最大件数(超えた分は issues_total にだけ数える)
+MAX_REPORTED_ISSUES = 200
+
+
 @dataclass
 class ScanResult:
     volumes: int
     offline_roots: list[str] = field(default_factory=list)
+    # 読めなかったもの(scan_issues の現在の内容)。{"path", "container_path", "entry_name", "reason"}
+    issues: list[dict] = field(default_factory=list)
+    issues_total: int = 0
 
 
 @dataclass(frozen=True)
@@ -80,6 +92,19 @@ def _norm(path: str) -> str:
     return os.path.normcase(os.path.normpath(os.path.abspath(path)))
 
 
+def safe_text(value) -> str:
+    """表示・ログ・JSON に出して安全な文字列にする。
+
+    Windows のファイル名は孤立サロゲート、Linux の名前は不正な UTF-8 バイト(surrogateescape)を含みうる。
+    そのまま SQLite・JSON・ログへ渡すと UnicodeEncodeError になるので、エスケープした文字に置き換える。
+    """
+    return str(value).encode("utf-8", "backslashreplace").decode("utf-8")
+
+
+def describe_exception(exc: BaseException) -> str:
+    return safe_text(f"{type(exc).__name__}: {exc}")
+
+
 def root_is_accessible(root: Path) -> bool:
     try:
         if not root.is_dir():
@@ -103,6 +128,7 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
     """検証済みの目次から巻の候補を切り出す。内側アーカイブは名前を見るだけ。"""
     specs: list[VolumeSpec] = []
     skipped: list[Skip] = []
+    seen_inner: set[str] = set()
     groups: dict[str, list] = defaultdict(list)
     for e in listing.entries:
         if is_image(e.name):
@@ -124,6 +150,11 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
         if problem:
             skipped.append(Skip(e.name, problem))
             continue
+        if e.name in seen_inner:
+            # zip は同名のエントリを複数持てる。巻の突き合わせ(source, container_path, entry_prefix)が一意なので最初の 1 つだけ
+            skipped.append(Skip(e.name, "同じ名前の内側アーカイブが複数ある(最初の 1 つだけを巻にした)"))
+            continue
+        seen_inner.add(e.name)
         specs.append(VolumeSpec(e.name, "", PurePosixPath(e.name).stem, e.raw_name, e.encoding, None))
     return specs, skipped
 
@@ -148,15 +179,62 @@ class Scanner:
 
     def scan(self) -> ScanResult:
         result = ScanResult(volumes=0)
+        with db.transaction(self.conn) as c:
+            # ソースに結び付かない問題(読めなかったフォルダなど)は毎回の走査で作り直す
+            c.execute("DELETE FROM scan_issues WHERE source_id IS NULL")
         for root_id, root in self._sync_roots():
-            if root_is_accessible(root):
-                self._scan_root(root_id, root)
-            else:
-                self._mark_root_offline(root_id)
-                result.offline_roots.append(str(root))
+            try:
+                if root_is_accessible(root):
+                    self._scan_root(root_id, root)
+                else:
+                    self._mark_root_offline(root_id)
+                    result.offline_roots.append(str(root))
+            except Exception as e:  # noqa: BLE001 (1 つのルートの想定外で、ほかのルートを止めない)
+                self._unexpected(e, f"蔵書フォルダ {safe_text(root)} のスキャンを中断")
+                self._record_pathless(str(root), f"スキャンを中断した: {describe_exception(e)}")
         result.volumes = self.conn.execute(
             "SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
+        result.issues, result.issues_total = collect_issues(self.conn)
         return result
+
+    # --- 想定外の例外 ---------------------------------------------------------
+    # 想定した失敗(ArchiveError など)は読み込む側が理由つきで捕まえる。ここに来るのは「想定していなかった」例外で、
+    # プログラムの誤りの可能性があるので、必ずログにトレースバックを出し、scan_issues に型とメッセージを残す。
+    # DB そのものが使えない(sqlite3.OperationalError: ロック・ディスク満杯・SQL の誤り)ときは、
+    # 全ソースが同じ理由で失敗するだけなので握りつぶさず、スキャンを止める。
+
+    @staticmethod
+    def _unexpected(exc: Exception, what: str) -> None:
+        if isinstance(exc, sqlite3.OperationalError):
+            raise exc
+        log.error("%s: %s", what, describe_exception(exc), exc_info=exc)
+
+    def _record_pathless(self, path: str, reason: str) -> None:
+        """どのソースにも結び付かない問題を記録する。entry_name にはルートも含めた走査中のパスを入れる。"""
+        try:
+            with db.transaction(self.conn) as c:
+                c.execute("INSERT INTO scan_issues (source_id, container_path, entry_name, reason, recorded_at) "
+                          "VALUES (NULL, NULL, ?, ?, ?)", (safe_text(str(path).replace("\\", "/")), safe_text(reason), db.now()))
+        except Exception as e:  # noqa: BLE001
+            self._unexpected(e, f"問題を記録できなかった: {safe_text(path)}")
+
+    def _source_failed(self, root_id: int, path: str, rel: str, kind: str, reason: str,
+                       exc: Exception | None = None) -> None:
+        """ソース 1 つを読めなかったことを記録する。既存の巻・サイズ・mtime には触れない(次回また試す)。"""
+        path = str(path).replace("\\", "/")
+        shown = safe_text(path)
+        if exc is not None:
+            self._unexpected(exc, f"{shown} のスキャンに失敗")
+            reason = f"{reason}: {describe_exception(exc)}"
+        try:
+            with db.transaction(self.conn) as c:
+                src = self._upsert_source(c, root_id, rel, kind)
+                record_issues(c, src["id"], None, [Skip(None, safe_text(reason))])
+        except Exception as e:  # noqa: BLE001 (名前が DB に入らない等。ソースに結び付けずに残す)
+            if isinstance(e, sqlite3.OperationalError):
+                raise
+            log.warning("%s をソースとして記録できない(%s)。ソースに結び付けずに残す", shown, describe_exception(e))
+            self._record_pathless(path, reason)
 
     def _excluded_dirs(self, root: Path) -> set[str]:
         bases = [root / DEFAULT_ORGANIZE_DIR, self.settings.organize_base(root)]
@@ -171,40 +249,84 @@ class Scanner:
     def _scan_root(self, root_id: int, root: Path) -> None:
         found: set[str] = set()
         error_dirs: list[str] = []
+        complete = True  # 見つからないソースを missing にしてよいほど、全体を見終えたか
 
         def onerror(err: OSError) -> None:
-            if err.filename:
-                error_dirs.append(_rel(root, err.filename))
+            nonlocal complete
+            try:
+                if err.filename:
+                    error_dirs.append(_rel(root, err.filename))
+                else:
+                    complete = False
+                self._record_pathless(str(err.filename or root), f"読めないフォルダ: {describe_exception(err)}")
+            except Exception as e:  # noqa: BLE001 (onerror の中の例外は走査全体を止めてしまう)
+                complete = False
+                self._unexpected(e, "読めないフォルダの記録に失敗")
+
+        def visit(kind: str, path: str, action) -> None:
+            nonlocal complete
+            try:
+                rel = _rel(root, path)
+            except Exception as e:  # noqa: BLE001
+                complete = False
+                self._unexpected(e, f"{safe_text(path)} の相対パスを求められない")
+                self._record_pathless(path, f"相対パスを求められない: {describe_exception(e)}")
+                return
+            found.add(rel)  # 例外で読めなくても、見つかったものとして扱う(missing にしない)
+            try:
+                action(rel)
+            except Exception as e:  # noqa: BLE001 (ソース 1 つの想定外で、スキャン全体を止めない)
+                self._source_failed(root_id, path, rel, kind, "想定外のエラー", e)
 
         excluded = self._excluded_dirs(root)
-        for dirpath, dirnames, filenames in os.walk(root, onerror=onerror, followlinks=False):
-            # 整理処理の作業場・退避フォルダ(既定 <ルート>/.spinebox)は蔵書として扱わない
-            dirnames[:] = sorted(d for d in dirnames if _norm(os.path.join(dirpath, d)) not in excluded)
-            images = sorted(f for f in filenames if is_image(f))
-            if images:
-                rel = _rel(root, dirpath)
-                found.add(rel)
-                self._scan_folder(root_id, root, rel, Path(dirpath), images)
-            for name in sorted(filenames):
-                fmt = novel_format(name)
-                if is_archive_name(name) or (fmt == FORMAT_EPUB or (fmt and not images)):
-                    rel = _rel(root, os.path.join(dirpath, name))
-                    found.add(rel)
-                    if fmt:
-                        self._scan_novel(root_id, rel, Path(dirpath) / name, fmt)
-                    else:
-                        self._scan_archive(root_id, rel, Path(dirpath) / name)
+        try:
+            for dirpath, dirnames, filenames in os.walk(root, onerror=onerror, followlinks=False):
+                dirnames[:] = self._walkable_dirs(dirpath, dirnames, excluded)
+                images = sorted(f for f in filenames if is_image(f))
+                if images:
+                    visit("folder", dirpath,
+                          lambda rel, dirpath=dirpath, images=images:
+                          self._scan_folder(root_id, root, rel, Path(dirpath), images))
+                for name in sorted(filenames):
+                    full = os.path.join(dirpath, name)
+                    fmt = novel_format(name)
+                    if fmt == FORMAT_EPUB or (fmt and not images):  # 画像のあるフォルダの .txt は添え物
+                        visit("archive", full,
+                              lambda rel, full=full, fmt=fmt: self._scan_novel(root_id, rel, Path(full), fmt))
+                    elif is_archive_name(name):
+                        visit("archive", full, lambda rel, full=full: self._scan_archive(root_id, rel, Path(full)))
+        except Exception as e:  # noqa: BLE001 (走査そのものの想定外。途中までの結果は残す)
+            complete = False
+            self._unexpected(e, f"蔵書フォルダ {safe_text(root)} の走査を中断")
+            self._record_pathless(str(root), f"走査を途中で中断した(以降は読んでいない): {describe_exception(e)}")
 
         def under_error_dir(rel: str) -> bool:
             return any(e == "" or rel == e or rel.startswith(e + "/") for e in error_dirs)
 
         with db.transaction(self.conn) as c:
-            for sid, rel in c.execute("SELECT id, rel_path FROM sources WHERE root_id = ?", (root_id,)).fetchall():
-                if rel not in found and not under_error_dir(rel):
-                    c.execute("UPDATE sources SET missing = 1, offline = 0 WHERE id = ?", (sid,))
+            if complete:
+                for sid, rel in c.execute("SELECT id, rel_path FROM sources WHERE root_id = ?", (root_id,)).fetchall():
+                    if rel not in found and not under_error_dir(rel):
+                        c.execute("UPDATE sources SET missing = 1, offline = 0 WHERE id = ?", (sid,))
             now = db.now()
             c.execute("UPDATE library_roots SET online = 1, last_checked_at = ?, last_online_at = ? WHERE id = ?",
                       (now, now, root_id))
+
+    def _walkable_dirs(self, dirpath: str, dirnames: list[str], excluded: set[str]) -> list[str]:
+        """辿るサブフォルダ。整理処理の置き場と、祖先へ戻るリンク(ジャンクションの循環)は辿らない。"""
+        keep = []
+        for d in sorted(dirnames):
+            full = os.path.join(dirpath, d)
+            try:
+                if _norm(full) in excluded:
+                    continue
+                if _links_to_ancestor(dirpath, full):
+                    self._record_pathless(full, "祖先のフォルダを指すリンク(ジャンクション)なので辿らない")
+                    continue
+            except Exception as e:  # noqa: BLE001 (判定できないフォルダは辿る。辿れなければ onerror に出る)
+                self._unexpected(e, f"{safe_text(full)} を辿るか判定できない")
+            keep.append(d)
+        return keep
 
     # --- ソース -------------------------------------------------------------
 
@@ -217,13 +339,27 @@ class Scanner:
     def _scan_folder(self, root_id: int, root: Path, rel: str, path: Path, images: list[str]) -> None:
         try:
             st = path.stat()
-            size = sum((path / f).stat().st_size for f in images)
-        except OSError:
+        except OSError as e:
+            self._source_failed(root_id, str(path), rel, "folder", f"読めないフォルダ: {describe_exception(e)}")
+            return
+        size = 0
+        readable: list[str] = []
+        unreadable: list[Skip] = []
+        for f in images:
+            try:
+                size += (path / f).stat().st_size
+                readable.append(f)
+            except OSError as e:  # 壊れたリンクなど。そのファイルだけ数えない
+                unreadable.append(Skip(safe_text(f), f"読めない画像: {describe_exception(e)}"))
+        if not readable:
+            self._source_failed(root_id, str(path), rel, "folder",
+                                "読める画像が 1 枚も無い: " + "; ".join(s.reason for s in unreadable[:3]))
             return
         name = path.name if rel else (root.name or str(root))
-        spec = VolumeSpec(None, "", name, _fs_name_bytes(name), "filesystem", len(images))
+        spec = VolumeSpec(None, "", name, _fs_name_bytes(name), "filesystem", len(readable))
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "folder")
+            record_issues(c, src["id"], None, unreadable)
             self._replace_volumes(c, src["id"], [spec])
             c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                       (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
@@ -231,7 +367,8 @@ class Scanner:
     def _scan_archive(self, root_id: int, rel: str, path: Path) -> None:
         try:
             st = path.stat()
-        except OSError:
+        except OSError as e:
+            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
             return
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "archive")
@@ -246,12 +383,18 @@ class Scanner:
             issues.extend(listing.skipped)
             specs, more = archive_volume_specs(listing, path.name, self.settings.limits)
             issues.extend(more)
+            if not specs:
+                issues.append(Skip(None, "巻にできるもの(画像のあるフォルダ・内側のアーカイブ)が見つからない"))
         except UnsupportedArchive as e:
-            issues.append(Skip(None, str(e)))
+            issues.append(Skip(None, safe_text(e)))
         except LimitExceeded as e:
-            issues.append(Skip(None, f"展開上限によりスキップ: {e}"))
+            issues.append(Skip(None, safe_text(f"展開上限によりスキップ: {e}")))
         except ArchiveError as e:
-            issues.append(Skip(None, f"読めないアーカイブ: {e}"))
+            issues.append(Skip(None, safe_text(f"読めないアーカイブ: {e}")))
+        except Exception as e:  # noqa: BLE001 (想定外の形のアーカイブ。サイズ・mtime は更新せず次回また試す)
+            specs = None
+            self._unexpected(e, f"アーカイブ {safe_text(path)} を読めなかった")
+            issues.append(Skip(None, f"読めないアーカイブ(想定外のエラー): {describe_exception(e)}"))
         with db.transaction(self.conn) as c:
             record_issues(c, src["id"], None, issues)
             if specs is not None:
@@ -264,7 +407,8 @@ class Scanner:
         """小説のファイルを 1 巻として登録する。EPUB は目次だけ読み、テキストは中身を読まない。"""
         try:
             st = path.stat()
-        except OSError:
+        except OSError as e:
+            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
             return
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "archive")
@@ -281,9 +425,9 @@ class Scanner:
                 issues = epub_scan_problems(listing.entries, listing.skipped)
                 specs = [] if issues else [spec]  # 危険な名前を含む・container.xml の無い EPUB は巻にしない
             except LimitExceeded as e:
-                issues.append(Skip(None, f"展開上限によりスキップ: {e}"))
+                issues.append(Skip(None, safe_text(f"展開上限によりスキップ: {e}")))
             except ArchiveError as e:
-                issues.append(Skip(None, f"読めない EPUB: {e}"))
+                issues.append(Skip(None, safe_text(f"読めない EPUB: {e}")))
         else:
             specs = [spec]
         with db.transaction(self.conn) as c:
@@ -326,6 +470,45 @@ class Scanner:
         for key, vid in existing.items():
             if key not in seen:
                 c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))
+
+
+def _links_to_ancestor(dirpath: str, child: str) -> bool:
+    """child がシンボリックリンク/ジャンクションで、dirpath(とその祖先)を指しているか。
+
+    os.walk(followlinks=False)は Windows のジャンクションを辿ってしまうので、祖先を指すものだけ止める
+    (辿ると同じ中身を、パスが長すぎて読めなくなるまで何重にも登録しにいく)。祖先を指さないリンクは今までどおり辿る。
+    """
+    isjunction = getattr(os.path, "isjunction", lambda p: False)
+    if not (os.path.islink(child) or isjunction(child)):
+        return False
+    target = os.path.normcase(os.path.realpath(child))
+    here = os.path.normcase(os.path.realpath(dirpath))
+    return here == target or here.startswith(target.rstrip(os.sep) + os.sep)
+
+
+def collect_issues(conn: sqlite3.Connection, limit: int = MAX_REPORTED_ISSUES) -> tuple[list[dict], int]:
+    """画面に出す「読めなかったもの」(scan_issues の現在の内容)と総数。
+
+    見えなくなったソース・オフラインのルート・設定から外したルートの記録は出さない(DB には残る)。
+    ソースに結び付かない記録(source_id NULL)は entry_name が走査中のパス。
+    """
+    where = """FROM scan_issues i LEFT JOIN sources s ON s.id = i.source_id
+               LEFT JOIN library_roots r ON r.id = s.root_id
+               WHERE i.source_id IS NULL OR (s.missing = 0 AND s.offline = 0 AND r.enabled = 1)"""
+    total = conn.execute("SELECT COUNT(*) " + where).fetchone()[0]
+    rows = conn.execute("SELECT i.source_id, i.container_path, i.entry_name, i.reason, s.rel_path, r.path AS root_path "
+                        + where + " ORDER BY i.id LIMIT ?", (limit,)).fetchall()
+    issues = []
+    for r in rows:
+        if r["source_id"] is None:
+            path, entry = r["entry_name"], None
+        else:
+            root_path = r["root_path"].replace("\\", "/").rstrip("/")
+            path = f"{root_path}/{r['rel_path']}" if r["rel_path"] else root_path
+            entry = r["entry_name"]
+        issues.append({"path": path, "container_path": r["container_path"], "entry_name": entry,
+                       "reason": r["reason"]})
+    return issues, total
 
 
 def record_issues(c, source_id: int, container_path: str | None, issues: list[Skip]) -> None:

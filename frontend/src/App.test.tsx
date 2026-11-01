@@ -55,6 +55,11 @@ describe("一覧", () => {
     fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
     expect(await screen.findByText(/8 巻を検出しました/)).toBeTruthy();
     expect(screen.getByText(/E:\/漫画/)).toBeTruthy();
+    // 読めなかったものは件数と理由の一覧を出す
+    const issues = screen.getByText("読めなかったもの 2 件").closest("details")!;
+    expect(within(issues).getByText("E:/本/作者A/壊れた巻.zip")).toBeTruthy();
+    expect(within(issues).getByText(/zip として開けない/)).toBeTruthy();
+    expect(within(issues).getByText("E:/本/作者B/まとめ.zip › ../evil.jpg")).toBeTruthy();
     expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/scan")).toBe(true);
   });
 
@@ -79,6 +84,55 @@ describe("一覧", () => {
     expect(within(details).getByText("1・3")).toBeTruthy();
     expect(within(details).getByText("欠け").nextElementSibling!.textContent).toBe("2");
     expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/volumes/5/analyze")).toBe(true);
+  });
+
+  it("読めなかったものが無ければ件数を出さず、多いときは省略を知らせる", async () => {
+    const stub = (backendOptions: Parameters<typeof createMockBackend>[1]) => {
+      backend = createMockBackend(undefined, backendOptions);
+      vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+        const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
+        return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+      });
+    };
+    stub({ scanIssues: [] });
+    render(<App />);
+    await screen.findByText("サンプル漫画 第02巻");
+    fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
+    expect(await screen.findByText(/8 巻を検出しました/)).toBeTruthy();
+    expect(screen.queryByText(/読めなかったもの/)).toBeNull();
+    cleanup();
+
+    // 上限で切った分(issues_total > issues.length)は省略を知らせる
+    backend = createMockBackend();
+    const handle = backend.handle;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      const r = handle(init?.method ?? "GET", url, init?.body as string | undefined);
+      if (init?.method === "POST" && url === "/api/scan") {
+        return new Response(JSON.stringify({ ...JSON.parse(r.body), issues_total: 205 }), {
+          status: 200, headers: { "Content-Type": r.contentType } });
+      }
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+    });
+    render(<App />);
+    await screen.findByText("サンプル漫画 第02巻");
+    fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
+    expect(await screen.findByText("読めなかったもの 205 件")).toBeTruthy();
+    expect(screen.getByText("ほか 203 件は省略しました。")).toBeTruthy();
+  });
+
+  it("スキャンが失敗したら、サーバーが返した原因を出す", async () => {
+    backend = createMockBackend(undefined, {
+      scanFailure: { status: 500, detail: "スキャンに失敗しました: ValueError: 想定外" },
+    });
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+    });
+    render(<App />);
+    await screen.findByText("サンプル漫画 第02巻");
+    fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("ValueError: 想定外");
+    expect(screen.getByRole("button", { name: "スキャン" })).toBeTruthy(); // 押し直せる
   });
 
   it("API が落ちていてもエラー表示で止まる", async () => {
