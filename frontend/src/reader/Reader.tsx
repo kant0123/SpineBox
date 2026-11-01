@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { api, type VolumeDetail } from "../api";
 import { libraryHref } from "../route";
 import { loadSettings, saveSettings, type ReaderSettings } from "../settings";
@@ -103,6 +103,19 @@ export function Reader({ id }: { id: string }) {
     [pageCount, settings, w, h],
   );
   const current = spreads[spreadIndexOf(spreads, page)] ?? [];
+  const currentKey = current.join(",");
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  // 先読みで描画前に読み終わっていた画像は load が来ないので、表示するページが変わったときに一度だけ調べる。
+  // ref コールバックの中で state を更新すると、描画のたびに付け直される ref から更新が繰り返されて
+  // 描画が止まる(#51、React #185)ので、ここでまとめて行う
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.querySelectorAll<HTMLImageElement>("img[data-page]").forEach((img) => {
+      if (img.complete && img.naturalWidth > 0) markLoaded(Number(img.dataset.page));
+    });
+  }, [currentKey, detail, markLoaded]);
 
   // 読書位置の保存(デバウンス)
   useEffect(() => {
@@ -204,6 +217,7 @@ export function Reader({ id }: { id: string }) {
   return (
     <div className="reader">
       <div
+        ref={stageRef}
         className={`stage${current.length === 2 ? " is-spread" : ""}`}
         data-testid="stage"
         onPointerDown={onPointerDown}
@@ -222,8 +236,7 @@ export function Reader({ id }: { id: string }) {
               src={api.pageUrl(id, i)}
               alt={`${i + 1} ページ`}
               draggable={false}
-              // キャッシュ済みで描画前に読み終わっていた画像は load を待たずに済ませる
-              ref={(el) => el?.complete && el.naturalWidth > 0 && markLoaded(i)}
+              data-page={i}
               onLoad={() => markLoaded(i)}
               onError={() => setBroken((b) => new Set(b).add(i))}
             />
