@@ -23,7 +23,7 @@ from typing import Callable
 
 from .. import db
 from ..archive import ArchiveError, list_entries, open_archive
-from ..archive.base import reader_available
+from ..archive.base import file_reader_available, reader_available
 from ..cache import CacheTooLarge
 from ..config import Settings
 from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
@@ -203,7 +203,7 @@ class Organizer:
 
     def _inspect_archive(self, path: Path, vols: list[dict], problems: list[str], warnings: list[str]) -> None:
         sevenzip = self.settings.sevenzip_path
-        if not reader_available(path.name, sevenzip):
+        if not file_reader_available(path, sevenzip):
             problems.append("この形式は今読めません(7-Zip が見つからない、または未対応)")
             return
         for v in vols:
