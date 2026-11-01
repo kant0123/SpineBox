@@ -122,3 +122,36 @@ button.small { padding: 4px 10px; font-size: 0.8rem; }
 .reader-bar input[type="range"] { width: 100%; }
 .reader-options { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
 .reader-options label { display: flex; align-items: center; gap: 4px; }
+
+/* 重複候補(#38) */
+.header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.header-link, .back-link { color: var(--accent); text-decoration: none; padding: 8px 4px; }
+.dup-badge { text-decoration: none; border-color: var(--accent); color: var(--accent); }
+.dup-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+.dup-toolbar label { display: flex; align-items: center; gap: 6px; }
+.dup-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 14px; }
+.dup-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 0; }
+.dup-sides { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dup-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dup-cover { width: 100%; aspect-ratio: 5 / 7; object-fit: contain; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.dup-cover-missing { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.dup-title { font-weight: 600; overflow-wrap: anywhere; }
+.dup-facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; font-size: 0.85rem; } /* スマホ幅では見出しを値の上に積む */
+.dup-facts dt { color: var(--muted); font-size: 0.75rem; margin-top: 4px; }
+.dup-facts dd { margin: 0; overflow-wrap: anywhere; }
+.dup-read { color: var(--accent); font-size: 0.85rem; padding: 4px 0; }
+.dup-evidence { margin: 10px 0 4px; overflow-wrap: anywhere; }
+.dup-samples { font-size: 0.85rem; margin: 6px 0; }
+.dup-samples summary { cursor: pointer; color: var(--accent); }
+.dup-samples ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.dup-samples li { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.dup-samples li span { grid-column: 1 / -1; }
+.dup-samples img { width: 100%; max-height: 220px; object-fit: contain; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.dup-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+@media (min-width: 700px) {
+  .dup-sides { gap: 24px; }
+  .dup-facts { grid-template-columns: auto 1fr; gap: 2px 8px; }
+  .dup-facts dt { font-size: inherit; margin-top: 0; }
+  .dup-cover { max-height: min(420px, 75vh); }
+  .dup-samples li { grid-template-columns: repeat(2, minmax(0, 220px)); }
+}

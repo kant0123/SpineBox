@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
 updated: 2026-11-01
-related: [overview, backend, archive-reading, extraction-cache, frontend]
+related: [overview, backend, archive-reading, extraction-cache, frontend, duplicate-detection]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -61,7 +61,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend]
 ## なぜこうなっているか
 
 - **同じ巻番号が複数ある(重複)を食い違いにしない。** 実データのお気楽領主の zip(名前 v01-06)は 1,1,2,2,3,4,5,6 巻のフォルダを持つ(別スキャンの重複)。
-  重複を食い違いとして出すと、まとめアーカイブのほとんどに印が付いて本当の欠けが埋もれる。重複は後続の重複検出(GOAL フェーズ 2 の 2 項目目)が候補として出す。
+  重複を食い違いとして出すと、まとめアーカイブのほとんどに印が付いて本当の欠けが埋もれる。重複は [[duplicate-detection]](#38)が候補として出す。
   `duplicates` は finding の中に情報として入れているが、それだけでは finding を作らない
 - **解析を開いたときに行う。** 内側アーカイブを開けば全段を取り出し済みで、巻の単位は目次から分かる。追加の展開無しで分解できる。
   スキャンで行うと「スキャンでは内側のアーカイブを 1 つも取り出さない」(フェーズ 1 の完了条件)に反する
@@ -90,3 +90,4 @@ related: [overview, backend, archive-reading, extraction-cache, frontend]
 - [[archive-reading]] — 入れ子の開き方と深さの上限
 - [[extraction-cache]] — 子と親で共有する取り出し
 - [[frontend]] — 一覧のバッジと説明、「中の巻を調べる」
+- [[duplicate-detection]] — 分解後の子の巻(一覧に見える単位)ごとに指紋を作り、別スキャンの重複候補を出す。巻番号の候補(`number_*`)を判定に使う

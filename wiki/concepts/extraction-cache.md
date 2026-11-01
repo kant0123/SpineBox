@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ。容量上限つき LRU、使用中は消さない、スキャンでは使わない
 updated: 2026-11-01
-related: [overview, backend, archive-reading, volume-split]
+related: [overview, backend, archive-reading, volume-split, duplicate-detection]
 ---
 
 # 展開キャッシュ
@@ -19,7 +19,7 @@ related: [overview, backend, archive-reading, volume-split]
 - **容量上限(`cache_limit_bytes`、既定 2 GiB)を超えたら、最後に使ったのが古いものから消す。** 1 つで上限を超えるものは
   置かずに 422 で断る(置いた瞬間に自分を消すことになるため)
 - **使用中(pin)のファイルは消さない。** 巻を開いている間に別の巻を開いても、読んでいる最中のファイルは残る
-- **スキャンでは使わない。** スキャンは目次だけ読む(GOAL.md フェーズ 1 の完了条件)。取り出すのは `GET /api/volumes/{id}` などで巻を開いたとき
+- **スキャンでは使わない。** スキャンは目次だけ読む(GOAL.md フェーズ 1 の完了条件)。取り出すのは `GET /api/volumes/{id}` などで巻を開いたときと、重複候補のための指紋を作る明示操作(`POST /api/duplicates/scan`。[[duplicate-detection]])だけ
 - 消えてもよいもの。消えていたら次に開くとき作り直す。書きかけ(`.tmp-*`)は起動時に消す
 - **分解で作った子の巻も同じキーで取り出す**(`spinebox/library.py:208 _extract`)。親を開いた後に子を開いても取り出し直さない。
   子は親の内側アーカイブから自分の段までだけを取り出すので、v01 を読むのに v02・v03 の zip は取り出さない([[volume-split]])
@@ -53,3 +53,4 @@ related: [overview, backend, archive-reading, volume-split]
 - [[backend]] — 巻を開く API とスキャン
 - [[archive-reading]] — 取り出しに使う 1 エントリの読み出しと展開上限
 - [[volume-split]] — 開いたときに巻の単位へ分解する
+- [[duplicate-detection]] — 指紋のために内側アーカイブを開く(同じキャッシュ・上限)

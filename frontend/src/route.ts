@@ -1,9 +1,10 @@
 // 画面の切り替えはハッシュ(#/read/<id>)で行う。バックエンドは dist を / で配信するだけでよく、
 // /read/... のような深いパスを index.html へ振り向ける設定を要しないため。
 
-export type Route = { name: "library" } | { name: "read"; id: string };
+export type Route = { name: "library" } | { name: "read"; id: string } | { name: "duplicates" };
 
 export function parseRoute(hash: string): Route {
+  if (/^#?\/duplicates\/?$/.test(hash)) return { name: "duplicates" };
   const m = hash.replace(/^#/, "").match(/^\/read\/([^/?#]+)\/?$/);
   if (m) {
     try {
@@ -17,6 +18,7 @@ export function parseRoute(hash: string): Route {
 
 export const readHref = (id: string | number) => `#/read/${encodeURIComponent(String(id))}`;
 export const libraryHref = "#/";
+export const duplicatesHref = "#/duplicates";
 
 /**
  * `/read/<id>` を直接開いた(ブックマーク・共有されたリンク)ときに、画面の正準の形 `/#/read/<id>` を返す。

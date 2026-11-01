@@ -4,3 +4,4 @@ uvicorn>=0.29
 # TestClient が使う(テスト用)
 httpx>=0.27
 pytest>=8
+Pillow>=10

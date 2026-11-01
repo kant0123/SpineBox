@@ -95,6 +95,40 @@ MIGRATIONS: list[list[str]] = [
            (source_id, COALESCE(container_path, ''), COALESCE(inner_path, ''), entry_prefix)""",
         "CREATE INDEX volumes_parent ON volumes (parent_id)",
     ],
+    # 3: 別スキャンの重複候補(#38)。volume_fingerprints: 巻ごとの見た目の指紋(ページ位置とハッシュの組の BLOB)。
+    #    version が変わるまで作り直さない。error: 作れなかった理由(明示操作の再実行で再挑戦する)。
+    #    duplicate_candidates: 重複の候補の組(volume_a < volume_b)と判定の根拠(JSON)。指紋から再導出できる。
+    #    dismissed_at: 「重複ではない」と却下した日時。再計算しても消さない・復活させない
+    [
+        """
+        CREATE TABLE volume_fingerprints (
+            volume_id INTEGER PRIMARY KEY REFERENCES volumes(id),
+            version TEXT NOT NULL,
+            page_count INTEGER NOT NULL,
+            hashed_pages INTEGER NOT NULL,
+            skipped_pages INTEGER NOT NULL,
+            hashes BLOB NOT NULL,
+            error TEXT,
+            computed_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE duplicate_candidates (
+            id INTEGER PRIMARY KEY,
+            volume_a INTEGER NOT NULL REFERENCES volumes(id),
+            volume_b INTEGER NOT NULL REFERENCES volumes(id),
+            rule TEXT NOT NULL,
+            matched_pages INTEGER NOT NULL,
+            compared_pages INTEGER NOT NULL,
+            evidence TEXT NOT NULL,
+            computed_at TEXT NOT NULL,
+            dismissed_at TEXT,
+            CHECK (volume_a < volume_b),
+            UNIQUE (volume_a, volume_b)
+        )
+        """,
+        "CREATE INDEX duplicate_candidates_b ON duplicate_candidates (volume_b)",
+    ],
 ]
 
 

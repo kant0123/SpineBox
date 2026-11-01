@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-01
-related: [overview, archive-reading, extraction-cache, server-setup, volume-split]
+related: [overview, archive-reading, extraction-cache, server-setup, volume-split, duplicate-detection]
 ---
 
 # バックエンド
@@ -13,7 +13,7 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 ## 責務
 
 - する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存、
-  内側アーカイブの巻の分解と巻範囲の食い違いの検出([[volume-split]])
+  内側アーカイブの巻の分解と巻範囲の食い違いの検出([[volume-split]])、別スキャンの重複候補の検出(明示操作。[[duplicate-detection]])
 - しない: 蔵書への書き込み(読み取り専用。整理処理はフェーズ 2 以降で別に作る)、メタデータ取得、認証
 - アーカイブの中身の扱いは [[archive-reading]]、内側アーカイブの取り出し先は [[extraction-cache]]
 
@@ -28,6 +28,7 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | `spinebox/scanner.py:154 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
 | `spinebox/library.py:100 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:249 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:78 parse_number`([[volume-split]]) |
+| `spinebox/duplicates.py:283 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
 | `spinebox/scanner.py:39 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
 | `spinebox/config.py:120 load_settings` | 設定ファイルの探し方と相対パスの起点 |
 | `spinebox/db.py:16 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
@@ -39,9 +40,12 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | メソッドとパス | 返すもの |
 | --- | --- |
 | `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...]}`。件数は一覧に出る巻の数(オフラインの巻を含む。分解済みの親は数えず子を数える)。スキャン中の再実行は 409 |
-| `GET /api/volumes` | `[{"id", "title", "source_name", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻 |
+| `GET /api/volumes` | `[{"id", "title", "source_name", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38) |
 | `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
+| `POST /api/duplicates/scan` | 見た目の指紋を作って重複候補を出す明示操作。既定は裏で動かして 202 + `{running, started_at, finished_at, done, total, summary, error}`。`?wait=true` は終わるまで待つ。実行中・ライブラリのスキャン中は 409 |
+| `GET /api/duplicates?status=open\|dismissed` | `{"scan": <上と同じ状態>, "candidates": [{"id", "rule" (`same_number` / `visual_only`), "matched_pages", "compared_pages", "evidence", "dismissed", "a", "b"}]}`。a・b は `{id, title, source_name, parent_title, page_count, offline, volume_number, progress}`。一覧に見えている巻どうしの組だけ。`status` が他なら 422 |
+| `POST /api/duplicates/{id}/dismiss` / `restore` | 「重複ではない」と却下する / 戻す。`{"id", "dismissed"}`。無い id は 404。蔵書には触れない |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422 |
 
@@ -82,6 +86,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - SQLite はリクエストごとに接続を開く(FastAPI の同期エンドポイントはスレッドプールで動くため)。WAL を使う
 
 ## 経緯
+
+- #38 で別スキャンの重複候補を足した([[duplicate-detection]])。マイグレーション 3(`volume_fingerprints`・`duplicate_candidates`)、依存に Pillow。
+  `_参考/サンプル本` の実起動で、お気楽領主の 1・2 巻だけが候補に出ることを確かめた
 
 - #30 で巻への分解と巻範囲の食い違いを足した([[volume-split]])。マイグレーション 2(`volumes` に親子・巻番号の候補・解析の版の列)。
   `SCAN_VERSION` を 2 にしたので、既存 DB は次のスキャンで全アーカイブの目次を読み直す(取り出しはしない)

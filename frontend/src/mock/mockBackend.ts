@@ -1,7 +1,7 @@
 // 開発・テスト用のモック API。`npm run dev:mock` の Vite サーバーと、単体テストの fetch 差し替えの両方で使う。
 // アプリ本体からは import しない(本番のバンドルに入れないため)。
 
-import type { Finding, VolumeDetail, VolumeSummary } from "../api";
+import type { DuplicateCandidate, DuplicateScanState, DuplicateVolume, Finding, VolumeDetail, VolumeSummary } from "../api";
 
 export interface MockResponse {
   status: number;
@@ -24,7 +24,7 @@ type MockVolume = Omit<VolumeSummary, "id"> & {
   hidden?: boolean;
 };
 
-const base = { parent_id: null, parent_title: null, volume_number: null, findings: [], can_analyze: false };
+const base = { parent_id: null, parent_title: null, volume_number: null, findings: [], can_analyze: false, duplicate_count: 0 };
 
 /** 「v01-03」の中に 1・3 巻しか無い、という食い違い */
 export const missingSecond: Finding = {
@@ -41,13 +41,43 @@ export const missingSecond: Finding = {
 
 export function defaultVolumes(): MockVolume[] {
   return [
-    { ...base, id: 1, title: "サンプル漫画 第01巻", source_name: "sample_v01.zip", page_count: 9, offline: false, progress: null },
+    { ...base, id: 1, title: "サンプル漫画 第01巻", source_name: "sample_v01.zip", page_count: 9, offline: false, progress: null,
+      volume_number: { kind: "volume", start: 1, end: 1, evidence: "第01巻" }, duplicate_count: 1 },
     { ...base, id: 2, title: "サンプル漫画 第02巻", source_name: "sample_v02.cbz", page_count: 8, offline: false, progress: { page: 3, finished: false } },
     { ...base, id: 3, title: "読了済みの巻", source_name: "done.7z", page_count: 5, offline: false, progress: { page: 4, finished: true } },
     { ...base, id: 4, title: "外付けドライブの巻", source_name: "E:/漫画/offline.rar", page_count: 12, offline: true, progress: null },
     // 未解析の内側アーカイブ。「中の巻を調べる」で 6・7 に分解される
     { ...base, id: 5, title: "v01-03", source_name: "outer.7z", page_count: null, offline: false, progress: null, can_analyze: true },
+    // id 1 の別スキャン(ページ数が違う)。重複候補の相手
+    { ...base, id: 6, title: "Sample manga v01", source_name: "sample_manga_v01s.zip", page_count: 11, offline: false, progress: null,
+      volume_number: { kind: "volume", start: 1, end: 1, evidence: "v01" }, duplicate_count: 1 },
   ];
+}
+
+const dupSide = (v: MockVolume): DuplicateVolume => ({
+  id: v.id, title: v.title, source_name: v.source_name, parent_title: v.parent_title, page_count: v.page_count,
+  offline: v.offline, volume_number: v.volume_number, progress: v.progress,
+});
+
+/** 初期の重複候補: 巻 1 と巻 6 */
+export function defaultCandidates(volumes: MockVolume[]): DuplicateCandidate[] {
+  const a = volumes.find((v) => v.id === 1);
+  const b = volumes.find((v) => v.id === 6);
+  if (!a || !b) return [];
+  return [{
+    id: 1,
+    rule: "same_number",
+    matched_pages: 8,
+    compared_pages: 9,
+    evidence: {
+      matched_pages: 8, compared_pages: 9, pages_a: 9, pages_b: 11, matched_a: 8, matched_b: 9, near_bits: 8,
+      number_a: "第01巻", number_b: "v01",
+      samples: [{ a_page: 0, b_page: 0, distance: 1 }, { a_page: 2, b_page: 3, distance: 0 }],
+    },
+    dismissed: false,
+    a: dupSide(a),
+    b: dupSide(b),
+  }];
 }
 
 function splitChildren(parent: MockVolume): MockVolume[] {
@@ -88,6 +118,10 @@ function pageSvg(title: string, index: number, total: number): string {
 export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), options: MockOptions = {}) {
   const log: { method: string; path: string; body?: unknown }[] = [];
   const opened = new Set<number>();
+  const candidates = defaultCandidates(volumes);
+  const idleScan: DuplicateScanState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
+  let scanState: DuplicateScanState = { ...idleScan };
+  let scanPolls = 0;
   // ページ数未確定の巻は、開いた時点で数が決まる(入れ子の内側を開いたとき)想定
   const pagesOf = (v: MockVolume) => v.page_count ?? 6;
 
@@ -103,6 +137,34 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     }
     if (method === "POST" && path === "/api/scan") {
       return json(200, { volumes: shown().length, offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [] });
+    }
+    if (path === "/api/duplicates" && method === "GET") {
+      const wantDismissed = rawPath.includes("status=dismissed");
+      if (scanState.running && ++scanPolls >= 3) {
+        // 3 回目の取得で終わる(進み具合 → 完了を見せる)
+        scanState = { ...scanState, running: false, finished_at: "now", done: 2, total: 2,
+                      summary: { fingerprinted: 2, skipped: 0, errors: 0, candidates: candidates.filter((c) => !c.dismissed).length } };
+      } else if (scanState.running) {
+        scanState = { ...scanState, done: 1, total: 2 };
+      }
+      return json(200, { scan: scanState, candidates: candidates.filter((c) => c.dismissed === wantDismissed) });
+    }
+    if (path === "/api/duplicates/scan" && method === "POST") {
+      if (scanState.running) return json(409, { detail: "重複候補を調べています" });
+      scanPolls = 0;
+      scanState = { ...idleScan, running: true, started_at: "now" };
+      return json(202, scanState);
+    }
+    const dup = path.match(/^\/api\/duplicates\/(\d+)\/(dismiss|restore)$/);
+    if (dup && method === "POST") {
+      const c = candidates.find((x) => x.id === Number(dup[1]));
+      if (!c) return json(404, { detail: "候補が見つかりません" });
+      c.dismissed = dup[2] === "dismiss";
+      for (const side of [c.a, c.b]) {
+        const v = volumes.find((x) => x.id === side.id);
+        if (v) v.duplicate_count = candidates.filter((x) => !x.dismissed && (x.a.id === v.id || x.b.id === v.id)).length;
+      }
+      return json(200, { id: c.id, dismissed: c.dismissed });
     }
     const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|pages\/(\d+)))?$/);
     const failure = m && !m[2] && method === "GET" ? options.failures?.[decodeURIComponent(m[1])] : undefined;
