@@ -146,7 +146,7 @@ grep "^## \[" wiki/log.md | tail -5
 
 
 ## [2026-11-02] ingest | 小説(EPUB・テキスト)の巻と縦書きリーダー
-- 更新: [[backend]], [[frontend]], [[archive-reading]], [[overview]]
+- 更新: [[backend]], [[frontend]], [[archive-reading]], [[overview]], [[organize]] / [[volume-split]] / [[server-setup]](コード参照の行番号のみ)
 - 新規: [[novel-reader]]
 - 備考: #57(フェーズ 4「EPUB・テキストの縦書き表示」)。マイグレーション 7(`volumes.format`・`reading_progress.position`)。EPUB の HTML は信用せず、サーバーの許可リスト・ブラウザでの作り直し・CSP の 3 段で止める(sandbox 付き iframe は、親からページ割りのために測れなくなるので不採用)。
   行の高さの整数倍でページを切る当初の方式は、ヘッドレス Chromium でルビの行が 1px ずつ広がって 30 行ほどで行が境目で切れたため、描画後の実際の行の位置から切る方式に変えた。
