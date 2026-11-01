@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { duplicatesHref, organizeHistoryHref, organizeHref, readHref } from "../route";
+import { ViewTabs } from "../works/ViewTabs";
 
 /** 一覧のカードに出す読書状態の文言 */
 export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress">): string {
@@ -104,6 +105,7 @@ export function Library() {
           </button>
         </div>
       </header>
+      <ViewTabs current="volumes" />
 
       {scanResult && (
         <div className="notice" role="status">

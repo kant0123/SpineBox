@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
-updated: 2026-11-01
-related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection]
+updated: 2026-11-02
+related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -14,7 +14,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 巻番号の候補(名前から読む)
 
-- 入口: `spinebox/naming.py:78 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
+- 入口: `spinebox/naming.py:92 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:16 MIGRATIONS` の 2 番)。
   スキャンが切り出す巻は `spinebox/scanner.py:253 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
@@ -92,3 +92,4 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - [[extraction-cache]] — 子と親で共有する取り出し
 - [[frontend]] — 一覧のバッジと説明、「中の巻を調べる」
 - [[duplicate-detection]] — 分解後の子の巻(一覧に見える単位)ごとに指紋を作り、別スキャンの重複候補を出す。巻番号の候補(`number_*`)を判定に使う
+- [[work-grouping]] — 巻番号の候補で作品ページの枠・欠けを作る。分解された子の巻は親の手動の作品の割り当てを引き継ぐ

@@ -1,8 +1,8 @@
 ---
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
-updated: 2026-11-01
-related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection]
+updated: 2026-11-02
+related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping]
 ---
 
 # フロントエンド(`frontend/`)
@@ -12,7 +12,7 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 
 ## 責務
 
-- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・リーダー(ページ画像の表示・先読み・
+- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・作品の一覧 / 作品ページ / 統合の提案の画面([[work-grouping]])・リーダー(ページ画像の表示・先読み・
   読書位置の保存と再開)・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す([[organize]])。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
 - しない: ページの並び順・ページ数・オフライン判定・巻番号と食い違いの判定。どれもバックエンドが決めた `pages[]`・`offline`・`findings` をそのまま使う
 
@@ -26,7 +26,8 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/api.ts:199 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/works/Works.tsx:8 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案)。作品ページ `frontend/src/works/WorkPage.tsx:39 WorkPage()`(`#/works/<id>`: 作品名・著者の手動編集、別名、統合の根拠、巻の枠・欠け、巻の付け替え・手動統合)、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/api.ts:312 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
 | `frontend/src/mock/mockBackend.ts:126 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
 
@@ -47,7 +48,7 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:35 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:48 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
@@ -67,6 +68,10 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
   別スキャンは 1 ページ目が口絵と表紙で食い違うことがあるので、バックエンドが返す一致ページの例(最大 3 組)も並べる。375px では 2 巻を 2 列のまま、項目名を値の上に積む
 - **一覧の印「重複の候補あり」は巻のリンクの外**(食い違いの説明と同じ理由)。押すと重複候補の画面へ行く
 - **汎用カルーセルライブラリは使わない**(GOAL.md の初期既定)。ページ送りは状態の差し替えだけで、アニメーションは無い
+
+- **作品ページの「手で直した項目」は出所を明示する。** 作品名・著者・別名・巻の割り当てごとに「手動で編集 / ファイル名から(確信度 90%)/ 重複候補の証拠で統合」を出す。名寄せは名前の推測なので、利用者が根拠を見て直せるようにするため。
+  提案は確信度と根拠(一致ページ数)を見せ、承認するまで統合しない。巻の付け替えは巻のチェックボックスで選んで「新しい作品に分ける」/「この作品へ移す」(手動の決定になり再計算で戻らない)
+- **作品の一覧と巻の一覧は別画面で、既定は巻の一覧のまま。** 作品の画面は `#/works`。巻の一覧のカード・リーダーは変えていない
 
 ## 落とし穴
 
@@ -98,6 +103,8 @@ npm run build      # frontend/dist
 ```
 
 ## 経緯
+
+- #43 で作品の一覧・作品ページ・統合の提案の画面を足した(モック API は `src/mock/mockWorks.ts`)。`_参考/サンプル本` を実バックエンドで配信し、375px と 812x375 の組み込みブラウザで、作品一覧 → 作品ページ(1・2 巻が重複・欠けなし)→ 巻を新しい作品に分ける → 提案が出る(分けた組は却下済みで記録される)→「提案に戻す」→「同じ作品として統合」→ 作品名の手動編集(再計算で戻らない)を確認した。横スクロールは出ない
 
 - #38 で重複候補の画面(`#/duplicates`)と一覧の印を足した。`_参考/サンプル本` を実バックエンドで配信し、375px と 812x375 の組み込みブラウザで、調べる(進み具合)→ 候補 2 組 → 却下 → 再度調べても復活しない → 戻す、と一覧の印の付け外しを確認した
 

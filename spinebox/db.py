@@ -187,6 +187,80 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 6: 作品の名寄せ(#43)。works: 作品(merged_into: 統合されて別の作品に吸収された。行は消さない)。
+    #    work_fields: 作品の項目(今は title / author)を項目ごとに持つ。source: 出所(filename / container / merge /
+    #    manual / 後で public_db など)、manual: 利用者が手で編集した(再計算・外部ソースの取得で上書きしない)、
+    #    confidence・evidence: 確信度と根拠(JSON)。項目を足すときは行を足すだけでよい(列は足さない)。
+    #    work_aliases: 別名(norm は突き合わせ用の正規化)。dismissed_at: 利用者が外した別名(再計算で戻さない)。
+    #    work_volumes: 巻 → 作品の割り当て(巻あたり 1 行)。source: filename / duplicate / alias / manual / 後で public_db、
+    #    manual: 利用者が決めた割り当て(再計算で動かさない)。
+    #    work_merge_proposals: 2 作品の統合の提案と、その結果(open: 確認待ち / auto: 確信度が高く自動で統合した /
+    #    approved: 承認 / dismissed: 却下)。統合した後も履歴として残す(根拠を画面に出すため)。
+    [
+        """
+        CREATE TABLE works (
+            id INTEGER PRIMARY KEY,
+            merged_into INTEGER REFERENCES works(id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE work_fields (
+            work_id INTEGER NOT NULL REFERENCES works(id),
+            field TEXT NOT NULL,
+            value TEXT,
+            source TEXT NOT NULL,
+            manual INTEGER NOT NULL DEFAULT 0,
+            confidence REAL,
+            evidence TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (work_id, field)
+        )
+        """,
+        """
+        CREATE TABLE work_aliases (
+            id INTEGER PRIMARY KEY,
+            work_id INTEGER NOT NULL REFERENCES works(id),
+            alias TEXT NOT NULL,
+            norm TEXT NOT NULL,
+            source TEXT NOT NULL,
+            manual INTEGER NOT NULL DEFAULT 0,
+            confidence REAL,
+            evidence TEXT,
+            dismissed_at TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE (work_id, norm)
+        )
+        """,
+        "CREATE INDEX work_aliases_norm ON work_aliases (norm)",
+        """
+        CREATE TABLE work_volumes (
+            volume_id INTEGER PRIMARY KEY REFERENCES volumes(id),
+            work_id INTEGER NOT NULL REFERENCES works(id),
+            source TEXT NOT NULL,
+            manual INTEGER NOT NULL DEFAULT 0,
+            confidence REAL,
+            evidence TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX work_volumes_work ON work_volumes (work_id)",
+        """
+        CREATE TABLE work_merge_proposals (
+            id INTEGER PRIMARY KEY,
+            work_a INTEGER NOT NULL REFERENCES works(id),
+            work_b INTEGER NOT NULL REFERENCES works(id),
+            rule TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            evidence TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('open', 'auto', 'approved', 'dismissed')),
+            created_at TEXT NOT NULL,
+            decided_at TEXT
+        )
+        """,
+        "CREATE INDEX work_merge_proposals_status ON work_merge_proposals (status)",
+    ],
 ]
 
 

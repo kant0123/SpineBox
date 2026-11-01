@@ -128,3 +128,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[backend]], [[organize]](コード参照の行番号のみ), [[overview]], [[recurring-review-findings]]
 - 新規: [[metadata-clients]], [[metadata-sources]]
 - 備考: #44、PR #46。国立国会図書館サーチ(OpenSearch)・AniList・MangaUpdates のクライアント、候補ごとの確からしさ、生応答の保存(マイグレーション 5 `metadata_responses`)、取得元ごとのレート制限、`scripts/metadata_probe.py`。DB の作品・巻への結線はしていない(後続)。実通信(2026-11-02)で「お気楽領主の楽しい領地防衛」「かくかくしかじか」「Okiraku ryoshu no tanoshi ryochi」を 3 取得元で引き、応答を `tests/fixtures/metadata/` に記録した。実通信で分かった癖(MangaUpdates の perpage は 10 未満が無視される、AniList はローマ字の綴りが厳密、NDL は著者で絞ると巻が揃う)は [[metadata-sources]]。
+
+## [2026-11-02] ingest | PR #47 作品の名寄せ(ファイル名解析・別名・重複候補の証拠)と作品単位の表示・欠け巻
+- 更新: [[backend]], [[frontend]], [[organize]], [[duplicate-detection]], [[volume-split]], [[overview]], [[recurring-review-findings]], [[server-setup]](コード参照の行番号のみ)
+- 新規: [[work-grouping]]
+- 備考: #43。マイグレーション 6(`works` / `work_fields` / `work_aliases` / `work_volumes` / `work_merge_proposals`)。作品は巻の名前から派生させ、項目・別名・割り当てごとに出所・手動フラグ・確信度・根拠を持つ(公開 DB の取得・手動編集の保護・全文検索の後続 Issue が載せる場所)。自動統合は確信度 0.9 以上で手動が絡まないものだけ。
+  `_参考/サンプル本` の実起動(コピーではなく原本を読み取りのみで蔵書にし、データは別の場所): スキャン直後 3 作品(お気楽領主のローマ字 5 巻・日本語 3 巻、かくかくしかじか 4 巻)→ 重複スキャン後にお気楽領主が 1 作品 8 巻(確信度 0.989、1 巻 186/188・2 巻 142/146 ページ一致、自動統合)、作品ページは 1〜6 巻・1 と 2 巻が重複・欠けなし、かくかくしかじかは別作品で 1〜4 巻・欠けなし(著者・別名は外側の 7z の名前から)。
+  375px と 812x375 の組み込みブラウザで、一覧・作品ページ・巻を分ける・提案の戻す/統合・作品名の手動編集と再計算で戻らないことを確認。原本 2 ファイルのサイズ・mtime は前後で一致。

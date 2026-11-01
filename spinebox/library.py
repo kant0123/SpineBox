@@ -264,18 +264,20 @@ class Library:
             self.register_analysis(conn, vol, force=force)
         return True
 
-    def register_analysis(self, conn: sqlite3.Connection, vol: OpenVolume, *, force: bool = False) -> None:
+    def register_analysis(self, conn: sqlite3.Connection, vol: OpenVolume, *, force: bool = False) -> bool:
         """開いた巻(内側アーカイブの巻)の単位を子の巻として登録する。開いた巻でなければ何もしない。
 
         同じ版で解析済みなら、force でない限り登録し直さない(巻を開くたびに DB へ書かないため)。
+        登録し直したかどうかを返す(作品への割り当てを取り直す契機)。
         """
         if vol.units is None:
-            return
+            return False
         row = get_volume_row(conn, vol.volume_id)
         version = analysis.analysis_version(vol.version, self.settings.limits.max_depth)
         if not force and row["analyzed_version"] == version and row["analysis_error"] is None:
-            return
+            return False
         analysis.register_units(conn, row, vol.units, list(zip(vol.page_units, vol.page_names)), version)
+        return True
 
     def current_analysis_version(self, row) -> str | None:
         try:
