@@ -95,7 +95,7 @@ def test_outer_7z_with_volume_folders_and_inner_archives(sevenzip, make_client, 
         "作品/v4.zip": zip_bytes([("v4/2.jpg", page_bytes("z4/2")), ("v4/1.jpg", page_bytes("z4/1"))]),
     })
     c, settings = make_client(lib, sevenzip_path=sevenzip)
-    assert c.post("/api/scan").json() == {"volumes": 4, "offline_roots": []}
+    assert c.post("/api/scan").json() == {"volumes": 4, "offline_roots": [], "issues": [], "issues_total": 0}
     vols = by_title(c)
     assert set(vols) == {"第1巻", "第2巻", "v3", "v4"}
     assert vols["第1巻"]["page_count"] == 2 and vols["v3"]["page_count"] is None

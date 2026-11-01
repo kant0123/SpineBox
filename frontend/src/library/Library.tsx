@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
+import { api, ApiError, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { duplicatesHref, organizeHistoryHref, organizeHref, readHref } from "../route";
 import { ViewTabs } from "../works/ViewTabs";
 
@@ -46,6 +46,29 @@ function FindingDetail({ f }: { f: Finding }) {
   );
 }
 
+/** スキャンで読めなかったもの。件数は常に見せ、理由の一覧は開いたときだけ */
+function ScanIssues({ result }: { result: ScanResult }) {
+  const shown = result.issues.length;
+  return (
+    <details className="scan-issues">
+      <summary>読めなかったもの {result.issues_total} 件</summary>
+      <ul>
+        {result.issues.map((i, n) => (
+          <li key={n}>
+            <span className="scan-issue-path">
+              {i.path}
+              {i.container_path && ` › ${i.container_path}`}
+              {i.entry_name && ` › ${i.entry_name}`}
+            </span>
+            <span className="scan-issue-reason">{i.reason}</span>
+          </li>
+        ))}
+      </ul>
+      {result.issues_total > shown && <p className="muted">ほか {result.issues_total - shown} 件は省略しました。</p>}
+    </details>
+  );
+}
+
 export function Library() {
   const [volumes, setVolumes] = useState<VolumeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,8 +95,9 @@ export function Library() {
     try {
       setScanResult(await api.scan());
       await load();
-    } catch {
-      setError("スキャンに失敗しました。");
+    } catch (e) {
+      const detail = e instanceof ApiError ? e.detail : undefined;
+      setError(detail ?? "スキャンに失敗しました。");
     } finally {
       setScanning(false);
     }
@@ -113,6 +137,7 @@ export function Library() {
           {scanResult.offline_roots.length > 0 && (
             <> 見つからない蔵書フォルダ(オフライン扱い): {scanResult.offline_roots.join("、")}</>
           )}
+          {scanResult.issues_total > 0 && <ScanIssues result={scanResult} />}
         </div>
       )}
       {error && (

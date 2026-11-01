@@ -30,7 +30,7 @@ from .metadata import MetadataService
 from .metadata.http import HttpFetcher
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
-from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner
+from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, safe_text
 
 log = logging.getLogger(__name__)
 
@@ -256,9 +256,13 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         try:
             result = Scanner(conn, settings).scan()
             _sync_works(conn)  # 名前の解析だけ。内側のアーカイブは取り出さない
+        except Exception as e:  # noqa: BLE001 (画面に原因を出す。トレースバックはログへ)
+            log.exception("スキャンに失敗しました")
+            raise HTTPException(500, safe_text(f"スキャンに失敗しました: {type(e).__name__}: {e}")) from e
         finally:
             scan_lock.release()
-        return {"volumes": result.volumes, "offline_roots": result.offline_roots}
+        return {"volumes": result.volumes, "offline_roots": result.offline_roots,
+                "issues": result.issues, "issues_total": result.issues_total}
 
     @app.get("/api/volumes")
     def list_volumes(conn: sqlite3.Connection = Depends(get_conn)):
