@@ -1,7 +1,7 @@
 ---
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
-updated: 2026-11-01
+updated: 2026-11-02
 related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection]
 ---
 
@@ -102,7 +102,8 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 - リーダーの `raw_entries()` を直接使わない。名前の検証と上限判定が `list_entries()` にしか無い
 - テストで cp932 名(フラグ無し)の zip を作るとき、`zipfile` の書き込みは版で挙動が違う(3.12 は非 ASCII を常に UTF-8 + フラグ、
   3.13 はフラグ無しなら cp437 で符号化)。`tests/conftest.py:21 RawName` で生バイト列を直接書く
-- 暗号化エントリ・未対応の圧縮方式は読み出し時に `ArchiveError` になる(巻としては 422)
+- 暗号化エントリ・未対応の圧縮方式は読み出し時に `ArchiveError` になる(巻としては 422)。暗号化 zip は目次が読めるので、スキャンでは巻として登録され、開いたときに 422
+- zip は同名のエントリを複数持てる。スキャンは同名の内側アーカイブを最初の 1 つだけ巻にして、残りを `scan_issues` に残す([[backend]])
 
 ## 経緯
 
