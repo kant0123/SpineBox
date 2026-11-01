@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-02
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources]
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources]
 ---
 
 # SpineBox 全体像
@@ -26,8 +26,9 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - [[organize]] — `spinebox/organize/`。整理処理(1 ソース → 巻ごとの CBZ)。蔵書に書き込む唯一の経路で、プレビュー → 実行 → 元に戻す
 - [[volume-split]] — 内側アーカイブを開いたときに中の巻へ分解し、名前の巻範囲と中身の食い違いを出す。名前から読む巻番号は候補
 - [[duplicate-detection]] — 別スキャンの重複候補。全ページの見た目の指紋(dHash)と巻番号の候補で判定し、利用者が却下できる。計算は明示操作だけ、蔵書は変えない
-- [[metadata-clients]] — `spinebox/metadata/`。公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)のクライアントと生応答の保存。結果は候補 + 確からしさで、作品・巻へはまだ結線していない。取得元の癖・制限は [[metadata-sources]]
+- [[metadata-clients]] — `spinebox/metadata/`。公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)のクライアントと生応答の保存。結果は候補 + 確からしさ。取得元の癖・制限は [[metadata-sources]]。作品・巻への結線は [[metadata-linking]]
 - [[work-grouping]] — 作品の名寄せ(`spinebox/works.py`)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。確信度の高い統合だけ自動、残りは確認待ち、欠け巻と重複を作品ページで見せる
+- [[metadata-linking]] — `spinebox/linking.py`。公開 DB の情報を作品・巻へ結線する規則。連携の自動/確認待ちの基準、空欄だけを埋める・手動は不変、取得失敗の扱い、全文検索・絞り込みの保存場所
 - [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 
 ## 主要な設計判断

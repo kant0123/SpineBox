@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-02
-related: [overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources]
+related: [metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources]
 ---
 
 # バックエンド
@@ -15,14 +15,14 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 - する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存、
   内側アーカイブの巻の分解と巻範囲の食い違いの検出([[volume-split]])、別スキャンの重複候補の検出(明示操作。[[duplicate-detection]])、
   巻の名前から作る作品の名寄せ(別名・著者・統合の根拠・欠け巻。[[work-grouping]])
-- しない: 蔵書への書き込み(読み取り専用。例外は整理処理 [[organize]] だけで、ユーザーの明示操作でだけ動く)、認証。外部メタデータの取得クライアント(`spinebox/metadata/`)はあるが、まだ作品・巻へ結線していない([[metadata-clients]])。結線は作品の名寄せ([[work-grouping]])の項目・別名の出所・手動フラグに載せる後続の仕事
+- しない: 蔵書への書き込み(読み取り専用。例外は整理処理 [[organize]] だけで、ユーザーの明示操作でだけ動く)、認証。外部メタデータの取得クライアント(`spinebox/metadata/`、[[metadata-clients]])は、作品・巻へ `spinebox/linking.py` で結線する([[metadata-linking]])。ネットワークに触るのは明示操作と設定した定期取得だけで、スキャン・閲覧・編集は通信しない
 - アーカイブの中身の扱いは [[archive-reading]]、内側アーカイブの取り出し先は [[extraction-cache]]
 
 ## 入口となるファイル
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:110 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:135 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:357 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
@@ -32,9 +32,10 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | `spinebox/library.py:100 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:249 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:92 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:283 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
-| `spinebox/works.py:354 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
+| `spinebox/linking.py:299 fetch_work()` / `spinebox/linking.py:577 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
+| `spinebox/works.py:392 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
-| `spinebox/config.py:206 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
+| `spinebox/config.py:216 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:16 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 
 ## API 契約(フロントと共有)
@@ -48,7 +49,12 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
 | `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged"}], "unassigned"}`。一覧に見えている巻を持つ作品だけ(統合された側は出ない) |
-| `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges` 付き)。PATCH は `{"title"?, "author"?}` を手動で保存(空の作品名は 422)。統合で消えた id は 404 |
+| `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "synopsis"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
+| `POST /api/works/{id}/fields/{field}/reset` | 手動の項目を自動に戻す(直す前の値、無ければ空にして公開 DB の値を入れ直す)。手動でない項目・直す前の名前が無い作品名は 409 |
+| `POST /api/works/{id}/metadata/fetch` | その作品の公開 DB を取得して連携を更新し、詳細を返す(同期。取得元の失敗は 200 で `links[].failure` に出る)。取得元が無効なら 409 |
+| `POST /api/works/{id}/links/{source}/choose` / `.../reset` | 確認待ちの候補を選ぶ `{"source_id"}`(null = 該当なし)/ 手動の選択を解除する。選んだ連携は手動で、再取得で変わらない。候補にない id は 422、取得元が違えば 404 |
+| `GET /api/works/metadata` / `POST /api/works/metadata/fetch?all&wait` | 全作品の取得の状態 `{"state", "sources", "background"}` / 取得が必要な作品(`all` で全作品)を裏で取得して 202(`wait` なら同期)。実行中・取得元なしは 409 |
+| `PATCH /api/volumes/{id}/metadata` / `POST .../metadata/{field}/reset` | 巻の書誌(`publisher` `label` `released` `isbn`)を手動で保存 / 自動に戻す。ISBN・発売日の形式違いは 422 |
 | `POST /api/works/{id}/aliases` / `DELETE .../aliases/{alias_id}` | 別名を足す(手動)/ 外す(再計算で戻らない)。詳細を返す |
 | `POST /api/works/{id}/merge` / `POST /api/works/assign` | 手動の統合 `{"other_id"}`(同じ作品は 409)/ 巻の付け替え `{"volume_ids", "work_id" \| null, "title"?}`(null は新しい作品へ分ける)。`{"work_id"}` を返す。どちらも手動の決定になる |
 | `GET /api/works/proposals?status=open\|dismissed\|applied` / `POST .../proposals/{id}/approve\|dismiss\|restore` | 統合の提案と、その承認・却下・戻す。無い id は 404、状態に合わない操作(確認待ちでない提案の承認・却下、却下されていない提案の `restore`)は 409。承認は手動の統合として扱う |
@@ -121,6 +127,8 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   サーバー機のトレースバックは未取得(利用者に依頼中)。合成データで確かめた再現は、同名の内側アーカイブを持つ zip(`IntegrityError`)と、
   孤立サロゲート・不正バイトを含むファイル名(`UnicodeEncodeError`)で、どちらも修正前は 500 でスキャン全体が止まった。
   応答に `issues`・`issues_total` を足し(契約は上の表)、画面で「読めなかったもの N 件」と理由を見せる。マイグレーションは足していない
+- #50 で公開 DB の結線を足した([[metadata-linking]])。マイグレーション 7(`work_links` / `volume_fields`)。設定 `[metadata]` に `background`(定期取得、既定は無効)・`background_interval_seconds`・`recheck_days`・`retry_hours`。
+  `SearchQuery.limit` を足した(NDL のみ。連携は 100 件引いて巻を揃える)。`merge_works` は種別・出版社・ジャンルなども手動優先で引き継ぎ、整理で巻が作り直されても書誌は `transfer_volume_fields` で引き継ぐ
 - #43 で作品の名寄せを足した([[work-grouping]])。マイグレーション 6(`works` / `work_fields` / `work_aliases` / `work_volumes` / `work_merge_proposals`)。
   `_参考/サンプル本` の実起動で、スキャンの直後は 3 作品、重複スキャンの後にお気楽領主が 1 作品(8 巻・自動統合・確信度 0.989)になることを確かめた
 
