@@ -34,10 +34,10 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | `spinebox/metadata/model.py:96 Candidate` | 項目 + `Match` + `response_key`(`metadata_responses.request_key`。生応答を引き直す鍵) |
 | `spinebox/metadata/model.py:123 SearchOutcome` | 取得元ごとの結果。`ok`・`candidates`(確からしさの高い順)・`failure`・`responses`(使った生応答の出所と `from_cache` / `stale`)・`notes` |
 | `spinebox/metadata/base.py:30 MetadataSource` | 取得元の共通基底。`search()` が例外を畳んで `SearchOutcome` にする。取得元は `_search()` だけ書く |
-| `spinebox/metadata/base.py:79 _Run.fetch` | 保存済みの応答つきの取得(下記) |
-| `spinebox/metadata/ndl.py:57 parse_opensearch` / `anilist.py:57 parse_search` / `mangaupdates.py:76 parse_search`・`:89 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
+| `spinebox/metadata/base.py:79 fetch` | 保存済みの応答つきの取得(下記) |
+| `spinebox/metadata/ndl.py:57 parse_opensearch` / `spinebox/metadata/anilist.py:57 parse_search` / `spinebox/metadata/mangaupdates.py:76 parse_search`・`spinebox/metadata/mangaupdates.py:89 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
 | `spinebox/metadata/match.py:113 score_item` | 確からしさの計算 |
-| `spinebox/metadata/http.py:152 HttpFetcher` | タイムアウト・再試行・User-Agent・取得元ごとの関門(`http.py:86 Gate`) |
+| `spinebox/metadata/http.py:152 HttpFetcher` | タイムアウト・再試行・User-Agent・取得元ごとの関門(`spinebox/metadata/http.py:86 Gate`) |
 | `spinebox/metadata/store.py:32 ResponseStore` | 生応答の保存。`get_by_key(source, request_key)` で候補の `response_key` から引ける |
 | `spinebox/db.py:16 MIGRATIONS` の 5 番 | `metadata_responses` |
 | `scripts/metadata_probe.py` | 実通信の確認と、記録(`tests/fixtures/metadata/`)の採取。手動実行のみ、CI では動かさない |
