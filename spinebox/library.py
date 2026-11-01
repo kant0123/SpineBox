@@ -62,7 +62,9 @@ WHERE v.id = ?
 
 def get_volume_row(conn: sqlite3.Connection, volume_id: int) -> sqlite3.Row:
     row = conn.execute(VOLUME_QUERY, (volume_id,)).fetchone()
-    if row is None or row["missing"] or row["source_missing"] or not row["root_enabled"]:
+    # 整理処理で CBZ に置き換えた巻(organized_op_id)は、行を残したまま見えない扱いにする
+    if (row is None or row["missing"] or row["source_missing"] or not row["root_enabled"]
+            or row["organized_op_id"] is not None):
         raise VolumeNotFound(volume_id)
     return row
 

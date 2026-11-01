@@ -2,7 +2,7 @@
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、モック API、CI への組み込み
 updated: 2026-11-01
-related: [overview, local-ci, server-setup]
+related: [overview, local-ci, server-setup, organize]
 ---
 
 # フロントエンド(`frontend/`)
@@ -13,7 +13,8 @@ related: [overview, local-ci, server-setup]
 ## 責務
 
 - する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・リーダー(ページ画像の表示・先読み・
-  読書位置の保存と再開)。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
+  読書位置の保存と再開)・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す([[organize]])。
+  表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
 - しない: ページの並び順・ページ数・オフライン判定。どれもバックエンドが決めた `pages[]`・`offline` をそのまま使う
 
 ## 入口となるファイル
@@ -23,7 +24,8 @@ related: [overview, local-ci, server-setup]
 | `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
 | `frontend/src/reader/Reader.tsx:29 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
-| `frontend/src/api.ts:56 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
+| `frontend/src/api.ts:102 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/mock/mockBackend.ts:49 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用 |
 
 ## 決めたこと(コードからは理由が読めないもの)
@@ -46,6 +48,9 @@ related: [overview, local-ci, server-setup]
   そのため起動時に `frontend/src/route.ts:26 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
   入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
+- **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
+  実行ボタンは計画が `planned` のときだけ出す(`blocked` は理由だけ出す)。サーバーの 409 の `detail` をそのまま見せる。
+  プレビュー画面を確認の代わりにして、`window.confirm` は使っていない
 - **汎用カルーセルライブラリは使わない**(GOAL.md の初期既定)。ページ送りは状態の差し替えだけで、アニメーションは無い
 
 ## 落とし穴

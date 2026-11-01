@@ -10,6 +10,7 @@
 蔵書には読み取りしかしない。サイズ・mtime・SCAN_VERSION が前回と同じアーカイブは開き直さない。
 ルートが見えない・読めないときはオフラインにするだけで、レコードは消さない。見つからなくなった
 ソース・巻も missing の印を付けるだけで消さない(読書位置ごと失わないため)。
+整理処理の作業場・退避フォルダ(`Settings.organize_base`。既定 `<ルート>/.spinebox`)は走査しない。
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from . import db
 from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
                       open_archive)
 from .archive.safety import Skip, depth_problem
-from .config import Settings
+from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .pages import is_image
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
@@ -53,6 +54,10 @@ def _fs_name_bytes(name: str) -> bytes:
 def _rel(root: Path, path: str) -> str:
     rel = os.path.relpath(path, root)
     return "" if rel == "." else rel.replace(os.sep, "/")
+
+
+def _norm(path: str) -> str:
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
 
 
 def root_is_accessible(root: Path) -> bool:
@@ -132,9 +137,14 @@ class Scanner:
         result.volumes = self.conn.execute(
             """SELECT COUNT(*) FROM volumes v JOIN sources s ON s.id = v.source_id
                JOIN library_roots r ON r.id = s.root_id
-               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0"""
+               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0 AND v.organized_op_id IS NULL"""
         ).fetchone()[0]
         return result
+
+    def _excluded_dirs(self, root: Path) -> set[str]:
+        bases = [root / DEFAULT_ORGANIZE_DIR, self.settings.organize_base(root)]
+        bases += [self.settings.organize_base(Path(r)) for r in self.settings.library_roots]
+        return {_norm(str(b)) for b in bases}
 
     def _mark_root_offline(self, root_id: int) -> None:
         with db.transaction(self.conn) as c:
@@ -149,8 +159,10 @@ class Scanner:
             if err.filename:
                 error_dirs.append(_rel(root, err.filename))
 
+        excluded = self._excluded_dirs(root)
         for dirpath, dirnames, filenames in os.walk(root, onerror=onerror, followlinks=False):
-            dirnames.sort()
+            # 整理処理の作業場・退避フォルダ(既定 <ルート>/.spinebox)は蔵書として扱わない
+            dirnames[:] = sorted(d for d in dirnames if _norm(os.path.join(dirpath, d)) not in excluded)
             images = sorted(f for f in filenames if is_image(f))
             if images:
                 rel = _rel(root, dirpath)

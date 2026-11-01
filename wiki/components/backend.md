@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-01
-related: [overview, archive-reading, extraction-cache, server-setup]
+related: [overview, archive-reading, extraction-cache, server-setup, organize]
 ---
 
 # バックエンド
@@ -13,7 +13,7 @@ related: [overview, archive-reading, extraction-cache, server-setup]
 ## 責務
 
 - する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存
-- しない: 蔵書への書き込み(読み取り専用。整理処理はフェーズ 2 以降で別に作る)、メタデータ取得、認証
+- しない: 蔵書への書き込み(読み取り専用。例外は整理処理 [[organize]] だけで、ユーザーの明示操作でだけ動く)、メタデータ取得、認証
 - アーカイブの中身の扱いは [[archive-reading]]、内側アーカイブの取り出し先は [[extraction-cache]]
 
 ## 入口となるファイル
@@ -40,6 +40,9 @@ related: [overview, archive-reading, extraction-cache, server-setup]
 | `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress"}`。内側アーカイブの巻はここで初めて取り出す |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422 |
+| `POST /api/organize/plan` | body `{"volume_id"}` か `{"source_id"}`(どちらか一方)。その巻を含むソース全体の計画。問題があれば `state: "blocked"`・`op_id: null`(保存しない)。蔵書に書かない |
+| `POST /api/organize/{op_id}/execute` / `.../undo` | 操作(`{"op_id", "state", "volumes": [{"volume_id", "output_rel_path", "new_volume_id", ...}], "warnings", "problems", "error", ...}`)。始められない・失敗(巻き戻し済み)は 409 で `{"detail", "op"}`。スキャン中も 409 |
+| `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない) |
 
 `GET /healthz`(`/api` の外、フロントは使わない)は稼働確認用で、`{"ok": true, "commit": 短い SHA か null}`。
 DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`commit` はプロセスが起動時に読んだコミット。使い方は [[server-setup]]。
@@ -56,6 +59,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **missing**: ルートは見えるのにソース(ファイル・フォルダ)が無い、またはアーカイブを読み直したら巻が無くなった。
   一覧から外すが行は残す。同じ相対パスに戻れば同じ巻 id に戻り、読書位置もつながる
 - **enabled = 0**: 設定の `library_roots` から外したルート。一覧から外すだけで、戻せば復活する
+- **organized_op_id**: 整理処理で CBZ に置き換えた元の巻。一覧・閲覧から外すだけで、元に戻せば印が外れる([[organize]])
 - 走査中に読めなかったサブフォルダ(`os.walk` の onerror)の配下は missing にしない。一時的な権限エラーで
   大量の巻を一覧から落とさないため
 
@@ -72,7 +76,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
-- 相対パスは設定ファイルの場所が起点。サービスとして起動したときのカレントに左右されないため
+- 相対パスは設定ファイルの場所が起点。サービスとして起動したときのカレントに左右されないため。
+  例外は `organize_dir`(整理処理の作業場・退避フォルダ)で、相対なら各蔵書ルートが起点(蔵書と同じドライブに置くため)
+- スキャンは整理処理の置き場(既定 `<ルート>/.spinebox`)を走査しない。退避した元・作業場の CBZ を巻として拾わないため
 - SQLite はリクエストごとに接続を開く(FastAPI の同期エンドポイントはスレッドプールで動くため)。WAL を使う
 
 ## 経緯

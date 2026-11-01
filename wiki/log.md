@@ -92,3 +92,9 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] verify | フェーズ 1 通し検証
 - 更新: なし(GOAL.md のチェックボックスのみ)
 - 備考: #27、PR #28。main 696fdec で `py -3.12 scripts/ci_local.py --no-report` 成功(pytest 250 passed)、`SPINEBOX_SAMPLE_DIR` 指定の `tests/test_reference_samples.py` 成功。`_参考/サンプル本` を蔵書ルートにした実起動でスキャン 10 巻・直後のキャッシュ 0 件、375px の組み込みブラウザで入れ子 3 段の rar 巻を 1→472 ページまで読み既読保存、zip 巻の 4 ページ目から再開を確認。原本 2 ファイルのサイズ・mtime・sha256 は検証前後で一致。サーバー機での常駐・LAN 閲覧は人間確認待ち #20。初回オープン時に読み込み表示が無い点は #26。
+
+## [2026-11-01] ingest | #31 整理処理(CBZ 化 → 検証 → 確定 → 退避 → 元に戻す)
+- 新規: [[organize]]
+- 更新: [[backend]], [[frontend]], [[overview]]
+- 備考: DB 版 2(organize_ops / organize_steps / organize_volumes、volumes.organized_op_id)。設定 `organize_dir`(相対は各蔵書ルートが起点)。
+  往復後に蔵書フォルダがパス・バイト列・mtime まで一致することを一時ディレクトリのテストで確認。実データ(`_参考/` のコピー)での往復はローカルで確認する。

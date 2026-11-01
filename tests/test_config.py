@@ -59,6 +59,9 @@ def test_missing_env_config_is_error(tmp_path, monkeypatch):
     'port = "80"',
     '[limits]\nmax_entries = -1',
     'not toml ===',
+    'organize_dir = "../outside"',
+    'organize_dir = "."',
+    'organize_dir = ""',
 ])
 def test_invalid_values(tmp_path, body):
     conf = tmp_path / "c.toml"
@@ -72,6 +75,18 @@ def test_example_config_parses():
     assert s.library_roots == ()
     assert s.cache_limit_bytes == 2 * GIB
     assert s.host == "127.0.0.1"
+    assert s.organize_dir == ".spinebox"
+
+
+def test_organize_dir_is_relative_to_each_root(tmp_path):
+    conf = tmp_path / "c.toml"
+    abs_dir = (tmp_path / "work_area").as_posix()
+    conf.write_text('organize_dir = "_sb"\n', encoding="utf-8")
+    s = load_settings(conf)
+    # 設定ファイルの場所ではなく蔵書ルートが起点(作業場を蔵書と同じドライブに置くため)
+    assert s.organize_base(tmp_path / "lib") == tmp_path / "lib" / "_sb"
+    conf.write_text(f'organize_dir = "{abs_dir}"\n', encoding="utf-8")
+    assert load_settings(conf).organize_base(tmp_path / "lib") == Path(abs_dir)
 
 
 def _run_main(monkeypatch, tmp_path, host):

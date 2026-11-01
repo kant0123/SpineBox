@@ -19,12 +19,19 @@ from .buildinfo import current_commit
 from .cache import CacheTooLarge, ExtractionCache
 from .config import Settings
 from .library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_offline
+from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
 from .scanner import Scanner
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 PAGE_CACHE_CONTROL = "private, max-age=3600"
+
+
+class OrganizePlanIn(BaseModel):
+    """どちらか一方を指定する。volume_id ならその巻を含むソース(元ファイル/フォルダ)全体が対象。"""
+    volume_id: StrictInt | None = None
+    source_id: StrictInt | None = None
 
 
 class ProgressIn(BaseModel):
@@ -73,6 +80,14 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def _too_large(request: Request, exc: CacheTooLarge):
         return JSONResponse({"detail": f"この巻を読めません: {exc}"}, status_code=422)
 
+    @app.exception_handler(OperationNotFound)
+    def _op_not_found(request: Request, exc: OperationNotFound):
+        return JSONResponse({"detail": "整理の操作が見つかりません"}, status_code=404)
+
+    @app.exception_handler(OrganizeError)
+    def _organize_error(request: Request, exc: OrganizeError):
+        return JSONResponse({"detail": str(exc), "op": exc.op}, status_code=409)
+
     @app.get("/healthz")
     def healthz():
         """稼働確認(watchdog・CD の反映確認用)。DB に触れなければ 503 にして、異常を 200 で隠さない。"""
@@ -103,7 +118,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                       s.offline AS source_offline, r.online AS root_online, p.page, p.finished
                FROM volumes v JOIN sources s ON s.id = v.source_id JOIN library_roots r ON r.id = s.root_id
                LEFT JOIN reading_progress p ON p.volume_id = v.id
-               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0"""
+               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0 AND v.organized_op_id IS NULL"""
         ).fetchall()
         rows.sort(key=lambda r: (natural_key(r["rel_path"]), natural_key(r["entry_prefix"]),
                                  natural_key(r["container_path"] or "")))
@@ -159,6 +174,41 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                          updated_at = excluded.updated_at""",
                       (volume_id, body.page, int(body.finished), db.now()))
         return _get_progress(conn, volume_id)
+
+    # --- 整理処理(CBZ 化)。蔵書に書き込む唯一の経路。実行と元に戻すはスキャンと同じロックで直列化する ---
+
+    def organizer(conn) -> Organizer:
+        return Organizer(conn, settings, library)
+
+    @app.post("/api/organize/plan")
+    def organize_plan(body: OrganizePlanIn, conn: sqlite3.Connection = Depends(get_conn)):
+        if (body.volume_id is None) == (body.source_id is None):
+            raise HTTPException(422, "volume_id か source_id のどちらか一方を指定してください")
+        return organizer(conn).plan(volume_id=body.volume_id, source_id=body.source_id)
+
+    @app.get("/api/organize")
+    def organize_history(conn: sqlite3.Connection = Depends(get_conn)):
+        return organizer(conn).history()
+
+    @app.get("/api/organize/{op_id}")
+    def organize_get(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
+        return organizer(conn).get(op_id)
+
+    def _exclusive(fn):
+        if not scan_lock.acquire(blocking=False):
+            raise HTTPException(409, "スキャンか整理の処理中です")
+        try:
+            return fn()
+        finally:
+            scan_lock.release()
+
+    @app.post("/api/organize/{op_id}/execute")
+    def organize_execute(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
+        return _exclusive(lambda: organizer(conn).execute(op_id))
+
+    @app.post("/api/organize/{op_id}/undo")
+    def organize_undo(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
+        return _exclusive(lambda: organizer(conn).undo(op_id))
 
     if frontend_dist is not None and (frontend_dist / "index.html").is_file():
         _mount_frontend(app, frontend_dist)

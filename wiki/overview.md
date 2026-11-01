@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-01
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup]
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, organize]
 ---
 
 # SpineBox 全体像
@@ -23,11 +23,13 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - [[backend]] — `spinebox/`。FastAPI の単一プロセス。設定・SQLite・スキャン・閲覧 API。フロントと共有する API 契約もここ
 - [[archive-reading]] — `spinebox/archive/`。アーカイブの目次読みと 1 エントリの読み出し(zip / cbz は標準 zipfile、7z / rar は 7-Zip CLI)
 - [[extraction-cache]] — 内側アーカイブを開いたときだけ使う、ハッシュ名・容量上限つきの展開キャッシュ
+- [[organize]] — `spinebox/organize/`。整理処理(1 ソース → 巻ごとの CBZ)。蔵書に書き込む唯一の経路で、プレビュー → 実行 → 元に戻す
 - [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 
 ## 主要な設計判断
 
-- 蔵書は読み取り専用。スキャンは目次だけ読み、内側アーカイブは巻を開いたときだけ [[extraction-cache]] に取り出す
+- 蔵書に書き込むのは整理処理([[organize]])だけ。同じドライブの作業場で全巻を作って検証してから改名で確定し、元は退避フォルダへ移すだけで消さない
+- それ以外は蔵書を読み取り専用で扱う。スキャンは目次だけ読み、内側アーカイブは巻を開いたときだけ [[extraction-cache]] に取り出す
 - 見えなくなった蔵書のレコード・読書位置は消さず、offline / missing の印を付けるだけ([[backend]])
 - エントリ名はディスク上のパスに使わない。名前は生バイト列と使った文字コードごと残す([[archive-reading]])
 
