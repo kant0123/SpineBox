@@ -29,6 +29,7 @@ from ..config import Settings
 from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
 from ..pages import is_image, natural_key
 from ..scanner import SCAN_VERSION, Scanner, VolumeSpec, _fs_name_bytes, resolve_source_path, root_is_accessible
+from ..works import transfer_assignment
 from . import cbz, fs
 
 
@@ -487,10 +488,12 @@ class Organizer:
 
 
 def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_count: int | None) -> None:
-    """巻に紐づくユーザーの記録(今は読書位置)を別の巻へ写す。手動編集メタデータを足したらここで一緒に写す。
+    """巻に紐づくユーザーの記録(読書位置・作品の割り当て)を別の巻へ写す。手動編集メタデータを足したらここで一緒に写す。
 
     ページの並びは CBZ 化の前後で同じ(今の並び順で固定する)なので、ページ番号はそのまま使える。
+    作品の割り当ては手動の決定も含めてそのまま写す(整理で作品が変わらない。元に戻すときは逆向きに写す)。
     """
+    transfer_assignment(c, from_id, to_id)
     row = c.execute("SELECT page, finished FROM reading_progress WHERE volume_id = ?", (from_id,)).fetchone()
     if row is None:
         return

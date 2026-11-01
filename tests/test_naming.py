@@ -1,6 +1,6 @@
 import pytest
 
-from spinebox.naming import parse_number
+from spinebox.naming import normalize_title, parse_number, parse_work_name
 
 
 @pytest.mark.parametrize("name, kind, start, end", [
@@ -70,3 +70,70 @@ def test_extension_is_stripped_only_when_known():
 
 def test_as_dict_shape():
     assert parse_number("v01-03").as_dict() == {"kind": "volume", "start": 1, "end": 3, "evidence": "v01-03"}
+
+
+# --- 作品名・著者の候補(#43) ----------------------------------------------------------------
+
+OKIRAKU = "Okiraku ryoshu no tanoshi ryochi"
+OKIRAKU_JP = "お気楽領主の楽しい領地防衛"
+
+
+@pytest.mark.parametrize("name, title, authors", [
+    # サンプルの全巻名(_参考/サンプル本)と外側のアーカイブ名
+    ("20260112RAW.TO_Okiraku ryoshu no tanoshi ryochi v01-06.zip", OKIRAKU, ()),
+    ("Okiraku ryoshu no tanoshi ryochi v01s", OKIRAKU, ()),
+    ("Okiraku ryoshu no tanoshi ryochi v02s", OKIRAKU, ()),
+    ("Okiraku_ryoshu_no_tanoshi_ryochi_v04", OKIRAKU, ()),
+    ("Okiraku_ryoshu_no_tanoshi_ryochi_v05A", OKIRAKU, ()),
+    ("Okiraku_ryoshu_no_tanoshi_ryochi_v06", OKIRAKU, ()),
+    ("[青色まろ×赤池宗] お気楽領主の楽しい領地防衛 第01巻", OKIRAKU_JP, ("青色まろ", "赤池宗")),
+    ("[青色まろ×赤池宗] お気楽領主の楽しい領地防衛 第02巻", OKIRAKU_JP, ("青色まろ", "赤池宗")),
+    ("[青色まろ×赤池宗] お気楽領主の楽しい領地防衛 第03巻", OKIRAKU_JP, ("青色まろ", "赤池宗")),
+    ("[東村アキコ] かくかくしかじか 第01-04巻.7z", "かくかくしかじか", ("東村アキコ",)),
+    ("Kakukaku Shikajika v01-03", "Kakukaku Shikajika", ()),
+    ("Kakukaku Shikajika v01-02.rar", "Kakukaku Shikajika", ()),
+    ("Kakukaku Shikajika v01", "Kakukaku Shikajika", ()),
+    ("Kakukaku Shikajika v04", "Kakukaku Shikajika", ()),
+    # Issue の名前の形
+    ("[著者] 作品名 第12巻", "作品名", ("著者",)),
+    ("[作画×原作] 作品名 第3巻.zip", "作品名", ("作画", "原作")),
+    ("［作画／原作］作品名　第３巻", "作品名", ("作画", "原作")),          # 全角の括弧・記号・数字
+    ("(一般コミック) [著者] 作品名 第1巻 (2020) [DL版]", "作品名", ("著者",)),
+    ("20260112RAW.TO_Title_Name_v01", "Title Name", ()),
+    ("DLRAW.TO_Some Title v03", "Some Title", ()),
+    ("Some_Title_v01s", "Some Title", ()),
+    ("TITLE vol.02", "TITLE", ()),
+    ("[Author] Some Title - Vol.01 [Digital]", "Some Title", ("Author",)),
+    ("作品名 全3巻", "作品名", ()),
+    ("作品名", "作品名", ()),
+    ("01巻 作品名", "作品名", ()),
+    ("作品 第12話", "作品", ()),
+    ("[作品名] 第1巻", "作品名", ()),                                    # 括弧の中しか作品名が無いなら作品名
+])
+def test_parse_work_name(name, title, authors):
+    wn = parse_work_name(name)
+    assert wn is not None, name
+    assert (wn.title, wn.authors) == (title, authors)
+    assert wn.norm == normalize_title(title) and wn.norm
+    assert ("title", title) in wn.parts  # 根拠(名前のどの部分を作品名と読んだか)
+
+
+@pytest.mark.parametrize("name", [
+    "DLRAW.TO_001.jpg", "001", "第01巻", "v01", "Vol.1", "cover", "新しいフォルダー", "", "2019", "[DL版]",
+])
+def test_parse_work_name_without_a_title(name):
+    assert parse_work_name(name) is None
+
+
+def test_work_name_keeps_number_and_parts_as_evidence():
+    wn = parse_work_name("20260112RAW.TO_[著者] 作品 v01s.zip")
+    assert wn.number.start == 1 and wn.number.evidence == "v01"
+    assert wn.parts == (("distributor", "20260112RAW.TO"), ("author", "著者"), ("title", "作品"), ("number", "v01"))
+    assert wn.as_dict() == {"title": "作品", "authors": ["著者"], "parts": [list(p) for p in wn.parts]}
+
+
+def test_romaji_and_japanese_names_are_not_the_same_work_by_name_alone():
+    assert normalize_title("Okiraku_ryoshu_no") == normalize_title("OKIRAKU Ryoshu No")
+    assert normalize_title("ＯＫＩ　ｒａｋｕ") == normalize_title("oki raku")
+    assert normalize_title("カガク") == normalize_title("かがく")
+    assert normalize_title(OKIRAKU) != normalize_title(OKIRAKU_JP)  # 結ぶのは重複候補の証拠や別名

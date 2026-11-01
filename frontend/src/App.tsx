@@ -3,6 +3,9 @@ import { parseRoute, type Route } from "./route";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
 import { Duplicates } from "./duplicates/Duplicates";
+import { WorkPage } from "./works/WorkPage";
+import { WorkProposals } from "./works/WorkProposals";
+import { Works } from "./works/Works";
 import { OrganizeHistory, OrganizePlan } from "./organize/Organize";
 
 export function App() {
@@ -23,6 +26,12 @@ export function App() {
       return <OrganizeHistory />;
     case "duplicates":
       return <Duplicates />;
+    case "works":
+      return <Works />;
+    case "work":
+      return <WorkPage key={route.id} id={route.id} />;
+    case "work-proposals":
+      return <WorkProposals />;
     default:
       return <Library />;
   }

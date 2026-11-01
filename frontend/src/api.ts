@@ -45,6 +45,8 @@ export interface VolumeSummary {
   can_analyze: boolean;
   /** この巻を含む、却下されていない重複候補の数(別スキャンの疑い。#38) */
   duplicate_count: number;
+  /** 名前から割り当てられた作品(#43)。割り当てが無ければ null */
+  work_id?: number | null;
 }
 
 export interface PageInfo {
@@ -137,6 +139,117 @@ export interface DuplicateScanState {
 export interface DuplicateList {
   scan: DuplicateScanState;
   candidates: DuplicateCandidate[];
+}
+
+// 作品の名寄せ(#43)。出所(source)・手動か・確信度は項目ごとに持つ
+export type WorkSource = "filename" | "container" | "duplicate" | "alias" | "merge" | "manual" | "previous_title" | "public_db";
+
+export interface WorkAlias {
+  id: number;
+  alias: string;
+  source: WorkSource;
+  manual: boolean;
+  confidence: number | null;
+}
+
+export interface WorkSummary {
+  id: number;
+  title: string;
+  title_source: WorkSource;
+  title_manual: boolean;
+  author: string | null;
+  author_source: WorkSource | null;
+  author_manual: boolean;
+  aliases: WorkAlias[];
+  volume_count: number;
+  offline_count: number;
+  finished_count: number;
+  duplicate_slots: number;
+  max_volume: number | null;
+  missing_volumes: number[];
+  missing_episodes: number[];
+  pending_proposals: number;
+  /** 統合された作品(根拠は詳細の merges) */
+  merged: boolean;
+}
+
+export interface WorkList {
+  works: WorkSummary[];
+  /** 作品に割り当てられていない巻の数 */
+  unassigned: number;
+}
+
+export interface WorkVolume {
+  id: number;
+  title: string;
+  parent_title: string | null;
+  page_count: number | null;
+  offline: boolean;
+  progress: Progress | null;
+  volume_number: VolumeNumber | null;
+  duplicate_count: number;
+  assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
+}
+
+export interface WorkSlot {
+  kind: "volume" | "episode";
+  start: number;
+  end: number;
+  label: string;
+  /** 同じ番号の巻が 2 つ以上(重複としてまとめて表示) */
+  duplicate: boolean;
+  volumes: WorkVolume[];
+}
+
+export interface WorkBrief {
+  id: number;
+  title: string;
+  author: string | null;
+  aliases: string[];
+  volume_count: number;
+  volumes: { id: number; title: string; volume_number: VolumeNumber | null }[];
+}
+
+export interface DuplicateItem {
+  matched_pages: number;
+  compared_pages: number;
+  ratio: number;
+  rule: string;
+  volume_a: { id: number; title: string };
+  volume_b: { id: number; title: string };
+}
+
+export interface MergeEvidence {
+  duplicate?: DuplicateItem[];
+  alias?: { norm: string; a: { name: string; source: string; is_title: boolean }; b: { name: string; source: string; is_title: boolean } };
+}
+
+export interface WorkProposal {
+  id: number;
+  rule: "duplicate" | "alias" | "manual";
+  confidence: number;
+  status: "open";
+  evidence: MergeEvidence;
+  a: WorkBrief;
+  b: WorkBrief;
+}
+
+export interface WorkMerge {
+  id: number;
+  rule: "duplicate" | "alias" | "manual";
+  confidence: number;
+  status: "auto" | "approved";
+  evidence: MergeEvidence;
+  titles: string[];
+}
+
+export interface WorkDetail extends WorkSummary {
+  title_confidence: number | null;
+  slots: WorkSlot[];
+  unnumbered: WorkVolume[];
+  numbers: { volume: { max: number | null; missing: number[]; limited: boolean }; episode: { max: number | null; missing: number[]; limited: boolean } };
+  proposals: WorkProposal[];
+  merges: WorkMerge[];
 }
 
 // 整理処理(CBZ 化)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
@@ -234,5 +347,25 @@ export const api = {
     }),
   executeOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/execute`, { method: "POST" }),
   undoOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/undo`, { method: "POST" }),
+  refreshWorks: () => request<unknown>("/api/works/refresh", { method: "POST" }),
+  listWorks: () => request<WorkList>("/api/works"),
+  getWork: (id: number | string) => request<WorkDetail>(`/api/works/${vid(id)}`),
+  editWork: (id: number | string, body: { title?: string; author?: string }) =>
+    request<WorkDetail>(`/api/works/${vid(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  addAlias: (id: number | string, alias: string) =>
+    request<WorkDetail>(`/api/works/${vid(id)}/aliases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ alias }) }),
+  removeAlias: (id: number | string, aliasId: number) => request<WorkDetail>(`/api/works/${vid(id)}/aliases/${aliasId}`, { method: "DELETE" }),
+  mergeWorks: (id: number | string, otherId: number) =>
+    request<WorkDetail>(`/api/works/${vid(id)}/merge`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ other_id: otherId }) }),
+  /** 巻を別の作品へ付け替える。workId が null なら新しい作品に分ける */
+  assignVolumes: (volumeIds: number[], workId: number | null, title?: string) =>
+    request<{ work_id: number }>("/api/works/assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ volume_ids: volumeIds, work_id: workId, ...(title ? { title } : {}) }),
+    }),
+  listProposals: (status: "open" | "dismissed" | "applied" = "open") => request<WorkProposal[]>(`/api/works/proposals?status=${status}`),
+  decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
+    request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),
   organizeHistory: () => request<OrganizeOp[]>("/api/organize"),
 };

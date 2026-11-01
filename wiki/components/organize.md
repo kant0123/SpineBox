@@ -2,7 +2,7 @@
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。安全設計の理由と却下した案
 updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, duplicate-detection]
+related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping]
 ---
 
 # 整理処理(CBZ 化)
@@ -36,7 +36,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection]
 | `spinebox/organize/organizer.py:417 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:489 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す |
+| `spinebox/organize/organizer.py:490 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
 置き場は `spinebox/config.py:80 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
@@ -91,6 +91,8 @@ related: [overview, backend, frontend, volume-split, duplicate-detection]
   登録する。スキャナーの切り出し方を変えたら、ここも合わせないと次のスキャンで巻 id が変わる
 
 ## 経緯
+
+- #43 で作品の名寄せ([[work-grouping]])を足したのに合わせ、`transfer_volume_state` が元の巻の作品の割り当てを CBZ の巻へ写し、元に戻すと逆向きに写す(整理しただけで巻が作品から外れない)。テスト `tests/test_works.py` で往復を確認
 
 - #31 で作成。往復(実行 → 元に戻す)後に蔵書フォルダが実行前とパス・バイト列・mtime まで一致することをテストで確かめている
   (`tests/test_organize.py`)。クラウドで作ったブランチは #30(巻への分解)より前から切られていたので、ローカル引き取りで

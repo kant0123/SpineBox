@@ -11,6 +11,7 @@ import type {
   VolumeDetail,
   VolumeSummary,
 } from "../api";
+import { createMockWorks } from "./mockWorks";
 
 export interface MockResponse {
   status: number;
@@ -137,6 +138,7 @@ function pageSvg(title: string, index: number, total: number): string {
 /** 状態を持つモック。progress の保存は次の GET に反映される。 */
 export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), options: MockOptions = {}) {
   const log: { method: string; path: string; body?: unknown }[] = [];
+  const mockWorks = createMockWorks(() => volumes);
   const opened = new Set<number>();
   const candidates = defaultCandidates(volumes);
   const idleScan: DuplicateScanState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
@@ -197,6 +199,9 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     const path = rawPath.split("?")[0];
     const parsed = body ? JSON.parse(body) : undefined;
     log.push({ method, path, body: parsed });
+
+    const w = mockWorks.handle(method, path, rawPath.split("?")[1] ?? "", parsed);
+    if (w) return json(w.status, w.body);
 
     const shown = () => volumes.filter((v) => !v.hidden);
     if (method === "GET" && path === "/api/volumes") {
