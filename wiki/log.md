@@ -151,6 +151,10 @@ grep "^## \[" wiki/log.md | tail -5
   合成データで修正前に 500 になる原因を 2 つ確認(同名の内側アーカイブを持つ zip → `IntegrityError`、孤立サロゲート・不正バイトの名前 → `UnicodeEncodeError`)。ほかに祖先を指す Windows ジャンクションの循環を止め、読めない画像・読めないフォルダ・巻にならないアーカイブを記録するようにした。
   375px と横長の組み込みブラウザで、問題を含む合成蔵書のスキャン結果表示を確認。`_参考/サンプル本` は 10 巻・問題 0 件・原本不変。
 
+## [2026-11-02] ingest | 拡張子ではなく先頭のマジックバイトでアーカイブの形式を判定する(#49)
+- 更新: [[archive-reading]]
+- 備考: #49、PR #60。本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。
+
 ## [2026-11-02] ingest | 作品の全文検索と絞り込み
 - 新規: [[work-search]]
 - 更新: [[backend]], [[frontend]], [[work-grouping]], [[metadata-clients]], [[overview]], [[volume-split]], [[server-setup]](後 2 つは `MIGRATIONS` の行番号の参照だけ)
