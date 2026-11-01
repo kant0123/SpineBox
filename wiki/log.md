@@ -123,3 +123,8 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-01] verify | PR #42 フェーズ 2 通し検証
 - 更新: なし(GOAL.md のチェックボックスのみ)
 - 備考: #41。main 80e077d で `py -3.12 scripts/ci_local.py --no-report` 成功(pytest 400 passed / vitest 61 passed / wiki-lint OK)。`_参考/サンプル本` を同じドライブの一時ディレクトリへコピーし、コピーを蔵書ルートにして実起動: スキャン 10 巻、`v01-03` を解析すると 1・2・3 巻(157/156/159 ページ)に分解され食い違い無し、`v04` も無し、お気楽領主の zip も無し(サンプルに食い違いが無い件は人間確認待ち #29)。重複検出は 12 巻を 17 秒で指紋化し、候補はお気楽領主 1 巻(186/188 一致)・2 巻(142/146)の 2 組だけ。かくかくしかじかの 7z を CBZ 4 つに整理 → 全 CBZ の最終ページ取得 → v02 の読書位置(40 ページ)が CBZ の巻へ引き継ぎ → 元に戻すとコピーの sha256 が実行前と一致・読書位置も元の巻へ、作成した CBZ は退避フォルダに残る。#31 引き取り時に報告された「スキャンボタンで一覧が更新されない」はブラウザで再現しなかった。原本 2 ファイルのサイズ・mtime・sha256 は検証前後で一致。
+
+## [2026-11-02] ingest | 公開 DB クライアントと生応答の保存
+- 更新: [[backend]], [[organize]](コード参照の行番号のみ), [[overview]], [[recurring-review-findings]]
+- 新規: [[metadata-clients]], [[metadata-sources]]
+- 備考: #44、PR #46。国立国会図書館サーチ(OpenSearch)・AniList・MangaUpdates のクライアント、候補ごとの確からしさ、生応答の保存(マイグレーション 5 `metadata_responses`)、取得元ごとのレート制限、`scripts/metadata_probe.py`。DB の作品・巻への結線はしていない(後続)。実通信(2026-11-02)で「お気楽領主の楽しい領地防衛」「かくかくしかじか」「Okiraku ryoshu no tanoshi ryochi」を 3 取得元で引き、応答を `tests/fixtures/metadata/` に記録した。実通信で分かった癖(MangaUpdates の perpage は 10 未満が無視される、AniList はローマ字の綴りが厳密、NDL は著者で絞ると巻が揃う)は [[metadata-sources]]。

@@ -171,6 +171,22 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX duplicate_candidates_b ON duplicate_candidates (volume_b)",
     ],
+    # 5: 公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)の生応答。同じ要求は有効期限内なら使い回す(#44)。
+    # request は秘匿を除いた要求の記述(JSON)、body は応答本文のバイト列そのまま。作品・巻には結び付けない
+    [
+        """
+        CREATE TABLE metadata_responses (
+            id INTEGER PRIMARY KEY,
+            source TEXT NOT NULL,
+            request_key TEXT NOT NULL,
+            request TEXT NOT NULL,
+            status INTEGER NOT NULL,
+            body BLOB NOT NULL,
+            fetched_at TEXT NOT NULL,
+            UNIQUE (source, request_key)
+        )
+        """,
+    ],
 ]
 
 

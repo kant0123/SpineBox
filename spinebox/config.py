@@ -29,6 +29,29 @@ class ExtractionLimits:
     max_depth: int = 3
 
 
+# 公開 DB クライアント(spinebox/metadata/)の既定。最小間隔の根拠は wiki/concepts/metadata-sources.md
+DEFAULT_METADATA_SOURCES = ("ndl", "anilist", "mangaupdates")
+DEFAULT_MIN_INTERVALS = {"ndl": 1.0, "anilist": 2.0, "mangaupdates": 1.0}
+
+
+@dataclass(frozen=True)
+class MetadataSettings:
+    """外部メタデータ取得(ベストエフォート)の設定。"""
+    sources: tuple[str, ...] = DEFAULT_METADATA_SOURCES  # 有効にする取得元。空なら取得しない
+    cache_ttl_days: float = 30.0       # 保存済みの生応答を使い回す期間
+    timeout_seconds: float = 10.0
+    max_retries: int = 2               # 5xx・タイムアウト・接続不可の再試行回数(429 は再試行しない)
+    candidate_limit: int = 20          # 1 回の検索で取る候補の上限
+    detail_limit: int = 3              # MangaUpdates で詳細を引き直す候補の数
+    contact: str = ""                  # User-Agent に付ける連絡先(任意)
+    min_interval_seconds: dict = field(default_factory=lambda: dict(DEFAULT_MIN_INTERVALS))
+    # 将来の取得元(楽天ブックスなど)の API キー。設定ファイル(リポジトリ外)にだけ置く。ログ・保存物には出さない
+    keys: dict = field(default_factory=dict, repr=False)
+
+    def interval(self, source: str) -> float:
+        return float(self.min_interval_seconds.get(source, DEFAULT_MIN_INTERVALS.get(source, 1.0)))
+
+
 @dataclass(frozen=True)
 class Settings:
     library_roots: tuple[Path, ...] = ()
@@ -44,6 +67,7 @@ class Settings:
     # 内側アーカイブの巻を裏で少しずつ解析して巻に分解する(既定は無効。開いたとき・明示操作では常に解析する)
     background_analysis: bool = False
     background_analysis_interval: int = 60  # 秒。1 回に 1 巻
+    metadata: MetadataSettings = field(default_factory=MetadataSettings)
 
     @property
     def db_path(self) -> Path:
@@ -92,6 +116,48 @@ def _organize_dir(data: dict) -> str:
     return value
 
 
+def _float(table: dict, key: str, default: float, *, minimum: float = 0.0) -> float:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{key} は数値で指定してください: {value!r}")
+    if value < minimum:
+        raise ConfigError(f"{key} は {minimum} 以上で指定してください: {value!r}")
+    return float(value)
+
+
+def _metadata(data: dict) -> MetadataSettings:
+    table = data.get("metadata", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[metadata] はテーブルで指定してください")
+    d = MetadataSettings()
+    sources = table.get("sources", list(d.sources))
+    if not isinstance(sources, list) or not all(isinstance(s, str) and s for s in sources):
+        raise ConfigError("metadata.sources は空でない文字列の配列で指定してください")
+    intervals = table.get("min_interval_seconds", {})
+    if not isinstance(intervals, dict):
+        raise ConfigError("[metadata.min_interval_seconds] はテーブルで指定してください")
+    merged = dict(d.min_interval_seconds)
+    for name in intervals:
+        merged[name] = _float(intervals, name, merged.get(name, 1.0), minimum=0.0)
+    keys = table.get("keys", {})
+    if not isinstance(keys, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in keys.items()):
+        raise ConfigError("[metadata.keys] は文字列だけのテーブルで指定してください")
+    contact = table.get("contact", d.contact)
+    if not isinstance(contact, str):
+        raise ConfigError(f"metadata.contact は文字列で指定してください: {contact!r}")
+    return MetadataSettings(
+        sources=tuple(sources),
+        cache_ttl_days=_float(table, "cache_ttl_days", d.cache_ttl_days, minimum=0.0),
+        timeout_seconds=_float(table, "timeout_seconds", d.timeout_seconds, minimum=0.1),
+        max_retries=_int(table, "max_retries", d.max_retries, minimum=0),
+        candidate_limit=_int(table, "candidate_limit", d.candidate_limit, minimum=1),
+        detail_limit=_int(table, "detail_limit", d.detail_limit, minimum=0),
+        contact=contact.strip(),
+        min_interval_seconds=merged,
+        keys=dict(keys),
+    )
+
+
 def _resolve(base: Path, value: str) -> Path:
     path = Path(value).expanduser()
     return path if path.is_absolute() else (base / path)
@@ -124,6 +190,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         background_analysis=_bool(data, "background_analysis", defaults.background_analysis),
         background_analysis_interval=_int(data, "background_analysis_interval",
                                           defaults.background_analysis_interval, minimum=1),
+        metadata=_metadata(data),
     )
 
 

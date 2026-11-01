@@ -1,0 +1,376 @@
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:dcndl="http://ndl.go.jp/dcndl/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" version="2.0">
+  <channel>
+    <title>お気楽領主の楽しい領地防衛 books - 国立国会図書館サーチ OpenSearch</title>
+    <link>https://ios-v2-prod-eks-alb.ndlsearch.ndl.go.jp/api/opensearch?title=%E3%81%8A%E6%B0%97%E6%A5%BD%E9%A0%98%E4%B8%BB%E3%81%AE%E6%A5%BD%E3%81%97%E3%81%84%E9%A0%98%E5%9C%B0%E9%98%B2%E8%A1%9B&amp;mediatype=books&amp;cnt=10</link>
+    <description>Search results for title=お気楽領主の楽しい領地防衛 mediatype=books cnt=10</description>
+    <language>ja</language>
+    <openSearch:totalResults>21</openSearch:totalResults>
+    <openSearch:startIndex>1</openSearch:startIndex>
+    <openSearch:itemsPerPage>10</openSearch:itemsPerPage>
+    <item>
+      <title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I031659229</link>
+      <description><![CDATA[<p>1,オーバーラップ,2021,978-4-86554-980-5<p><ul><li>タイトル：お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：赤池宗 著</li><li>シリーズ名：OVERLAP NOVELS</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>赤池, 宗,赤池宗 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I031659229</guid>
+      <pubDate>Tue, 5 Oct 2021 18:50:07 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>1</dcndl:volume>
+      <dcndl:seriesTitle>OVERLAP NOVELS</dcndl:seriesTitle>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2021</dc:date>
+      <dcterms:issued>2021.9</dcterms:issued>
+      <dcndl:price>1200円</dcndl:price>
+      <dc:extent>315p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-86554-980-5</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">031659229</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23587684</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34251473</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=3137946&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000015092831"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110535296"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I031659229"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1971434677066350926"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784865549805"/>
+      <dc:description> 2021</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I031966798</link>
+      <description><![CDATA[<p>2,オーバーラップ,2022,978-4-8240-0111-5<p><ul><li>タイトル：お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：赤池宗 著</li><li>シリーズ名：OVERLAP NOVELS</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>赤池, 宗,赤池宗 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I031966798</guid>
+      <pubDate>Wed, 23 Mar 2022 01:43:52 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>2</dcndl:volume>
+      <dcndl:seriesTitle>OVERLAP NOVELS</dcndl:seriesTitle>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2022</dc:date>
+      <dcterms:issued>2022.2</dcterms:issued>
+      <dcndl:price>1200円</dcndl:price>
+      <dc:extent>318p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0111-5</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">031966798</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23656567</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34307209</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=3178169&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000015163996"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110570283"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I031966798"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1971997627019760787"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824001115"/>
+      <dc:description> 2022</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I031966805</link>
+      <description><![CDATA[<p>1,オーバーラップ,2022,978-4-8240-0117-7<p><ul><li>タイトル：お気楽領主の楽しい領地防衛</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：青色まろ 漫画,赤池宗 原作,転 原作イラスト</li><li>シリーズ名：ガルドコミックス</li><li>シリーズ名（読み）：ガルド コミックス</li><li>NDC(10)：726.1</li></ul>]]></description>
+      <author>青色, まろ,赤池, 宗,青色まろ 漫画,赤池宗 原作,転 原作イラスト</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I031966805</guid>
+      <pubDate>Mon, 4 Apr 2022 23:16:14 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>青色, まろ</dc:creator>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アオイロ, マロ</dcndl:creatorTranscription>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>1</dcndl:volume>
+      <dcndl:seriesTitle>ガルドコミックス</dcndl:seriesTitle>
+      <dcndl:seriesTitleTranscription>ガルド コミックス</dcndl:seriesTitleTranscription>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2022</dc:date>
+      <dcterms:issued>2022.2</dcterms:issued>
+      <dcndl:price>650円</dcndl:price>
+      <dc:extent>1冊(ページ付なし)</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0117-7</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">031966805</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23662502</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34307223</dc:identifier>
+      <dcndl:genre>漫画</dcndl:genre>
+      <dcndl:genreTranscription>マンガ</dcndl:genreTranscription>
+      <dc:subject xsi:type="dcndl:NDLC">Y84</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">726.1</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I031966805"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824001177"/>
+      <dc:description> 2022</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I032310849</link>
+      <description><![CDATA[<p>2,オーバーラップ,2022,978-4-8240-0278-5<p><ul><li>タイトル：お気楽領主の楽しい領地防衛</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：青色まろ 漫画,赤池宗 原作,転 原作イラスト</li><li>シリーズ名：ガルドコミックス</li><li>シリーズ名（読み）：ガルド コミックス</li><li>NDC(10)：726.1</li></ul>]]></description>
+      <author>青色, まろ,赤池, 宗,青色まろ 漫画,赤池宗 原作,転 原作イラスト</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I032310849</guid>
+      <pubDate>Fri, 2 Sep 2022 01:14:59 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>青色, まろ</dc:creator>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アオイロ, マロ</dcndl:creatorTranscription>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>2</dcndl:volume>
+      <dcndl:seriesTitle>ガルドコミックス</dcndl:seriesTitle>
+      <dcndl:seriesTitleTranscription>ガルド コミックス</dcndl:seriesTitleTranscription>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2022</dc:date>
+      <dcterms:issued>2022.8</dcterms:issued>
+      <dcndl:price>620円</dcndl:price>
+      <dc:extent>1冊(ページ付なし)</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0278-5</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">032310849</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23723406</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34373298</dc:identifier>
+      <dcndl:genre>漫画</dcndl:genre>
+      <dcndl:genreTranscription>マンガ</dcndl:genreTranscription>
+      <dc:subject xsi:type="dcndl:NDLC">Y84</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">726.1</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I032310849"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824002785"/>
+      <dc:description> 2022</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I032310862</link>
+      <description><![CDATA[<p>3,オーバーラップ,2022,978-4-8240-0272-3<p><ul><li>タイトル：お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：赤池宗 著</li><li>シリーズ名：OVERLAP NOVELS</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>赤池, 宗,赤池宗 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I032310862</guid>
+      <pubDate>Wed, 7 Sep 2022 17:52:59 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>3</dcndl:volume>
+      <dcndl:seriesTitle>OVERLAP NOVELS</dcndl:seriesTitle>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2022</dc:date>
+      <dcterms:issued>2022.8</dcterms:issued>
+      <dcndl:price>1200円</dcndl:price>
+      <dc:extent>317p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0272-3</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">032310862</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23726093</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34373318</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=3224463&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000015246410"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110610182"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I032310862"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970027302182785945"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824002723"/>
+      <dc:description> 2022</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I032645743</link>
+      <description><![CDATA[<p>3,オーバーラップ,2023,978-4-8240-0425-3<p><ul><li>タイトル：お気楽領主の楽しい領地防衛</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：青色まろ 漫画,赤池宗 原作,転 原作イラスト</li><li>シリーズ名：ガルドコミックス</li><li>シリーズ名（読み）：ガルド コミックス</li><li>NDC(10)：726.1</li></ul>]]></description>
+      <author>青色, まろ,赤池, 宗,青色まろ 漫画,赤池宗 原作,転 原作イラスト</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I032645743</guid>
+      <pubDate>Thu, 2 Mar 2023 20:38:20 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>青色, まろ</dc:creator>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アオイロ, マロ</dcndl:creatorTranscription>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>3</dcndl:volume>
+      <dcndl:seriesTitle>ガルドコミックス</dcndl:seriesTitle>
+      <dcndl:seriesTitleTranscription>ガルド コミックス</dcndl:seriesTitleTranscription>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2023</dc:date>
+      <dcterms:issued>2023.2</dcterms:issued>
+      <dcndl:price>640円</dcndl:price>
+      <dc:extent>1冊(ページ付なし)</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0425-3</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">032645743</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23801442</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34442098</dc:identifier>
+      <dcndl:genre>漫画</dcndl:genre>
+      <dcndl:genreTranscription>マンガ</dcndl:genreTranscription>
+      <dc:subject xsi:type="dcndl:NDLC">Y84</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">726.1</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I032645743"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824004253"/>
+      <dc:description> 2023</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I032695680</link>
+      <description><![CDATA[<p>4,オーバーラップ,2023,978-4-8240-0416-1<p><ul><li>タイトル：お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：赤池宗 著</li><li>シリーズ名：OVERLAP NOVELS</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>赤池, 宗,赤池宗 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I032695680</guid>
+      <pubDate>Tue, 4 Apr 2023 18:47:38 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>4</dcndl:volume>
+      <dcndl:seriesTitle>OVERLAP NOVELS</dcndl:seriesTitle>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2023</dc:date>
+      <dcterms:issued>2023.3</dcterms:issued>
+      <dcndl:price>1200円</dcndl:price>
+      <dc:extent>245p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0416-1</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">032695680</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23815143</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34453590</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=3278767&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000015342164"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110657909"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I032695680"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970027302182786049"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824004161"/>
+      <dc:description> 2023</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I032980565</link>
+      <description><![CDATA[<p>4,オーバーラップ,2023,978-4-8240-0593-9<p><ul><li>タイトル：お気楽領主の楽しい領地防衛</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：青色まろ 漫画,赤池宗 原作,転 原作イラスト</li><li>シリーズ名：ガルドコミックス</li><li>シリーズ名（読み）：ガルド コミックス</li><li>NDC(10)：726.1</li></ul>]]></description>
+      <author>青色, まろ,赤池, 宗,青色まろ 漫画,赤池宗 原作,転 原作イラスト</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I032980565</guid>
+      <pubDate>Fri, 25 Aug 2023 00:35:57 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>青色, まろ</dc:creator>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アオイロ, マロ</dcndl:creatorTranscription>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>4</dcndl:volume>
+      <dcndl:seriesTitle>ガルドコミックス</dcndl:seriesTitle>
+      <dcndl:seriesTitleTranscription>ガルド コミックス</dcndl:seriesTitleTranscription>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2023</dc:date>
+      <dcterms:issued>2023.8</dcterms:issued>
+      <dcndl:price>690円</dcndl:price>
+      <dc:extent>1冊(ページ付なし)</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0593-9</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">032980565</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23874311</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34510108</dc:identifier>
+      <dcndl:genre>漫画</dcndl:genre>
+      <dcndl:genreTranscription>マンガ</dcndl:genreTranscription>
+      <dc:subject xsi:type="dcndl:NDLC">Y84</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">726.1</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I032980565"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824005939"/>
+      <dc:description> 2023</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I032980598</link>
+      <description><![CDATA[<p>5,オーバーラップ,2023,978-4-8240-0585-4<p><ul><li>タイトル：お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：赤池宗 著</li><li>シリーズ名：OVERLAP NOVELS</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>赤池, 宗,赤池宗 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I032980598</guid>
+      <pubDate>Thu, 7 Sep 2023 06:22:19 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>5</dcndl:volume>
+      <dcndl:seriesTitle>OVERLAP NOVELS</dcndl:seriesTitle>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2023</dc:date>
+      <dcterms:issued>2023.8</dcterms:issued>
+      <dcndl:price>1300円</dcndl:price>
+      <dc:extent>248p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0585-4</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">032980598</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23875565</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34510220</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=3315205&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000015406166"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110688933"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I032980598"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970590252136207368"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824005854"/>
+      <dc:description> 2023</dc:description>
+    </item>
+    <item>
+      <title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I033368718</link>
+      <description><![CDATA[<p>6,オーバーラップ,2024,978-4-8240-0765-0<p><ul><li>タイトル：お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</li><li>タイトル（読み）：オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</li><li>責任表示：赤池宗 著</li><li>シリーズ名：OVERLAP NOVELS</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>赤池, 宗,赤池宗 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I033368718</guid>
+      <pubDate>Thu, 4 Apr 2024 06:21:40 +0900</pubDate>
+      <dc:title>お気楽領主の楽しい領地防衛 : 生産系魔術で名もなき村を最強の城塞都市に</dc:title>
+      <dcndl:titleTranscription>オキラク リョウシュ ノ タノシイ リョウチ ボウエイ</dcndl:titleTranscription>
+      <dc:creator>赤池, 宗</dc:creator>
+      <dcndl:creatorTranscription>アカイケ, ソウ</dcndl:creatorTranscription>
+      <dcndl:volume>6</dcndl:volume>
+      <dcndl:seriesTitle>OVERLAP NOVELS</dcndl:seriesTitle>
+      <dc:publisher>オーバーラップ</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2024</dc:date>
+      <dcterms:issued>2024.3</dcterms:issued>
+      <dcndl:price>1300円</dcndl:price>
+      <dc:extent>283p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-8240-0765-0</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">033368718</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">23961306</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34584297</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=3368292&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.shiga-pref-library.jp/wo/opc_srh/srh_detail/4980557/"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000015500793"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110735812"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I033368718"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970871727112917506"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784824007650"/>
+      <dc:description> 2024</dc:description>
+    </item>
+  </channel>
+</rss>
