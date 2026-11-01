@@ -119,3 +119,30 @@ describe("volumeErrorMessage", () => {
     expect(err.detail).toBeUndefined();
   });
 });
+
+describe("先読み済み(complete)の画像でのページ送り(#51)", () => {
+  // 実ブラウザでの無限更新(React #185)は jsdom では再現しない。ここでは load が来ない先読み済みの画像が
+  // 読み込み済みとして扱われ、ページを送っても表示が続くことを確かめる
+  it("load が来なくても読み込み済みとして扱い、見開きで何度ページを送っても表示が続く", async () => {
+    // 先読みで読み終わった画像を再現する: 描画した時点で complete・naturalWidth > 0
+    const complete = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "complete");
+    const natural = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "naturalWidth");
+    Object.defineProperty(HTMLImageElement.prototype, "complete", { configurable: true, get: () => true });
+    Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", { configurable: true, get: () => 800 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
+    try {
+      useBackend();
+      render(<Reader id="1" />);
+      await screen.findAllByRole("img");
+      for (let k = 0; k < 4; k++) {
+        fireEvent.keyDown(window, { key: "ArrowLeft" });
+        expect(screen.getAllByRole("img").length).toBeGreaterThan(0);
+      }
+      expect(screen.queryByRole("status")).toBeNull(); // 読み込み済みとして扱われる
+    } finally {
+      if (complete) Object.defineProperty(HTMLImageElement.prototype, "complete", complete);
+      if (natural) Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", natural);
+    }
+  });
+});

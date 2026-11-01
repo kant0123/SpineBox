@@ -65,6 +65,12 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
   スピナーと「一覧へ戻る」を出し、1.5 秒(`SLOW_HINT_MS`)を超えたら「初めて開く巻は展開に数秒かかる」と補足する。
   巻情報が来た後は、表示中のページ画像が `load` / `error` になるまで画面中央に小さく「読み込み中」を重ねる。
   先読み済みのページで一瞬ちらつかないよう、重ね表示は CSS で 0.3 秒遅れて現れる
+- **先読みで読み終わっていた画像は、表示ページが変わったときに `useLayoutEffect` で一度だけ調べる(#51)。** 描画前に
+  読み終わった画像には `load` が来ないので、`complete && naturalWidth > 0` を見て読み込み済みにする。当初(#26)は `<img>` の
+  インラインの `ref` コールバックの中でこれを行い `setLoaded` していたが、実ブラウザでは見開きで 2 回目のページ送り(次の見開きが
+  先読み済みで complete)から更新が繰り返され、React #185(Maximum update depth exceeded)で描画が止まって真っ黒になった。
+  **ref コールバックの中で state を更新しない**(描画のたびに付け直される)。jsdom ではこのループは再現しなかったので、
+  確認は実ブラウザで見開き・単ページとも数十ページ送って行った
 - **取得失敗の文言は HTTP ステータスで分ける。** 404 は「蔵書から無くなった」、409 は「オフライン」、422(壊れたアーカイブ・
   展開上限超過)はバックエンドの `detail` をそのまま出す。理由はバックエンドしか知らないため。どの失敗でも一覧へ戻るリンクを出す
 - **重複候補の画面は何も消さない。** 見比べて「重複ではない」を付けるだけで、削除・移動のボタンは置かない(重複の解消は CBZ 化の整理の役目)。2 巻の表紙は 1 ページ目の画像(`api.pageUrl(id, 0)`)で、
@@ -81,7 +87,7 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 - `.stage` の `touch-action: pinch-zoom` は、1 本指の横の払いをブラウザのスクロールに取られないためのもの。消すとスマホでスワイプが効かない
 - モック(`src/mock/`)は `vite.config.ts` からだけ読む。アプリ側から import すると本番のバンドルに入る
 - jsdom の画像は読み込まれず `load` も来ないので、ページ画像の読み込み待ちのテストは `fireEvent.load` / `fireEvent.error` で進める
-  (`src/reader/Reader.test.tsx`)。キャッシュ済み画像を `ref` で `complete && naturalWidth > 0` と見て済ませる分岐は実ブラウザでしか通らない
+  (`src/reader/Reader.test.tsx`)。先読み済み(complete)の画像の分岐は `HTMLImageElement.prototype` の `complete` / `naturalWidth` を差し替えて通す
 - 単体テストの jsdom には `PointerEvent` が無いので、タップ・スワイプは判定関数の単体テストと実ブラウザで確かめる
   (結線のテスト `src/App.test.tsx` はキーボードで操作している)
 
