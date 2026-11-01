@@ -26,7 +26,14 @@ def by_title(client):
 
 def test_scan_and_list(make_client, library):
     c, _ = make_client(library)
-    assert c.post("/api/scan").json() == {"volumes": 7, "offline_roots": []}
+    scan = c.post("/api/scan").json()
+    assert scan["volumes"] == 7 and scan["offline_roots"] == []
+    # 読めなかったもの(壊れた zip・7-Zip が無いときの 7z)は理由つきで返る
+    assert scan["issues_total"] == 2 and len(scan["issues"]) == 2
+    by_path = {i["path"].rsplit("/", 1)[-1]: i for i in scan["issues"]}
+    assert "読めないアーカイブ" in by_path["broken.zip"]["reason"]
+    assert "未対応" in by_path["solid.7z"]["reason"]
+    assert by_path["broken.zip"]["path"] == f"{str(library).replace(chr(92), '/')}/broken.zip"
     vols = by_title(c)
     assert set(vols) == {"FolderBook", "single", "Vol1", "Vol2", "inner1", "inner2", "inner3"}
     v = vols["Vol1"]
@@ -116,7 +123,8 @@ def test_offline_volumes_are_409_and_progress_survives(make_client, library):
     library.rename(moved)
     # 再スキャン前でも、ルートが見えなければ 409
     assert c.get(f"/api/volumes/{vid}").status_code == 409
-    assert c.post("/api/scan").json() == {"volumes": 7, "offline_roots": [str(library)]}
+    assert c.post("/api/scan").json() == {"volumes": 7, "offline_roots": [str(library)],
+                                                  "issues": [], "issues_total": 0}  # オフラインの記録は出さない
     v = by_title(c)["single"]
     assert v["offline"] is True and v["progress"] == {"page": 1, "finished": False}
     assert c.get(f"/api/volumes/{vid}").status_code == 409

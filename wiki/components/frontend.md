@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
-updated: 2026-11-01
+updated: 2026-11-02
 related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection]
 ---
 
@@ -26,9 +26,9 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/api.ts:199 api` | API 契約(#14 と共有)の型と呼び出し |
-| `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
-| `frontend/src/mock/mockBackend.ts:126 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
+| `frontend/src/api.ts:210 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/library/Library.tsx:71 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
+| `frontend/src/mock/mockBackend.ts:138 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
@@ -54,6 +54,9 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
   実行ボタンは計画が `planned` のときだけ出す(`blocked` は理由だけ出す)。サーバーの 409 の `detail` をそのまま見せる。
   プレビュー画面を確認の代わりにして、`window.confirm` は使っていない
   中の巻をまだ調べていない内側アーカイブを含むソースは `blocked` になり、「中の巻を調べて計画を作り直す」だけを出す(調べるのは明示操作で、プレビュー自体は解析しない。[[organize]])
+- **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
+  サーバーの `issues` は最大 200 件なので、切った分は「ほか N 件は省略しました」と知らせる。スキャンが失敗したら、サーバーの `detail`
+  (型とメッセージ)をそのままエラー表示に出す。固定の文言だけだと、サーバー機で何が起きたか画面から分からなかった
 - **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
   入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
 - **読み込み待ちは 2 段で見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を

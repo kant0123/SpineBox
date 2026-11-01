@@ -49,7 +49,7 @@ def test_reference_samples_scan_and_read_every_page(sample_dir, sevenzip, make_s
     t0 = time.perf_counter()
     scan = client.post("/api/scan").json()
     scan_sec = time.perf_counter() - t0
-    assert scan == {"volumes": EXPECTED_VOLUMES, "offline_roots": []}
+    assert scan == {"volumes": EXPECTED_VOLUMES, "offline_roots": [], "issues": [], "issues_total": 0}
     assert list(settings.cache_dir.iterdir()) == []  # スキャンは内側アーカイブを 1 つも取り出さない
 
     volumes = client.get("/api/volumes").json()

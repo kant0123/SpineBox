@@ -7,6 +7,7 @@ import type {
   DuplicateVolume,
   Finding,
   OrganizeOp,
+  ScanIssue,
   VolumeDetail,
   VolumeSummary,
 } from "../api";
@@ -19,11 +20,22 @@ export interface MockResponse {
   delayMs?: number;
 }
 
+function defaultScanIssues(): ScanIssue[] {
+  return [
+    { path: "E:/本/作者A/壊れた巻.zip", container_path: null, entry_name: null, reason: "読めないアーカイブ: zip として開けない: File is not a zip file" },
+    { path: "E:/本/作者B/まとめ.zip", container_path: null, entry_name: "../evil.jpg", reason: "親ディレクトリ参照(..)を含むエントリ名" },
+  ];
+}
+
 export interface MockOptions {
   /** ページ数未確定(入れ子)の巻を初めて開くときの遅延。実機で内側を取り出す 3〜8 秒を再現する */
   firstOpenDelayMs?: number;
   /** 巻 ID ごとに `GET /api/volumes/{id}` を失敗させる。一覧に無い ID でもよい(`#/read/<id>` で直接開く) */
   failures?: Record<string, { status: number; detail: string }>;
+  /** `POST /api/scan` の「読めなかったもの」。省略すると 2 件 */
+  scanIssues?: ScanIssue[];
+  /** `POST /api/scan` を失敗させる(サーバーの `detail` を画面に出す確認用) */
+  scanFailure?: { status: number; detail: string };
 }
 
 type MockVolume = Omit<VolumeSummary, "id"> & {
@@ -196,7 +208,14 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       if (r) return r;
     }
     if (method === "POST" && path === "/api/scan") {
-      return json(200, { volumes: shown().length, offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [] });
+      if (options.scanFailure) return json(options.scanFailure.status, { detail: options.scanFailure.detail });
+      const issues = options.scanIssues ?? defaultScanIssues();
+      return json(200, {
+        volumes: shown().length,
+        offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [],
+        issues,
+        issues_total: issues.length,
+      });
     }
     if (path === "/api/duplicates" && method === "GET") {
       const wantDismissed = rawPath.includes("status=dismissed");

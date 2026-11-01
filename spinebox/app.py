@@ -28,7 +28,7 @@ from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, 
                       is_offline)
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
-from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner
+from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, safe_text
 
 log = logging.getLogger(__name__)
 
@@ -170,9 +170,13 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             raise HTTPException(409, "スキャン中です")
         try:
             result = Scanner(conn, settings).scan()
+        except Exception as e:  # noqa: BLE001 (画面に原因を出す。トレースバックはログへ)
+            log.exception("スキャンに失敗しました")
+            raise HTTPException(500, safe_text(f"スキャンに失敗しました: {type(e).__name__}: {e}")) from e
         finally:
             scan_lock.release()
-        return {"volumes": result.volumes, "offline_roots": result.offline_roots}
+        return {"volumes": result.volumes, "offline_roots": result.offline_roots,
+                "issues": result.issues, "issues_total": result.issues_total}
 
     @app.get("/api/volumes")
     def list_volumes(conn: sqlite3.Connection = Depends(get_conn)):
