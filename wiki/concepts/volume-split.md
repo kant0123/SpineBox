@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
 updated: 2026-11-01
-related: [overview, backend, archive-reading, extraction-cache, frontend]
+related: [overview, backend, archive-reading, extraction-cache, frontend, organize]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -81,7 +81,8 @@ related: [overview, backend, archive-reading, extraction-cache, frontend]
 ## 覆すとしたら
 
 - 中身から巻番号を確定できるようになったら(メタデータ・見た目の比較。フェーズ 3)、比べる相手を候補から確定値へ替える
-- フェーズ 2 の CBZ 化で 1 巻 = 1 CBZ になれば、内側アーカイブの巻は減り、分解の出番は小さくなる
+- フェーズ 2 の CBZ 化([[organize]])で 1 巻 = 1 CBZ になれば、内側アーカイブの巻は減り、分解の出番は小さくなる。
+  整理の単位は子を持たない巻(分解済みなら子の巻ごと)で、未解析の内側アーカイブは先に調べるまで整理しない
 - 子の名前の生バイト列(`name_raw`)は持っていない(NULL)。名前の文字コードが問題になったら単位にエントリの生バイト列を持たせる
 
 ## 関連

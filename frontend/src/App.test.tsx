@@ -193,12 +193,20 @@ describe("整理(CBZ 化)", () => {
     expect(posts().at(-1)).toBe("/api/organize/op-1/undo");
   });
 
-  it("実行できない計画は理由を出し、実行ボタンを出さない", async () => {
+  it("中の巻を調べていない内側アーカイブは、理由を出して調べるボタンだけを出す", async () => {
     window.location.hash = organizeHref(5);
     render(<App />);
-    expect((await screen.findByRole("alert")).textContent).toContain("inner.rar");
+    expect((await screen.findByRole("alert")).textContent).toContain("中の巻をまだ調べていません");
     expect(screen.getByText("実行できません")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "実行" })).toBeNull();
+    expect(posts()).toEqual(["/api/organize/plan"]); // 調べるのは明示操作。プレビューでは解析しない
+
+    fireEvent.click(screen.getByRole("button", { name: "中の巻を調べて計画を作り直す" }));
+    await waitFor(() => expect(posts()).toEqual(["/api/organize/plan", "/api/volumes/5/analyze", "/api/organize/plan"]));
+    // 調べた後の計画は別の理由(読めない内側)で実行できない
+    expect((await screen.findByRole("alert")).textContent).toContain("inner.rar");
+    expect(screen.queryByRole("button", { name: "実行" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "中の巻を調べて計画を作り直す" })).toBeNull();
   });
 
   it("サーバーの理由(detail)をそのまま出す", async () => {

@@ -61,9 +61,27 @@ export function OrganizePlan({ volumeId }: { volumeId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const makePlan = useCallback(() => {
     api.planOrganize(volumeId).then(setOp, (e) => setError(errorText(e, "整理の計画を作れませんでした。")));
   }, [volumeId]);
+
+  useEffect(() => {
+    makePlan();
+  }, [makePlan]);
+
+  // 内側アーカイブの中の巻を調べてから計画を作り直す(プレビュー自体は何も書かないので、調べるのは明示操作)
+  const analyzeThenReplan = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      for (const id of op?.needs_analysis ?? []) await api.analyze(id);
+      makePlan();
+    } catch (e) {
+      setError(errorText(e, "中の巻を調べられませんでした。"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const execute = async () => {
     if (!op?.op_id) return;
@@ -109,6 +127,11 @@ export function OrganizePlan({ volumeId }: { volumeId: string }) {
         </div>
       )}
       <div className="organize-actions">
+        {op?.state === "blocked" && (op.needs_analysis?.length ?? 0) > 0 && (
+          <button type="button" onClick={analyzeThenReplan} disabled={busy}>
+            {busy ? "調べています…" : "中の巻を調べて計画を作り直す"}
+          </button>
+        )}
         {op?.state === "planned" && (
           <button type="button" onClick={execute} disabled={busy}>
             {busy ? "実行中…" : "実行"}

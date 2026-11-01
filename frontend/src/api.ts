@@ -106,6 +106,8 @@ export interface OrganizeOp {
   volumes: OrganizeVolume[];
   warnings: string[];
   problems: string[];
+  /** 中の巻をまだ調べていない内側アーカイブの巻 id(先に api.analyze が要る) */
+  needs_analysis?: number[];
 }
 
 export class ApiError extends Error {

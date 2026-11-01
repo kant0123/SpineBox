@@ -108,6 +108,9 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-01] ingest | #31 整理処理(CBZ 化 → 検証 → 確定 → 退避 → 元に戻す)
 - 新規: [[organize]]
-- 更新: [[backend]], [[frontend]], [[overview]], [[server-setup]](コード参照の行番号), [[extraction-cache]](コード参照の行番号)
-- 備考: DB 版 2(organize_ops / organize_steps / organize_volumes、volumes.organized_op_id)。設定 `organize_dir`(相対は各蔵書ルートが起点)。
-  往復後に蔵書フォルダがパス・バイト列・mtime まで一致することを一時ディレクトリのテストで確認。実データ(`_参考/` のコピー)での往復はローカルで確認する。
+- 更新: [[backend]], [[frontend]], [[overview]], [[volume-split]], [[server-setup]](コード参照の行番号), [[extraction-cache]](コード参照の行番号)
+- 備考: #31。マイグレーション 3(organize_ops / organize_steps / organize_volumes、volumes.organized_op_id。クラウドでは 2 番だったが #30 が先に入ったので付け替え)。設定 `organize_dir`(相対は各蔵書ルートが起点)。
+  クラウドで合成の zip と一時ディレクトリのテストで、往復後に蔵書フォルダがパス・バイト列・mtime まで一致することを確認。
+  ローカル引き取りで #30(巻への分解)に合わせた: 整理の単位は見えている子の巻を持たない巻(分解済みなら子ごとに 1 CBZ)、中の巻をまだ調べていない内側アーカイブは計画で拒否して `needs_analysis` を返し、画面に「中の巻を調べて計画を作り直す」を出す。
+  `_参考/サンプル本` を同じドライブの一時ディレクトリへコピーして往復を確認(原本は処理対象にしていない): お気楽領主の zip は 8 CBZ、かくかくしかじかの 7z は v01・v02・v03(分解した子)+ v04 の 4 CBZ。全ページが元とバイト列で一致、再スキャン後に全 CBZ の巻が読め、読書位置が引き継がれ、元に戻すと蔵書がパス・sha256・サイズ・mtime まで一致。
+  375px と横長の組み込みブラウザで、一覧 →「CBZ に整理」→ プレビュー(未解析なら調べてやり直し)→ 実行 → 履歴 → 元に戻す を確認。

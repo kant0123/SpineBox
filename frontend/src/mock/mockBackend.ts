@@ -1,7 +1,7 @@
 // 開発・テスト用のモック API。`npm run dev:mock` の Vite サーバーと、単体テストの fetch 差し替えの両方で使う。
 // アプリ本体からは import しない(本番のバンドルに入れないため)。
 
-import type { Finding, OrganizeOp, Progress, VolumeDetail, VolumeSummary } from "../api";
+import type { Finding, OrganizeOp, VolumeDetail, VolumeSummary } from "../api";
 
 export interface MockResponse {
   status: number;
@@ -98,7 +98,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (method === "POST" && path === "/api/organize/plan") {
       const v = volumes.find((x) => x.id === parsed?.volume_id);
       if (!v) return json(404, { detail: "巻が見つかりません" });
-      const blocked = v.page_count === null;
+      const unanalyzed = v.can_analyze; // 中の巻をまだ調べていない内側アーカイブ
+      const blocked = v.page_count === null || unanalyzed;
       const op: OrganizeOp = {
         op_id: blocked ? null : `op-${++opSeq}`,
         state: blocked ? "blocked" : "planned",
@@ -107,7 +108,12 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         source_kind: "archive",
         volumes: [{ volume_id: v.id, title: v.title, page_count: v.page_count, output_rel_path: `${v.title}.cbz` }],
         warnings: [],
-        problems: blocked ? ["内側アーカイブを読めません(7-Zip が見つからない、または未対応): inner.rar"] : [],
+        problems: unanalyzed
+          ? [`内側アーカイブ「${v.title}」の中の巻をまだ調べていません。先に「中の巻を調べる」を実行してください`]
+          : blocked
+            ? ["内側アーカイブを読めません(7-Zip が見つからない、または未対応): inner.rar"]
+            : [],
+        needs_analysis: unanalyzed ? [v.id] : [],
         created_at: "2026-11-01T00:00:00+00:00",
         executed_at: null,
         undone_at: null,

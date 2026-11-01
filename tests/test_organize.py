@@ -9,14 +9,14 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import page_bytes, snapshot, write_zip
-from spinebox import db
+from conftest import page_bytes, snapshot, write_zip, zip_bytes
+from spinebox import analysis, db
 from spinebox.app import create_app
 from spinebox.cache import ExtractionCache
 from spinebox.library import Library, VolumeNotFound, get_volume_row
 from spinebox.organize import cbz, fs
 from spinebox.organize.organizer import OrganizeError, Organizer
-from spinebox.scanner import Scanner
+from spinebox.scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner
 
 
 @pytest.fixture
@@ -504,3 +504,103 @@ def test_undo_refuses_when_created_cbz_is_gone_or_not_done(env, tmp_path):
     with pytest.raises(OrganizeError, match="作った CBZ が見つかりません"):
         o.undo(plan["op_id"])
     assert not (env.root / "multi.zip").exists() and (env.root / "Vol1.cbz").exists()  # 何も動かしていない
+
+
+# --- 分解済みの内側アーカイブ(#30 の子の巻) ------------------------------------
+
+def _nested_set() -> bytes:
+    """入れ子 3 段: set v01-03.zip → (v01.zip, v02-03.zip → (v02.zip, v03.zip))。"""
+    v = {i: zip_bytes([(f"{p}.jpg", page_bytes(f"nv{i}/{p}")) for p in ("002", "001")]) for i in (1, 2, 3)}
+    return zip_bytes([("v01.zip", v[1]), ("v02-03.zip", zip_bytes([("v02.zip", v[2]), ("v03.zip", v[3])]))])
+
+
+@pytest.fixture
+def nested_env(make_settings, tmp_path):
+    root = tmp_path / "nested_lib"
+    write_zip(root / "series.zip", [("set v01-03.zip", _nested_set())])
+    settings = make_settings(root)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    lib = Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    return SimpleNamespace(conn=conn, settings=settings, library=lib, root=root)
+
+
+def children(env) -> list[int]:
+    return [r["id"] for r in env.conn.execute(
+        "SELECT id FROM volumes WHERE parent_id IS NOT NULL AND missing = 0 ORDER BY title")]
+
+
+def test_plan_requires_analysis_of_inner_archives_first(nested_env):
+    env = nested_env
+    parent = vid(env, "series.zip", container="set v01-03.zip")
+    before = snapshot(env.root)
+    plan = organizer(env).plan(volume_id=parent)
+    # 中に何巻あるか分からないので、1 CBZ にまとめない。プレビューは何も書かない(解析もしない)
+    assert plan["state"] == "blocked" and plan["op_id"] is None and plan["needs_analysis"] == [parent]
+    assert any("中の巻をまだ調べていません" in p for p in plan["problems"])
+    assert snapshot(env.root) == before and not (env.root / ".spinebox").exists()
+    assert env.conn.execute("SELECT COUNT(*) FROM volumes WHERE parent_id IS NOT NULL").fetchone()[0] == 0
+    assert env.conn.execute("SELECT COUNT(*) FROM organize_ops").fetchone()[0] == 0
+
+    env.library.analyze(env.conn, parent)
+    after = organizer(env).plan(volume_id=parent)
+    assert after["state"] == "planned" and after["needs_analysis"] == []
+
+    # 調べた後に元が変わったら、また調べ直しを求める
+    set_mtime = (env.root / "series.zip").stat().st_mtime_ns + 5_000_000_000
+    os.utime(env.root / "series.zip", ns=(set_mtime, set_mtime))
+    stale = organizer(env).plan(volume_id=parent)
+    assert stale["state"] == "blocked" and stale["needs_analysis"] == [parent]
+
+
+def test_analysis_error_blocks_plan_with_reason(nested_env):
+    env = nested_env
+    parent = vid(env, "series.zip", container="set v01-03.zip")
+    analysis.record_error(env.conn, parent, "壊れている")
+    plan = organizer(env).plan(volume_id=parent)
+    assert plan["state"] == "blocked" and any("壊れている" in p for p in plan["problems"])
+
+
+def test_split_source_is_organized_per_child_and_roundtrips(nested_env):
+    env = nested_env
+    parent = vid(env, "series.zip", container="set v01-03.zip")
+    env.library.analyze(env.conn, parent)
+    kids = children(env)
+    assert len(kids) == 3
+    before = lib_snapshot(env.root)
+    o = organizer(env)
+    # 親(まとめ)の巻を指しても、子の巻ごとの計画になる(親と子の二重にならない)
+    plan = o.plan(volume_id=parent)
+    assert plan["state"] == "planned"
+    assert sorted(v["volume_id"] for v in plan["volumes"]) == sorted(kids)
+    assert [v["output_rel_path"] for v in plan["volumes"]] == ["v01.cbz", "v02.cbz", "v03.cbz"]
+    assert lib_snapshot(env.root) == before
+
+    # 2 巻目(v02)の途中まで読んだ読書位置を、CBZ の巻へ引き継ぐ
+    v02 = next(k for k in kids if get_volume_row(env.conn, k)["title"] == "v02")
+    set_progress(env, v02, 1)
+    done = o.execute(plan["op_id"])
+    assert done["state"] == "done"
+    assert not (env.root / "series.zip").exists()
+    for n in (1, 2, 3):
+        assert cbz_pages(env.root / f"v0{n}.cbz") == [
+            ("0001.jpg", zipfile.ZIP_STORED, page_bytes(f"nv{n}/001")),
+            ("0002.jpg", zipfile.ZIP_STORED, page_bytes(f"nv{n}/002"))]
+    new_ids = {v["volume_id"]: v["new_volume_id"] for v in done["volumes"]}
+    assert progress(env, new_ids[v02]) == (1, False)
+    # 一覧には CBZ の 3 巻だけ(元の親・子は整理済みで隠れる)
+    listed = env.conn.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
+    assert listed == 3
+    # 再スキャンしても CBZ の巻が読め、同じ id のまま
+    Scanner(env.conn, env.settings).scan()
+    for old, new in new_ids.items():
+        with env.library.open(env.conn, new) as opened:
+            assert len(opened.page_names) == 2
+
+    assert o.undo(plan["op_id"])["state"] == "undone"
+    assert lib_snapshot(env.root) == before
+    assert progress(env, v02) == (1, False)
+    Scanner(env.conn, env.settings).scan()
+    assert sorted(children(env)) == sorted(kids)  # 子の巻の id は変わらない
+    with env.library.open(env.conn, v02) as opened:
+        assert len(opened.page_names) == 2
