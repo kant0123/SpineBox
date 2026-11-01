@@ -30,11 +30,14 @@ def normalize(text: str) -> str:
     return "".join(c for c in text if c.isalnum())
 
 
-def is_ascii_word(text: str) -> bool:
-    return bool(text) and all(ord(c) < 128 for c in text)
-
-
 _MACRON = str.maketrans({"ā": "a", "ī": "i", "ū": "u", "ē": "e", "ō": "o"})
+
+
+def is_romaji_word(text: str) -> bool:
+    """ASCII またはマクロン付きラテン文字(と記号・空白)だけで構成されているか。日本語の名前と区別する。"""
+    cleaned = unicodedata.normalize("NFKC", text).casefold().translate(_MACRON)
+    letters = [c for c in cleaned if c.isalnum()]
+    return bool(letters) and all(ord(c) < 128 for c in letters)
 
 
 def normalize_romaji(text: str) -> str:
@@ -53,8 +56,7 @@ def normalize_romaji(text: str) -> str:
 
 
 def _name_key(text: str) -> str:
-    return normalize_romaji(text) if is_ascii_word(unicodedata.normalize("NFKC", text).replace(" ", "")) \
-        else normalize(text)
+    return normalize_romaji(text) if is_romaji_word(text) else normalize(text)
 
 
 def title_score(query_title: str, names: tuple[str, ...]) -> tuple[float, str]:
@@ -84,7 +86,7 @@ def title_score(query_title: str, names: tuple[str, ...]) -> tuple[float, str]:
 
 
 def _author_key(name: str) -> str:
-    return normalize(name)
+    return normalize_romaji(name) if is_romaji_word(name) else normalize(name)
 
 
 def author_score(query_author: str, authors: tuple[str, ...]) -> tuple[float | None, str]:
@@ -100,7 +102,7 @@ def author_score(query_author: str, authors: tuple[str, ...]) -> tuple[float | N
         if not ak:
             continue
         # 検索側が日本語で、取得側がローマ字(または逆)なら比べられない
-        if is_ascii_word(qk) != is_ascii_word(ak):
+        if is_romaji_word(query_author) != is_romaji_word(author):
             continue
         comparable = True
         if ak == qk or (min(len(ak), len(qk)) >= 2 and (ak in qk or qk in ak)):

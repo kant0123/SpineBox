@@ -4,7 +4,7 @@ import pytest
 from metadata_fakes import fixture
 from spinebox.metadata import SearchQuery, ndl
 from spinebox.metadata.kana import to_romaji
-from spinebox.metadata.match import author_score, normalize, normalize_romaji, score_item, title_score
+from spinebox.metadata.match import author_score, is_romaji_word, normalize, normalize_romaji, score_item, title_score
 from spinebox.metadata.model import KIND_MANGA, KIND_NOVEL, SCOPE_VOLUME, SCOPE_WORK, MetadataItem
 
 
@@ -114,3 +114,12 @@ def test_isbn_match_is_recorded():
 def test_score_is_between_zero_and_one_for_garbage():
     match = score_item(SearchQuery("x"), item(title="日本語", aliases=("Another",)))
     assert 0.0 <= match.score <= 1.0
+
+
+def test_macron_romaji_is_treated_as_romaji_not_japanese():
+    # マクロン付きのローマ字(Tōkyō)は、日本語名ではなくローマ字として比べる
+    assert is_romaji_word("Tōkyō monogatari") and is_romaji_word("Ōtsuka Eiji")
+    assert not is_romaji_word("東京物語") and not is_romaji_word("かくかく") and not is_romaji_word("")
+    assert title_score("Tōkyō monogatari", ("Tokyo monogatari",)) == (1.0, "title:exact")
+    assert author_score("Ōtsuka Eiji", ("OTSUKA Eiji",)) == (1.0, "author:match")
+    assert author_score("Ōtsuka Eiji", ("大塚英志",)) == (None, "author:not_comparable")  # 減点しない
