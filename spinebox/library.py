@@ -100,6 +100,9 @@ class Library:
     @contextmanager
     def open(self, conn: sqlite3.Connection, volume_id: int) -> Iterator[OpenVolume]:
         row = get_volume_row(conn, volume_id)
+        if row["format"] is not None:
+            # 小説(EPUB・テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
+            raise VolumeUnreadable("小説の巻にはページ画像がありません")
         root = Path(row["root_path"])
         if is_offline(row) or not root_is_accessible(root):
             raise VolumeOffline(volume_id)
