@@ -130,7 +130,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #44、PR #46。国立国会図書館サーチ(OpenSearch)・AniList・MangaUpdates のクライアント、候補ごとの確からしさ、生応答の保存(マイグレーション 5 `metadata_responses`)、取得元ごとのレート制限、`scripts/metadata_probe.py`。DB の作品・巻への結線はしていない(後続)。実通信(2026-11-02)で「お気楽領主の楽しい領地防衛」「かくかくしかじか」「Okiraku ryoshu no tanoshi ryochi」を 3 取得元で引き、応答を `tests/fixtures/metadata/` に記録した。実通信で分かった癖(MangaUpdates の perpage は 10 未満が無視される、AniList はローマ字の綴りが厳密、NDL は著者で絞ると巻が揃う)は [[metadata-sources]]。
 
 ## [2026-11-02] ingest | スキャンの想定外の例外をソース単位で記録して続ける
-- 更新: [[backend]], [[frontend]], [[archive-reading]], [[server-setup]]
+- 更新: [[backend]], [[frontend]], [[archive-reading]], [[server-setup]], [[organize]](コード参照の行番号のみ), [[volume-split]](コード参照の行番号のみ)
 - 備考: #48、PR #N。サーバー機の実蔵書で「スキャンに失敗しました」のまま止まった件(サーバー機のトレースバックは未取得)。ソース単位で想定外の例外を捕まえて `scan_issues` に型・メッセージを、ログにトレースバックを残し、成功した巻は登録する。`sqlite3.OperationalError` だけは止める。
   `POST /api/scan` に `issues`・`issues_total` を足し、画面に「読めなかったもの N 件」と理由、失敗時はサーバーの `detail`。マイグレーションなし(ソースに結び付かない問題は `source_id` NULL の行)。
   合成データで修正前に 500 になる原因を 2 つ確認(同名の内側アーカイブを持つ zip → `IntegrityError`、孤立サロゲート・不正バイトの名前 → `UnicodeEncodeError`)。ほかに祖先を指す Windows ジャンクションの循環を止め、読めない画像・読めないフォルダ・巻にならないアーカイブを記録するようにした。
