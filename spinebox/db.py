@@ -13,6 +13,30 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+def _mark_dirty(expr: str) -> str:
+    # トリガーの中の INSERT OR IGNORE は、外側の文(ON CONFLICT 付きの UPSERT)の衝突方針で上書きされて
+    # 一意制約違反になる。NOT EXISTS で入れれば衝突が起きない
+    return (f"INSERT INTO work_search_dirty (work_id) SELECT {expr} "
+            f"WHERE {expr} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM work_search_dirty WHERE work_id = {expr});")
+
+
+def _dirty_triggers() -> list[str]:
+    """版 7 のトリガー。作品の検索の索引が古くなる変更で、その作品に印を付ける。"""
+    out = []
+    for table in ("work_fields", "work_aliases", "work_volumes"):
+        out.append(f"CREATE TRIGGER {table}_search_ins AFTER INSERT ON {table} BEGIN {_mark_dirty('NEW.work_id')} END")
+        out.append(f"CREATE TRIGGER {table}_search_upd AFTER UPDATE ON {table} BEGIN "
+                   f"{_mark_dirty('OLD.work_id')} {_mark_dirty('NEW.work_id')} END")
+        out.append(f"CREATE TRIGGER {table}_search_del AFTER DELETE ON {table} BEGIN {_mark_dirty('OLD.work_id')} END")
+    out.append(f"CREATE TRIGGER works_search_ins AFTER INSERT ON works BEGIN {_mark_dirty('NEW.id')} END")
+    out.append(f"CREATE TRIGGER works_search_merged AFTER UPDATE OF merged_into ON works BEGIN {_mark_dirty('NEW.id')} END")
+    out.append(f"CREATE TRIGGER works_search_del AFTER DELETE ON works BEGIN {_mark_dirty('OLD.id')} END")
+    vol = "(SELECT work_id FROM work_volumes WHERE volume_id = NEW.id)"
+    out.append(f"CREATE TRIGGER volumes_search_title AFTER UPDATE OF title ON volumes BEGIN {_mark_dirty(vol)} END")
+    return out
+
+
 MIGRATIONS: list[list[str]] = [
     # 1: 初期スキーマ
     [
@@ -260,6 +284,15 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
         "CREATE INDEX work_merge_proposals_status ON work_merge_proposals (status)",
+    ],
+    # 7: 作品の全文検索(#56)。索引そのもの(work_search。FTS5 trigram か、無い SQLite では普通の表)は
+    #    実行時の SQLite で形が変わる派生データなので、ここでは作らず spinebox/search.py が作る・作り直す。
+    #    ここで足すのは「索引が古くなった作品」の印(work_search_dirty)と、それを立てるトリガーだけ。
+    #    作品の項目・別名・巻の割り当て・統合・巻の名前のどれが変わっても印が立つので、書き換える側の
+    #    コードが再索引を呼び忘れても索引は古いまま残らない(次の検索の前に追いつく)。
+    [
+        "CREATE TABLE work_search_dirty (work_id INTEGER PRIMARY KEY)",
+        *_dirty_triggers(),
     ],
 ]
 

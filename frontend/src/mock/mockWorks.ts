@@ -1,6 +1,6 @@
 // 作品(#43)のモック API。mockBackend.ts から使う。アプリ本体からは import しない。
 
-import type { VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
+import type { ReadingState, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
 
 interface MockWork {
   id: number;
@@ -11,7 +11,19 @@ interface MockWork {
   aliases: { id: number; alias: string; manual: boolean; source: "filename" | "merge" | "manual" | "container"; confidence: number }[];
   volumeIds: number[];
   merges: WorkDetail["merges"];
+  /** 公開 DB の項目(#50)の代わり。絞り込みの候補を画面で見るため */
+  fields?: Partial<Record<"kind" | "genre" | "tag", string>>;
 }
+
+/** バックエンド(spinebox/naming.py normalize_title)と同じ正規化: NFKC・小文字・カタカナ → ひらがな・記号と空白を落とす */
+export function normalizeSearch(text: string): string {
+  return Array.from(text.normalize("NFKC").toLowerCase())
+    .map((ch) => (ch >= "ァ" && ch <= "ヶ" ? String.fromCharCode(ch.charCodeAt(0) - 0x60) : ch))
+    .filter((ch) => /[\p{L}\p{N}]/u.test(ch))
+    .join("");
+}
+
+const splitValues = (v: string | null | undefined) => (v ?? "").split(/[、,，;；]/).map((x) => x.trim()).filter(Boolean);
 
 type Res = { status: number; body: unknown };
 
@@ -25,7 +37,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     {
       id: 1, title: "サンプル漫画", title_manual: false, author: "山田太郎", author_manual: false,
       aliases: [{ id: 1, alias: "Sample manga", manual: false, source: "merge", confidence: 0.99 }],
-      volumeIds: [1, 6, 2, 3],
+      volumeIds: [1, 6, 2, 3], fields: { kind: "漫画", genre: "ファンタジー、コメディ" },
       merges: [{
         id: 1, rule: "duplicate", confidence: 0.99, status: "auto", titles: ["Sample manga", "サンプル漫画"],
         evidence: { duplicate: [{ matched_pages: 186, compared_pages: 188, ratio: 0.989, rule: "same_number",
@@ -33,7 +45,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       }],
     },
     { id: 2, title: "外付けの作品", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [4], merges: [] },
-    { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [] },
+    { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [], fields: { kind: "小説" } },
   ];
   const proposals: (WorkProposal & { dismissed: boolean })[] = [{
     id: 1, rule: "duplicate", confidence: 0.6, status: "open", dismissed: false,
@@ -90,7 +102,43 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       finished_count: vols.filter((v) => v.progress?.finished).length,
       duplicate_slots: slots(vols).slots.filter((s) => s.duplicate).length,
       max_volume: m.max, missing_volumes: m.missing, missing_episodes: [], pending_proposals: openFor(w.id), merged: w.merges.length > 0,
+      reading_state: readingState(vols),
     };
+  }
+
+  function readingState(vols: WorkVolume[]): ReadingState {
+    if (vols.length && vols.every((v) => v.progress?.finished)) return "finished";
+    return vols.some((v) => v.progress) ? "reading" : "unread";
+  }
+
+  const valuesOf = (w: MockWork): Record<WorkFilterName, string[]> => ({
+    author: splitValues(w.author), kind: splitValues(w.fields?.kind), genre: splitValues(w.fields?.genre), tag: splitValues(w.fields?.tag),
+  });
+
+  /** GET /api/works の検索・絞り込み(バックエンドと同じ規則の簡易版: 語は AND、項目は値の一致) */
+  function listWorks(query: string): Res {
+    const params = new URLSearchParams(query);
+    const all = works.filter((w) => w.volumeIds.some((id) => vol(id)));
+    const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [] };
+    for (const w of all) {
+      const vals = valuesOf(w);
+      for (const k of Object.keys(facets) as WorkFilterName[]) facets[k] = [...new Set([...facets[k], ...vals[k]])].sort();
+    }
+    const status = params.get("status");
+    if (status && !["unread", "reading", "finished"].includes(status)) return res(422, { detail: "status は unread / reading / finished" });
+    const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
+    const shown = all.filter((w) => {
+      const body = [w.title, ...w.aliases.map((a) => a.alias), w.author ?? "", ...Object.values(w.fields ?? {}), ...volumesOf(w).map((v) => v.title)]
+        .map(normalizeSearch).join("\n");
+      if (!terms.every((t) => body.includes(t))) return false;
+      const vals = valuesOf(w);
+      for (const k of Object.keys(facets) as WorkFilterName[]) {
+        const wanted = params.get(k);
+        if (wanted && !vals[k].some((v) => normalizeSearch(v) === normalizeSearch(wanted))) return false;
+      }
+      return !status || readingState(volumesOf(w)) === status;
+    });
+    return res(200, { works: shown.map(summary), total: all.length, facets, unassigned: 0 });
   }
 
   function detail(w: MockWork): WorkDetail {
@@ -116,8 +164,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
   /** 作品の API を処理する。対象外のパスは null */
   function handle(method: string, path: string, query: string, body: any): Res | null {
     if (!path.startsWith("/api/works")) return null;
-    const live = () => works.filter((w) => w.volumeIds.some((id) => vol(id)));
-    if (method === "GET" && path === "/api/works") return res(200, { works: live().map(summary), unassigned: 0 });
+    if (method === "GET" && path === "/api/works") return listWorks(query);
     if (method === "POST" && path === "/api/works/refresh") return res(200, { works_created: 0, volumes_assigned: 0, merged: 0, proposals_open: proposals.length });
     if (method === "GET" && path === "/api/works/proposals") {
       const status = new URLSearchParams(query).get("status") ?? "open";

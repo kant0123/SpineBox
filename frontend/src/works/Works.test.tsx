@@ -5,6 +5,8 @@ import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { parseRoute } from "../route";
 import { confidenceText, evidenceLines, missingText } from "./labels";
+import { workQueryString } from "../api";
+import { normalizeSearch } from "../mock/mockWorks";
 
 let backend: ReturnType<typeof createMockBackend>;
 
@@ -52,6 +54,55 @@ describe("作品の一覧", () => {
     expect(screen.getByText(/統合の提案が 1 件/).closest("a")!.getAttribute("href")).toBe("#/works/proposals");
     // 巻の一覧と行き来できる
     expect(screen.getByRole("link", { name: "巻" }).getAttribute("href")).toBe("#/");
+  });
+});
+
+describe("作品の検索と絞り込み(#56)", () => {
+  const cardTitles = () => Array.from(document.querySelectorAll(".work-card .volume-title")).map((e) => e.textContent);
+
+  it("クエリ文字列は空の値を付けない", () => {
+    expect(workQueryString({})).toBe("");
+    expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
+    expect(normalizeSearch("ＯＫＩ カクｶｸ・x")).toBe("okiかくかくx");
+  });
+
+  it("検索語で作品を絞り、0 件なら条件に合わないと言って、条件を消せる", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect(cardTitles()).toHaveLength(3);
+    fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "sample" } }); // 別名で当たる
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
+    expect(screen.getByText(/1 件 \/ 全 3 作品/)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "存在しない" } });
+    expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();
+    expect(screen.queryByText(/作品がありません。蔵書フォルダ/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
+    await waitFor(() => expect(cardTitles()).toHaveLength(3));
+    expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
+  });
+
+  it("絞り込みは開いたときだけ出て、読書状態と項目で絞れる", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect(screen.queryByLabelText("読書状態")).toBeNull(); // スマホ幅で邪魔にならないよう、初めは閉じている
+    fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
+    fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "unread" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物"]));
+    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
+
+    // 候補のある項目だけ出る(モックでは種別とジャンルと著者。タグは無い)
+    expect(screen.getByLabelText("著者")).toBeTruthy();
+    expect(screen.queryByLabelText("タグ")).toBeNull();
+    fireEvent.change(screen.getByLabelText("種別"), { target: { value: "小説" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物"]));
+    fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "reading" } });
+    expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("種別"), { target: { value: "" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
+    expect(within(document.querySelector(".work-card")!).getByText("読書中")).toBeTruthy();
   });
 });
 

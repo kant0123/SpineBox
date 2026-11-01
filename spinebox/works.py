@@ -14,16 +14,19 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from . import db
+from . import db, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
 from .naming import normalize_title, parse_work_name
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
+
+log = logging.getLogger(__name__)
 
 FIELD_TITLE = "title"
 FIELD_AUTHOR = "author"
@@ -848,6 +851,8 @@ def _summary(w: dict, vols: list[dict], open_count: int) -> dict:
         "volume_count": len(vols),
         "offline_count": sum(1 for v in vols if v["offline"]),
         "finished_count": sum(1 for v in vols if v["progress"] and v["progress"]["finished"]),
+        "reading_state": search.reading_state(len(vols), sum(1 for v in vols if v["progress"] and v["progress"]["finished"]),
+                                              sum(1 for v in vols if v["progress"])),
         "duplicate_slots": sum(1 for s in slots if s["duplicate"]),
         "max_volume": nums["volume"]["max"],
         "missing_volumes": nums["volume"]["missing"],
@@ -857,8 +862,22 @@ def _summary(w: dict, vols: list[dict], open_count: int) -> dict:
     }
 
 
-def list_works(conn: sqlite3.Connection) -> dict:
-    """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。"""
+def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None) -> dict:
+    """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
+
+    q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / status(読書状態)の絞り込み。
+    total は絞る前の作品数、facets は絞り込みの候補(絞る前の作品から作る)。
+    """
+    wanted = search.check_filters(filters or {})
+    try:
+        search.prepare(conn)
+    except sqlite3.OperationalError:
+        if not search.index_exists(conn):
+            raise
+        # 書き込みのロックが取れない(長い書き込みの最中)。少し古い索引のまま引き、次の一覧で追いつく
+        log.warning("検索の索引を更新できませんでした(古い索引で検索します)", exc_info=True)
+    hits = search.match_ids(conn, q)
+    values = search.field_values(conn)
     works = _work_rows(conn)
     vols = _listed_volumes(conn)
     opens = _open_proposal_counts(conn)
@@ -878,7 +897,10 @@ def list_works(conn: sqlite3.Connection) -> dict:
     out.sort(key=lambda s: natural_key(s["title"]))
     total = conn.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
     assigned = sum(len(v) for v in vols.values())
-    return {"works": out, "unassigned": total - assigned}
+    facets = search.facets(values, [s["id"] for s in out])
+    shown = [s for s in out if (hits is None or s["id"] in hits)
+             and search.matches_filters(values.get(s["id"], {}), s["reading_state"], wanted)]
+    return {"works": shown, "total": len(out), "facets": facets, "unassigned": total - assigned}
 
 
 def _brief(w: dict, vols: list[dict]) -> dict:

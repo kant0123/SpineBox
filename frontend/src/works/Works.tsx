@@ -1,36 +1,74 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, type WorkList } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, type ReadingState, type WorkFilterName, type WorkList, type WorkQuery } from "../api";
 import { duplicatesHref, workHref, workProposalsHref } from "../route";
-import { missingText } from "./labels";
+import { missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
 
-/** 作品の一覧(作品カード → 作品ページ)。 */
+/** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
+const SEARCH_DELAY_MS = 250;
+
+const FILTER_LABELS: Record<WorkFilterName, string> = { author: "著者", kind: "種別", genre: "ジャンル", tag: "タグ" };
+const FILTER_NAMES: WorkFilterName[] = ["author", "kind", "genre", "tag"];
+
+/** 作品の一覧(作品カード → 作品ページ)。上に全文検索と絞り込み(#56)。 */
 export function Works() {
   const [data, setData] = useState<WorkList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(0);
+  const [text, setText] = useState("");
+  const [query, setQuery] = useState<WorkQuery>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const seq = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (q: WorkQuery) => {
+    const mine = ++seq.current;
     try {
-      const [list, proposals] = await Promise.all([api.listWorks(), api.listProposals("open")]);
+      const list = await api.listWorks(q);
+      if (mine !== seq.current) return; // 後から出した検索の結果を古い結果で上書きしない
       setData(list);
-      setPending(proposals.length);
       setError(null);
     } catch {
-      setError("作品一覧を読み込めませんでした。サーバーが動いているか確認してください。");
+      if (mine === seq.current) setError("作品一覧を読み込めませんでした。サーバーが動いているか確認してください。");
+    }
+  }, []);
+
+  const loadProposals = useCallback(async () => {
+    try {
+      setPending((await api.listProposals("open")).length);
+    } catch {
+      // 提案の件数は補助の表示なので、取れなくても一覧は出す
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(query);
+  }, [load, query]);
+
+  useEffect(() => {
+    void loadProposals();
+  }, [loadProposals]);
+
+  // 検索語は少し待ってからクエリに入れる
+  useEffect(() => {
+    const t = window.setTimeout(() => setQuery((cur) => (cur.q === text ? cur : { ...cur, q: text })), SEARCH_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [text]);
+
+  const setFilter = (name: keyof WorkQuery, value: string) => setQuery((cur) => ({ ...cur, [name]: value || undefined }));
+  const clearAll = () => {
+    setText("");
+    setQuery({});
+  };
+
+  const activeFilters = FILTER_NAMES.filter((n) => query[n]).length + (query.status ? 1 : 0);
+  const filtering = activeFilters > 0 || !!query.q?.trim();
 
   const refresh = async () => {
     setBusy(true);
     try {
       await api.refreshWorks();
-      await load();
+      await Promise.all([load(query), loadProposals()]);
     } catch {
       setError("作品の割り当てを取り直せませんでした。");
     } finally {
@@ -63,8 +101,57 @@ export function Works() {
           (同じ作品かもしれない組。承認するまで統合しません)
         </div>
       )}
+      <form className="work-search" role="search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
+        <div className="work-search-row">
+          <input
+            type="search"
+            aria-label="作品を検索"
+            placeholder="作品名・別名・著者で検索"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            enterKeyHint="search"
+          />
+          <button type="button" className="work-filter-toggle" aria-expanded={showFilters} aria-controls="work-filters" onClick={() => setShowFilters((v) => !v)}>
+            絞り込み{activeFilters > 0 ? `(${activeFilters})` : ""}
+          </button>
+        </div>
+        {showFilters && (
+          <div className="work-filters" id="work-filters">
+            <label>
+              読書状態
+              <select value={query.status ?? ""} onChange={(e) => setFilter("status", e.target.value)}>
+                <option value="">すべて</option>
+                {(Object.keys(READING_STATE_TEXT) as ReadingState[]).map((st) => (
+                  <option key={st} value={st}>{READING_STATE_TEXT[st]}</option>
+                ))}
+              </select>
+            </label>
+            {FILTER_NAMES.filter((n) => (data?.facets[n].length ?? 0) > 0 || query[n]).map((n) => (
+              <label key={n}>
+                {FILTER_LABELS[n]}
+                <select value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
+                  <option value="">すべて</option>
+                  {[...new Set([...(data?.facets[n] ?? []), ...(query[n] ? [query[n]!] : [])])].map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        )}
+      </form>
+      {data && filtering && (
+        <p className="muted work-count" role="status">
+          {data.works.length} 件 / 全 {data.total} 作品
+          {" "}
+          <button type="button" className="link-button" onClick={clearAll}>条件を消す</button>
+        </p>
+      )}
       {data === null && !error && <p className="muted">読み込み中…</p>}
-      {data?.works.length === 0 && <p className="muted">作品がありません。蔵書フォルダを設定してスキャンしてください。</p>}
+      {data && data.works.length === 0 && filtering && data.total > 0 && (
+        <p className="muted">条件に合う作品がありません。語を短くするか、絞り込みを外してください。</p>
+      )}
+      {data && data.total === 0 && <p className="muted">作品がありません。蔵書フォルダを設定してスキャンしてください。</p>}
       {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります(「巻」の表示にあります)。</p>}
       <ul className="work-grid">
         {data?.works.map((w) => {
@@ -84,6 +171,7 @@ export function Works() {
                   {w.merged && <span className="badge dup-badge">統合済み</span>}
                   {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
                   {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
+                  {w.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[w.reading_state]}</span>}
                 </span>
               </a>
             </li>

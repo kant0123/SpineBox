@@ -1,4 +1,4 @@
-import type { MergeEvidence, WorkSource, WorkSummary } from "../api";
+import type { MergeEvidence, ReadingState, WorkSource, WorkSummary } from "../api";
 
 const SOURCE_TEXT: Record<WorkSource, string> = {
   filename: "ファイル名から",
@@ -37,3 +37,6 @@ export function evidenceLines(ev: MergeEvidence): string[] {
   }
   return lines;
 }
+
+/** 読書状態の表示(#56) */
+export const READING_STATE_TEXT: Record<ReadingState, string> = { unread: "未読", reading: "読書中", finished: "既読" };

@@ -1,8 +1,8 @@
 ---
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
-updated: 2026-11-02
-related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping]
+updated: 2026-11-01
+related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, work-search]
 ---
 
 # フロントエンド(`frontend/`)
@@ -26,7 +26,7 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/works/Works.tsx:8 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案)。作品ページ `frontend/src/works/WorkPage.tsx:39 WorkPage()`(`#/works/<id>`: 作品名・著者の手動編集、別名、統合の根拠、巻の枠・欠け、巻の付け替え・手動統合)、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/works/Works.tsx:14 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・読書状態)。上に検索欄と「絞り込み」([[work-search]])。作品ページ `frontend/src/works/WorkPage.tsx:39 WorkPage()`(`#/works/<id>`: 作品名・著者の手動編集、別名、統合の根拠、巻の枠・欠け、巻の付け替え・手動統合)、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
 | `frontend/src/api.ts:312 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
 | `frontend/src/mock/mockBackend.ts:126 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
@@ -77,6 +77,7 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 
 - **作品ページの「手で直した項目」は出所を明示する。** 作品名・著者・別名・巻の割り当てごとに「手動で編集 / ファイル名から(確信度 90%)/ 重複候補の証拠で統合」を出す。名寄せは名前の推測なので、利用者が根拠を見て直せるようにするため。
   提案は確信度と根拠(一致ページ数)を見せ、承認するまで統合しない。巻の付け替えは巻のチェックボックスで選んで「新しい作品に分ける」/「この作品へ移す」(手動の決定になり再計算で戻らない)
+- **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(#50 の前の種別・ジャンル・タグ)は選択欄ごと出さない。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/mock/mockWorks.ts:19 normalizeSearch()` でバックエンドと同じ正規化を真似ている
 - **作品の一覧と巻の一覧は別画面で、既定は巻の一覧のまま。** 作品の画面は `#/works`。巻の一覧のカード・リーダーは変えていない
 
 ## 落とし穴
@@ -110,6 +111,7 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #56 で作品一覧に検索欄と絞り込みを足した。モック API(`npm run dev:mock`)を 375px のヘッドレス Chromium で開き、検索・読書状態の絞り込み・0 件の表示・横スクロールが出ないことを確認した。実バックエンドでの確認はローカルで引き取る
 - #43 で作品の一覧・作品ページ・統合の提案の画面を足した(モック API は `src/mock/mockWorks.ts`)。`_参考/サンプル本` を実バックエンドで配信し、375px と 812x375 の組み込みブラウザで、作品一覧 → 作品ページ(1・2 巻が重複・欠けなし)→ 巻を新しい作品に分ける → 提案が出る(分けた組は却下済みで記録される)→「提案に戻す」→「同じ作品として統合」→ 作品名の手動編集(再計算で戻らない)を確認した。横スクロールは出ない
 
 - #38 で重複候補の画面(`#/duplicates`)と一覧の印を足した。`_参考/サンプル本` を実バックエンドで配信し、375px と 812x375 の組み込みブラウザで、調べる(進み具合)→ 候補 2 組 → 却下 → 再度調べても復活しない → 戻す、と一覧の印の付け外しを確認した

@@ -144,3 +144,9 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: なし(GOAL.md のみ)
 - 備考: #29 で利用者が判断。完了条件の例「v01-03.rar は中身が 3 巻だけ」は実データ(名前どおり 1〜3 巻)と合わないため、「合成データで検出できること+サンプルで誤検出しないこと」に書き換えた。合成データは `tests/test_analysis.py` `test_missing_volume_in_outer_archive_is_reported` ほか、サンプルで誤検出しないことはフェーズ 2 通し検証(PR #42)で確認済みなので `[x]` にした。食い違いのある実サンプルを足す予定は今のところ無い。試作で確かめた前提の「第01-04巻.7z の中身は 3・4 巻だけ」も、内側を 1 段しか開いていなかったための読み違いと注記した。
 
+## [2026-11-01] ingest | 作品の全文検索と絞り込み
+- 新規: [[work-search]]
+- 更新: [[backend]], [[frontend]], [[work-grouping]], [[metadata-clients]], [[overview]]
+- 備考: #56。マイグレーション 7(`work_search_dirty` と印を付けるトリガー)。索引 `work_search` は作品 1 件 1 行の FTS5 trigram(無い SQLite では普通の表と LIKE)、正規化は名寄せの `normalize_title` と共用、2 文字以下は LIKE。
+  #50(種別・ジャンル・タグ)は未マージのため、`work_fields` の `kind` / `genre` / `tag` で絞れる差し込み口と合成データのテストだけ。
+  トリガー内の `INSERT OR IGNORE` が外側の UPSERT の衝突方針で上書きされて一意制約違反になったので、`WHERE NOT EXISTS` にした。画面はモック API・375px で確認(実バックエンドでの確認はローカルで引き取る)。

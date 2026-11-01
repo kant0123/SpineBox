@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: システム全体像と各ページへの入口
-updated: 2026-11-02
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources]
+updated: 2026-11-01
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, work-search]
 ---
 
 # SpineBox 全体像
@@ -28,6 +28,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - [[duplicate-detection]] — 別スキャンの重複候補。全ページの見た目の指紋(dHash)と巻番号の候補で判定し、利用者が却下できる。計算は明示操作だけ、蔵書は変えない
 - [[metadata-clients]] — `spinebox/metadata/`。公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)のクライアントと生応答の保存。結果は候補 + 確からしさで、作品・巻へはまだ結線していない。取得元の癖・制限は [[metadata-sources]]
 - [[work-grouping]] — 作品の名寄せ(`spinebox/works.py`)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。確信度の高い統合だけ自動、残りは確認待ち、欠け巻と重複を作品ページで見せる
+- [[work-search]] — 作品の全文検索(FTS5 trigram、`spinebox/search.py`)と、著者・種別・ジャンル・タグ・読書状態の絞り込み。索引はトリガーの印で次の一覧の前に追いつく
 - [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 
 ## 主要な設計判断

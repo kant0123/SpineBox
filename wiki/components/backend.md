@@ -1,8 +1,8 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-02
-related: [overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources]
+updated: 2026-11-01
+related: [overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, work-search]
 ---
 
 # バックエンド
@@ -14,7 +14,7 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 
 - する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存、
   内側アーカイブの巻の分解と巻範囲の食い違いの検出([[volume-split]])、別スキャンの重複候補の検出(明示操作。[[duplicate-detection]])、
-  巻の名前から作る作品の名寄せ(別名・著者・統合の根拠・欠け巻。[[work-grouping]])
+  巻の名前から作る作品の名寄せ(別名・著者・統合の根拠・欠け巻。[[work-grouping]])、作品の全文検索と絞り込み([[work-search]])
 - しない: 蔵書への書き込み(読み取り専用。例外は整理処理 [[organize]] だけで、ユーザーの明示操作でだけ動く)、認証。外部メタデータの取得クライアント(`spinebox/metadata/`)はあるが、まだ作品・巻へ結線していない([[metadata-clients]])。結線は作品の名寄せ([[work-grouping]])の項目・別名の出所・手動フラグに載せる後続の仕事
 - アーカイブの中身の扱いは [[archive-reading]]、内側アーカイブの取り出し先は [[extraction-cache]]
 
@@ -31,9 +31,10 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | `spinebox/library.py:249 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:92 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:283 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
 | `spinebox/works.py:354 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
+| `spinebox/search.py:118 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:144 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
 | `spinebox/scanner.py:39 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
 | `spinebox/config.py:206 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
-| `spinebox/db.py:16 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
+| `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 
 ## API 契約(フロントと共有)
 
@@ -45,7 +46,7 @@ related: [overview, archive-reading, extraction-cache, server-setup, volume-spli
 | `GET /api/volumes` | `[{"id", "title", "source_name", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43) |
 | `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
-| `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged"}], "unassigned"}`。一覧に見えている巻を持つ作品だけ(統合された側は出ない) |
+| `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged", "reading_state"}], "total", "facets", "unassigned"}`。一覧に見えている巻を持つ作品だけ(統合された側は出ない)。クエリ `q`(全文検索。空白区切りで AND)・`author` / `kind` / `genre` / `tag`(項目の値の一致)・`status`(`unread` / `reading` / `finished`)で絞る(組み合わせ可。未対応の `status` は 422)。`total` は絞る前の作品数、`facets` は絞る前の作品から作った絞り込みの候補 `{"author", "kind", "genre", "tag"}`([[work-search]]) |
 | `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges` 付き)。PATCH は `{"title"?, "author"?}` を手動で保存(空の作品名は 422)。統合で消えた id は 404 |
 | `POST /api/works/{id}/aliases` / `DELETE .../aliases/{alias_id}` | 別名を足す(手動)/ 外す(再計算で戻らない)。詳細を返す |
 | `POST /api/works/{id}/merge` / `POST /api/works/assign` | 手動の統合 `{"other_id"}`(同じ作品は 409)/ 巻の付け替え `{"volume_ids", "work_id" \| null, "title"?}`(null は新しい作品へ分ける)。`{"work_id"}` を返す。どちらも手動の決定になる |
@@ -100,6 +101,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - SQLite はリクエストごとに接続を開く(FastAPI の同期エンドポイントはスレッドプールで動くため)。WAL を使う
 
 ## 経緯
+
+- #56 で作品の全文検索と絞り込みを足した([[work-search]])。マイグレーション 7(`work_search_dirty` と、索引が古くなる変更で印を付けるトリガー)。
+  索引の表 `work_search` はマイグレーションではなく起動時・一覧の前に `spinebox/search.py` が作る(SQLite の trigram の有無で形が変わるため)
 
 - #43 で作品の名寄せを足した([[work-grouping]])。マイグレーション 6(`works` / `work_fields` / `work_aliases` / `work_volumes` / `work_merge_proposals`)。
   `_参考/サンプル本` の実起動で、スキャンの直後は 3 作品、重複スキャンの後にお気楽領主が 1 作品(8 巻・自動統合・確信度 0.989)になることを確かめた
