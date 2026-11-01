@@ -39,8 +39,19 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** バックエンドが返した `detail`(利用者向けの文言)。無ければ undefined */
+    readonly detail?: string,
   ) {
     super(message);
+  }
+}
+
+async function errorDetail(res: Response): Promise<string | undefined> {
+  try {
+    const d = (await res.json())?.detail;
+    return typeof d === "string" && d ? d : undefined;
+  } catch {
+    return undefined; // 本文が JSON でない(プロキシの 502 など)
   }
 }
 
@@ -48,7 +59,9 @@ const vid = (id: VolumeId) => encodeURIComponent(String(id));
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
-  if (!res.ok) throw new ApiError(`${init?.method ?? "GET"} ${path} が ${res.status} で失敗しました`, res.status);
+  if (!res.ok) {
+    throw new ApiError(`${init?.method ?? "GET"} ${path} が ${res.status} で失敗しました`, res.status, await errorDetail(res));
+  }
   const text = await res.text();
   return (text ? JSON.parse(text) : null) as T;
 }

@@ -14,6 +14,7 @@ import {
   tapAction,
   type Action,
 } from "./layout";
+import { volumeErrorMessage } from "./loadError";
 import { createProgressSaver } from "./progressSaver";
 
 function useViewport() {
@@ -26,6 +27,33 @@ function useViewport() {
   return size;
 }
 
+/** 初めて開く入れ子のアーカイブは、内側を取り出すまで数秒かかる。その間に出す補足までの待ち時間 */
+export const SLOW_HINT_MS = 1500;
+
+function LoadingMessage({ hint }: { hint: boolean }) {
+  return (
+    <div className="reader">
+      <div className="reader-message" role="status">
+        <span className="spinner" aria-hidden="true" />
+        <p>読み込み中…</p>
+        {hint && <p className="reader-hint">初めて開く巻は、アーカイブの展開に数秒かかることがあります。</p>}
+        <a href={libraryHref}>一覧へ戻る</a>
+      </div>
+    </div>
+  );
+}
+
+function ErrorMessage({ text }: { text: string }) {
+  return (
+    <div className="reader">
+      <div className="reader-message">
+        <p role="alert">{text}</p>
+        <a href={libraryHref}>一覧へ戻る</a>
+      </div>
+    </div>
+  );
+}
+
 export function Reader({ id }: { id: string }) {
   const [detail, setDetail] = useState<VolumeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +62,8 @@ export function Reader({ id }: { id: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(loadSettings);
   const [broken, setBroken] = useState<Set<number>>(() => new Set());
+  const [loaded, setLoaded] = useState<Set<number>>(() => new Set());
+  const [slow, setSlow] = useState(false);
   const { w, h } = useViewport();
 
   // 一度読み終えた巻は、前のページへ戻っても既読のままにする
@@ -53,11 +83,15 @@ export function Reader({ id }: { id: string }) {
         setPage(d.progress?.page ?? 0);
         setDetail(d);
       })
-      .catch(() => alive && setError("この巻を開けませんでした。蔵書フォルダがオフラインの可能性があります。"));
+      .catch((e) => alive && setError(volumeErrorMessage(e)));
+    const t = setTimeout(() => alive && setSlow(true), SLOW_HINT_MS);
     return () => {
       alive = false;
+      clearTimeout(t);
     };
   }, [id]);
+
+  const markLoaded = useCallback((i: number) => setLoaded((s) => (s.has(i) ? s : new Set(s).add(i))), []);
 
   const pageCount = detail?.pages.length ?? 0;
   const spreads = useMemo(
@@ -160,25 +194,12 @@ export function Reader({ id }: { id: string }) {
     saveSettings(s);
   };
 
-  if (error) {
-    return (
-      <div className="reader-message">
-        <p role="alert">{error}</p>
-        <a href={libraryHref}>一覧へ戻る</a>
-      </div>
-    );
-  }
-  if (!detail) return <div className="reader-message">読み込み中…</div>;
-  if (pageCount === 0) {
-    return (
-      <div className="reader-message">
-        <p>この巻にはページがありません。</p>
-        <a href={libraryHref}>一覧へ戻る</a>
-      </div>
-    );
-  }
+  if (error) return <ErrorMessage text={error} />;
+  if (!detail) return <LoadingMessage hint={slow} />;
+  if (pageCount === 0) return <ErrorMessage text="この巻にはページがありません。" />;
 
   const pageLabel = current.map((i) => i + 1).join("-");
+  const waiting = current.some((i) => !loaded.has(i) && !broken.has(i));
 
   return (
     <div className="reader">
@@ -201,11 +222,21 @@ export function Reader({ id }: { id: string }) {
               src={api.pageUrl(id, i)}
               alt={`${i + 1} ページ`}
               draggable={false}
+              // キャッシュ済みで描画前に読み終わっていた画像は load を待たずに済ませる
+              ref={(el) => el?.complete && el.naturalWidth > 0 && markLoaded(i)}
+              onLoad={() => markLoaded(i)}
               onError={() => setBroken((b) => new Set(b).add(i))}
             />
           ),
         )}
       </div>
+
+      {waiting && (
+        <div className="page-loading" role="status">
+          <span className="spinner" aria-hidden="true" />
+          読み込み中…
+        </div>
+      )}
 
       {notice && (
         <div className="reader-notice" role="status">
