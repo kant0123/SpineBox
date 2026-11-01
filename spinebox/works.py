@@ -146,7 +146,7 @@ class _Work:
 
     @property
     def manual_involved(self) -> bool:
-        return self.title_manual or self.manual_volumes > 0
+        return self.title_manual or self.author_manual or self.manual_volumes > 0
 
 
 class _State:
@@ -329,7 +329,9 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
     kept = c.execute("SELECT value, manual FROM work_fields WHERE work_id = ? AND field = ?",
                      (keep, FIELD_AUTHOR)).fetchone()
     dropped = c.execute("SELECT * FROM work_fields WHERE work_id = ? AND field = ?", (drop, FIELD_AUTHOR)).fetchone()
-    if dropped and dropped["value"] and (kept is None or (not kept["value"] and not kept["manual"])):
+    if dropped and dropped["value"] and (
+            kept is None or (not kept["manual"] and (not kept["value"] or dropped["manual"]))):
+        # 手動の著者は、名前から読んだ著者より優先して残す(吸収される側が手動なら、その著者を移す)
         _set_field(c, keep, FIELD_AUTHOR, dropped["value"], dropped["source"], bool(dropped["manual"]),
                    dropped["confidence"], json.loads(dropped["evidence"]) if dropped["evidence"] else None)
     now = db.now()
@@ -339,8 +341,8 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
 
 
 def _manual_involved(c, work_id: int) -> bool:
-    if _title_of(c, work_id)[1]:
-        return True
+    if c.execute("SELECT 1 FROM work_fields WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone():
+        return True  # 手で直した作品名・著者
     return c.execute("SELECT 1 FROM work_volumes WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone() is not None
 
 

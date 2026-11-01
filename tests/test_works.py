@@ -505,3 +505,37 @@ def test_sync_function_directly_reports_a_summary(make_env):
         assert (s.works_created, s.volumes_assigned, s.merged, s.proposals_open) == (0, 0, 0, 0)
     finally:
         conn.close()
+
+
+# --- agy レビュー(#47)で成立を確かめた指摘 ------------------------------------------------------
+
+def test_alias_added_to_the_work_that_gets_absorbed_returns_the_surviving_work(make_env):
+    _, _, client = make_env(["Okiraku v01.cbz", "お気楽 第01巻.cbz"])
+    ws = by_title(client)
+    # ローマ字の作品へ別名「お気楽」を足すと、日本語の作品へ自動で統合される(吸収されるのは操作した作品の側)
+    r = client.post(f"/api/works/{ws['Okiraku']['id']}/aliases", json={"alias": "お気楽"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["id"] == ws["お気楽"]["id"] and d["title"] == "お気楽" and d["volume_count"] == 2
+
+
+def test_manual_author_blocks_automatic_merge(two_names):
+    _, settings, client = two_names
+    wid = by_title(client)["Okiraku"]["id"]
+    assert client.patch(f"/api/works/{wid}", json={"author": "手で入れた著者"}).status_code == 200
+    add_candidate(settings, vid(client, "Okiraku v01"), vid(client, "お気楽 第01巻"), 186, 188)
+    client.post("/api/works/refresh")
+    assert len(by_title(client)) == 2  # 手動の著者が絡む統合は、確信度が高くても確認待ち
+    (p,) = client.get("/api/works/proposals").json()
+    assert p["status"] == "open"
+
+
+def test_manual_author_of_the_absorbed_work_is_not_lost_on_merge(make_env):
+    _, _, client = make_env(["Okiraku v01.cbz", "[ファイル名の著者] お気楽 第01巻.cbz"])
+    ws = by_title(client)
+    assert ws["お気楽"]["author"] == "ファイル名の著者" and ws["Okiraku"]["author"] is None
+    assert client.patch(f"/api/works/{ws['Okiraku']['id']}", json={"author": "手で入れた著者"}).status_code == 200
+    r = client.post(f"/api/works/{ws['お気楽']['id']}/merge", json={"other_id": ws["Okiraku"]["id"]})
+    assert r.status_code == 200
+    d = r.json()
+    assert (d["author"], d["author_manual"]) == ("手で入れた著者", True)  # 名前から読んだ著者で手動の著者を隠さない

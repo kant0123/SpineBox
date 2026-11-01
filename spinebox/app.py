@@ -430,7 +430,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def add_work_alias(work_id: int, body: AliasIn, conn: sqlite3.Connection = Depends(get_conn)):
         works.add_alias(conn, work_id, body.alias)
         _sync_works(conn)
-        return works.get_work(conn, work_id)
+        # 別名の一致で自動統合され、この作品が吸収されることがある。吸収先を返す(404 にしない)
+        return works.get_work(conn, works.root_of(conn, work_id) or work_id)
 
     @app.delete("/api/works/{work_id}/aliases/{alias_id}")
     def remove_work_alias(work_id: int, alias_id: int, conn: sqlite3.Connection = Depends(get_conn)):

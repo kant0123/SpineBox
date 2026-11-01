@@ -176,6 +176,14 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     }
     if (m[2] === "aliases" && method === "POST") {
       if (!body.alias?.trim()) return res(422, { detail: "別名を入力してください" });
+      // 別の作品の名前と同じ別名を足すと、その作品へ自動で統合される(吸収されるのはこの作品の側。返すのは吸収先)
+      const target = works.find((x) => x !== w && x.title === body.alias.trim());
+      if (target) {
+        target.aliases.push({ id: ++aliasSeq, alias: w.title, manual: false, source: "merge", confidence: 0.9 });
+        target.volumeIds.push(...w.volumeIds);
+        works.splice(works.indexOf(w), 1);
+        return res(200, detail(target));
+      }
       w.aliases.push({ id: ++aliasSeq, alias: body.alias.trim(), manual: true, source: "manual", confidence: 1 });
       return res(200, detail(w));
     }

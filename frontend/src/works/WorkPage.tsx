@@ -198,8 +198,11 @@ export function WorkPage({ id }: { id: string }) {
             e.preventDefault();
             if (alias.trim())
               void run(async () => {
-                apply(await api.addAlias(work.id, alias));
+                const updated = await api.addAlias(work.id, alias);
                 setAlias("");
+                // 別名の一致で自動統合され、この作品が別の作品に吸収されたときは、吸収先のページへ移る
+                if (updated.id !== work.id) window.location.hash = workHref(updated.id);
+                else apply(updated);
               });
           }}
         >

@@ -88,6 +88,17 @@ describe("作品ページ", () => {
     await waitFor(() => expect(screen.queryByText("Sample")).toBeNull());
   });
 
+  it("別名の一致で別の作品に自動統合されたら、吸収先の作品ページへ移る", async () => {
+    window.location.hash = "#/works/2";
+    render(<App />);
+    await screen.findByLabelText("別名を足す");
+    fireEvent.change(screen.getByLabelText("別名を足す"), { target: { value: "別の読み物" } });
+    fireEvent.click(screen.getByRole("button", { name: "足す" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/works/3"));
+    expect(screen.queryByText(/この作品は見つかりません/)).toBeNull();
+    expect(await screen.findByRole("heading", { name: "別の読み物" })).toBeTruthy();
+  });
+
   it("選んだ巻を新しい作品に分けられる", async () => {
     window.location.hash = "#/works/1";
     render(<App />);
