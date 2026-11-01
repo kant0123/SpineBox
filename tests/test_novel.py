@@ -321,3 +321,36 @@ def test_epub_linear_no_and_svg_images_are_not_served(make_client, tmp_path):
     detail, html = read_all(c, vid)
     assert len(detail["sections"]) == 1 and "<img" not in html[0]
     assert c.get(f"/api/volumes/{vid}/resources/0").status_code == 404
+
+
+def test_text_over_size_limit_is_unreadable_with_reason(make_client, tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "big.txt").write_text("あ" * 2000, encoding="utf-8")
+    c, settings = make_client(lib, max_entry_bytes=1000)
+    vid = scan(c)["big"]["id"]
+    r = c.get(f"/api/volumes/{vid}")
+    assert r.status_code == 422 and "上限" in r.json()["detail"]
+    reasons = [row[0] for row in db.connect(settings.db_path).execute("SELECT reason FROM scan_issues")]
+    assert any("上限" in x for x in reasons)
+
+
+def test_epub_without_readable_body_is_422(make_client, tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "empty.epub").write_bytes(epub_bytes(["<p>x</p>"], linear_no=(0,)))  # 本文が linear="no" だけ
+    bad_container = b'<?xml version="1.0"?><container><rootfiles/></container>'
+    (lib / "noopf.epub").write_bytes(epub_bytes(["<p>x</p>"], container=bad_container))
+    c, _ = make_client(lib)
+    vols = scan(c)  # スキャンは目次だけなので、どちらも一覧には出る
+    assert "読める本文" in c.get(f"/api/volumes/{vols['empty']['id']}").json()["detail"]
+    r = c.get(f"/api/volumes/{vols['noopf']['id']}")
+    assert r.status_code == 422 and "OPF" in r.json()["detail"]
+
+
+def test_xhtml_encoding_follows_bom_and_xml_declaration():
+    from spinebox.novel.epub import decode_markup
+    assert decode_markup('<?xml version="1.0" encoding="Shift_JIS"?><p>日本語</p>'.encode("shift_jis")).endswith("日本語</p>")
+    assert decode_markup(b"\xef\xbb\xbf<p>\xe3\x81\x82</p>") == "<p>あ</p>"
+    assert decode_markup("<p>あ</p>".encode("utf-16")) == "<p>あ</p>"
+    assert decode_markup(b'<?xml version="1.0" encoding="x-unknown"?><p>\xe3\x81\x82</p>').endswith("<p>あ</p>")
