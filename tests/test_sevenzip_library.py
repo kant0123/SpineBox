@@ -137,7 +137,7 @@ def test_inner_archive_is_extracted_once_and_reused(sevenzip, make_client, tmp_p
 
 
 def test_7z_nested_in_rar_in_7z(sevenzip, make_client, tmp_path):
-    """実データと同じ形: 7z の中の rar の中の rar の中の zip(巻への分解はフェーズ 2)。"""
+    """実データと同じ形: 7z の中の rar の中の rar の中の zip。開くと中の巻(v1・v3)に分解される。"""
     inner_zip = zip_bytes([("v1/2.jpg", page_bytes("z/2")), ("v1/1.jpg", page_bytes("z/1"))])
     mid = rar5_bytes([("v1-2.rar", rar5_bytes([("v1.zip", inner_zip)])), ("v3.zip", zip_bytes([("3.jpg", page_bytes("z3"))]))])
     lib = tmp_path / "lib"
@@ -146,11 +146,18 @@ def test_7z_nested_in_rar_in_7z(sevenzip, make_client, tmp_path):
     assert c.post("/api/scan").json()["volumes"] == 1
     (vol,) = c.get("/api/volumes").json()
     assert pages(c, vol["id"]) == [page_bytes("z/1"), page_bytes("z/2"), page_bytes("z3")]
-    # max_depth を絞ると入れ子の途中で止まる(理由が記録される)
+    children = c.get("/api/volumes").json()
+    assert [(v["title"], v["parent_id"], v["volume_number"]["start"]) for v in children] == [
+        ("v1", vol["id"], 1), ("v3", vol["id"], 3)]
+    assert [pages(c, v["id"]) for v in children] == [[page_bytes("z/1"), page_bytes("z/2")], [page_bytes("z3")]]
+    # 中の v1-2.rar には v1.zip しか無い。親の名前「v1-3」に対して 2 巻が欠けている
+    assert [[(f["scope"], f["missing"], f["extra"]) for f in v["findings"]] for v in children] == [
+        [("volume", [2], [])]] * 2
+    # max_depth を絞ると入れ子の途中で止まる(理由が記録される)。中の巻が 1 つになるので分解を取り消す
     c2, _ = make_client(lib, sevenzip_path=sevenzip, max_depth=2)
     c2.post("/api/scan")
-    (vol2,) = c2.get("/api/volumes").json()
-    assert pages(c2, vol2["id"]) == [page_bytes("z3")]
+    assert pages(c2, vol["id"]) == [page_bytes("z3")]
+    assert [v["id"] for v in c2.get("/api/volumes").json()] == [vol["id"]]
 
 
 def test_broken_7z_after_scan_is_422_and_junk_is_recorded(sevenzip, make_client, tmp_path):

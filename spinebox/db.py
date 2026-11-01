@@ -77,6 +77,24 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX scan_issues_source ON scan_issues (source_id)",
     ],
+    # 2: 巻への分解(#30)。内側アーカイブを解析して見つけた巻の単位を子の巻として持つ。
+    #    parent_id: 親(まとめ)の巻。inner_path: 親の内側アーカイブから子の単位までの入れ子のアーカイブ名
+    #    (JSON 配列。子だけが持ち、親・スキャンで出る巻は NULL)。number_*: 名前から読んだ巻・話の番号の候補。
+    #    analyzed_version: 解析した時点の元ファイルの版(NULL = 未解析)。analysis_error: 解析できなかった理由
+    [
+        "ALTER TABLE volumes ADD COLUMN parent_id INTEGER REFERENCES volumes(id)",
+        "ALTER TABLE volumes ADD COLUMN inner_path TEXT",
+        "ALTER TABLE volumes ADD COLUMN number_kind TEXT",
+        "ALTER TABLE volumes ADD COLUMN number_start INTEGER",
+        "ALTER TABLE volumes ADD COLUMN number_end INTEGER",
+        "ALTER TABLE volumes ADD COLUMN number_evidence TEXT",
+        "ALTER TABLE volumes ADD COLUMN analyzed_version TEXT",
+        "ALTER TABLE volumes ADD COLUMN analysis_error TEXT",
+        "DROP INDEX volumes_locator",
+        """CREATE UNIQUE INDEX volumes_locator ON volumes
+           (source_id, COALESCE(container_path, ''), COALESCE(inner_path, ''), entry_prefix)""",
+        "CREATE INDEX volumes_parent ON volumes (parent_id)",
+    ],
 ]
 
 

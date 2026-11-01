@@ -26,6 +26,12 @@ port = 8000
 # sevenzip_path = "C:/Program Files/7-Zip/7z.exe"
 sevenzip_path = "7z"
 
+# 内側アーカイブ(アーカイブの中のアーカイブ)の巻を裏で 1 巻ずつ開いて中の巻に分解する。既定は無効
+# (無効でも、その巻を開いたとき・一覧の「中の巻を調べる」で分解する)。有効にすると展開キャッシュを使う
+background_analysis = false
+# 裏の解析の間隔(秒)。1 回に 1 巻だけ解析する
+background_analysis_interval = 60
+
 # 展開の上限。超えたアーカイブ・エントリは理由を記録してスキップする
 [limits]
 # 1 アーカイブの展開後サイズの合計(目次の宣言値)

@@ -1,7 +1,7 @@
 // 開発・テスト用のモック API。`npm run dev:mock` の Vite サーバーと、単体テストの fetch 差し替えの両方で使う。
 // アプリ本体からは import しない(本番のバンドルに入れないため)。
 
-import type { Progress, VolumeDetail, VolumeSummary } from "../api";
+import type { Finding, VolumeDetail, VolumeSummary } from "../api";
 
 export interface MockResponse {
   status: number;
@@ -9,23 +9,53 @@ export interface MockResponse {
   body: string;
 }
 
-interface MockVolume {
+type MockVolume = Omit<VolumeSummary, "id"> & {
   id: number;
-  title: string;
-  source_name: string;
-  page_count: number | null;
-  offline: boolean;
-  progress: Progress | null;
-}
+  /** 分解済みの親(一覧に出さない) */
+  hidden?: boolean;
+};
+
+const base = { parent_id: null, parent_title: null, volume_number: null, findings: [], can_analyze: false };
+
+/** 「v01-03」の中に 1・3 巻しか無い、という食い違い */
+export const missingSecond: Finding = {
+  scope: "volume",
+  subject: "v01-03",
+  name_range: { kind: "volume", start: 1, end: 3, evidence: "v01-03" },
+  found: [1, 3],
+  missing: [2],
+  extra: [],
+  duplicates: [],
+  unnumbered: 0,
+  message: "名前「v01-03」は 1〜3 巻だが、2 巻が見当たらない",
+};
 
 export function defaultVolumes(): MockVolume[] {
   return [
-    { id: 1, title: "サンプル漫画 第01巻", source_name: "sample_v01.zip", page_count: 9, offline: false, progress: null },
-    { id: 2, title: "サンプル漫画 第02巻", source_name: "sample_v02.cbz", page_count: 8, offline: false, progress: { page: 3, finished: false } },
-    { id: 3, title: "読了済みの巻", source_name: "done.7z", page_count: 5, offline: false, progress: { page: 4, finished: true } },
-    { id: 4, title: "外付けドライブの巻", source_name: "E:/漫画/offline.rar", page_count: 12, offline: true, progress: null },
-    { id: 5, title: "ページ数未確定の巻(入れ子)", source_name: "outer.7z/inner.rar", page_count: null, offline: false, progress: null },
+    { ...base, id: 1, title: "サンプル漫画 第01巻", source_name: "sample_v01.zip", page_count: 9, offline: false, progress: null },
+    { ...base, id: 2, title: "サンプル漫画 第02巻", source_name: "sample_v02.cbz", page_count: 8, offline: false, progress: { page: 3, finished: false } },
+    { ...base, id: 3, title: "読了済みの巻", source_name: "done.7z", page_count: 5, offline: false, progress: { page: 4, finished: true } },
+    { ...base, id: 4, title: "外付けドライブの巻", source_name: "E:/漫画/offline.rar", page_count: 12, offline: true, progress: null },
+    // 未解析の内側アーカイブ。「中の巻を調べる」で 6・7 に分解される
+    { ...base, id: 5, title: "v01-03", source_name: "outer.7z", page_count: null, offline: false, progress: null, can_analyze: true },
   ];
+}
+
+function splitChildren(parent: MockVolume): MockVolume[] {
+  const child = (id: number, n: number): MockVolume => ({
+    ...base,
+    id,
+    title: `v0${n}`,
+    source_name: parent.source_name,
+    page_count: 4,
+    offline: false,
+    progress: null,
+    parent_id: parent.id,
+    parent_title: parent.title,
+    volume_number: { kind: "volume", start: n, end: n, evidence: `v0${n}` },
+    findings: [missingSecond],
+  });
+  return [child(100 + parent.id * 10 + 1, 1), child(100 + parent.id * 10 + 3, 3)];
 }
 
 const json = (status: number, data: unknown): MockResponse => ({
@@ -56,14 +86,15 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes()) {
     const parsed = body ? JSON.parse(body) : undefined;
     log.push({ method, path, body: parsed });
 
+    const shown = () => volumes.filter((v) => !v.hidden);
     if (method === "GET" && path === "/api/volumes") {
-      const list: VolumeSummary[] = volumes.map((v) => ({ ...v }));
+      const list: VolumeSummary[] = shown().map(({ hidden: _hidden, ...v }) => ({ ...v }));
       return json(200, list);
     }
     if (method === "POST" && path === "/api/scan") {
-      return json(200, { volumes: volumes.length, offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [] });
+      return json(200, { volumes: shown().length, offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [] });
     }
-    const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|pages\/(\d+)))?$/);
+    const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|pages\/(\d+)))?$/);
     const v = m ? volumes.find((x) => String(x.id) === decodeURIComponent(m[1])) : undefined;
     if (!m || !v) return json(404, { detail: "見つかりません" });
 
@@ -76,8 +107,24 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes()) {
         page_count: n,
         pages: Array.from({ length: n }, (_, i) => ({ index: i, name: `${String(i + 1).padStart(3, "0")}.jpg` })),
         progress: v.progress,
+        parent_id: v.parent_id,
+        volume_number: v.volume_number,
+        findings: v.findings,
       };
       return json(200, detail);
+    }
+    if (m[2] === "analyze" && method === "POST") {
+      if (!v.can_analyze) return json(200, { id: v.id, analyzed: false, children: [], findings: [] });
+      const children = splitChildren(v);
+      v.hidden = true;
+      v.can_analyze = false;
+      volumes.splice(volumes.indexOf(v) + 1, 0, ...children);
+      return json(200, {
+        id: v.id,
+        analyzed: true,
+        children: children.map((c) => ({ id: c.id, title: c.title, page_count: c.page_count, volume_number: c.volume_number })),
+        findings: [missingSecond],
+      });
     }
     if (m[2] === "progress" && method === "PUT") {
       if (typeof parsed?.page !== "number" || typeof parsed?.finished !== "boolean") return json(422, { detail: "形式が不正" });

@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-01
-related: [overview, archive-reading, extraction-cache, server-setup]
+related: [overview, archive-reading, extraction-cache, server-setup, volume-split]
 ---
 
 # バックエンド
@@ -12,7 +12,8 @@ related: [overview, archive-reading, extraction-cache, server-setup]
 
 ## 責務
 
-- する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存
+- する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存、
+  内側アーカイブの巻の分解と巻範囲の食い違いの検出([[volume-split]])
 - しない: 蔵書への書き込み(読み取り専用。整理処理はフェーズ 2 以降で別に作る)、メタデータ取得、認証
 - アーカイブの中身の扱いは [[archive-reading]]、内側アーカイブの取り出し先は [[extraction-cache]]
 
@@ -25,7 +26,9 @@ related: [overview, archive-reading, extraction-cache, server-setup]
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:198 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
 | `spinebox/scanner.py:144 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
-| `spinebox/library.py:78 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ) |
+| `spinebox/library.py:100 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
+| `spinebox/library.py:249 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:78 parse_number`([[volume-split]]) |
+| `spinebox/scanner.py:39 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
 | `spinebox/config.py:107 load_settings` | 設定ファイルの探し方と相対パスの起点 |
 | `spinebox/db.py:16 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 
@@ -35,9 +38,10 @@ related: [overview, archive-reading, extraction-cache, server-setup]
 
 | メソッドとパス | 返すもの |
 | --- | --- |
-| `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...]}`。件数は一覧に出る巻の数(オフラインの巻を含む)。スキャン中の再実行は 409 |
-| `GET /api/volumes` | `[{"id", "title", "source_name", "page_count", "offline", "progress"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null |
-| `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress"}`。内側アーカイブの巻はここで初めて取り出す |
+| `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...]}`。件数は一覧に出る巻の数(オフラインの巻を含む。分解済みの親は数えず子を数える)。スキャン中の再実行は 409 |
+| `GET /api/volumes` | `[{"id", "title", "source_name", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻 |
+| `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する |
+| `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422 |
 
@@ -72,12 +76,17 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
+- **スキャンの巻の突き合わせ(`_replace_volumes`)は親を持たない巻だけを見る。** 子の巻まで見ると、スキャンが切り出さない子を毎回 missing にしてしまう
+- **`volumes_locator`(一意索引)は `inner_path` を含む。** 子の巻は親と同じ (source, container_path, entry_prefix) を持ちうる(親の内側アーカイブ直下の単位は `inner_path = "[]"`、親は NULL)
 - 相対パスは設定ファイルの場所が起点。サービスとして起動したときのカレントに左右されないため
 - SQLite はリクエストごとに接続を開く(FastAPI の同期エンドポイントはスレッドプールで動くため)。WAL を使う
 
 ## 経緯
 
+- #30 で巻への分解と巻範囲の食い違いを足した([[volume-split]])。マイグレーション 2(`volumes` に親子・巻番号の候補・解析の版の列)。
+  `SCAN_VERSION` を 2 にしたので、既存 DB は次のスキャンで全アーカイブの目次を読み直す(取り出しはしない)
+
 - #19 で `/healthz` と常駐・LAN 公開の運用([[server-setup]])を足した。`host` の既定は 127.0.0.1 のまま、127.0.0.1 以外にしたときは起動時に注意を出す
 - #14 で骨格を作った。zip / cbz だけを対象にした
-- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:154 _expand` は入れ子を再帰で開く。
+- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:230 _expand` は入れ子を再帰で開く。
   実データ(`_参考/サンプル本`)で、スキャンが 10 巻を一覧に出し、キャッシュは空のまま、全巻の全ページが 200 で返ることを確かめた

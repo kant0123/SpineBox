@@ -37,6 +37,9 @@ class Settings:
     port: int = 8000
     sevenzip_path: str = "7z"
     limits: ExtractionLimits = field(default_factory=ExtractionLimits)
+    # 内側アーカイブの巻を裏で少しずつ解析して巻に分解する(既定は無効。開いたとき・明示操作では常に解析する)
+    background_analysis: bool = False
+    background_analysis_interval: int = 60  # 秒。1 回に 1 巻
 
     @property
     def db_path(self) -> Path:
@@ -54,6 +57,13 @@ def _int(table: dict, key: str, default: int, *, minimum: int = 0) -> int:
         raise ConfigError(f"{key} は整数で指定してください: {value!r}")
     if value < minimum:
         raise ConfigError(f"{key} は {minimum} 以上で指定してください: {value!r}")
+    return value
+
+
+def _bool(table: dict, key: str, default: bool) -> bool:
+    value = table.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{key} は true / false で指定してください: {value!r}")
     return value
 
 
@@ -92,6 +102,9 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         port=_int(data, "port", defaults.port, minimum=1),
         sevenzip_path=_str(data, "sevenzip_path", defaults.sevenzip_path),
         limits=limits,
+        background_analysis=_bool(data, "background_analysis", defaults.background_analysis),
+        background_analysis_interval=_int(data, "background_analysis_interval",
+                                          defaults.background_analysis_interval, minimum=1),
     )
 
 

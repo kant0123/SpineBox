@@ -8,6 +8,27 @@ export interface Progress {
   finished: boolean;
 }
 
+/** 名前から読んだ巻・話の番号の候補(確定ではない)。evidence は名前の中で当たった部分 */
+export interface VolumeNumber {
+  kind: "volume" | "episode";
+  start: number;
+  end: number;
+  evidence: string;
+}
+
+/** 名前の巻範囲と中身の食い違い。scope は名前を比べた相手(volume = 分解した親の巻、source = 外側のアーカイブ) */
+export interface Finding {
+  scope: "volume" | "source";
+  subject: string;
+  name_range: VolumeNumber;
+  found: number[];
+  missing: number[];
+  extra: number[];
+  duplicates: number[];
+  unnumbered: number;
+  message: string;
+}
+
 export interface VolumeSummary {
   id: VolumeId;
   title: string;
@@ -15,6 +36,13 @@ export interface VolumeSummary {
   page_count: number | null;
   offline: boolean;
   progress: Progress | null;
+  /** 分解で作った子の巻なら親(まとめ)の id。親は一覧に出ない */
+  parent_id: VolumeId | null;
+  parent_title: string | null;
+  volume_number: VolumeNumber | null;
+  findings: Finding[];
+  /** 未解析の内側アーカイブの巻(「中の巻を調べる」で分解できる) */
+  can_analyze: boolean;
 }
 
 export interface PageInfo {
@@ -28,6 +56,16 @@ export interface VolumeDetail {
   page_count: number | null;
   pages: PageInfo[];
   progress: Progress | null;
+  parent_id?: VolumeId | null;
+  volume_number?: VolumeNumber | null;
+  findings?: Finding[];
+}
+
+export interface AnalyzeResult {
+  id: VolumeId;
+  analyzed: boolean;
+  children: { id: VolumeId; title: string; page_count: number | null; volume_number: VolumeNumber | null }[];
+  findings: Finding[];
 }
 
 export interface ScanResult {
@@ -57,6 +95,7 @@ export const api = {
   listVolumes: () => request<VolumeSummary[]>("/api/volumes"),
   getVolume: (id: VolumeId) => request<VolumeDetail>(`/api/volumes/${vid(id)}`),
   scan: () => request<ScanResult>("/api/scan", { method: "POST" }),
+  analyze: (id: VolumeId) => request<AnalyzeResult>(`/api/volumes/${vid(id)}/analyze`, { method: "POST" }),
   saveProgress: (id: VolumeId, p: Progress, keepalive = false) =>
     request<unknown>(`/api/volumes/${vid(id)}/progress`, {
       method: "PUT",
