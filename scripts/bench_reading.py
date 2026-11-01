@@ -128,7 +128,8 @@ def _timed(fn) -> float:
     return elapsed
 
 
-def measure(library_root: Path, memory_limit: int, exe: str, forward: int, max_volumes: int) -> list[dict]:
+def measure(library_root: Path, memory_limit: int, exe: str, forward: int, max_volumes: int,
+            children: bool = False) -> list[dict]:
     with tempfile.TemporaryDirectory(prefix="spinebox-bench-") as td:
         settings = Settings(library_roots=(library_root,), data_dir=Path(td), sevenzip_path=exe)
         if "memory_cache_limit_bytes" in {f.name for f in dataclasses.fields(Settings)}:
@@ -144,26 +145,36 @@ def measure(library_root: Path, memory_limit: int, exe: str, forward: int, max_v
         conn.close()
         results = []
         with TestClient(create_app(settings, frontend_dist=None)) as client:
-            for row in rows[:max_volumes]:
-                vid = row["id"]
+            def run(vid: int, label: str) -> None:
                 url = f"/api/volumes/{vid}"
                 try:
                     t_open = _timed(lambda: client.get(url))
                     count = client.get(url).json()["page_count"]
                     if not count:
-                        continue
+                        return
                     t_first = _timed(lambda: client.get(f"{url}/pages/0"))
                     nexts = [_timed(lambda i=i: client.get(f"{url}/pages/{i}")) for i in range(1, min(count, forward + 1))]
                     t_again = _timed(lambda: client.get(f"{url}/pages/0"))
                     t_reopen = _timed(lambda: client.get(url))
                 except RuntimeError as e:
-                    print(f"スキップ: {row['rel_path']}: {e}", file=sys.stderr)
-                    continue
-                label = row["rel_path"] + (f" :: {row['container_path']}" if row["container_path"] else "")
+                    print(f"スキップ: {label}: {e}", file=sys.stderr)
+                    return
                 results.append({"label": label, "pages": count, "open": t_open, "first": t_first,
                                 "next": statistics.mean(nexts) if nexts else float("nan"),
                                 "worst": max(nexts) if nexts else float("nan"),
                                 "again": t_again, "reopen": t_reopen})
+
+            for row in rows[:max_volumes]:
+                label = row["rel_path"] + (f" :: {row['container_path']}" if row["container_path"] else "")
+                run(row["id"], label)
+                if children:
+                    # 親を開くと巻への分解で子の巻が登録される(開いた後に引く)。子も同じ内側アーカイブを使う
+                    conn = db.open_db(settings.db_path)
+                    kids = conn.execute(
+                        "SELECT id, title FROM volumes WHERE parent_id = ? AND missing = 0 ORDER BY id", (row["id"],)).fetchall()
+                    conn.close()
+                    for kid in kids:
+                        run(kid["id"], f"{label} -> {kid['title']}")
         return results
 
 
@@ -174,6 +185,7 @@ def main() -> int:
     ap.add_argument("--sevenzip", default="7z", help="7-Zip CLI のパス")
     ap.add_argument("--forward", type=int, default=10, help="ページ送りで読むページ数")
     ap.add_argument("--max-volumes", type=int, default=20, help="測る巻の上限(親の巻だけ)")
+    ap.add_argument("--children", action="store_true", help="分解で登録された子の巻も測る")
     ap.add_argument("--repeat", type=int, default=1, help="繰り返して中央値を取る回数")
     ap.add_argument("--pages", type=int, default=60, help="合成データの 1 巻のページ数")
     ap.add_argument("--page-kb", type=int, default=400, help="合成データの 1 ページの大きさ(KiB)")
@@ -196,7 +208,7 @@ def main() -> int:
         table: dict[str, dict[int, list[dict]]] = {}
         for _ in range(args.repeat):
             for limit in limits:
-                for r in measure(library_root, limit, exe or args.sevenzip, args.forward, args.max_volumes):
+                for r in measure(library_root, limit, exe or args.sevenzip, args.forward, args.max_volumes, args.children):
                     table.setdefault(r["label"], {}).setdefault(limit, []).append(r)
         ms = lambda v: f"{v * 1000:.1f} ms"  # noqa: E731
         for label, by_limit in table.items():
