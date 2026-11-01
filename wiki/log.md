@@ -127,4 +127,4 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-02] ingest | 公開 DB クライアントと生応答の保存
 - 更新: [[backend]], [[organize]](コード参照の行番号のみ), [[overview]]
 - 新規: [[metadata-clients]], [[metadata-sources]]
-- 備考: #44、PR #(作成後に記入)。国立国会図書館サーチ(OpenSearch)・AniList・MangaUpdates のクライアント、候補ごとの確からしさ、生応答の保存(マイグレーション 5 `metadata_responses`)、取得元ごとのレート制限、`scripts/metadata_probe.py`。DB の作品・巻への結線はしていない(後続)。実通信(2026-11-02)で「お気楽領主の楽しい領地防衛」「かくかくしかじか」「Okiraku ryoshu no tanoshi ryochi」を 3 取得元で引き、応答を `tests/fixtures/metadata/` に記録した。実通信で分かった癖(MangaUpdates の perpage は 10 未満が無視される、AniList はローマ字の綴りが厳密、NDL は著者で絞ると巻が揃う)は [[metadata-sources]]。
+- 備考: #44、PR #46。国立国会図書館サーチ(OpenSearch)・AniList・MangaUpdates のクライアント、候補ごとの確からしさ、生応答の保存(マイグレーション 5 `metadata_responses`)、取得元ごとのレート制限、`scripts/metadata_probe.py`。DB の作品・巻への結線はしていない(後続)。実通信(2026-11-02)で「お気楽領主の楽しい領地防衛」「かくかくしかじか」「Okiraku ryoshu no tanoshi ryochi」を 3 取得元で引き、応答を `tests/fixtures/metadata/` に記録した。実通信で分かった癖(MangaUpdates の perpage は 10 未満が無視される、AniList はローマ字の綴りが厳密、NDL は著者で絞ると巻が揃う)は [[metadata-sources]]。
