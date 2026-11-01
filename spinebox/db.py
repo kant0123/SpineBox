@@ -171,7 +171,23 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX duplicate_candidates_b ON duplicate_candidates (volume_b)",
     ],
-    # 5: 作品の名寄せ(#43)。works: 作品(merged_into: 統合されて別の作品に吸収された。行は消さない)。
+    # 5: 公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)の生応答。同じ要求は有効期限内なら使い回す(#44)。
+    # request は秘匿を除いた要求の記述(JSON)、body は応答本文のバイト列そのまま。作品・巻には結び付けない
+    [
+        """
+        CREATE TABLE metadata_responses (
+            id INTEGER PRIMARY KEY,
+            source TEXT NOT NULL,
+            request_key TEXT NOT NULL,
+            request TEXT NOT NULL,
+            status INTEGER NOT NULL,
+            body BLOB NOT NULL,
+            fetched_at TEXT NOT NULL,
+            UNIQUE (source, request_key)
+        )
+        """,
+    ],
+    # 6: 作品の名寄せ(#43)。works: 作品(merged_into: 統合されて別の作品に吸収された。行は消さない)。
     #    work_fields: 作品の項目(今は title / author)を項目ごとに持つ。source: 出所(filename / container / merge /
     #    manual / 後で public_db など)、manual: 利用者が手で編集した(再計算・外部ソースの取得で上書きしない)、
     #    confidence・evidence: 確信度と根拠(JSON)。項目を足すときは行を足すだけでよい(列は足さない)。

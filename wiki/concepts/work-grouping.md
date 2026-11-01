@@ -17,7 +17,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   入口: `spinebox/works.py:354 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
-  統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:16 MIGRATIONS` の版 5。「手動か」「出所」は
+  統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:16 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、後続の公開 DB の取得・手動編集の保護・全文検索はこの列に乗せる
 - **名前の読み方。** `spinebox/naming.py:170 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
   `spinebox/naming.py:147 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
