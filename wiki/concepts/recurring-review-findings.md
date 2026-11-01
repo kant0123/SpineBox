@@ -95,6 +95,7 @@ push 前に確かめること:
 - PR #33 — `.agent/skills/pr-finish/SKILL.md` — PR 本文テンプレートと手順 4 の振り分けに「未確認」が無かった
 - PR #33 — `.agent/skills/agy-review/SKILL.md` フローチャート — 未確認の CRITICAL もマージに至る経路として描いていた(この種類を台帳に足した PR 自身で再発)
 - PR #35 — `wiki/concepts/recurring-review-findings.md` — 「未確認は台帳に載せない」を足したが、同じページの送り先の説明に未確認の行き先が無かった
+- PR #40 — `spinebox/duplicates.py candidate_counts()` — 画面の API は「一覧に見えている巻どうしの組」だけを出すのに、一覧の印の数は見える条件を掛けず、片方が missing になった候補を数えて「開いても何も出ない印」が残った(missing にして再現)
 - PR #47 — `.agent/rules/git-workflow.md` / `knowledge-wiki.md` — `CLAUDE.md` の写しとして足したが、agy レビュー・両論併記・lint はコミット後の不変条件が抜けていた(外部レビューで発覚)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
@@ -128,6 +129,7 @@ push 前に確かめること:
 
 実例:
 
+- PR #40 — `wiki/log.md` — 取り込みで触った `wiki/components/organize.md` と、`archive-reading` の相互参照を「更新:」に載せていなかった
 - PR #34 — `wiki/overview.md` — リンクを足したが `updated` をプレースホルダーのまま残し、log の「更新:」にも載せなかった
 
 ### 再試行・再実行で前回の成果物を上書きする
@@ -142,3 +144,17 @@ push 前に確かめること:
 実例:
 
 - PR #23 — `review/agy_review.py` — 再試行で `agy_raw_output.txt` を上書きしていた
+
+### 件数が増える処理で、1 件ごとに全体を引き直している
+
+「未処理を 1 件取って処理し、また未処理の一覧を引く」のように、ループの中で全件の SELECT や全件の `stat()` を繰り返す。
+数件では気づかず、蔵書が増えると巻数の 2 乗で効く。
+
+push 前に確かめること:
+
+- ループの中で、全件を引く SQL・全件を対象にするファイルシステム操作を呼んでいないか。引き直しが要るのは「一巡して新しい対象が現れたとき」だけか
+- 呼び出し回数をテストで数えたか(`pending()` の呼び出しを数えて件数に比例しないことを確かめるなど)
+
+実例:
+
+- PR #40 — `spinebox/duplicates.py DuplicateScanner.run()` — 指紋を 1 巻作るたびに `pending()`(全巻の SELECT と作成済みの巻すべての `stat()`)を呼んでいた。`pending` の呼び出し回数を数えて再現し、1 巡ごとに直した

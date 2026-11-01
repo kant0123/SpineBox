@@ -43,6 +43,8 @@ export interface VolumeSummary {
   findings: Finding[];
   /** 未解析の内側アーカイブの巻(「中の巻を調べる」で分解できる) */
   can_analyze: boolean;
+  /** この巻を含む、却下されていない重複候補の数(別スキャンの疑い。#38) */
+  duplicate_count: number;
 }
 
 export interface PageInfo {
@@ -71,6 +73,59 @@ export interface AnalyzeResult {
 export interface ScanResult {
   volumes: number;
   offline_roots: string[];
+}
+
+/** 重複候補の片方の巻。ページ画像は `api.pageUrl(id, 0)` が表紙 */
+export interface DuplicateVolume {
+  id: VolumeId;
+  title: string;
+  source_name: string;
+  parent_title: string | null;
+  page_count: number | null;
+  offline: boolean;
+  volume_number: VolumeNumber | null;
+  progress: Progress | null;
+}
+
+/** 候補の根拠。pages_a / matched_a は候補の a 側、samples の a_page / b_page はそれぞれ a・b のページ番号(0 始まり) */
+export interface DuplicateEvidence {
+  matched_pages: number;
+  compared_pages: number;
+  pages_a: number;
+  pages_b: number;
+  matched_a: number;
+  matched_b: number;
+  near_bits: number;
+  number_a: string | null;
+  number_b: string | null;
+  samples: { a_page: number; b_page: number; distance: number }[];
+}
+
+export interface DuplicateCandidate {
+  id: number;
+  /** same_number = 巻番号の候補が同じ、visual_only = どちらかの巻番号が不明で見た目だけで判定 */
+  rule: "same_number" | "visual_only";
+  matched_pages: number;
+  compared_pages: number;
+  evidence: DuplicateEvidence;
+  dismissed: boolean;
+  a: DuplicateVolume;
+  b: DuplicateVolume;
+}
+
+export interface DuplicateScanState {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number;
+  total: number;
+  summary: { fingerprinted: number; errors: number; candidates: number } | null;
+  error: string | null;
+}
+
+export interface DuplicateList {
+  scan: DuplicateScanState;
+  candidates: DuplicateCandidate[];
 }
 
 // 整理処理(CBZ 化)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
@@ -154,6 +209,11 @@ export const api = {
       // ページを閉じる直前の送信でも届くようにする
       keepalive,
     }),
+  listDuplicates: (status: "open" | "dismissed" = "open") => request<DuplicateList>(`/api/duplicates?status=${status}`),
+  /** 見た目の指紋を作って候補を出す(裏で動く。進み具合は listDuplicates の scan)。蔵書は変えない */
+  scanDuplicates: () => request<DuplicateScanState>("/api/duplicates/scan", { method: "POST" }),
+  dismissDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/dismiss`, { method: "POST" }),
+  restoreDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/restore`, { method: "POST" }),
   pageUrl: (id: VolumeId, index: number) => `/api/volumes/${vid(id)}/pages/${index}`,
   planOrganize: (volumeId: VolumeId) =>
     request<OrganizeOp>("/api/organize/plan", {

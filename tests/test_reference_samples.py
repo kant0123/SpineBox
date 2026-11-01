@@ -86,3 +86,30 @@ def test_reference_samples_scan_and_read_every_page(sample_dir, sevenzip, make_s
     v04 = [v for v in listed if v["title"] == "Kakukaku Shikajika v04"]
     assert len(v04) == 1 and v04[0]["parent_id"] is None
     assert fingerprint(sample_dir) == before  # 原本は 1 バイトも変わらない
+
+
+def test_reference_samples_duplicate_candidates(sample_dir, sevenzip, make_settings, capsys):
+    """#38: お気楽領主の 1・2 巻(ローマ字名と日本語名の別スキャン)だけが重複候補に出る。他の巻どうしは出ない。"""
+    before = fingerprint(sample_dir)
+    settings = make_settings(sample_dir, sevenzip_path=sevenzip)
+    client = TestClient(create_app(settings, frontend_dist=None))
+    assert client.post("/api/scan").status_code == 200
+    assert list(settings.cache_dir.iterdir()) == []  # スキャンでは指紋を作らず、内側アーカイブも取り出さない
+
+    t = time.perf_counter()
+    state = client.post("/api/duplicates/scan?wait=true").json()
+    with capsys.disabled():
+        print(f"\nduplicate scan {time.perf_counter() - t:.1f}s: {state['summary']}")
+    assert state["error"] is None and state["summary"]["errors"] == 0
+
+    found = client.get("/api/duplicates").json()["candidates"]
+    pairs = sorted(sorted([c["a"]["title"], c["b"]["title"]]) for c in found)
+    assert len(pairs) == 2, pairs
+    for number, romaji in ((1, "ryochi v01s"), (2, "ryochi v02s")):
+        (pair,) = [p for p in pairs if any(t.endswith(romaji) for t in p)]
+        assert any(f"第{number:02d}巻" in t for t in pair)
+    for c in found:
+        assert c["rule"] == "same_number" and c["matched_pages"] >= 0.9 * c["compared_pages"]
+    listed = client.get("/api/volumes").json()
+    assert sum(1 for v in listed if v["duplicate_count"]) == 4
+    assert fingerprint(sample_dir) == before  # 原本は 1 バイトも変わらない

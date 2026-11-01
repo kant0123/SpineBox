@@ -2,7 +2,7 @@
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。安全設計の理由と却下した案
 updated: 2026-11-01
-related: [overview, backend, frontend, volume-split]
+related: [overview, backend, frontend, volume-split, duplicate-detection]
 ---
 
 # 整理処理(CBZ 化)
@@ -15,7 +15,7 @@ related: [overview, backend, frontend, volume-split]
 
 - する: 計画(プレビュー)、作業場での CBZ 作成と検証、改名での確定、元の退避、元に戻す、操作ジャーナル、
   読書位置の引き継ぎ
-- しない: 名前のテンプレートに沿った改名・フォルダの組み替え(フェーズ 4)、重複の解消、内側アーカイブの巻番号の確定。
+- しない: 名前のテンプレートに沿った改名・フォルダの組み替え(フェーズ 4)、重複の解消(候補を出すのは [[duplicate-detection]]。整理済みの巻は指紋・候補の対象から外れる)、内側アーカイブの巻番号の確定。
   出力名は今は巻の表示名(`title`)そのまま(衝突したら ` (2)` の連番)
 - 巻の切り出し・ページの並びは [[backend]] のスキャンとリーダーのものをそのまま使う(読み出しは `Library.open`)
 - **整理の単位は「読める巻」= 見えている子の巻を持たない巻**([[volume-split]])。分解済みの内側アーカイブは、

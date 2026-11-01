@@ -5,11 +5,13 @@ export type Route =
   | { name: "library" }
   | { name: "read"; id: string }
   | { name: "organize-history" }
-  | { name: "organize-plan"; id: string };
+  | { name: "organize-plan"; id: string }
+  | { name: "duplicates" };
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
+  if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   const m = h.match(/^\/(read|organize)\/([^/?#]+)\/?$/);
   if (m) {
     try {
@@ -26,6 +28,7 @@ export const readHref = (id: string | number) => `#/read/${encodeURIComponent(St
 export const organizeHref = (volumeId: string | number) => `#/organize/${encodeURIComponent(String(volumeId))}`;
 export const organizeHistoryHref = "#/organize";
 export const libraryHref = "#/";
+export const duplicatesHref = "#/duplicates";
 
 /**
  * `/read/<id>` を直接開いた(ブックマーク・共有されたリンク)ときに、画面の正準の形 `/#/read/<id>` を返す。

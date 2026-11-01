@@ -2,7 +2,7 @@
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 updated: 2026-11-01
-related: [overview, local-ci, server-setup, volume-split, organize]
+related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection]
 ---
 
 # フロントエンド(`frontend/`)
@@ -12,7 +12,7 @@ related: [overview, local-ci, server-setup, volume-split, organize]
 
 ## 責務
 
-- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・リーダー(ページ画像の表示・先読み・
+- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・リーダー(ページ画像の表示・先読み・
   読書位置の保存と再開)・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す([[organize]])。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
 - しない: ページの並び順・ページ数・オフライン判定・巻番号と食い違いの判定。どれもバックエンドが決めた `pages[]`・`offline`・`findings` をそのまま使う
 
@@ -24,10 +24,11 @@ related: [overview, local-ci, server-setup, volume-split, organize]
 | `frontend/src/reader/Reader.tsx:57 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
+| `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/api.ts:144 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:199 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
-| `frontend/src/mock/mockBackend.ts:88 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
+| `frontend/src/mock/mockBackend.ts:126 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
@@ -62,6 +63,9 @@ related: [overview, local-ci, server-setup, volume-split, organize]
   先読み済みのページで一瞬ちらつかないよう、重ね表示は CSS で 0.3 秒遅れて現れる
 - **取得失敗の文言は HTTP ステータスで分ける。** 404 は「蔵書から無くなった」、409 は「オフライン」、422(壊れたアーカイブ・
   展開上限超過)はバックエンドの `detail` をそのまま出す。理由はバックエンドしか知らないため。どの失敗でも一覧へ戻るリンクを出す
+- **重複候補の画面は何も消さない。** 見比べて「重複ではない」を付けるだけで、削除・移動のボタンは置かない(重複の解消は CBZ 化の整理の役目)。2 巻の表紙は 1 ページ目の画像(`api.pageUrl(id, 0)`)で、
+  別スキャンは 1 ページ目が口絵と表紙で食い違うことがあるので、バックエンドが返す一致ページの例(最大 3 組)も並べる。375px では 2 巻を 2 列のまま、項目名を値の上に積む
+- **一覧の印「重複の候補あり」は巻のリンクの外**(食い違いの説明と同じ理由)。押すと重複候補の画面へ行く
 - **汎用カルーセルライブラリは使わない**(GOAL.md の初期既定)。ページ送りは状態の差し替えだけで、アニメーションは無い
 
 ## 落とし穴
@@ -94,6 +98,8 @@ npm run build      # frontend/dist
 ```
 
 ## 経緯
+
+- #38 で重複候補の画面(`#/duplicates`)と一覧の印を足した。`_参考/サンプル本` を実バックエンドで配信し、375px と 812x375 の組み込みブラウザで、調べる(進み具合)→ 候補 2 組 → 却下 → 再度調べても復活しない → 戻す、と一覧の印の付け外しを確認した
 
 - #15 で作成。バックエンド(#14)と並行して、API はモックで開発した
 - #30 で食い違いのバッジと説明、「中の巻を調べる」ボタンを足した。クラウドで実 API + 合成の蔵書を 375px のヘッドレス Chromium で表示し、

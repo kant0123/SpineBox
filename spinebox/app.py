@@ -9,6 +9,7 @@ import json
 import logging
 import sqlite3
 import threading
+from dataclasses import asdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Iterator
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import db
 from .analysis import compute_findings
+from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
 from .buildinfo import current_commit
 from .cache import CacheTooLarge, ExtractionCache
 from .config import Settings
@@ -82,6 +84,9 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     cache = ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)
     library = Library(settings, cache)
     scan_lock = threading.Lock()
+    duplicate_lock = threading.Lock()
+    duplicate_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
+                             "summary": None, "error": None}
 
     def background_analysis(stop: threading.Event) -> None:
         """裏で少しずつ解析する(設定で有効なときだけ)。1 回に 1 巻。スキャン中は待つ。失敗しても止まらない。"""
@@ -111,6 +116,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     app.state.settings = settings
     app.state.cache = cache
     app.state.scan_lock = scan_lock
+    app.state.duplicate_state = duplicate_state
+    app.state.duplicate_lock = duplicate_lock
     commit = current_commit(REPO_ROOT)  # 起動時に一度だけ。古いプロセスが生き残っているかを見分けるため
 
     def get_conn() -> Iterator[sqlite3.Connection]:
@@ -178,6 +185,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         ).fetchall()
         rows.sort(key=_list_sort_key)
         findings = compute_findings(conn)
+        duplicates = candidate_counts(conn)
         return [{
             "id": r["id"],
             "title": r["title"],
@@ -189,6 +197,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "parent_title": r["parent_title"],
             "volume_number": _number(r),
             "findings": findings.get(r["id"], []),
+            "duplicate_count": duplicates.get(r["id"], 0),
             "can_analyze": is_analyzable(r) and r["analyzed_version"] is None and not is_offline(r),
         } for r in rows]
 
@@ -229,6 +238,94 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                           "volume_number": _number(r)} for r in children],
             "findings": compute_findings(conn).get(volume_id, []),
         }
+
+    # --- 別スキャンの重複候補(#38) ----------------------------------------------------
+
+    def _run_duplicate_scan() -> None:
+        """指紋を作って候補を計算し直す。duplicate_lock を持ったまま呼び、終わったら離す。"""
+        c = None
+        try:
+            c = db.connect(settings.db_path)
+
+            def progress(done: int, total: int) -> None:
+                duplicate_state.update(done=done, total=total)
+
+            summary = DuplicateScanner(c, library, progress).run()
+            duplicate_state.update(summary=asdict(summary), error=None)
+        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
+            log.exception("重複候補の調査に失敗しました")
+            duplicate_state.update(error=str(e))
+        finally:
+            if c is not None:
+                c.close()
+            duplicate_state.update(running=False, finished_at=db.now())
+            duplicate_lock.release()
+
+    @app.post("/api/duplicates/scan")
+    def start_duplicate_scan(wait: bool = False):
+        """見た目の指紋を作って重複候補を出す明示操作。スキャンでは行わない(内側アーカイブを取り出すため)。
+
+        既定は裏で動かして 202 を返す(進み具合は GET /api/duplicates の scan)。wait=true なら終わるまで待つ。
+        """
+        if scan_lock.locked():
+            raise HTTPException(409, "スキャン中です")
+        if not duplicate_lock.acquire(blocking=False):
+            raise HTTPException(409, "重複候補を調べています")
+        duplicate_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=0, summary=None,
+                               error=None)
+        if wait:
+            _run_duplicate_scan()
+            return dict(duplicate_state)
+        threading.Thread(target=_run_duplicate_scan, name="spinebox-duplicates", daemon=True).start()
+        return JSONResponse(dict(duplicate_state), status_code=202)
+
+    @app.get("/api/duplicates")
+    def list_duplicates(status: str = "open", conn: sqlite3.Connection = Depends(get_conn)):
+        """重複候補。status=open は未却下、dismissed は却下済み。どちらも一覧に見えている巻どうしの組だけ。"""
+        if status not in ("open", "dismissed"):
+            raise HTTPException(422, "status は open か dismissed")
+        cond = "dismissed_at IS NULL" if status == "open" else "dismissed_at IS NOT NULL"
+        rows = conn.execute(f"SELECT * FROM duplicate_candidates WHERE {cond} ORDER BY matched_pages DESC, id").fetchall()
+        ids = sorted({i for r in rows for i in (r["volume_a"], r["volume_b"])})
+        cards: dict[int, dict] = {}
+        for chunk_start in range(0, len(ids), 500):
+            chunk = ids[chunk_start:chunk_start + 500]
+            marks = ",".join("?" * len(chunk))
+            for v in conn.execute(
+                    """SELECT v.id, v.title, v.page_count, v.number_kind, v.number_start, v.number_end,
+                              v.number_evidence, pv.title AS parent_title, s.rel_path, s.offline AS source_offline,
+                              r.online AS root_online, p.page, p.finished"""
+                    + LISTED_VOLUMES_JOIN + " LEFT JOIN reading_progress p ON p.volume_id = v.id "
+                    + LISTED_VOLUMES_WHERE + f" AND v.id IN ({marks})", chunk):
+                cards[v["id"]] = {
+                    "id": v["id"], "title": v["title"],
+                    "source_name": Path(v["rel_path"]).name if v["rel_path"] else v["title"],
+                    "parent_title": v["parent_title"], "page_count": v["page_count"], "offline": is_offline(v),
+                    "volume_number": _number(v), "progress": _progress(v),
+                }
+        candidates = [{
+            "id": r["id"], "rule": r["rule"], "matched_pages": r["matched_pages"],
+            "compared_pages": r["compared_pages"], "evidence": json.loads(r["evidence"]),
+            "dismissed": r["dismissed_at"] is not None,
+            "a": cards[r["volume_a"]], "b": cards[r["volume_b"]],
+        } for r in rows if r["volume_a"] in cards and r["volume_b"] in cards]
+        return {"scan": dict(duplicate_state), "candidates": candidates}
+
+    def _set_dismissed(candidate_id: int, conn, *, restore: bool):
+        try:
+            dismiss(conn, candidate_id, restore=restore)
+        except CandidateNotFound:
+            raise HTTPException(404, "候補が見つかりません") from None
+        return {"id": candidate_id, "dismissed": not restore}
+
+    @app.post("/api/duplicates/{candidate_id}/dismiss")
+    def dismiss_duplicate(candidate_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """「重複ではない」と却下する。蔵書には触れない。再計算しても復活しない。"""
+        return _set_dismissed(candidate_id, conn, restore=False)
+
+    @app.post("/api/duplicates/{candidate_id}/restore")
+    def restore_duplicate(candidate_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return _set_dismissed(candidate_id, conn, restore=True)
 
     @app.get("/api/volumes/{volume_id}/pages/{index}")
     def get_page(volume_id: int, index: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):

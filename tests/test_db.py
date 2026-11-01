@@ -82,11 +82,45 @@ def test_migration_3_adds_organize_tables_and_keeps_records(tmp_path):
     conn.close()
 
     conn = db.open_db(path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) == 3
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) >= 3
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"organize_ops", "organize_steps", "organize_volumes"} <= tables
     row = conn.execute("SELECT parent_id, inner_path, organized_op_id FROM volumes WHERE id = 8").fetchone()
     assert tuple(row) == (7, '["v01.zip"]', None)
     assert conn.execute("SELECT organized_op_id FROM volumes WHERE id = 7").fetchone()[0] is None
     assert conn.execute("SELECT page FROM reading_progress WHERE volume_id = 8").fetchone()[0] == 5
+    conn.close()
+
+
+def test_migration_4_adds_duplicate_tables_and_keeps_records(tmp_path):
+    """#38 の移行: 版 3 の DB に指紋・重複候補の表を足しても、巻・読書位置はそのまま残る。"""
+    path = tmp_path / "v3.db"
+    conn = db.connect(path)
+    with db.transaction(conn) as c:
+        for migration in db.MIGRATIONS[:3]:
+            for statement in migration:
+                c.execute(statement)
+        c.execute("PRAGMA user_version = 3")
+        c.execute("INSERT INTO library_roots (id, path, online) VALUES (1, 'E:/Books', 1)")
+        c.execute("INSERT INTO sources (id, root_id, rel_path, kind, size, mtime_ns, scan_version) "
+                  "VALUES (1, 1, 'a.cbz', 'archive', 10, 20, 2)")
+        c.execute("INSERT INTO volumes (id, source_id, entry_prefix, title, created_at, updated_at) "
+                  "VALUES (7, 1, '', 'a', 't', 't')")
+        c.execute("INSERT INTO volumes (id, source_id, entry_prefix, title, created_at, updated_at) "
+                  "VALUES (8, 1, 'x/', 'b', 't', 't')")
+        c.execute("INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (7, 5, 0, 't')")
+    conn.close()
+
+    conn = db.open_db(path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) >= 4
+    assert tuple(conn.execute("SELECT page, finished FROM reading_progress WHERE volume_id = 7").fetchone()) == (5, 0)
+    assert conn.execute("SELECT COUNT(*) FROM volumes").fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(*) FROM volume_fingerprints").fetchone()[0] == 0
+    insert = ("INSERT INTO duplicate_candidates (volume_a, volume_b, rule, matched_pages, compared_pages, evidence,"
+              " computed_at) VALUES (?, ?, 'same_number', 1, 1, '{}', 't')")
+    conn.execute(insert, (7, 8))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(insert, (7, 8))  # 同じ組は 1 行
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(insert, (8, 7))  # volume_a < volume_b
     conn.close()
