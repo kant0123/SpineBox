@@ -14,13 +14,13 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:354 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:359 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、後続の公開 DB の取得・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:170 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
-  `spinebox/naming.py:147 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
+- **名前の読み方。** `spinebox/naming.py:173 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+  `spinebox/naming.py:150 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品
 - **確信度の目安。** 自分の名前から 0.9、巻の名前に作品名が無く外側の名前から読んだものは 0.6(`CONF_*` 定数)。
   外側のアーカイブ・フォルダの名前は、**その全部の巻が 1 つの作品に入っているときだけ**別名・著者の候補(0.5)にする
@@ -57,8 +57,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:752 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:772 build_slots()` は
+`spinebox/works.py:757 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:777 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果

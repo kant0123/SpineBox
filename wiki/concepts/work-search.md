@@ -2,7 +2,7 @@
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
 updated: 2026-11-01
-related: [work-grouping, backend, frontend, metadata-clients]
+related: [work-grouping, backend, frontend, metadata-clients, overview]
 ---
 
 # 作品の検索と絞り込み(`spinebox/search.py`)
@@ -86,4 +86,5 @@ trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Pyth
 - [[work-grouping]] — 作品・項目・別名・割り当ての持ち方と、同じ正規化
 - [[backend]] — `GET /api/works` の契約
 - [[frontend]] — 作品一覧の検索欄と絞り込み
+- [[overview]] — 全体像
 - [[metadata-clients]] — 種別・ジャンル・タグを足す公開 DB の結線

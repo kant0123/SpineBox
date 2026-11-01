@@ -1,7 +1,7 @@
 ---
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
-updated: 2026-11-02
+updated: 2026-11-01
 related: [overview, backend, frontend, archive-reading]
 ---
 
@@ -82,7 +82,7 @@ Start-ScheduledTask SpineBox
 .\deploy\install_task.ps1 -Action Status    # commit が変わったか、/healthz が 200 か
 ```
 
-- DB のマイグレーションは起動時に自動で当たる(`spinebox/db.py:16 MIGRATIONS`)
+- DB のマイグレーションは起動時に自動で当たる(`spinebox/db.py:40 MIGRATIONS`)
 - 止めるには `Stop-ScheduledTask` ではなく `-Action Stop` を使う。タスクを止めたあと、ラッパーや `-m spinebox` の
   プロセスが残っていないかを確かめ、残っていれば PID を指定して止める(普通は何も残らない。下の「python を孤児にしない」)
 - `Stop-ScheduledTask` 単体で子まで止まるかは、サーバー機で未確認(#20)。止まらなくても次の起動が孤児を片付ける
