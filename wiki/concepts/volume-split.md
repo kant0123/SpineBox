@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
 updated: 2026-11-01
-related: [overview, backend, archive-reading, extraction-cache, frontend]
+related: [overview, backend, archive-reading, extraction-cache, frontend, organize]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -16,7 +16,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend]
 
 - 入口: `spinebox/naming.py:78 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:16 MIGRATIONS` の 2 番)。
-  スキャンが切り出す巻は `spinebox/scanner.py:240 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
+  スキャンが切り出す巻は `spinebox/scanner.py:253 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
@@ -81,7 +81,8 @@ related: [overview, backend, archive-reading, extraction-cache, frontend]
 ## 覆すとしたら
 
 - 中身から巻番号を確定できるようになったら(メタデータ・見た目の比較。フェーズ 3)、比べる相手を候補から確定値へ替える
-- フェーズ 2 の CBZ 化で 1 巻 = 1 CBZ になれば、内側アーカイブの巻は減り、分解の出番は小さくなる
+- フェーズ 2 の CBZ 化([[organize]])で 1 巻 = 1 CBZ になれば、内側アーカイブの巻は減り、分解の出番は小さくなる。
+  整理の単位は子を持たない巻(分解済みなら子の巻ごと)で、未解析の内側アーカイブは先に調べるまで整理しない
 - 子の名前の生バイト列(`name_raw`)は持っていない(NULL)。名前の文字コードが問題になったら単位にエントリの生バイト列を持たせる
 
 ## 関連

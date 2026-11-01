@@ -5,7 +5,7 @@
 
 蔵書レコード・読書位置は**消さない**のが前提(CLAUDE.md「蔵書を扱う不変条件」)。
 見えなくなったルート・ソースは offline / missing の印を付けるだけで、DELETE は scan_issues
-(再導出できる記録)にしか使わない。
+(再導出できる記録)にしか使わない。整理処理(CBZ 化)した元の巻も消さず、organized_op_id を立てて一覧から外す。
 """
 from __future__ import annotations
 
@@ -94,6 +94,48 @@ MIGRATIONS: list[list[str]] = [
         """CREATE UNIQUE INDEX volumes_locator ON volumes
            (source_id, COALESCE(container_path, ''), COALESCE(inner_path, ''), entry_prefix)""",
         "CREATE INDEX volumes_parent ON volumes (parent_id)",
+    ],
+    # 3: 整理処理(CBZ 化)の操作ジャーナル(#31)。元の巻は消さず organized_op_id を立てて一覧から外す
+    [
+        """
+        CREATE TABLE organize_ops (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL DEFAULT 'cbz',
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            state TEXT NOT NULL CHECK (state IN
+                ('planned', 'running', 'done', 'failed', 'undoing', 'undone', 'undo_failed', 'rollback_failed')),
+            plan_json TEXT NOT NULL,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            executed_at TEXT,
+            undone_at TEXT
+        )
+        """,
+        """
+        CREATE TABLE organize_steps (
+            id INTEGER PRIMARY KEY,
+            op_id TEXT NOT NULL REFERENCES organize_ops(id),
+            phase TEXT NOT NULL CHECK (phase IN ('execute', 'undo')),
+            action TEXT NOT NULL,
+            from_path TEXT NOT NULL,
+            to_path TEXT NOT NULL,
+            state TEXT NOT NULL CHECK (state IN ('pending', 'done', 'reverted', 'revert_failed')),
+            updated_at TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX organize_steps_op ON organize_steps (op_id)",
+        """
+        CREATE TABLE organize_volumes (
+            op_id TEXT NOT NULL REFERENCES organize_ops(id),
+            old_volume_id INTEGER NOT NULL REFERENCES volumes(id),
+            new_volume_id INTEGER REFERENCES volumes(id),
+            output_rel_path TEXT NOT NULL,
+            page_count INTEGER,
+            PRIMARY KEY (op_id, old_volume_id)
+        )
+        """,
+        "ALTER TABLE volumes ADD COLUMN organized_op_id TEXT REFERENCES organize_ops(id)",
     ],
 ]
 

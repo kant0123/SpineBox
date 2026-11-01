@@ -59,6 +59,9 @@ def test_missing_env_config_is_error(tmp_path, monkeypatch):
     'port = "80"',
     '[limits]\nmax_entries = -1',
     'not toml ===',
+    'organize_dir = "../outside"',
+    'organize_dir = "."',
+    'organize_dir = ""',
     'background_analysis = 1',
     'background_analysis = "true"',
     'background_analysis_interval = 0',
@@ -83,6 +86,20 @@ def test_background_analysis_settings(tmp_path):
     conf.write_text("background_analysis = true\nbackground_analysis_interval = 5\n", encoding="utf-8")
     s = load_settings(conf)
     assert s.background_analysis is True and s.background_analysis_interval == 5
+
+
+    assert s.organize_dir == ".spinebox"
+
+
+def test_organize_dir_is_relative_to_each_root(tmp_path):
+    conf = tmp_path / "c.toml"
+    abs_dir = (tmp_path / "work_area").as_posix()
+    conf.write_text('organize_dir = "_sb"\n', encoding="utf-8")
+    s = load_settings(conf)
+    # 設定ファイルの場所ではなく蔵書ルートが起点(作業場を蔵書と同じドライブに置くため)
+    assert s.organize_base(tmp_path / "lib") == tmp_path / "lib" / "_sb"
+    conf.write_text(f'organize_dir = "{abs_dir}"\n', encoding="utf-8")
+    assert load_settings(conf).organize_base(tmp_path / "lib") == Path(abs_dir)
 
 
 def _run_main(monkeypatch, tmp_path, host):

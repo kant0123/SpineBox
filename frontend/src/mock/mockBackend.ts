@@ -1,7 +1,7 @@
 // 開発・テスト用のモック API。`npm run dev:mock` の Vite サーバーと、単体テストの fetch 差し替えの両方で使う。
 // アプリ本体からは import しない(本番のバンドルに入れないため)。
 
-import type { Finding, VolumeDetail, VolumeSummary } from "../api";
+import type { Finding, OrganizeOp, VolumeDetail, VolumeSummary } from "../api";
 
 export interface MockResponse {
   status: number;
@@ -90,6 +90,54 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const opened = new Set<number>();
   // ページ数未確定の巻は、開いた時点で数が決まる(入れ子の内側を開いたとき)想定
   const pagesOf = (v: MockVolume) => v.page_count ?? 6;
+  // 整理(CBZ 化)の操作。ページ数未確定の巻(入れ子)は読めない内側があるものとして実行不可にする
+  const ops: OrganizeOp[] = [];
+  let opSeq = 0;
+
+  function handleOrganize(method: string, path: string, parsed: { volume_id?: number } | undefined): MockResponse | null {
+    if (method === "POST" && path === "/api/organize/plan") {
+      const v = volumes.find((x) => x.id === parsed?.volume_id);
+      if (!v) return json(404, { detail: "巻が見つかりません" });
+      const unanalyzed = v.can_analyze; // 中の巻をまだ調べていない内側アーカイブ
+      const blocked = v.page_count === null || unanalyzed;
+      const op: OrganizeOp = {
+        op_id: blocked ? null : `op-${++opSeq}`,
+        state: blocked ? "blocked" : "planned",
+        source_id: v.id,
+        source_rel_path: v.source_name,
+        source_kind: "archive",
+        volumes: [{ volume_id: v.id, title: v.title, page_count: v.page_count, output_rel_path: `${v.title}.cbz` }],
+        warnings: [],
+        problems: unanalyzed
+          ? [`内側アーカイブ「${v.title}」の中の巻をまだ調べていません。先に「中の巻を調べる」を実行してください`]
+          : blocked
+            ? ["内側アーカイブを読めません(7-Zip が見つからない、または未対応): inner.rar"]
+            : [],
+        needs_analysis: unanalyzed ? [v.id] : [],
+        created_at: "2026-11-01T00:00:00+00:00",
+        executed_at: null,
+        undone_at: null,
+        error: null,
+      };
+      if (op.op_id) ops.unshift(op);
+      return json(200, op);
+    }
+    if (method === "GET" && path === "/api/organize") return json(200, ops.filter((o) => o.state !== "planned"));
+    const m = path.match(/^\/api\/organize\/([^/]+)\/(execute|undo)$/);
+    if (!m || method !== "POST") return null;
+    const op = ops.find((o) => o.op_id === decodeURIComponent(m[1]));
+    if (!op) return json(404, { detail: "整理の操作が見つかりません" });
+    if (m[2] === "execute") {
+      if (op.state !== "planned") return json(409, { detail: `この操作は実行できる状態ではありません(${op.state})`, op });
+      op.state = "done";
+      op.executed_at = "2026-11-01T00:00:05+00:00";
+    } else {
+      if (op.state !== "done") return json(409, { detail: `この操作は元に戻せる状態ではありません(${op.state})`, op });
+      op.state = "undone";
+      op.undone_at = "2026-11-01T00:00:09+00:00";
+    }
+    return json(200, op);
+  }
 
   function handle(method: string, rawPath: string, body?: string): MockResponse {
     const path = rawPath.split("?")[0];
@@ -100,6 +148,10 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (method === "GET" && path === "/api/volumes") {
       const list: VolumeSummary[] = shown().map(({ hidden: _hidden, ...v }) => ({ ...v }));
       return json(200, list);
+    }
+    if (path.startsWith("/api/organize")) {
+      const r = handleOrganize(method, path, parsed);
+      if (r) return r;
     }
     if (method === "POST" && path === "/api/scan") {
       return json(200, { volumes: shown().length, offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [] });
@@ -154,5 +206,5 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     return json(405, { detail: "未対応" });
   }
 
-  return { handle, log, volumes };
+  return { handle, log, volumes, ops };
 }

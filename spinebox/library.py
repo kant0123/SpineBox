@@ -76,8 +76,9 @@ WHERE v.id = ?
 
 def get_volume_row(conn: sqlite3.Connection, volume_id: int) -> sqlite3.Row:
     row = conn.execute(VOLUME_QUERY, (volume_id,)).fetchone()
+    # 整理処理で CBZ に置き換えた巻(organized_op_id)は、行を残したまま見えない扱いにする
     if (row is None or row["missing"] or row["source_missing"] or not row["root_enabled"]
-            or row["parent_missing"]):
+            or row["parent_missing"] or row["organized_op_id"] is not None):
         raise VolumeNotFound(volume_id)
     return row
 
@@ -256,7 +257,7 @@ class Library:
         if not is_analyzable(row):
             return False
         if not force and row["analyzed_version"] is not None and row["analysis_error"] is None:
-            current = self._current_analysis_version(row)
+            current = self.current_analysis_version(row)
             if current is not None and current == row["analyzed_version"]:
                 return True
         with self.open(conn, volume_id) as vol:
@@ -276,7 +277,7 @@ class Library:
             return
         analysis.register_units(conn, row, vol.units, list(zip(vol.page_units, vol.page_names)), version)
 
-    def _current_analysis_version(self, row) -> str | None:
+    def current_analysis_version(self, row) -> str | None:
         try:
             st = resolve_source_path(Path(row["root_path"]), row["rel_path"]).stat()
         except (OSError, ValueError):

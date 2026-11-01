@@ -58,6 +58,22 @@ button:disabled { opacity: 0.6; cursor: default; }
 .volume-title { font-weight: 600; overflow-wrap: anywhere; }
 .volume-meta, .volume-progress { font-size: 0.85rem; color: var(--muted); }
 .volume-progress.done { color: var(--done); }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.header-actions a, .organize-link, .organize a { color: var(--accent); }
+.organize-link { display: block; padding: 0 12px 10px; font-size: 0.8rem; }
+.volume-card { display: flex; flex-direction: column; }
+.volume-card .volume-link { flex: 1; }
+
+/* 整理(CBZ 化) */
+.organize { max-width: 760px; margin: 0 auto; padding: 12px 16px 32px; overflow-wrap: anywhere; }
+.organize h1 { font-size: 1.2rem; margin: 8px 0; }
+.organize-volumes { padding-left: 1.2em; }
+.organize-volumes li { margin: 4px 0; }
+.organize-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.organize-op { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; list-style: none; }
+.organize-op-list { padding: 0; }
+.notice.warn { border-color: var(--warn); }
+
 .badge { align-self: flex-start; font-size: 0.75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); }
 .volume-extra { padding: 0 12px 10px; font-size: 0.85rem; }
 .volume-extra summary { cursor: pointer; color: var(--warn); }
