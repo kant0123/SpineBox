@@ -45,7 +45,7 @@ related: [overview, local-ci, server-setup, organize]
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:26 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:35 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
   入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。

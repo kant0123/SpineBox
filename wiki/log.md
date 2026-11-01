@@ -95,6 +95,6 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-01] ingest | #31 整理処理(CBZ 化 → 検証 → 確定 → 退避 → 元に戻す)
 - 新規: [[organize]]
-- 更新: [[backend]], [[frontend]], [[overview]]
+- 更新: [[backend]], [[frontend]], [[overview]], [[server-setup]](コード参照の行番号), [[extraction-cache]](コード参照の行番号)
 - 備考: DB 版 2(organize_ops / organize_steps / organize_volumes、volumes.organized_op_id)。設定 `organize_dir`(相対は各蔵書ルートが起点)。
   往復後に蔵書フォルダがパス・バイト列・mtime まで一致することを一時ディレクトリのテストで確認。実データ(`_参考/` のコピー)での往復はローカルで確認する。

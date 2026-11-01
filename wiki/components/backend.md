@@ -20,13 +20,13 @@ related: [overview, archive-reading, extraction-cache, server-setup, organize]
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:41 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:48 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:198 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:144 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
-| `spinebox/library.py:78 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ) |
-| `spinebox/config.py:107 load_settings` | 設定ファイルの探し方と相対パスの起点 |
+| `spinebox/scanner.py:210 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:154 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化 |
+| `spinebox/library.py:82 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ) |
+| `spinebox/config.py:126 load_settings` | 設定ファイルの探し方と相対パスの起点 |
 | `spinebox/db.py:16 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 
 ## API 契約(フロントと共有)
@@ -85,5 +85,5 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 - #19 で `/healthz` と常駐・LAN 公開の運用([[server-setup]])を足した。`host` の既定は 127.0.0.1 のまま、127.0.0.1 以外にしたときは起動時に注意を出す
 - #14 で骨格を作った。zip / cbz だけを対象にした
-- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:154 _expand` は入れ子を再帰で開く。
+- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:156 _expand` は入れ子を再帰で開く。
   実データ(`_参考/サンプル本`)で、スキャンが 10 巻を一覧に出し、キャッシュは空のまま、全巻の全ページが 200 で返ることを確かめた

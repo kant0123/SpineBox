@@ -8,7 +8,7 @@ related: [overview, backend, archive-reading]
 # 展開キャッシュ
 
 内側アーカイブ(アーカイブの中のアーカイブ)の巻を開いたときだけ、内側アーカイブを丸ごと `data_dir/cache/` に取り出す。
-入口は `spinebox/cache.py:38 ExtractionCache`、使う側は `spinebox/library.py:154 _expand`(入れ子の各段を再帰で開く)。
+入口は `spinebox/cache.py:38 ExtractionCache`、使う側は `spinebox/library.py:156 _expand`(入れ子の各段を再帰で開く)。
 
 ## 内容
 
