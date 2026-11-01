@@ -96,7 +96,7 @@ describe("作品の検索と絞り込み(#56)", () => {
     // 候補のある項目だけ出る(モックでは種別とジャンルと著者。タグは無い)
     expect(screen.getByLabelText("著者")).toBeTruthy();
     expect(screen.queryByLabelText("タグ")).toBeNull();
-    fireEvent.change(screen.getByLabelText("種別"), { target: { value: "小説" } });
+    fireEvent.change(screen.getByLabelText("種別"), { target: { value: "novel" } });
     await waitFor(() => expect(cardTitles()).toEqual(["別の読み物"]));
     fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "reading" } });
     expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type ReadingState, type WorkFilterName, type WorkList, type WorkQuery } from "../api";
 import { duplicatesHref, workHref, workProposalsHref } from "../route";
-import { missingText, READING_STATE_TEXT } from "./labels";
+import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
 
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
@@ -132,7 +132,7 @@ export function Works() {
                 <select value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
                   <option value="">すべて</option>
                   {[...new Set([...(data?.facets[n] ?? []), ...(query[n] ? [query[n]!] : [])])].map((v) => (
-                    <option key={v} value={v}>{v}</option>
+                    <option key={v} value={v}>{n === "kind" ? KIND_TEXT[v] ?? v : v}</option>
                   ))}
                 </select>
               </label>

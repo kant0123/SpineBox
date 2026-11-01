@@ -37,7 +37,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     {
       id: 1, title: "サンプル漫画", title_manual: false, author: "山田太郎", author_manual: false,
       aliases: [{ id: 1, alias: "Sample manga", manual: false, source: "merge", confidence: 0.99 }],
-      volumeIds: [1, 6, 2, 3], fields: { kind: "漫画", genre: "ファンタジー、コメディ" },
+      volumeIds: [1, 6, 2, 3], fields: { kind: "manga", genre: "ファンタジー、コメディ" },
       merges: [{
         id: 1, rule: "duplicate", confidence: 0.99, status: "auto", titles: ["Sample manga", "サンプル漫画"],
         evidence: { duplicate: [{ matched_pages: 186, compared_pages: 188, ratio: 0.989, rule: "same_number",
@@ -45,7 +45,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       }],
     },
     { id: 2, title: "外付けの作品", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [4], merges: [] },
-    { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [], fields: { kind: "小説" } },
+    { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [], fields: { kind: "novel" } },
   ];
   const proposals: (WorkProposal & { dismissed: boolean })[] = [{
     id: 1, rule: "duplicate", confidence: 0.6, status: "open", dismissed: false,

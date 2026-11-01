@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from collections import defaultdict
@@ -22,9 +23,14 @@ from .naming import normalize_title
 
 INDEX_TABLE = "work_search"
 
-# 絞り込みに使う項目(work_fields.field)。値は区切り文字で分けた 1 つずつと、正規化して一致で比べる。
-# kind / genre / tag は公開 DB の結線(#50)が足す項目の差し込み口で、行が無ければ絞り込みの候補も出ない
-FILTER_FIELDS = ("author", "kind", "genre", "tag")
+# 絞り込みの名前(API のクエリ名)→ 作品の項目名(work_fields.field。公開 DB の結線 #50 の名前)。
+# 値は 1 つずつ(JSON 配列か、区切り文字で分けたもの)に分け、正規化して一致で比べる。
+# 行が無い項目は絞り込みの候補も出ない
+FILTER_FIELDS = {"author": "author", "kind": "kind", "genre": "genres", "tag": "tags"}
+# 索引に入れない項目(検索語に当たってほしくない数値など)
+UNINDEXED_FIELDS = ("total_volumes",)
+# 種別(work_fields.kind の値)の日本語表記。検索語にも絞り込みの値にも使える
+KIND_LABELS = {"manga": "漫画", "novel": "小説"}
 _VALUE_SEPARATORS = re.compile(r"[、,，;；]")
 
 READING_STATES = ("unread", "reading", "finished")
@@ -80,8 +86,14 @@ def normalize(text: str | None) -> str:
 
 def _segments(c, work_id: int) -> list[str]:
     texts: list[str] = []
-    texts += [r[0] for r in c.execute("SELECT value FROM work_fields WHERE work_id = ? AND value IS NOT NULL "
-                                      "ORDER BY field = 'title' DESC, field", (work_id,))]
+    for r in c.execute("SELECT field, value FROM work_fields WHERE work_id = ? AND value IS NOT NULL "
+                       "ORDER BY field = 'title' DESC, field", (work_id,)):
+        if r[0] in UNINDEXED_FIELDS:
+            continue
+        # 配列の項目(ジャンル・タグ)は 1 つずつ別の行にする(要素をまたいで語が当たらないように)
+        texts += split_values(r[1]) if r[0] in ("genres", "tags") else [r[1]]
+        if r[0] == "kind" and r[1] in KIND_LABELS:
+            texts.append(KIND_LABELS[r[1]])  # 「漫画」「小説」でも引ける
     texts += [r[0] for r in c.execute("SELECT alias FROM work_aliases WHERE work_id = ? AND dismissed_at IS NULL "
                                       "ORDER BY id", (work_id,))]
     texts += [r[0] for r in c.execute("SELECT v.title FROM work_volumes wv JOIN volumes v ON v.id = wv.volume_id "
@@ -165,17 +177,27 @@ def match_ids(conn: sqlite3.Connection, q: str | None) -> set[int] | None:
 
 
 def split_values(value: str | None) -> list[str]:
-    return [v.strip() for v in _VALUE_SEPARATORS.split(value or "") if v.strip()]
+    """項目の値を 1 つずつにする。JSON の文字列配列(ジャンル・タグ)か、区切り文字でつないだ文字列。"""
+    text = (value or "").strip()
+    if text.startswith("["):
+        try:
+            arr = json.loads(text)
+        except ValueError:
+            arr = None
+        if isinstance(arr, list):
+            return [v.strip() for v in arr if isinstance(v, str) and v.strip()]
+    return [v.strip() for v in _VALUE_SEPARATORS.split(text) if v.strip()]
 
 
 def field_values(conn: sqlite3.Connection) -> dict[int, dict[str, list[str]]]:
     """作品 id → 絞り込みに使う項目 → 値(区切りで分けたもの)。"""
-    marks = ",".join("?" * len(FILTER_FIELDS))
+    name_of = {field: name for name, field in FILTER_FIELDS.items()}
+    marks = ",".join("?" * len(name_of))
     out: dict[int, dict[str, list[str]]] = defaultdict(dict)
-    for r in conn.execute(f"SELECT work_id, field, value FROM work_fields WHERE field IN ({marks})", FILTER_FIELDS):
+    for r in conn.execute(f"SELECT work_id, field, value FROM work_fields WHERE field IN ({marks})", tuple(name_of)):
         vals = split_values(r["value"])
         if vals:
-            out[r["work_id"]][r["field"]] = vals
+            out[r["work_id"]][name_of[r["field"]]] = vals
     return out
 
 
@@ -199,14 +221,23 @@ def check_filters(filters: dict[str, str | None]) -> dict[str, str]:
     return out
 
 
+def _comparable(name: str, value: str) -> str:
+    """絞り込みで比べる形。種別は manga / 漫画 のどちらで指定しても同じ。"""
+    if name == "kind":
+        for key, label in KIND_LABELS.items():
+            if value.strip() in (key, label):
+                return key
+    return normalize(value)
+
+
 def matches_filters(values: dict[str, list[str]], state: str, filters: dict[str, str]) -> bool:
     for name, wanted in filters.items():
         if name == "status":
             if state != wanted:
                 return False
             continue
-        target = normalize(wanted)
-        if not any(normalize(v) == target for v in values.get(name, [])):
+        target = _comparable(name, wanted)
+        if not any(_comparable(name, v) == target for v in values.get(name, [])):
             return False
     return True
 
@@ -218,6 +249,6 @@ def facets(values_by_work: dict[int, dict[str, list[str]]], work_ids) -> dict[st
         seen: dict[str, str] = {}
         for wid in work_ids:
             for v in values_by_work.get(wid, {}).get(name, []):
-                seen.setdefault(normalize(v), v)
+                seen.setdefault(_comparable(name, v), v)
         out[name] = sorted(seen.values())
     return out

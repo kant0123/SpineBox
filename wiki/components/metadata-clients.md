@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、後続の結線が使う入口。DB の作品・巻へは結線しない
-updated: 2026-11-01
+updated: 2026-11-02
 related: [metadata-sources, overview, backend, work-search]
 ---
 
@@ -100,4 +100,4 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - [[metadata-sources]] — 取得元ごとの癖・制限・利用条件・採否
 - [[backend]] — 設定とマイグレーション
 - [[overview]] — 全体像
-- [[work-search]] — 結線で種別・ジャンル・タグを `work_fields` の `kind` / `genre` / `tag` に足すと、そのまま絞り込みと全文検索に効く
+- [[work-search]] — 結線が種別・ジャンル・タグを `work_fields` の `kind` / `genres` / `tags`(配列は JSON)に足すと、そのまま絞り込みと全文検索に効く

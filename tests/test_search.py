@@ -235,28 +235,44 @@ def test_invalid_filters_are_422(env):
         search.check_filters({"publisher": "x"})
 
 
-def test_generic_field_filters_for_kind_genre_tag(env):
-    """種別・ジャンル・タグの差し込み口。公開 DB の結線(#50)が work_fields に足す行で、絞り込みと検索が効く。"""
+def test_kind_genre_tag_filters_use_the_public_db_fields(env):
+    """種別・ジャンル・タグ。公開 DB の結線(#50)が work_fields に足す行(kind / genres / tags。配列は JSON)で、
+    絞り込みと検索が効く。"""
     settings, client = env
     wid = work_id(client, KAKU)
     conn = db.connect(settings.db_path)
     try:
         with db.transaction(conn) as c:
-            for field, value in (("kind", "漫画"), ("genre", "エッセイ、コメディ"), ("tag", "美大"),
-                                 ("publisher", "集英社")):
+            for field, value in (("kind", "manga"), ("genres", '["エッセイ", "コメディ"]'), ("tags", '["美大", "宮崎"]'),
+                                 ("publisher", "集英社"), ("total_volumes", "5"), ("synopsis", "漫画家の半生")):
                 c.execute("""INSERT INTO work_fields (work_id, field, value, source, manual, updated_at)
                              VALUES (?, ?, ?, 'public_db', 0, ?)""", (wid, field, value, db.now()))
     finally:
         conn.close()
-    assert titles(client, kind="漫画") == [KAKU]
+    assert titles(client, kind="manga") == [KAKU]
+    assert titles(client, kind="漫画") == [KAKU]     # 日本語の表記でも同じ
+    assert titles(client, kind="novel") == [] and titles(client, kind="小説") == []
     assert titles(client, genre="コメディ") == [KAKU]
     assert titles(client, genre="ｺﾒﾃﾞｨ") == [KAKU]  # 値の比較も同じ正規化
+    assert titles(client, genre="エッセイ、コメディ") == []  # 配列は 1 要素ずつ。つないだ文字列は 1 つの値ではない
     assert titles(client, tag="美大", status="unread") == [KAKU]
-    assert titles(client, kind="小説") == []
-    assert titles(client, q="集英社") == [KAKU]      # 項目は全部索引に入る
+    assert titles(client, tag="美大", genre="コメディ", kind="manga", author="東村アキコ") == [KAKU]
+    assert titles(client, tag="美大", genre="ホラー") == []
+    assert titles(client, q="集英社") == [KAKU]      # 項目は索引に入る
     assert titles(client, q="エッセイ") == [KAKU]
+    assert titles(client, q="漫画", tag="宮崎") == [KAKU]  # 種別の日本語表記でも引ける(synopsis の「漫画家」も当たる)
+    assert titles(client, q="大宮") == []            # 配列の要素をまたいで語が当たらない(「美大」「宮崎」)
+    assert titles(client, q="5") == []               # 全巻数の数値は索引に入れない
     facets = client.get("/api/works").json()["facets"]
-    assert facets["kind"] == ["漫画"] and facets["genre"] == ["エッセイ", "コメディ"] and facets["tag"] == ["美大"]
+    assert facets["kind"] == ["manga"] and facets["genre"] == ["エッセイ", "コメディ"]
+    assert facets["tag"] == ["宮崎", "美大"]
+
+
+def test_split_values_reads_json_arrays_and_separated_strings():
+    assert search.split_values('["a", " b ", "", 3]') == ["a", "b"]
+    assert search.split_values("a、b, c") == ["a", "b", "c"]
+    assert search.split_values("[壊れた JSON") == ["[壊れた JSON"]  # 配列として読めなければ区切りで分ける
+    assert search.split_values(None) == []
 
 
 def test_list_works_function_without_api(env):

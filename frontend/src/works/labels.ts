@@ -39,4 +39,7 @@ export function evidenceLines(ev: MergeEvidence): string[] {
 }
 
 /** 読書状態の表示(#56) */
+/** 種別(work_fields.kind の値)の表示 */
+export const KIND_TEXT: Record<string, string> = { manga: "漫画", novel: "小説" };
+
 export const READING_STATE_TEXT: Record<ReadingState, string> = { unread: "未読", reading: "読書中", finished: "既読" };

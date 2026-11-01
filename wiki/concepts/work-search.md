@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
-updated: 2026-11-01
+updated: 2026-11-02
 related: [work-grouping, backend, frontend, metadata-clients, overview]
 ---
 
@@ -12,9 +12,9 @@ related: [work-grouping, backend, frontend, metadata-clients, overview]
 
 ## 索引の持ち方
 
-- **作品 1 件 = 索引 1 行**(`work_search`、rowid = 作品 id)。本文は作品名・別名(外したものを除く)・`work_fields` の全項目(著者、
-  公開 DB の結線で足される種別・ジャンル・タグ・出版社・あらすじも、行が足されれば自動で入る)・割り当てた巻の名前を、
-  1 つずつ正規化して改行でつないだもの。入口: `spinebox/search.py:97 _index_work()`
+- **作品 1 件 = 索引 1 行**(`work_search`、rowid = 作品 id)。本文は作品名・別名(外したものを除く)・`work_fields` の項目(著者、
+  公開 DB の結線で足される種別・ジャンル・タグ・出版社・あらすじ。ただし全巻数 `total_volumes` は数値が検索語に当たるので入れない)・
+  割り当てた巻の名前を、1 つずつ正規化して改行でつないだもの。ジャンル・タグの JSON 配列は要素ごとに別の行にする(要素をまたいで語が当たらないように)。入口: `spinebox/search.py:109 _index_work()`
 - 正規化した文字列には英数字・かな・漢字しか残らないので、改行をまたぐ 3 文字(別の項目の末尾と先頭)には検索語が当たらない
 - 統合された作品(`merged_into`)は索引から消す。統合先の作品が、吸収した作品名を別名として・巻の名前ごと持つ([[work-grouping]])
 - 巻の名前は**見えなくなった巻も含めて**割り当てがあれば入れる(missing の巻の名前で当たっても、一覧は見えている巻を持つ作品しか出さない)
@@ -25,12 +25,12 @@ related: [work-grouping, backend, frontend, metadata-clients, overview]
 
 - `spinebox/db.py:24 _dirty_triggers()`(マイグレーション 7)が、`work_fields` / `work_aliases` / `work_volumes` の挿入・更新・削除、
   `works` の追加・統合、`volumes.title` の更新で、その作品 id を `work_search_dirty` に入れる
-- `spinebox/search.py:118 prepare()` が一覧の前に、印のある作品だけ索引し直して印を消す。印が無ければ書き込みのトランザクションを取らない。
+- `spinebox/search.py:130 prepare()` が一覧の前に、印のある作品だけ索引し直して印を消す。印が無ければ書き込みのトランザクションを取らない。
   索引が無い(移行直後・SQLite を替えた後)ときは作り直す。起動時(`create_app`)にも一度呼ぶ
 - 書き換える側(`spinebox/works.py` の手動編集・統合・付け替え、名寄せの再計算、整理処理)は再索引を**呼ばない**。どこで変えても印が付くので、呼び忘れで索引が古いまま残ることがない
 - **トリガーの中で `INSERT OR IGNORE` を使わない。** 外側の文が UPSERT(`ON CONFLICT DO NOTHING`)だと、トリガー内の衝突方針は外側の方針で上書きされ、
   2 回目の印で一意制約違反になる(`_set_field` の UPSERT で実際に落ちた)。`WHERE NOT EXISTS` で入れている
-- 作り直しは `python -m spinebox --rebuild-search`(`spinebox/search.py:107 rebuild()`)。索引は派生データなので、いつ作り直してもよい
+- 作り直しは `python -m spinebox --rebuild-search`(`spinebox/search.py:119 rebuild()`)。索引は派生データなので、いつ作り直してもよい
 
 ## 正規化
 
@@ -45,20 +45,23 @@ related: [work-grouping, backend, frontend, metadata-clients, overview]
 ## 2 文字以下の語
 
 trigram は 3 文字未満の語を索引から引けない(MATCH が何も返さない)ので、**正規化後 3 文字以上は FTS5 の MATCH、2 文字以下は同じ表の `body LIKE '%語%'`** にする
-(`spinebox/search.py:144 match_ids()`)。「東村」「領主」「楽」も引ける。LIKE は全行を見るが、合成データ 1 万作品(1 行 12 項目)で 1 回 16ms ほど
+(`spinebox/search.py:156 match_ids()`)。「東村」「領主」「楽」も引ける。LIKE は全行を見るが、合成データ 1 万作品(1 行 12 項目)で 1 回 16ms ほど
 (MATCH は 0.02ms)で、単一利用者の蔵書なら十分。正規化で `%` `_` は残らないのでエスケープは要らない。
 
 ## trigram の無い SQLite
 
 trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Python 3.12 は 3.34 以上を同梱する(開発機のコンテナでは 3.53)。
-`spinebox/search.py:56 trigram_available()` が一時表を作れるかで確かめ、無ければ同じ名前・同じ列の**普通の表**を作って全部 LIKE で引く。結果は同じで遅いだけ。
+`spinebox/search.py:62 trigram_available()` が一時表を作れるかで確かめ、無ければ同じ名前・同じ列の**普通の表**を作って全部 LIKE で引く。結果は同じで遅いだけ。
 どちらの形かは表の定義(`sqlite_master.sql` に `fts5` があるか)で見分けるので、SQLite を上げたら `--rebuild-search` で FTS5 に作り直せる。
 索引の表をマイグレーションで作らないのはこのため(実行時の SQLite で形が変わる派生データ)。マイグレーション 7 は印の表とトリガーだけ。
 
 ## 絞り込み
 
-- 著者・種別・ジャンル・タグは `work_fields` の項目名 `author` / `kind` / `genre` / `tag`(`spinebox/search.py:27 FILTER_FIELDS`)。公開 DB の結線(#50)が
-  この名前で行を足せばそのまま効く。名前が違うなら `FILTER_FIELDS` と API の引数をそろえる
+- 著者・種別・ジャンル・タグは `work_fields` の項目 `author` / `kind` / `genres` / `tags` で、API のクエリ名は `author` / `kind` / `genre` / `tag`
+  (`spinebox/search.py:29 FILTER_FIELDS` が対応表)。値は 1 つずつに分けて、正規化して一致で比べる。ジャンル・タグは公開 DB の結線(#50)が
+  JSON の文字列配列で持つので、`split_values()` が配列を読む(`、` `,` `;` でつないだ文字列も読む)。複数の値を持つ項目は**どれか 1 つが一致**すればよい
+- 種別は `manga` / `novel` で持つ(#50)。絞り込みは `manga` でも `漫画` でも同じで(`_comparable()`)、`漫画` `小説` の語は検索の索引にも入れる。
+  候補(`facets.kind`)は保存された値(`manga`)のまま返し、画面で日本語に直す
 - 読書状態は作品単位: 見えている巻を全部読み終えたら `finished`(既読)、1 巻も開いていなければ `unread`(未読)、それ以外は `reading`(読書中)。
   `reading_state` として一覧の各作品に付ける
 - 絞り込みの候補(`facets`)は**絞る前**の作品の値から作る(絞ったあとで候補が消えて戻れなくならないように)。候補の無い項目は画面に出さない
