@@ -2,7 +2,7 @@
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 updated: 2026-11-02
-related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping]
+related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader]
 ---
 
 # フロントエンド(`frontend/`)
@@ -22,6 +22,7 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 | --- | --- |
 | `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
 | `frontend/src/reader/Reader.tsx:57 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
+| `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
@@ -74,6 +75,9 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
   別スキャンは 1 ページ目が口絵と表紙で食い違うことがあるので、バックエンドが返す一致ページの例(最大 3 組)も並べる。375px では 2 巻を 2 列のまま、項目名を値の上に積む
 - **一覧の印「重複の候補あり」は巻のリンクの外**(食い違いの説明と同じ理由)。押すと重複候補の画面へ行く
 - **汎用カルーセルライブラリは使わない**(GOAL.md の初期既定)。ページ送りは状態の差し替えだけで、アニメーションは無い
+- **小説は同じ `#/read/<id>` で開き、巻情報の `format` でリーダーを切り替える。** 一覧のカードには「小説」の印と「EPUB / テキスト」を出し、
+  ページ数・「CBZ に整理」は出さない。読みかけは「読みかけ(区切り / 区切りの数)」(ページ数は文字サイズで変わるので出さない)。
+  文字サイズは端末ごとに `localStorage` の `spinebox.novel` へ([[novel-reader]])
 
 - **作品ページの「手で直した項目」は出所を明示する。** 作品名・著者・別名・巻の割り当てごとに「手動で編集 / ファイル名から(確信度 90%)/ 重複候補の証拠で統合」を出す。名寄せは名前の推測なので、利用者が根拠を見て直せるようにするため。
   提案は確信度と根拠(一致ページ数)を見せ、承認するまで統合しない。巻の付け替えは巻のチェックボックスで選んで「新しい作品に分ける」/「この作品へ移す」(手動の決定になり再計算で戻らない)
@@ -109,6 +113,8 @@ npm run build      # frontend/dist
 ```
 
 ## 経緯
+
+- #57 で小説の縦書きリーダーを足した([[novel-reader]])。モック API に小説 2 巻(巻 7 は無害化をすり抜けた想定の危険な HTML を混ぜた EPUB)を足した
 
 - #43 で作品の一覧・作品ページ・統合の提案の画面を足した(モック API は `src/mock/mockWorks.ts`)。`_参考/サンプル本` を実バックエンドで配信し、375px と 812x375 の組み込みブラウザで、作品一覧 → 作品ページ(1・2 巻が重複・欠けなし)→ 巻を新しい作品に分ける → 提案が出る(分けた組は却下済みで記録される)→「提案に戻す」→「同じ作品として統合」→ 作品名の手動編集(再計算で戻らない)を確認した。横スクロールは出ない
 
