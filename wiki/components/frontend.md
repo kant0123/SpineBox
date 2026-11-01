@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、モック API、CI への組み込み
+summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 updated: 2026-11-01
 related: [overview, local-ci, server-setup]
 ---
@@ -21,10 +21,11 @@ related: [overview, local-ci, server-setup]
 | パス | 役割 |
 | --- | --- |
 | `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
-| `frontend/src/reader/Reader.tsx:29 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
+| `frontend/src/reader/Reader.tsx:57 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
+| `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
-| `frontend/src/api.ts:56 api` | API 契約(#14 と共有)の型と呼び出し |
-| `frontend/src/mock/mockBackend.ts:49 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用 |
+| `frontend/src/api.ts:69 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/mock/mockBackend.ts:58 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
@@ -46,12 +47,21 @@ related: [overview, local-ci, server-setup]
   そのため起動時に `frontend/src/route.ts:26 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
   入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
+- **読み込み待ちは 2 段で見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
+  取り出す間(実測 3〜8 秒)何も出ず、黒い画面のままで読み込み中と分からなかった。巻情報の取得中はリーダーの黒い枠の中央に
+  スピナーと「一覧へ戻る」を出し、1.5 秒(`SLOW_HINT_MS`)を超えたら「初めて開く巻は展開に数秒かかる」と補足する。
+  巻情報が来た後は、表示中のページ画像が `load` / `error` になるまで画面中央に小さく「読み込み中」を重ねる。
+  先読み済みのページで一瞬ちらつかないよう、重ね表示は CSS で 0.3 秒遅れて現れる
+- **取得失敗の文言は HTTP ステータスで分ける。** 404 は「蔵書から無くなった」、409 は「オフライン」、422(壊れたアーカイブ・
+  展開上限超過)はバックエンドの `detail` をそのまま出す。理由はバックエンドしか知らないため。どの失敗でも一覧へ戻るリンクを出す
 - **汎用カルーセルライブラリは使わない**(GOAL.md の初期既定)。ページ送りは状態の差し替えだけで、アニメーションは無い
 
 ## 落とし穴
 
 - `.stage` の `touch-action: pinch-zoom` は、1 本指の横の払いをブラウザのスクロールに取られないためのもの。消すとスマホでスワイプが効かない
 - モック(`src/mock/`)は `vite.config.ts` からだけ読む。アプリ側から import すると本番のバンドルに入る
+- jsdom の画像は読み込まれず `load` も来ないので、ページ画像の読み込み待ちのテストは `fireEvent.load` / `fireEvent.error` で進める
+  (`src/reader/Reader.test.tsx`)。キャッシュ済み画像を `ref` で `complete && naturalWidth > 0` と見て済ませる分岐は実ブラウザでしか通らない
 - 単体テストの jsdom には `PointerEvent` が無いので、タップ・スワイプは判定関数の単体テストと実ブラウザで確かめる
   (結線のテスト `src/App.test.tsx` はキーボードで操作している)
 
@@ -69,6 +79,7 @@ related: [overview, local-ci, server-setup]
 ```bash
 cd frontend && npm ci
 npm run dev:mock   # バックエンド無しでモック API と一緒に起動
+                   # 「ページ数未確定の巻(入れ子)」は初回だけ 4 秒待つ。#/read/too-big は 422、#/read/999 は 404、#/read/4 は 409
 npm run dev        # /api を http://127.0.0.1:8000 へ中継
 npm test           # vitest
 npm run build      # frontend/dist
