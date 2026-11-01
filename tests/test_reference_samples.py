@@ -76,4 +76,13 @@ def test_reference_samples_scan_and_read_every_page(sample_dir, sevenzip, make_s
         for title, n, sec in report:
             print(f"  {title}: {n} pages, {sec:.1f}s")
 
+    # 全巻を開いた後(#30): v01-03(中に v01-02.rar{v01,v02} と v03)は 1・2・3 巻に分解され、食い違いは無い。
+    # お気楽領主の zip(名前 v01-06、中は 1,1,2,2,3,4,5,6 巻)は重複を食い違いにしない。
+    listed = client.get("/api/volumes").json()
+    kaku = [v for v in listed if v["title"].startswith("Kakukaku Shikajika v0") and v["parent_id"] is not None]
+    assert [v["volume_number"]["start"] for v in kaku] == [1, 2, 3]
+    assert sum(v["page_count"] for v in kaku) == 472
+    assert not any(v["findings"] for v in listed)
+    v04 = [v for v in listed if v["title"] == "Kakukaku Shikajika v04"]
+    assert len(v04) == 1 and v04[0]["parent_id"] is None
     assert fingerprint(sample_dir) == before  # 原本は 1 バイトも変わらない

@@ -24,10 +24,23 @@ from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archiv
                       open_archive)
 from .archive.safety import Skip, depth_problem
 from .config import Settings
+from .naming import parse_number
 from .pages import is_image
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
-SCAN_VERSION = 1
+# 2: 巻の名前から番号の候補(number_*)を記録する(#30)
+SCAN_VERSION = 2
+
+# 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
+LISTED_VOLUMES_JOIN = """
+FROM volumes v JOIN sources s ON s.id = v.source_id JOIN library_roots r ON r.id = s.root_id
+LEFT JOIN volumes pv ON pv.id = v.parent_id
+"""
+LISTED_VOLUMES_WHERE = """
+WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0
+  AND (v.parent_id IS NULL OR pv.missing = 0)
+  AND NOT EXISTS (SELECT 1 FROM volumes c WHERE c.parent_id = v.id AND c.missing = 0)
+"""
 
 
 @dataclass
@@ -130,10 +143,7 @@ class Scanner:
                 self._mark_root_offline(root_id)
                 result.offline_roots.append(str(root))
         result.volumes = self.conn.execute(
-            """SELECT COUNT(*) FROM volumes v JOIN sources s ON s.id = v.source_id
-               JOIN library_roots r ON r.id = s.root_id
-               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0"""
-        ).fetchone()[0]
+            "SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
         return result
 
     def _mark_root_offline(self, root_id: int) -> None:
@@ -228,24 +238,34 @@ class Scanner:
             # 読めなかったときはサイズ・mtime を更新しない(次のスキャンで再挑戦する。既存の巻はそのまま)
 
     def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec]) -> None:
-        """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。"""
+        """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。
+
+        突き合わせるのはスキャンが切り出す巻(親を持たない巻)だけ。解析で作った子の巻はここでは触らない
+        (親の解析をやり直したときに突き合わせる。spinebox/analysis.py)。ソースを読み直したので、
+        内側アーカイブの巻は未解析に戻す(子の巻は残し、次に開いたときに同じ単位へ突き合わせ直す)。
+        """
         now = db.now()
         existing = {(r["container_path"], r["entry_prefix"]): r["id"]
-                    for r in c.execute("SELECT id, container_path, entry_prefix FROM volumes WHERE source_id = ?",
-                                       (source_id,))}
+                    for r in c.execute("""SELECT id, container_path, entry_prefix FROM volumes
+                                          WHERE source_id = ? AND parent_id IS NULL""", (source_id,))}
         seen = set()
         for s in specs:
             key = (s.container_path, s.entry_prefix)
             seen.add(key)
+            num = parse_number(s.title)
+            numbers = (num.kind, num.start, num.end, num.evidence) if num else (None, None, None, None)
             if key in existing:
                 c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?, page_count = ?,
+                             number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
+                             analyzed_version = NULL, analysis_error = NULL,
                              missing = 0, updated_at = ? WHERE id = ?""",
-                          (s.title, s.name_raw, s.name_encoding, s.page_count, now, existing[key]))
+                          (s.title, s.name_raw, s.name_encoding, s.page_count, *numbers, now, existing[key]))
             else:
                 c.execute("""INSERT INTO volumes (source_id, container_path, entry_prefix, title, name_raw,
-                             name_encoding, page_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                             name_encoding, page_count, number_kind, number_start, number_end, number_evidence,
+                             created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                           (source_id, s.container_path, s.entry_prefix, s.title, s.name_raw, s.name_encoding,
-                           s.page_count, now, now))
+                           s.page_count, *numbers, now, now))
         for key, vid in existing.items():
             if key not in seen:
                 c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))

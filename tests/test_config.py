@@ -59,6 +59,9 @@ def test_missing_env_config_is_error(tmp_path, monkeypatch):
     'port = "80"',
     '[limits]\nmax_entries = -1',
     'not toml ===',
+    'background_analysis = 1',
+    'background_analysis = "true"',
+    'background_analysis_interval = 0',
 ])
 def test_invalid_values(tmp_path, body):
     conf = tmp_path / "c.toml"
@@ -72,6 +75,14 @@ def test_example_config_parses():
     assert s.library_roots == ()
     assert s.cache_limit_bytes == 2 * GIB
     assert s.host == "127.0.0.1"
+    assert s.background_analysis is False and s.background_analysis_interval == 60
+
+
+def test_background_analysis_settings(tmp_path):
+    conf = tmp_path / "c.toml"
+    conf.write_text("background_analysis = true\nbackground_analysis_interval = 5\n", encoding="utf-8")
+    s = load_settings(conf)
+    assert s.background_analysis is True and s.background_analysis_interval == 5
 
 
 def _run_main(monkeypatch, tmp_path, host):

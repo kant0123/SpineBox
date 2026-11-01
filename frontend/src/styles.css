@@ -52,13 +52,20 @@ button:disabled { opacity: 0.6; cursor: default; }
   display: grid; gap: 10px;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* 375px 幅で 2 列 */
 }
-.volume-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.volume-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; min-width: 0; display: flex; flex-direction: column; }
 .volume-card.offline { opacity: 0.55; }
-.volume-link { display: flex; flex-direction: column; gap: 4px; padding: 12px; color: inherit; text-decoration: none; height: 100%; }
+.volume-link { display: flex; flex-direction: column; gap: 4px; padding: 12px; color: inherit; text-decoration: none; flex: 1; }
 .volume-title { font-weight: 600; overflow-wrap: anywhere; }
 .volume-meta, .volume-progress { font-size: 0.85rem; color: var(--muted); }
 .volume-progress.done { color: var(--done); }
 .badge { align-self: flex-start; font-size: 0.75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); }
+.volume-extra { padding: 0 12px 10px; font-size: 0.85rem; }
+.volume-extra summary { cursor: pointer; color: var(--warn); }
+.finding p { margin: 6px 0; overflow-wrap: anywhere; }
+.finding dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 0; }
+.finding dt { color: var(--muted); }
+.finding dd { margin: 0; overflow-wrap: anywhere; }
+button.small { padding: 4px 10px; font-size: 0.8rem; }
 
 /* リーダー */
 .reader { position: fixed; inset: 0; background: #000; color: #eee; overflow: hidden; }

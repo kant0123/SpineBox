@@ -2,7 +2,7 @@
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 updated: 2026-11-01
-related: [overview, local-ci, server-setup]
+related: [overview, local-ci, server-setup, volume-split]
 ---
 
 # フロントエンド(`frontend/`)
@@ -12,9 +12,9 @@ related: [overview, local-ci, server-setup]
 
 ## 責務
 
-- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・リーダー(ページ画像の表示・先読み・
+- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・リーダー(ページ画像の表示・先読み・
   読書位置の保存と再開)。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
-- しない: ページの並び順・ページ数・オフライン判定。どれもバックエンドが決めた `pages[]`・`offline` をそのまま使う
+- しない: ページの並び順・ページ数・オフライン判定・巻番号と食い違いの判定。どれもバックエンドが決めた `pages[]`・`offline`・`findings` をそのまま使う
 
 ## 入口となるファイル
 
@@ -24,8 +24,9 @@ related: [overview, local-ci, server-setup]
 | `frontend/src/reader/Reader.tsx:57 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
-| `frontend/src/api.ts:69 api` | API 契約(#14 と共有)の型と呼び出し |
-| `frontend/src/mock/mockBackend.ts:58 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
+| `frontend/src/api.ts:107 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
+| `frontend/src/mock/mockBackend.ts:88 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
@@ -45,6 +46,8 @@ related: [overview, local-ci, server-setup]
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
   そのため起動時に `frontend/src/route.ts:26 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+- **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
+  バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
   入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
 - **読み込み待ちは 2 段で見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
@@ -88,5 +91,7 @@ npm run build      # frontend/dist
 ## 経緯
 
 - #15 で作成。バックエンド(#14)と並行して、API はモックで開発した
+- #30 で食い違いのバッジと説明、「中の巻を調べる」ボタンを足した。クラウドで実 API + 合成の蔵書を 375px のヘッドレス Chromium で表示し、
+  横スクロールが出ないことを確かめた(実データでの 375px 確認はローカルで行う)
 - #19 でビルド済みの `frontend/dist` をバックエンドから配信して実 API で通した(375px・横長 812x375 で、一覧 → 最終ページ → 位置保存 →
   一覧に戻って再開、`/read/<id>` の直開きとリロード)。LAN 越しの実機(スマホ)の確認はサーバー機側で行う(#20)。常駐・公開の手順は [[server-setup]]
