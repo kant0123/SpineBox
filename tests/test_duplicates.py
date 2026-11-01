@@ -373,3 +373,43 @@ def test_organized_volumes_are_neither_fingerprinted_nor_candidates(env, tmp_pat
     assert summary.fingerprinted == 0 and summary.candidates == 0
     assert candidates(conn) == []
     assert conn.execute("SELECT COUNT(*) FROM volume_fingerprints WHERE volume_id = ?", (a_id["id"],)).fetchone()[0] == 0
+
+
+def test_pending_is_listed_once_per_round_not_once_per_volume(env, tmp_path, monkeypatch):
+    """指紋を作る巻を 1 つ作るたびに全巻を引き直す(巻数 × 巻数の SQL と stat)と、蔵書が増えると遅くなる(agy #40)。"""
+    lib = tmp_path / "lib"
+    for i in range(1, 7):
+        write_zip(lib / f"S{i} v01.cbz", scan_pages(i, 6))
+    _, conn, library = env(lib)
+    calls = []
+    original = duplicates.DuplicateScanner.pending
+
+    def counting(self, done):
+        result = original(self, done)
+        calls.append(len(result))
+        return result
+
+    monkeypatch.setattr(duplicates.DuplicateScanner, "pending", counting)
+    assert run(conn, library).fingerprinted == 6
+    assert calls == [6, 0]  # 最初に 6 巻を拾い、全部作ってから 1 回だけ引き直して終わる
+
+
+def test_pending_rescans_after_a_volume_is_split_into_children(env, tmp_path):
+    lib = tmp_path / "lib"
+    inner = zip_bytes([(f"v01/{n}", d) for n, d in scan_pages(1, 8)] + [(f"v02/{n}", d) for n, d in scan_pages(2, 8)])
+    write_zip(lib / "set.zip", [("pack.zip", inner)])
+    write_zip(lib / "plain v03.cbz", scan_pages(3, 8))
+    _, conn, library = env(lib)
+    assert run(conn, library).fingerprinted == 3  # 分解で現れた子 2 巻 + 単独 1 巻
+
+
+def test_badge_counts_ignore_pairs_whose_volume_left_the_list(env, tmp_path):
+    """片方が一覧から消えた(missing・整理済み)候補は、画面にも出ないので印にも数えない(agy #40)。"""
+    lib = tmp_path / "lib"
+    write_zip(lib / "A v01.cbz", scan_pages(1, 12))
+    write_zip(lib / "B v01.cbz", scan_pages(1, 12, scale=0.6))
+    _, conn, library = env(lib)
+    run(conn, library)
+    assert sorted(duplicates.candidate_counts(conn).values()) == [1, 1]
+    conn.execute("UPDATE volumes SET missing = 1 WHERE title = 'B v01'")
+    assert duplicates.candidate_counts(conn) == {}

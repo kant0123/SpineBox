@@ -54,7 +54,7 @@ related: [overview, backend, frontend, volume-split, extraction-cache, archive-r
 - `duplicate_candidates.dismissed_at` を立てるだけ(行は消さない)。再計算(`refresh_candidates()`)は却下済みの組を**復活させず**、却下済みの行は成り立たなくなっても消さない。
   `POST /api/duplicates/{id}/restore` で候補に戻せる。却下は巻 id の組に付くので、中身が変わって指紋を作り直しても却下は残る
 - 未却下で成り立たなくなった候補は、再計算で消す(指紋から再導出できる記録で、蔵書・読書位置ではない)
-- 一覧の印(`GET /api/volumes` の `duplicate_count`)は未却下の候補の数
+- 一覧の印(`GET /api/volumes` の `duplicate_count`)は、**両方の巻が一覧に見えている**未却下の候補の数(画面と同じ条件。片方が missing・整理済みになった候補は、再計算までの間も数えない)
 - 対象は一覧に見える巻(`LISTED_VOLUMES_WHERE`)なので、整理(CBZ 化して元を退避した。[[organize]])済みの巻は指紋・候補の対象から外れ、生成された CBZ の巻が新しい対象になる。
   却下は元の巻 id の組に付くので、整理後の CBZ には引き継がれない(整理で重複が片付く前提。同じ組が再び出たら却下し直す)
 

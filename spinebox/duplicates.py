@@ -313,24 +313,32 @@ class DuplicateScanner:
         return out
 
     def run(self, limit: int | None = None) -> ScanSummary:
+        """指紋を作る。1 巻ごとに全巻を引き直さず、まとめて拾って順に処理し、拾い直すのは分解で子が現れたときの 1 巡ごと。"""
         summary = ScanSummary()
         done: set[int] = set()
-        while limit is None or summary.fingerprinted + summary.errors < limit:
+        while True:
             todo = self.pending(done)
-            if self.progress:
-                self.progress(len(done), len(done) + len(todo))
             if not todo:
                 break
-            vid = todo[0]
-            done.add(vid)
-            try:
-                self._fingerprint(vid, summary)
-            except (VolumeOffline, VolumeNotFound):
-                continue  # 見えなくなった巻は記録しない(再接続後にまた候補になる)
-            except (VolumeUnreadable, CacheTooLarge) as e:
-                self._record_error(vid, str(e))
-                summary.errors += 1
-                log.info("巻 %s の指紋を作れません: %s", vid, e)
+            for n, vid in enumerate(todo):
+                if limit is not None and summary.fingerprinted + summary.errors >= limit:
+                    break
+                if self.progress:
+                    self.progress(len(done), len(done) + len(todo) - n)
+                done.add(vid)
+                try:
+                    self._fingerprint(vid, summary)
+                except (VolumeOffline, VolumeNotFound):
+                    continue  # 見えなくなった巻は記録しない(再接続後にまた候補になる)
+                except (VolumeUnreadable, CacheTooLarge) as e:
+                    self._record_error(vid, str(e))
+                    summary.errors += 1
+                    log.info("巻 %s の指紋を作れません: %s", vid, e)
+            else:
+                continue
+            break  # limit に達した
+        if self.progress:
+            self.progress(len(done), len(done))
         summary.candidates = refresh_candidates(self.conn)
         return summary
 
@@ -381,9 +389,15 @@ def dismiss(conn: sqlite3.Connection, candidate_id: int, *, restore: bool = Fals
 
 
 def candidate_counts(conn: sqlite3.Connection) -> dict[int, int]:
-    """巻ごとの、却下されていない候補の数(一覧の印用)。"""
+    """巻ごとの、両方が一覧に見えており却下されていない候補の数(一覧の印用)。
+
+    画面(`GET /api/duplicates`)は一覧に見えている巻どうしの組だけを出すので、印もそれに揃える。
+    片方が見えなくなった(missing・整理済み)組を数えると、開いても何も出ない印が残る。
+    """
+    listed = {r[0] for r in conn.execute("SELECT v.id " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE)}
     counts: dict[int, int] = defaultdict(int)
     for r in conn.execute("SELECT volume_a, volume_b FROM duplicate_candidates WHERE dismissed_at IS NULL"):
-        counts[r["volume_a"]] += 1
-        counts[r["volume_b"]] += 1
+        if r["volume_a"] in listed and r["volume_b"] in listed:
+            counts[r["volume_a"]] += 1
+            counts[r["volume_b"]] += 1
     return dict(counts)
