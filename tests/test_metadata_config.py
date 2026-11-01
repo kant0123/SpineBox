@@ -29,6 +29,22 @@ def test_overrides_and_partial_interval_table():
     assert m.keys == {"rakuten_application_id": "abc"} and "abc" not in repr(m)
 
 
+def test_linking_settings_defaults_and_overrides():
+    m = parse(None)
+    assert (m.background, m.background_interval_seconds, m.recheck_days, m.retry_hours) == (False, 120, 30.0, 6.0)
+    m = parse({"background": True, "background_interval_seconds": 30, "recheck_days": 7, "retry_hours": 0.5})
+    assert (m.background, m.background_interval_seconds, m.recheck_days, m.retry_hours) == (True, 30, 7.0, 0.5)
+
+
+@pytest.mark.parametrize("table", [
+    {"background": "yes"}, {"background": 1}, {"background_interval_seconds": 5}, {"background_interval_seconds": 60.5},
+    {"recheck_days": 0}, {"retry_hours": 0}, {"retry_hours": "6"},
+])
+def test_invalid_linking_settings_are_rejected(table):
+    with pytest.raises(ConfigError):
+        parse(table)
+
+
 def test_sources_can_be_empty_to_turn_metadata_off():
     assert parse({"sources": []}).sources == ()
 

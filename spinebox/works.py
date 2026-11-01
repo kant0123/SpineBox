@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -27,8 +29,24 @@ from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
 FIELD_TITLE = "title"
 FIELD_AUTHOR = "author"
+FIELD_KIND = "kind"                # manga / novel
+FIELD_PUBLISHER = "publisher"
+FIELD_GENRES = "genres"            # JSON の文字列配列
+FIELD_TAGS = "tags"                # JSON の文字列配列
+FIELD_SYNOPSIS = "synopsis"
+FIELD_TOTAL_VOLUMES = "total_volumes"  # 全何巻か(公開 DB だけが持つ。手で編集する項目ではない)
+EDITABLE_FIELDS = (FIELD_TITLE, FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD_GENRES, FIELD_TAGS, FIELD_SYNOPSIS)
+LIST_FIELDS = (FIELD_GENRES, FIELD_TAGS)
+KINDS = ("manga", "novel")
 
-# 出所(source)。work_fields / work_aliases / work_volumes で共通。公開 DB は後続の結線で足す(`public_db`)
+# 巻単位の書誌(`volume_fields`)。手で直せるのは publisher / label / released / isbn
+VOLUME_EDITABLE_FIELDS = ("publisher", "label", "released", "isbn")
+VOLUME_FIELDS = (*VOLUME_EDITABLE_FIELDS, "volume_label", "subtitle")
+
+# 取得元の表示名(取得元の順は結線の検索の順)
+SOURCE_LABELS = {"ndl": "国立国会図書館サーチ", "anilist": "AniList", "mangaupdates": "MangaUpdates"}
+
+# 出所(source)。work_fields / work_aliases / work_volumes / volume_fields で共通。公開 DB は `public_db`(結線は spinebox/linking.py)
 SOURCE_FILENAME = "filename"      # 巻自身の名前から
 SOURCE_CONTAINER = "container"    # 外側のアーカイブ・フォルダの名前から
 SOURCE_DUPLICATE = "duplicate"    # 重複候補の証拠で統合した
@@ -36,6 +54,7 @@ SOURCE_ALIAS = "alias"            # 別名と作品名の一致で統合した
 SOURCE_MERGE = "merge"            # 統合された作品の名前(別名になった)
 SOURCE_MANUAL = "manual"          # 利用者が決めた
 SOURCE_PREVIOUS = "previous_title"  # 手で直す前の作品名(別名に残す)
+SOURCE_PUBLIC_DB = "public_db"    # 公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)から
 
 # 確信度(0〜1)。しきい値の根拠は wiki/concepts/work-grouping.md
 CONF_OWN_NAME = 0.9          # 巻自身の名前から作品名を読めた
@@ -326,18 +345,35 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
         if a["norm"] != keep_norm:
             _insert_alias(c, keep, a["alias"], a["source"], manual=bool(a["manual"]), confidence=a["confidence"],
                           evidence=json.loads(a["evidence"]) if a["evidence"] else None, revive=True)
-    kept = c.execute("SELECT value, manual FROM work_fields WHERE work_id = ? AND field = ?",
-                     (keep, FIELD_AUTHOR)).fetchone()
-    dropped = c.execute("SELECT * FROM work_fields WHERE work_id = ? AND field = ?", (drop, FIELD_AUTHOR)).fetchone()
-    if dropped and dropped["value"] and (
-            kept is None or (not kept["manual"] and (not kept["value"] or dropped["manual"]))):
-        # 手動の著者は、名前から読んだ著者より優先して残す(吸収される側が手動なら、その著者を移す)
-        _set_field(c, keep, FIELD_AUTHOR, dropped["value"], dropped["source"], bool(dropped["manual"]),
-                   dropped["confidence"], json.loads(dropped["evidence"]) if dropped["evidence"] else None)
+    for name in (FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD_GENRES, FIELD_TAGS, FIELD_SYNOPSIS,
+                 FIELD_TOTAL_VOLUMES):
+        kept = c.execute("SELECT value, manual FROM work_fields WHERE work_id = ? AND field = ?",
+                         (keep, name)).fetchone()
+        dropped = c.execute("SELECT * FROM work_fields WHERE work_id = ? AND field = ?", (drop, name)).fetchone()
+        if dropped and dropped["value"] and (
+                kept is None or (not kept["manual"] and (not kept["value"] or dropped["manual"]))):
+            # 手動の値は、名前や公開 DB から入った値より優先して残す(吸収される側が手動なら、その値を移す)
+            _set_field(c, keep, name, dropped["value"], dropped["source"], bool(dropped["manual"]),
+                       dropped["confidence"], json.loads(dropped["evidence"]) if dropped["evidence"] else None)
+    _merge_links(c, keep, drop)
     now = db.now()
     c.execute("UPDATE works SET merged_into = ?, updated_at = ? WHERE id = ?", (keep, now, drop))
     c.execute("UPDATE works SET merged_into = ?, updated_at = ? WHERE merged_into = ?", (keep, now, drop))
     c.execute("UPDATE works SET updated_at = ? WHERE id = ?", (now, keep))
+
+
+def _merge_links(c, keep: int, drop: int) -> None:
+    """吸収される作品の公開 DB との連携を、残る作品へ移す。残る側に同じ取得元の連携が無いとき、
+    または吸収される側が手動で選んだものを残る側が手動で選んでいないときだけ(手動の決定を守る)。"""
+    for dl in c.execute("SELECT * FROM work_links WHERE work_id = ?", (drop,)).fetchall():
+        kl = c.execute("SELECT * FROM work_links WHERE work_id = ? AND source = ?", (keep, dl["source"])).fetchone()
+        if kl is not None:
+            better = (dl["manual"] and not kl["manual"]) or (
+                not kl["manual"] and kl["status"] != "linked" and dl["status"] == "linked")
+            if not better:
+                continue
+            c.execute("DELETE FROM work_links WHERE work_id = ? AND source = ?", (keep, dl["source"]))
+        c.execute("UPDATE work_links SET work_id = ? WHERE work_id = ? AND source = ?", (keep, drop, dl["source"]))
 
 
 def _manual_involved(c, work_id: int) -> bool:
@@ -575,26 +611,188 @@ def _alive(c, work_id: int) -> int:
     return root
 
 
-def update_fields(conn: sqlite3.Connection, work_id: int, *, title: str | None = None, author: str | None = None,
-                  set_title: bool = False, set_author: bool = False) -> None:
-    """作品名・著者を手で直す。手動の項目は再計算でも外部ソースでも上書きしない(空にした場合も)。
+def _row(c, table: str, key_col: str, key: int, field: str):
+    return c.execute(f"SELECT * FROM {table} WHERE {key_col} = ? AND field = ?", (key, field)).fetchone()
 
-    直す前の作品名は別名に残す(その名前の巻が、また新しい作品として現れないように)。
+
+def _stash(row) -> dict | None:
+    """手で直す前の値(自動に戻すときに復元する)。すでに手動なら、その前の値を引き継ぐ。"""
+    if row is None:
+        return None
+    ev = json.loads(row["evidence"]) if row["evidence"] else None
+    if row["manual"]:
+        return (ev or {}).get("previous")
+    return {"value": row["value"], "source": row["source"], "confidence": row["confidence"], "evidence": ev}
+
+
+def decode_value(field: str, text: str | None):
+    """work_fields.value を API の形にする(genres / tags は配列、total_volumes は整数)。"""
+    if text is None:
+        return [] if field in LIST_FIELDS else None
+    if field in LIST_FIELDS:
+        try:
+            value = json.loads(text)
+        except ValueError:
+            return []
+        return [str(x) for x in value] if isinstance(value, list) else []
+    if field == FIELD_TOTAL_VOLUMES:
+        return int(text) if text.isdigit() else None
+    return text
+
+
+def _clean_field(field: str, raw) -> str | None:
+    """手で入力された値を保存する形にする。空は None(手動で空にした)。"""
+    if field in LIST_FIELDS:
+        if raw is None:
+            return None
+        if not isinstance(raw, (list, tuple)):
+            raise InvalidValue("一覧は配列で指定してください")
+        items = list(dict.fromkeys(str(x).strip() for x in raw if str(x).strip()))
+        return _dumps(items) if items else None
+    if raw is not None and not isinstance(raw, str):
+        raise InvalidValue("値は文字列で指定してください")
+    text = (raw or "").strip()
+    if field == FIELD_KIND and text and text not in KINDS:
+        raise InvalidValue("種別は manga(漫画)か novel(小説)です")
+    return text or None
+
+
+def edit_fields(conn: sqlite3.Connection, work_id: int, changes: dict[str, object]) -> None:
+    """作品の項目を手で直す。手動の項目は再計算でも公開 DB の取得でも上書きしない(空にした場合も)。
+
+    直す前の値は `evidence.previous` に残し、「自動に戻す」で復元する。直す前の作品名は別名にも残す
+    (その名前の巻が、また新しい作品として現れないように)。
     """
+    unknown = set(changes) - set(EDITABLE_FIELDS)
+    if unknown:
+        raise InvalidValue(f"直せない項目: {', '.join(sorted(unknown))}")
     with db.transaction(conn) as c:
         _alive(c, work_id)
-        if set_title:
-            text = (title or "").strip()
-            if not normalize_title(text):
-                raise InvalidValue("作品名を入力してください")
-            old, _ = _title_of(c, work_id)
-            if normalize_title(old) != normalize_title(text):
-                _insert_alias(c, work_id, old, SOURCE_PREVIOUS, manual=True, confidence=1.0,
-                              evidence={"replaced_by": text}, revive=True)
-            _set_field(c, work_id, FIELD_TITLE, text, SOURCE_MANUAL, True, 1.0, {"edited": True})
-        if set_author:
-            text = (author or "").strip()
-            _set_field(c, work_id, FIELD_AUTHOR, text or None, SOURCE_MANUAL, True, 1.0, {"edited": True})
+        for name, raw in changes.items():
+            old = _row(c, "work_fields", "work_id", work_id, name)
+            previous = _stash(old)
+            evidence = {"edited": True, **({"previous": previous} if previous else {})}
+            if name == FIELD_TITLE:
+                text = (raw or "").strip() if isinstance(raw, str) else ""
+                if not normalize_title(text):
+                    raise InvalidValue("作品名を入力してください")
+                before, _ = _title_of(c, work_id)
+                if normalize_title(before) != normalize_title(text):
+                    _insert_alias(c, work_id, before, SOURCE_PREVIOUS, manual=True, confidence=1.0,
+                                  evidence={"replaced_by": text}, revive=True)
+                _set_field(c, work_id, FIELD_TITLE, text, SOURCE_MANUAL, True, 1.0, evidence)
+            else:
+                _set_field(c, work_id, name, _clean_field(name, raw), SOURCE_MANUAL, True, 1.0, evidence)
+
+
+def update_fields(conn: sqlite3.Connection, work_id: int, *, title: str | None = None, author: str | None = None,
+                  set_title: bool = False, set_author: bool = False) -> None:
+    """作品名・著者を手で直す(`edit_fields` の旧い呼び方)。"""
+    changes: dict[str, object] = {}
+    if set_title:
+        changes[FIELD_TITLE] = title
+    if set_author:
+        changes[FIELD_AUTHOR] = author
+    edit_fields(conn, work_id, changes)
+
+
+def reset_field(conn: sqlite3.Connection, work_id: int, field: str) -> None:
+    """手動の項目を自動に戻す。直す前の値があれば復元し、無ければ項目を空に戻す(公開 DB の値は
+    呼び出し側が `linking.apply_work` で入れ直す)。作品名は直す前の名前が無いと戻せない。"""
+    if field not in EDITABLE_FIELDS:
+        raise InvalidValue(f"直せない項目: {field}")
+    with db.transaction(conn) as c:
+        _alive(c, work_id)
+        row = _row(c, "work_fields", "work_id", work_id, field)
+        if row is None or not row["manual"]:
+            raise Conflict("この項目は手動で編集されていません")
+        previous = _stash(row)
+        if previous is not None:
+            _set_field(c, work_id, field, previous["value"], previous["source"], False, previous["confidence"],
+                       previous["evidence"])
+            if field == FIELD_TITLE:
+                c.execute("UPDATE work_aliases SET dismissed_at = ? WHERE work_id = ? AND norm = ? AND source = ? "
+                          "AND dismissed_at IS NULL",
+                          (db.now(), work_id, normalize_title(previous["value"] or ""), SOURCE_PREVIOUS))
+        elif field == FIELD_TITLE:
+            raise Conflict("元の作品名が残っていないため、自動には戻せません")
+        else:
+            c.execute("DELETE FROM work_fields WHERE work_id = ? AND field = ?", (work_id, field))
+            c.execute("UPDATE works SET updated_at = ? WHERE id = ?", (db.now(), work_id))
+
+
+# --- 巻単位の書誌(volume_fields) --------------------------------------------------------------
+
+
+def _clean_volume_value(field: str, raw) -> str | None:
+    if raw is not None and not isinstance(raw, str):
+        raise InvalidValue("値は文字列で指定してください")
+    text = unicodedata.normalize("NFKC", raw or "").strip()
+    if not text:
+        return None
+    if field == "isbn":
+        digits = re.sub(r"[\s-]", "", text).upper()
+        if not re.fullmatch(r"\d{13}|\d{9}[\dX]", digits):
+            raise InvalidValue("ISBN は 10 桁か 13 桁で入力してください")
+        return digits
+    if field == "released" and not re.fullmatch(r"\d{4}(-\d{2}(-\d{2})?)?", text):
+        raise InvalidValue("発売日は YYYY、YYYY-MM、YYYY-MM-DD のいずれかで入力してください")
+    return text
+
+
+def _set_volume_field(c, volume_id: int, field: str, value: str | None, source: str, manual: bool,
+                      confidence: float | None, evidence: dict | None) -> None:
+    c.execute(
+        """INSERT INTO volume_fields (volume_id, field, value, source, manual, confidence, evidence, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (volume_id, field) DO UPDATE SET value = excluded.value, source = excluded.source,
+               manual = excluded.manual, confidence = excluded.confidence, evidence = excluded.evidence,
+               updated_at = excluded.updated_at""",
+        (volume_id, field, value, source, int(manual), confidence, _dumps(evidence) if evidence else None, db.now()))
+
+
+def edit_volume_fields(conn: sqlite3.Connection, volume_id: int, changes: dict[str, object]) -> None:
+    """巻の書誌(出版社・レーベル・発売日・ISBN)を手で直す。再取得・再計算で上書きしない。"""
+    unknown = set(changes) - set(VOLUME_EDITABLE_FIELDS)
+    if unknown:
+        raise InvalidValue(f"直せない項目: {', '.join(sorted(unknown))}")
+    cleaned = {name: _clean_volume_value(name, raw) for name, raw in changes.items()}
+    with db.transaction(conn) as c:
+        if c.execute("SELECT 1 FROM volumes WHERE id = ?", (volume_id,)).fetchone() is None:
+            raise VolumeNotFound(volume_id)
+        for name, value in cleaned.items():
+            previous = _stash(_row(c, "volume_fields", "volume_id", volume_id, name))
+            _set_volume_field(c, volume_id, name, value, SOURCE_MANUAL, True, 1.0,
+                              {"edited": True, **({"previous": previous} if previous else {})})
+
+
+def reset_volume_field(conn: sqlite3.Connection, volume_id: int, field: str) -> None:
+    """巻の手動の項目を自動に戻す(直す前の値を復元、無ければ空。公開 DB の値は `linking.apply_work` が入れ直す)。"""
+    if field not in VOLUME_EDITABLE_FIELDS:
+        raise InvalidValue(f"直せない項目: {field}")
+    with db.transaction(conn) as c:
+        if c.execute("SELECT 1 FROM volumes WHERE id = ?", (volume_id,)).fetchone() is None:
+            raise VolumeNotFound(volume_id)
+        row = _row(c, "volume_fields", "volume_id", volume_id, field)
+        if row is None or not row["manual"]:
+            raise Conflict("この項目は手動で編集されていません")
+        previous = _stash(row)
+        if previous is not None:
+            _set_volume_field(c, volume_id, field, previous["value"], previous["source"], False,
+                              previous["confidence"], previous["evidence"])
+        else:
+            c.execute("DELETE FROM volume_fields WHERE volume_id = ? AND field = ?", (volume_id, field))
+
+
+def transfer_volume_fields(c: sqlite3.Connection, from_id: int, to_id: int) -> None:
+    """巻の書誌(手動の編集を含む)を別の巻へ写す。整理で巻が CBZ の新しい巻に置き換わるときに使う。
+    写し先で手動の項目は、写し元の自動の値で上書きしない。"""
+    for r in c.execute("SELECT * FROM volume_fields WHERE volume_id = ?", (from_id,)).fetchall():
+        cur = _row(c, "volume_fields", "volume_id", to_id, r["field"])
+        if cur is not None and cur["manual"] and not r["manual"]:
+            continue
+        _set_volume_field(c, to_id, r["field"], r["value"], r["source"], bool(r["manual"]), r["confidence"],
+                          json.loads(r["evidence"]) if r["evidence"] else None)
 
 
 def add_alias(conn: sqlite3.Connection, work_id: int, alias: str) -> None:
@@ -736,7 +934,7 @@ _VOLUME_FROM = (LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v
                 " LEFT JOIN reading_progress p ON p.volume_id = v.id ")
 
 
-def _volume_json(r, dup_counts: dict[int, int]) -> dict:
+def _volume_json(r, dup_counts: dict[int, int], meta: dict[int, dict] | None = None) -> dict:
     number = None
     if r["number_kind"] is not None:
         number = {"kind": r["number_kind"], "start": r["number_start"], "end": r["number_end"],
@@ -748,6 +946,7 @@ def _volume_json(r, dup_counts: dict[int, int]) -> dict:
         "volume_number": number, "duplicate_count": dup_counts.get(r["id"], 0),
         "assignment": {"source": r["a_source"], "manual": bool(r["a_manual"]), "confidence": r["a_confidence"],
                        "evidence": json.loads(r["a_evidence"]) if r["a_evidence"] else None},
+        **({"metadata": meta.get(r["id"], {})} if meta is not None else {}),
     }
 
 
@@ -799,11 +998,15 @@ def _work_rows(c) -> dict[int, dict]:
         works[r["id"]] = {"id": r["id"], "title": "", "title_source": SOURCE_FILENAME, "title_manual": False,
                           "title_confidence": None, "title_evidence": None, "author": None,
                           "author_source": None, "author_manual": False, "author_confidence": None,
-                          "aliases": []}
+                          "aliases": [], "fields": {}}
     for r in c.execute("SELECT * FROM work_fields"):
         w = works.get(r["work_id"])
         if w is None:
             continue
+        ev = json.loads(r["evidence"]) if r["evidence"] else {}
+        w["fields"][r["field"]] = {"value": decode_value(r["field"], r["value"]), "source": r["source"],
+                                   "manual": bool(r["manual"]), "confidence": r["confidence"],
+                                   "sources": (ev.get("link") or {}).get("sources") or []}
         key = "title" if r["field"] == FIELD_TITLE else "author" if r["field"] == FIELD_AUTHOR else None
         if key:
             w[key] = r["value"] if key == "author" else (r["value"] or "")
@@ -820,11 +1023,21 @@ def _work_rows(c) -> dict[int, dict]:
     return works
 
 
-def _listed_volumes(c) -> dict[int, list[dict]]:
+def _volume_meta(c) -> dict[int, dict]:
+    meta: dict[int, dict] = defaultdict(dict)
+    for r in c.execute("SELECT * FROM volume_fields"):
+        ev = json.loads(r["evidence"]) if r["evidence"] else {}
+        meta[r["volume_id"]][r["field"]] = {"value": r["value"], "source": r["source"], "manual": bool(r["manual"]),
+                                            "confidence": r["confidence"], "from": ev.get("source"), "url": ev.get("url")}
+    return meta
+
+
+def _listed_volumes(c, with_meta: bool = False) -> dict[int, list[dict]]:
     dups = candidate_counts(c)
+    meta = _volume_meta(c) if with_meta else None
     by_work: dict[int, list[dict]] = defaultdict(list)
     for r in c.execute(_VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE):
-        by_work[r["work_id"]].append(_volume_json(r, dups))
+        by_work[r["work_id"]].append(_volume_json(r, dups, meta))
     return by_work
 
 
@@ -839,7 +1052,7 @@ def _open_proposal_counts(c) -> dict[int, int]:
     return dict(counts)
 
 
-def _summary(w: dict, vols: list[dict], open_count: int) -> dict:
+def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) -> dict:
     nums = number_summary(vols)
     slots, _ = build_slots(vols)
     return {
@@ -854,6 +1067,11 @@ def _summary(w: dict, vols: list[dict], open_count: int) -> dict:
         "missing_episodes": nums["episode"]["missing"],
         "pending_proposals": open_count,
         "merged": False,
+        "kind": (w["fields"].get(FIELD_KIND) or {}).get("value"),
+        "publisher": (w["fields"].get(FIELD_PUBLISHER) or {}).get("value"),
+        "genres": (w["fields"].get(FIELD_GENRES) or {}).get("value") or [],
+        "tags": (w["fields"].get(FIELD_TAGS) or {}).get("value") or [],
+        "link_pending": link_pending,
     }
 
 
@@ -862,6 +1080,8 @@ def list_works(conn: sqlite3.Connection) -> dict:
     works = _work_rows(conn)
     vols = _listed_volumes(conn)
     opens = _open_proposal_counts(conn)
+    pending_links = {r["work_id"]: r["n"] for r in conn.execute(
+        "SELECT work_id, COUNT(*) AS n FROM work_links WHERE status = 'pending' GROUP BY work_id")}
     roots = _roots(conn)
     merged_roots = set()
     for r in conn.execute("SELECT work_a, work_b FROM work_merge_proposals WHERE status IN ('auto', 'approved')"):
@@ -872,7 +1092,7 @@ def list_works(conn: sqlite3.Connection) -> dict:
     for wid, w in works.items():
         if wid not in vols:
             continue
-        s = _summary(w, vols[wid], opens.get(wid, 0))
+        s = _summary(w, vols[wid], opens.get(wid, 0), pending_links.get(wid, 0))
         s["merged"] = wid in merged_roots
         out.append(s)
     out.sort(key=lambda s: natural_key(s["title"]))
@@ -933,12 +1153,44 @@ def list_proposals(conn: sqlite3.Connection, status: str = "open") -> list[dict]
     return out
 
 
-def get_work(conn: sqlite3.Connection, work_id: int) -> dict:
+def _link_json(row) -> dict:
+    ev = json.loads(row["evidence"]) if row["evidence"] else {}
+    candidates = json.loads(row["candidates"]) if row["candidates"] else []
+    return {
+        "source": row["source"], "label": SOURCE_LABELS.get(row["source"], row["source"]), "status": row["status"],
+        "manual": bool(row["manual"]), "confidence": row["confidence"], "source_id": row["source_id"],
+        "attempted_at": row["attempted_at"], "checked_at": row["checked_at"],
+        "failure": json.loads(row["failure"]) if row["failure"] else None,
+        "linked": ev.get("summary") if row["status"] == "linked" else None,
+        "decision": ev.get("decision"), "margin": ev.get("margin"), "hold": ev.get("hold"),
+        "responses": ev.get("responses", []),
+        "candidates": [c["summary"] for c in candidates],
+    }
+
+
+def links_json(conn: sqlite3.Connection, work_id: int, enabled: tuple[str, ...] = ()) -> list[dict]:
+    """作品の公開 DB との連携(取得元ごと)。取得元が有効なのにまだ取得していなければ status = None で出す。"""
+    rows = {r["source"]: r for r in conn.execute("SELECT * FROM work_links WHERE work_id = ?", (work_id,))}
+    names = [n for n in SOURCE_LABELS if n in enabled or n in rows] + [n for n in rows if n not in SOURCE_LABELS]
+    out = []
+    for name in names:
+        if name in rows:
+            out.append(_link_json(rows[name]))
+        else:
+            out.append({"source": name, "label": SOURCE_LABELS.get(name, name), "status": None, "manual": False,
+                        "confidence": None, "source_id": None, "attempted_at": None, "checked_at": None,
+                        "failure": None, "linked": None, "decision": None, "margin": None, "hold": None,
+                        "responses": [],
+                        "candidates": []})
+    return out
+
+
+def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = ()) -> dict:
     works = _work_rows(conn)
     if work_id not in works:
         raise WorkNotFound(work_id)
     w = works[work_id]
-    all_vols = _listed_volumes(conn)
+    all_vols = _listed_volumes(conn, with_meta=True)
     vols = all_vols.get(work_id, [])
     slots, unnumbered = build_slots(vols)
     roots = _roots(conn)
@@ -953,10 +1205,12 @@ def get_work(conn: sqlite3.Connection, work_id: int) -> dict:
                     proposals.append(item)
         elif a == b == work_id:
             merges.append(_merge_json(conn, r, roots))
+    links = links_json(conn, work_id, sources)
     return {
-        **_summary(w, vols, len(proposals)),
+        **_summary(w, vols, len(proposals), sum(1 for x in links if x["status"] == "pending")),
         "title_confidence": w["title_confidence"], "title_evidence": w["title_evidence"],
         "author_confidence": w["author_confidence"],
+        "fields": w["fields"], "links": links,
         "aliases": w["aliases"],
         "slots": slots, "unnumbered": unnumbered,
         "numbers": number_summary(vols),
