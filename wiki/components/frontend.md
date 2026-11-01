@@ -28,9 +28,9 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:8 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案)。作品ページ `frontend/src/works/WorkPage.tsx:39 WorkPage()`(`#/works/<id>`: 作品名・著者の手動編集、別名、統合の根拠、巻の枠・欠け、巻の付け替え・手動統合)、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
-| `frontend/src/api.ts:323 api` | API 契約(#14 と共有)の型と呼び出し |
-| `frontend/src/library/Library.tsx:72 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
-| `frontend/src/mock/mockBackend.ts:139 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
+| `frontend/src/api.ts:344 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
+| `frontend/src/mock/mockBackend.ts:162 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
