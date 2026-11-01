@@ -72,9 +72,20 @@ export interface AnalyzeResult {
   findings: Finding[];
 }
 
+/** スキャンで読めなかった・巻にならなかったもの。container_path / entry_name は入れ子のアーカイブの中の話 */
+export interface ScanIssue {
+  path: string;
+  container_path: string | null;
+  entry_name: string | null;
+  reason: string;
+}
+
 export interface ScanResult {
   volumes: number;
   offline_roots: string[];
+  /** 読めなかったもの(上限件数まで)。issues_total は上限で切る前の件数 */
+  issues: ScanIssue[];
+  issues_total: number;
 }
 
 /** 重複候補の片方の巻。ページ画像は `api.pageUrl(id, 0)` が表紙 */

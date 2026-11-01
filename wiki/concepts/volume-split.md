@@ -16,12 +16,12 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 - 入口: `spinebox/naming.py:92 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:40 MIGRATIONS` の 2 番)。
-  スキャンが切り出す巻は `spinebox/scanner.py:253 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
+  スキャンが切り出す巻は `spinebox/scanner.py:396 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
   印の無い範囲 `01-03` は最も弱い規則として最後に試す
-- 読み方を変えたら `spinebox/scanner.py:32 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
+- 読み方を変えたら `spinebox/scanner.py:38 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
 
 ### 分解(巻の単位と子の巻)
 
