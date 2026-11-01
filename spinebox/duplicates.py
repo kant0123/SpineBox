@@ -275,7 +275,6 @@ def fingerprint_version(source_version: str, max_depth: int) -> str:
 @dataclass
 class ScanSummary:
     fingerprinted: int = 0
-    skipped: int = 0  # 指紋が最新で飛ばした巻の数
     errors: int = 0
     candidates: int = 0
 

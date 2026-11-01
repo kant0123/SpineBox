@@ -3,6 +3,7 @@ import { parseRoute, type Route } from "./route";
 import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
 import { Duplicates } from "./duplicates/Duplicates";
+import { OrganizeHistory, OrganizePlan } from "./organize/Organize";
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
@@ -13,7 +14,16 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  if (route.name === "read") return <Reader key={route.id} id={route.id} />;
-  if (route.name === "duplicates") return <Duplicates />;
-  return <Library />;
+  switch (route.name) {
+    case "read":
+      return <Reader key={route.id} id={route.id} />;
+    case "organize-plan":
+      return <OrganizePlan key={route.id} volumeId={route.id} />;
+    case "organize-history":
+      return <OrganizeHistory />;
+    case "duplicates":
+      return <Duplicates />;
+    default:
+      return <Library />;
+  }
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 CONFIG_ENV = "SPINEBOX_CONFIG"
 DEFAULT_CONFIG_NAME = "config.local.toml"
 GIB = 1024 ** 3
+DEFAULT_ORGANIZE_DIR = ".spinebox"
 
 
 class ConfigError(ValueError):
@@ -36,6 +37,9 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     sevenzip_path: str = "7z"
+    # 整理処理(CBZ 化)の作業場・退避フォルダの置き場。相対パスは各蔵書ルートが起点(設定ファイルの場所ではない)。
+    # 作業場は蔵書と同じドライブに置く必要があるため(別ドライブになる構成は実行前に拒否する)
+    organize_dir: str = DEFAULT_ORGANIZE_DIR
     limits: ExtractionLimits = field(default_factory=ExtractionLimits)
     # 内側アーカイブの巻を裏で少しずつ解析して巻に分解する(既定は無効。開いたとき・明示操作では常に解析する)
     background_analysis: bool = False
@@ -48,6 +52,11 @@ class Settings:
     @property
     def cache_dir(self) -> Path:
         return self.data_dir / "cache"
+
+    def organize_base(self, root: Path) -> Path:
+        """root の整理処理の置き場(作業場 work/ と退避フォルダ trash/ の親)。"""
+        path = Path(self.organize_dir).expanduser()
+        return path if path.is_absolute() else Path(root) / path
 
 
 def _int(table: dict, key: str, default: int, *, minimum: int = 0) -> int:
@@ -71,6 +80,15 @@ def _str(table: dict, key: str, default: str) -> str:
     value = table.get(key, default)
     if not isinstance(value, str) or not value:
         raise ConfigError(f"{key} は空でない文字列で指定してください: {value!r}")
+    return value
+
+
+def _organize_dir(data: dict) -> str:
+    value = _str(data, "organize_dir", DEFAULT_ORGANIZE_DIR)
+    path = Path(value).expanduser()
+    # 相対指定でルートの外へ出る値は、作業場が蔵書の外(別ドライブかもしれない)になるので拒む
+    if not path.is_absolute() and (".." in path.parts or str(path) in ("", ".")):
+        raise ConfigError(f"organize_dir の相対パスは蔵書ルートの中のフォルダを指してください: {value!r}")
     return value
 
 
@@ -101,6 +119,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         host=_str(data, "host", defaults.host),
         port=_int(data, "port", defaults.port, minimum=1),
         sevenzip_path=_str(data, "sevenzip_path", defaults.sevenzip_path),
+        organize_dir=_organize_dir(data),
         limits=limits,
         background_analysis=_bool(data, "background_analysis", defaults.background_analysis),
         background_analysis_interval=_int(data, "background_analysis_interval",

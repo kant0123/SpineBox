@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
-import { duplicatesHref, readHref } from "../route";
+import { duplicatesHref, organizeHistoryHref, organizeHref, readHref } from "../route";
 
 /** 一覧のカードに出す読書状態の文言 */
 export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress">): string {
@@ -98,6 +98,7 @@ export function Library() {
           <a className="header-link" href={duplicatesHref}>
             重複の候補
           </a>
+          <a href={organizeHistoryHref}>整理の履歴</a>
           <button type="button" onClick={scan} disabled={scanning}>
             {scanning ? "スキャン中…" : "スキャン"}
           </button>
@@ -165,6 +166,11 @@ export function Library() {
                     {analyzing === v.id ? "調べています…" : "中の巻を調べる"}
                   </button>
                 </div>
+              )}
+              {!v.offline && (
+                <a className="organize-link" href={organizeHref(v.id)}>
+                  CBZ に整理
+                </a>
               )}
             </li>
           );

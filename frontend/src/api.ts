@@ -119,13 +119,50 @@ export interface DuplicateScanState {
   finished_at: string | null;
   done: number;
   total: number;
-  summary: { fingerprinted: number; skipped: number; errors: number; candidates: number } | null;
+  summary: { fingerprinted: number; errors: number; candidates: number } | null;
   error: string | null;
 }
 
 export interface DuplicateList {
   scan: DuplicateScanState;
   candidates: DuplicateCandidate[];
+}
+
+// 整理処理(CBZ 化)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
+export type OrganizeState =
+  | "blocked" // 問題があり実行できない計画(保存されない。op_id は null)
+  | "planned"
+  | "running"
+  | "done"
+  | "failed"
+  | "undoing"
+  | "undone"
+  | "undo_failed"
+  | "rollback_failed";
+
+export interface OrganizeVolume {
+  volume_id: number;
+  title: string;
+  page_count: number | null;
+  output_rel_path: string | null;
+  new_volume_id?: number | null;
+}
+
+export interface OrganizeOp {
+  op_id: string | null;
+  state: OrganizeState;
+  error?: string | null;
+  created_at?: string;
+  executed_at?: string | null;
+  undone_at?: string | null;
+  source_id: number;
+  source_rel_path: string;
+  source_kind: "folder" | "archive";
+  volumes: OrganizeVolume[];
+  warnings: string[];
+  problems: string[];
+  /** 中の巻をまだ調べていない内側アーカイブの巻 id(先に api.analyze が要る) */
+  needs_analysis?: number[];
 }
 
 export class ApiError extends Error {
@@ -178,4 +215,13 @@ export const api = {
   dismissDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/dismiss`, { method: "POST" }),
   restoreDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/restore`, { method: "POST" }),
   pageUrl: (id: VolumeId, index: number) => `/api/volumes/${vid(id)}/pages/${index}`,
+  planOrganize: (volumeId: VolumeId) =>
+    request<OrganizeOp>("/api/organize/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ volume_id: Number(volumeId) }),
+    }),
+  executeOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/execute`, { method: "POST" }),
+  undoOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/undo`, { method: "POST" }),
+  organizeHistory: () => request<OrganizeOp[]>("/api/organize"),
 };

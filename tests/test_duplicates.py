@@ -354,3 +354,22 @@ def test_prefilter_keeps_overlapping_sets_and_drops_disjoint_ones():
     assert duplicates.prefilter(a[:10], duplicates.HashIndex(near_a))
     assert not duplicates.prefilter(a, duplicates.HashIndex(b))
     assert not duplicates.prefilter([], duplicates.HashIndex(b))
+
+
+def test_organized_volumes_are_neither_fingerprinted_nor_candidates(env, tmp_path):
+    """#31 で整理済み(CBZ 化して元を退避)の巻は一覧から外れる。指紋・候補の対象もその条件に揃える。"""
+    lib = tmp_path / "lib"
+    write_zip(lib / "A v01.cbz", scan_pages(1, 12))
+    write_zip(lib / "B v01.cbz", scan_pages(1, 12, scale=0.6))
+    _, conn, library = env(lib)
+    run(conn, library)
+    assert len(candidates(conn)) == 1
+    a_id = conn.execute("SELECT id, source_id FROM volumes WHERE title = 'A v01'").fetchone()
+    conn.execute("INSERT INTO organize_ops (id, source_id, state, plan_json, created_at, updated_at) "
+                 "VALUES ('op1', ?, 'done', '{}', 't', 't')", (a_id["source_id"],))
+    conn.execute("UPDATE volumes SET organized_op_id = 'op1' WHERE id = ?", (a_id["id"],))
+    conn.execute("DELETE FROM volume_fingerprints WHERE volume_id = ?", (a_id["id"],))
+    summary = run(conn, library)
+    assert summary.fingerprinted == 0 and summary.candidates == 0
+    assert candidates(conn) == []
+    assert conn.execute("SELECT COUNT(*) FROM volume_fingerprints WHERE volume_id = ?", (a_id["id"],)).fetchone()[0] == 0
