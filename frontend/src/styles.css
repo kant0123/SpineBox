@@ -72,6 +72,15 @@ button:disabled { opacity: 0.6; cursor: default; }
 .organize-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .organize-op { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; list-style: none; }
 .organize-op-list { padding: 0; }
+.organize-naming { font-size: 0.9rem; }
+.organize-link-inline { color: var(--accent); margin-right: 6px; }
+.organize-item { margin: 8px 0; }
+.organize-paths { font-size: 0.85rem; margin-top: 2px; }
+.organize-item-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; align-items: center; font-size: 0.85rem; }
+.organize-badge { display: inline-block; font-size: 0.75rem; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border); }
+.organize-badge.move { border-color: var(--accent); color: var(--accent); }
+.organize-badge.conflict { border-color: #c0392b; color: #c0392b; }
+.organize-badge.excluded, .organize-badge.skipped, .organize-badge.unchanged { opacity: 0.75; }
 .notice.warn { border-color: var(--warn); }
 .scan-issues { margin-top: 6px; }
 .scan-issues summary { cursor: pointer; color: var(--warn); }

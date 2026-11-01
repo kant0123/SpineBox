@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type WorkDetail, type WorkSummary, type WorkVolume } from "../api";
 import { progressLabel } from "../library/Library";
-import { readHref, workHref, worksHref } from "../route";
+import { readHref, workHref, workOrganizeHref, worksHref } from "../route";
 import { confidenceText, evidenceLines, sourceText } from "./labels";
 import { ProposalCard } from "./WorkProposals";
 
@@ -245,6 +245,12 @@ export function WorkPage({ id }: { id: string }) {
 
       <section className="work-section" aria-label="巻">
         <h2>巻({work.volume_count})</h2>
+        <p>
+          <a className="organize-link-inline" href={workOrganizeHref(work.id)}>
+            この作品をテンプレートどおりに整理
+          </a>
+          <span className="muted">(全巻の変更前 → 変更後をプレビューしてから実行します)</span>
+        </p>
         {missing.length > 0 ? (
           <div className="notice warn" role="status">
             欠けている巻: {missing.join("、")}

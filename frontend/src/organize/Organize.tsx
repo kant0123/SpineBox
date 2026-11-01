@@ -1,7 +1,8 @@
-// 整理(CBZ 化)の画面。プレビュー(計画)→ 実行、履歴 → 元に戻す。蔵書に書き込むのはここからの明示操作だけ。
+// 整理の画面。CBZ 化(名前は今の名前かテンプレート)と、作品単位のテンプレートどおりの改名・移動。
+// プレビュー(計画)→ 実行、履歴 → 元に戻す。蔵書に書き込むのはここからの明示操作だけ。
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, api, type OrganizeOp, type OrganizeState } from "../api";
-import { libraryHref, organizeHistoryHref } from "../route";
+import { ApiError, api, type OrganizeItem, type OrganizeItemStatus, type OrganizeNaming, type OrganizeOp, type OrganizeState } from "../api";
+import { libraryHref, organizeHistoryHref, organizeHref, organizeTemplateHref, workHref } from "../route";
 
 export const STATE_LABELS: Record<OrganizeState, string> = {
   blocked: "実行できません",
@@ -19,13 +20,67 @@ function errorText(e: unknown, fallback: string): string {
   return e instanceof ApiError && e.detail ? e.detail : fallback;
 }
 
-function OpBody({ op }: { op: OrganizeOp }) {
+export const ITEM_LABELS: Record<OrganizeItemStatus, string> = {
+  move: "改名・移動",
+  unchanged: "そのまま",
+  excluded: "対象外",
+  conflict: "衝突",
+  skipped: "外した",
+};
+
+function ItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeId: number) => void }) {
+  return (
+    <li className={`organize-item ${item.status}`}>
+      <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span> {item.title}
+      <div className="organize-paths">
+        <code>{item.from_rel_path}</code>
+        {item.status === "move" && item.output_rel_path && (
+          <>
+            {" "}→ <code>{item.output_rel_path}</code>
+          </>
+        )}
+      </div>
+      {item.reason && item.status !== "move" && <div className="muted">{item.reason}</div>}
+      {/* 操作はプレビュー中だけ(履歴では出さない) */}
+      {onExclude && (item.status === "conflict" || item.cbz_volume_id !== null) && (
+        <div className="organize-item-actions">
+          {item.status === "conflict" && (
+            <button type="button" onClick={() => onExclude(item.volume_id)}>
+              この巻を外す
+            </button>
+          )}
+          {item.cbz_volume_id !== null && <a href={organizeTemplateHref(item.cbz_volume_id)}>テンプレートの名前で CBZ に整理</a>}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function OpBody({ op, onExclude }: { op: OrganizeOp; onExclude?: (volumeId: number) => void }) {
   return (
     <>
-      <p>
-        元: <code>{op.source_rel_path}</code>({op.source_kind === "folder" ? "画像フォルダ" : "アーカイブ"})
-      </p>
-      <ul className="organize-volumes">
+      {op.kind === "rename" ? (
+        <p>
+          作品の巻をテンプレートの名前へ改名・移動{op.work_id !== undefined && <> (<a href={workHref(op.work_id)}>作品へ</a>)</>}
+        </p>
+      ) : (
+        <p>
+          元: <code>{op.source_rel_path}</code>({op.source_kind === "folder" ? "画像フォルダ" : "アーカイブ"})
+        </p>
+      )}
+      {op.template && (
+        <p className="muted">
+          テンプレート: <code>{op.template}</code>
+        </p>
+      )}
+      {op.items ? (
+        <ul className="organize-volumes">
+          {op.items.map((it) => (
+            <ItemRow key={it.volume_id} item={it} onExclude={onExclude} />
+          ))}
+        </ul>
+      ) : (
+        <ul className="organize-volumes">
         {op.volumes.map((v) => (
           <li key={v.volume_id}>
             {v.title}({v.page_count === null ? "ページ数未確定" : `${v.page_count} ページ`})
@@ -36,7 +91,8 @@ function OpBody({ op }: { op: OrganizeOp }) {
             )}
           </li>
         ))}
-      </ul>
+        </ul>
+      )}
       {op.problems.map((p) => (
         <div key={p} className="notice error" role="alert">
           {p}
@@ -56,14 +112,35 @@ function OpBody({ op }: { op: OrganizeOp }) {
   );
 }
 
-export function OrganizePlan({ volumeId }: { volumeId: string }) {
+/** 計画の実行。失敗したら(409)操作の状態(巻き戻し済みか)を履歴から出し直す */
+function useExecute(op: OrganizeOp | null, setOp: (op: OrganizeOp) => void, setError: (e: string | null) => void) {
+  const [busy, setBusy] = useState(false);
+  const execute = async () => {
+    if (!op?.op_id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setOp(await api.executeOrganize(op.op_id));
+    } catch (e) {
+      setError(errorText(e, "整理に失敗しました。"));
+      if (e instanceof ApiError && e.status === 409) {
+        api.organizeHistory().then((h) => setOp(h.find((x) => x.op_id === op.op_id) ?? op), () => undefined);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, setBusy, execute };
+}
+
+export function OrganizePlan({ volumeId, naming = "title" }: { volumeId: string; naming?: OrganizeNaming }) {
   const [op, setOp] = useState<OrganizeOp | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, setBusy, execute } = useExecute(op, setOp, setError);
 
   const makePlan = useCallback(() => {
-    api.planOrganize(volumeId).then(setOp, (e) => setError(errorText(e, "整理の計画を作れませんでした。")));
-  }, [volumeId]);
+    api.planOrganize(volumeId, naming).then(setOp, (e) => setError(errorText(e, "整理の計画を作れませんでした。")));
+  }, [volumeId, naming]);
 
   useEffect(() => {
     makePlan();
@@ -83,29 +160,21 @@ export function OrganizePlan({ volumeId }: { volumeId: string }) {
     }
   };
 
-  const execute = async () => {
-    if (!op?.op_id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setOp(await api.executeOrganize(op.op_id));
-    } catch (e) {
-      setError(errorText(e, "整理に失敗しました。"));
-      if (e instanceof ApiError && e.status === 409) {
-        // 失敗した操作の状態(巻き戻し済みか)を出し直す
-        api.organizeHistory().then((h) => setOp(h.find((x) => x.op_id === op.op_id) ?? op), () => undefined);
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="organize">
       <p>
         <a href={libraryHref}>← 一覧へ</a>
       </p>
       <h1>CBZ に整理</h1>
+      <p className="organize-naming">
+        出力名: {naming === "template" ? "テンプレートの名前" : "今の名前"}(
+        {naming === "template" ? (
+          <a href={organizeHref(volumeId)}>今の名前にする</a>
+        ) : (
+          <a href={organizeTemplateHref(volumeId)}>テンプレートの名前にする</a>
+        )}
+        )
+      </p>
       {!op && !error && <p className="muted">計画を作っています…</p>}
       {op && (
         <>
@@ -138,6 +207,63 @@ export function OrganizePlan({ volumeId }: { volumeId: string }) {
           </button>
         )}
         {op && op.state !== "planned" && op.state !== "blocked" && <a href={organizeHistoryHref}>整理の履歴へ</a>}
+      </div>
+    </div>
+  );
+}
+
+export function WorkOrganize({ workId }: { workId: string }) {
+  const [op, setOp] = useState<OrganizeOp | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [excluded, setExcluded] = useState<number[]>([]);
+  const { busy, execute } = useExecute(op, setOp, setError);
+
+  useEffect(() => {
+    setError(null);
+    api.planRename(workId, excluded).then(setOp, (e) => setError(errorText(e, "整理の計画を作れませんでした。")));
+  }, [workId, excluded]);
+
+  const planned = op?.state === "planned";
+  const exclude = planned || op?.state === "blocked" ? (id: number) => setExcluded((x) => [...x, id]) : undefined;
+
+  return (
+    <div className="organize">
+      <p>
+        <a href={workHref(workId)}>← 作品へ</a>
+      </p>
+      <h1>テンプレートどおりに整理</h1>
+      {!op && !error && <p className="muted">計画を作っています…</p>}
+      {op && (
+        <>
+          <p>
+            状態: <strong>{STATE_LABELS[op.state]}</strong>
+          </p>
+          {planned && (
+            <p className="muted">
+              「改名・移動」の巻だけを同じドライブの中で改名・移動します(中身はそのまま。読書位置などは引き継がれます)。
+              衝突・対象外の巻は動かしません。履歴から元に戻せます。
+            </p>
+          )}
+          <OpBody op={op} onExclude={exclude} />
+        </>
+      )}
+      {error && (
+        <div className="notice error" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="organize-actions">
+        {excluded.length > 0 && (op?.state === "planned" || op?.state === "blocked") && (
+          <button type="button" onClick={() => setExcluded([])} disabled={busy}>
+            外した巻を戻す
+          </button>
+        )}
+        {planned && (
+          <button type="button" onClick={execute} disabled={busy}>
+            {busy ? "実行中…" : "実行"}
+          </button>
+        )}
+        {op && !planned && op.state !== "blocked" && <a href={organizeHistoryHref}>整理の履歴へ</a>}
       </div>
     </div>
   );
@@ -185,7 +311,7 @@ export function OrganizeHistory() {
         </div>
       )}
       {ops === null && !error && <p className="muted">読み込み中…</p>}
-      {ops?.length === 0 && <p className="muted">まだ整理していません。一覧の「CBZ に整理」から始めます。</p>}
+      {ops?.length === 0 && <p className="muted">まだ整理していません。一覧の「CBZ に整理」か、作品ページの「テンプレートどおりに整理」から始めます。</p>}
       <ul className="organize-op-list">
         {ops?.map((op) => (
           <li key={op.op_id} className="organize-op">
