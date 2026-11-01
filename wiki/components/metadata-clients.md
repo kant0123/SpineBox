@@ -20,7 +20,7 @@ related: [metadata-sources, overview, backend]
 ## 後続の結線が使う入口
 
 ```python
-service = MetadataService(settings.metadata, conn)       # conn はリクエストごとの接続でよい
+service = MetadataService(settings.metadata, conn)       # conn はリクエストごとの接続でよい。fetcher はプロセス共有
 outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kind=None, isbn=None))
 # → 有効な取得元ごとの SearchOutcome(例外は投げない)
 ```
@@ -61,6 +61,8 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - **DB テーブルにしてファイルにしなかった理由**: GOAL.md が「生レスポンスと、どの項目をどのソースから埋めたかを DB に残す」としており、後続の結線(出所の記録)と同じ DB で引ける。
   ファイル案は、ハッシュ名の管理と掃除を別に作る必要があり、蔵書の DB と別にバックアップ・移行する手間も増える。作品・巻には結び付けない(外部キー無し)ので、結線の仕組みが決まる前でも入れられた
 - 接続はリクエストごとに開く前提(アプリの `get_conn`)。`ResponseStore` の内部ロックは同じインスタンスの中だけ
+- **`HttpFetcher`(関門・接続)はプロセスで 1 つを共有する**(`spinebox/metadata/service.py:37 shared_fetcher`)。`MetadataService` をリクエストごとに作っても最小間隔と 429 の停止が持ち越される。
+  `fetcher` を渡さなければ共有のものを使い、`close()` は閉じない。`transport` を渡した(テストの)ときだけ専用に作って `close()` で閉じる。渡された `fetcher` も閉じない(#44 の agy レビューで指摘された誤り)
 
 ## レート制限(`HttpFetcher` / `Gate`)
 

@@ -360,3 +360,31 @@ def test_anilist_429_stops_further_anilist_requests_until_retry_after(tmp_path):
     net.route("POST", ANILIST, fixture("anilist/okiraku-search.json"))
     e.clock.advance(60)
     assert e.search("別の作品", sources=["anilist"])["anilist"].ok
+
+
+# --- fetcher の所有権(レート制限の状態をリクエストをまたいで共有する) ---
+
+def test_default_services_share_one_fetcher_so_rate_limits_hold_across_requests(tmp_path):
+    from spinebox.metadata import service as service_mod
+    service_mod.reset_shared_fetcher()
+    settings = MetadataSettings()
+    a = MetadataService(settings, open_db(tmp_path / "a.db"))
+    b = MetadataService(settings, open_db(tmp_path / "b.db"))
+    assert a.fetcher is b.fetcher and a.fetcher.gate("ndl") is b.fetcher.gate("ndl")
+    a.close()                                   # 共有している fetcher は閉じない
+    assert not b.fetcher._client.is_closed
+    service_mod.reset_shared_fetcher()
+
+
+def test_service_closes_only_a_fetcher_it_owns(tmp_path):
+    net = recorded_network("okiraku")
+    owned = MetadataService(MetadataSettings(), open_db(tmp_path / "a.db"), transport=net.transport)
+    owned.close()
+    assert owned.fetcher._client.is_closed
+
+    clock = FakeClock()
+    shared = HttpFetcher(MetadataSettings(), transport=net.transport, clock=clock, sleep=clock.sleep)
+    svc = MetadataService(MetadataSettings(), open_db(tmp_path / "b.db"), fetcher=shared)
+    svc.close()
+    assert not shared._client.is_closed          # 渡された fetcher は呼び出し側のもの
+    shared.close()

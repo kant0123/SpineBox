@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 
 import httpx
 
@@ -29,15 +30,47 @@ SOURCE_CLASSES: dict[str, type[MetadataSource]] = {
 }
 
 
+_shared_lock = threading.Lock()
+_shared: HttpFetcher | None = None
+
+
+def shared_fetcher(settings: MetadataSettings) -> HttpFetcher:
+    """プロセスで共有する HttpFetcher。取得元ごとの関門(最小間隔・429 の停止)と接続を、
+    リクエストごとに作る `MetadataService` の間で共有する(インスタンスごとに作ると制限が毎回リセットされる)。
+    設定が変わったときだけ作り直す。"""
+    global _shared
+    with _shared_lock:
+        if _shared is None or _shared.settings != settings:
+            _shared = HttpFetcher(settings)
+        return _shared
+
+
+def reset_shared_fetcher() -> None:
+    """共有の HttpFetcher を捨てる(テスト用)。"""
+    global _shared
+    with _shared_lock:
+        if _shared is not None:
+            _shared.close()
+        _shared = None
+
+
 class MetadataService:
-    """`search(query)` は取得元ごとの `SearchOutcome` を返す。例外は投げない。"""
+    """`search(query)` は取得元ごとの `SearchOutcome` を返す。例外は投げない。
+
+    fetcher を渡さなければプロセス共有の fetcher を使う(`close()` は閉じない)。
+    `transport` を渡したとき(テスト)は専用の fetcher を作り、`close()` で閉じる。
+    渡された fetcher は呼び出し側のもので、`close()` は閉じない。
+    """
 
     def __init__(self, settings: MetadataSettings, conn: sqlite3.Connection, *,
                  fetcher: HttpFetcher | None = None, transport: httpx.BaseTransport | None = None,
                  store: ResponseStore | None = None):
         self.settings = settings
         self.store = store or ResponseStore(conn)
-        self.fetcher = fetcher or HttpFetcher(settings, transport=transport)
+        self._owns_fetcher = fetcher is None and transport is not None
+        if fetcher is None:
+            fetcher = HttpFetcher(settings, transport=transport) if transport is not None else shared_fetcher(settings)
+        self.fetcher = fetcher
         self.sources: dict[str, MetadataSource] = {}
         self.unknown: list[str] = []
         for name in settings.sources:
@@ -59,4 +92,5 @@ class MetadataService:
         return outcomes
 
     def close(self) -> None:
-        self.fetcher.close()
+        if self._owns_fetcher:
+            self.fetcher.close()

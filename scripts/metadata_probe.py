@@ -52,7 +52,6 @@ def main() -> int:
                     if ns.record:
                         record(conn, service, outcome, label, ns.record)
         finally:
-            service.close()
             conn.close()
     return 0
 
