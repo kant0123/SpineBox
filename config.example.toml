@@ -47,3 +47,32 @@ max_entry_bytes = 2147483648    # 2 GiB
 max_entries = 100000
 # アーカイブの入れ子の深さ(1 = 外側の中の内側アーカイブまで開く)。蔵書に 7z の中の rar の中の rar の中の zip がある
 max_depth = 3
+
+# 外部メタデータ(国立国会図書館サーチ・AniList・MangaUpdates)の取得。ベストエフォート:
+# 失敗・タイムアウト・レート制限があってもスキャンと閲覧は止まらない。生の応答は DB に保存して使い回す。
+[metadata]
+# 有効にする取得元。空 [] にすると外部へ一切取りに行かない
+sources = ["ndl", "anilist", "mangaupdates"]
+# 保存済みの応答を使い回す日数。過ぎると取り直す(取得に失敗したときは古い応答を代わりに使う)
+cache_ttl_days = 30
+timeout_seconds = 10
+# 5xx・タイムアウト・接続不可の再試行の上限(429 は再試行しない)
+max_retries = 2
+# 1 回の検索で取る候補の上限 / MangaUpdates で詳細を引き直す候補の数
+candidate_limit = 20
+detail_limit = 3
+# User-Agent に付ける連絡先(任意。取得元の運営者が連絡できるように)。メールアドレスなどを書くなら、
+# このファイルをコミットしないこと
+# contact = ""
+
+# 取得元ごとの最小間隔(秒)。直前の要求が終わってから空ける。既定は各取得元の公開されている制限から決めた値
+# (wiki/concepts/metadata-sources.md)。AniList は通常 90 回/分・障害時 30 回/分
+[metadata.min_interval_seconds]
+ndl = 1.0
+anilist = 2.0
+mangaupdates = 1.0
+
+# 将来の取得元(楽天ブックスなど)の API キー。今の 3 取得元はキー不要。
+# キーはこの設定ファイル(リポジトリ外)にだけ書く。ログ・保存した応答・Issue には出さない
+[metadata.keys]
+# rakuten_application_id = ""

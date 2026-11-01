@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: システム全体像と各ページへの入口
-updated: 2026-11-01
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection]
+updated: 2026-11-02
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, metadata-clients, metadata-sources]
 ---
 
 # SpineBox 全体像
@@ -26,6 +26,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - [[organize]] — `spinebox/organize/`。整理処理(1 ソース → 巻ごとの CBZ)。蔵書に書き込む唯一の経路で、プレビュー → 実行 → 元に戻す
 - [[volume-split]] — 内側アーカイブを開いたときに中の巻へ分解し、名前の巻範囲と中身の食い違いを出す。名前から読む巻番号は候補
 - [[duplicate-detection]] — 別スキャンの重複候補。全ページの見た目の指紋(dHash)と巻番号の候補で判定し、利用者が却下できる。計算は明示操作だけ、蔵書は変えない
+- [[metadata-clients]] — `spinebox/metadata/`。公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)のクライアントと生応答の保存。結果は候補 + 確からしさで、作品・巻へはまだ結線していない。取得元の癖・制限は [[metadata-sources]]
 - [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 
 ## 主要な設計判断
@@ -33,6 +34,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - 蔵書に書き込むのは整理処理([[organize]])だけ。同じドライブの作業場で全巻を作って検証してから改名で確定し、元は退避フォルダへ移すだけで消さない
 - それ以外は蔵書を読み取り専用で扱う。スキャンは目次だけ読み、内側アーカイブは巻を開いたときだけ [[extraction-cache]] に取り出す
 - 見えなくなった蔵書のレコード・読書位置は消さず、offline / missing の印を付けるだけ([[backend]])
+- 外部メタデータの取得はベストエフォート。失敗・タイムアウト・429 は例外にせず結果で返し、取得元ごとのレート制限と生応答の使い回しで取りに行く回数を抑える([[metadata-clients]])
 - エントリ名はディスク上のパスに使わない。名前は生バイト列と使った文字コードごと残す([[archive-reading]])
 
 ## 触る前に知っておくこと

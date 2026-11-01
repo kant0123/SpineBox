@@ -1,0 +1,371 @@
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:openSearch="http://a9.com/-/spec/opensearchrss/1.0/" xmlns:dcndl="http://ndl.go.jp/dcndl/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" version="2.0">
+  <channel>
+    <title>かくかくしかじか books - 国立国会図書館サーチ OpenSearch</title>
+    <link>https://ios-v2-prod-eks-alb.ndlsearch.ndl.go.jp/api/opensearch?title=%E3%81%8B%E3%81%8F%E3%81%8B%E3%81%8F%E3%81%97%E3%81%8B%E3%81%98%E3%81%8B&amp;mediatype=books&amp;cnt=10</link>
+    <description>Search results for title=かくかくしかじか mediatype=books cnt=10</description>
+    <language>ja</language>
+    <openSearch:totalResults>22</openSearch:totalResults>
+    <openSearch:startIndex>1</openSearch:startIndex>
+    <openSearch:itemsPerPage>10</openSearch:itemsPerPage>
+    <item>
+      <title>描く書くしかじか : ニスケは何を考えているのか</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I000002764088</link>
+      <description><![CDATA[<p>旬報社,1999,4-8451-0575-6<p><ul><li>タイトル：描く書くしかじか : ニスケは何を考えているのか</li><li>タイトル（読み）：エガク カク シカジカ : ニスケ ワ ナニ オ カンガエテイルノカ</li><li>責任表示：下谷二助 著</li><li>NDC(9)：049.1</li></ul>]]></description>
+      <author>下谷, 二助, 1942-,下谷二助 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I000002764088</guid>
+      <pubDate>Tue, 6 Jul 1999 00:10:00 +0900</pubDate>
+      <dc:title>描く書くしかじか : ニスケは何を考えているのか</dc:title>
+      <dcndl:titleTranscription>エガク カク シカジカ : ニスケ ワ ナニ オ カンガエテイルノカ</dcndl:titleTranscription>
+      <dc:creator>下谷, 二助, 1942-</dc:creator>
+      <dcndl:creatorTranscription>シモタニ, ニスケ, 1942-</dcndl:creatorTranscription>
+      <dc:publisher>旬報社</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">1999</dc:date>
+      <dcterms:issued>1999.2</dcterms:issued>
+      <dcndl:price>1800円</dcndl:price>
+      <dc:extent>237p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">4-8451-0575-6</dc:identifier>
+      <dc:identifier xsi:type="dcndl:ISBN13">4-8451-0575-6</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">000002764088</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">99069039</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">US41</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC9">049.1</dc:subject>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.sapporo.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1001001129902"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.miyagi.jp/winj/opac/switch-detail-iccap.do?bibid=1108119631"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=998302&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.chiba.jp/licsxp-opac/WOpacTifSchCmpdDispAction.do"/>
+      <rdfs:seeAlso rdf:resource="https://catalog.library.metro.tokyo.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1102634324"/>
+      <rdfs:seeAlso rdf:resource="https://opac.lib.city.yokohama.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1199010611"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.kawasaki.jp/bookdetail?num=1394700&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib.sagamihara.kanagawa.jp/TOSHOW/asp/WwShousaiKen.aspx?FCode=424056"/>
+      <rdfs:seeAlso rdf:resource="https://www.library-archives.pref.fukui.lg.jp/wo/opc_srh/srh_detail/1103675721/"/>
+      <rdfs:seeAlso rdf:resource="https://www.toshokan.city.shizuoka.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1001101407639"/>
+      <rdfs:seeAlso rdf:resource="http://websv.aichi-pref-library.jp/winj/opac/switch-detail-iccap.do?bibid=1160093304"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.nagoya.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009810071213"/>
+      <rdfs:seeAlso rdf:resource="http://opac1.library.pref.mie.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1101575788"/>
+      <rdfs:seeAlso rdf:resource="https://www.shiga-pref-library.jp/wo/opc_srh/srh_detail/1268396/"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.osaka.jp/bib/?B10898692"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000000725653"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib-sakai.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000001149538"/>
+      <rdfs:seeAlso rdf:resource="http://www.lib.wakayama-c.ed.jp/winj/opac/switch-detail-iccap.do?bibid=1100387299"/>
+      <rdfs:seeAlso rdf:resource="https://opac.libnet.pref.okayama.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009810089352"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1100481527"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.kagawa.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1108076264"/>
+      <rdfs:seeAlso rdf:resource="https://www.toshokan.city.fukuoka.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1104410328"/>
+      <rdfs:seeAlso rdf:resource="https://www2.tosyo-saga.jp/kentosyo2/opac/switch-detail-iccap.do?bibid=1100383642"/>
+      <rdfs:seeAlso rdf:resource="https://opac.miraionlibrary.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009810115731"/>
+      <rdfs:seeAlso rdf:resource="https://library.pref.oita.jp/winj/opac/switch-detail-iccap.do?bibid=1109013649"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I000002764088"/>
+      <rdfs:seeAlso rdf:resource="https://dl.ndl.go.jp/pid/14267234"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970304959828389132"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784845105755"/>
+      <dc:description> 1999</dc:description>
+    </item>
+    <item>
+      <title>描く書くしかじか</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I000002730077</link>
+      <description><![CDATA[<p>おふいす・ぐう,1998,<p><ul><li>タイトル：描く書くしかじか</li><li>タイトル（読み）：カクカク シカジカ</li><li>責任表示：伊奈かっぺい 著</li><li>NDC(9)：049.1</li></ul>]]></description>
+      <author>伊奈, 勝平, 1947-,伊奈かっぺい 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I000002730077</guid>
+      <pubDate>Tue, 6 Apr 1999 00:10:00 +0900</pubDate>
+      <dc:title>描く書くしかじか</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ</dcndl:titleTranscription>
+      <dc:creator>伊奈, 勝平, 1947-</dc:creator>
+      <dcndl:creatorTranscription>イナ, カッペイ, 1947-</dcndl:creatorTranscription>
+      <dc:publisher>おふいす・ぐう</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">1998</dc:date>
+      <dcterms:issued>1998.6</dcterms:issued>
+      <dcndl:price>3000円</dcndl:price>
+      <dc:extent>111p</dc:extent>
+      <dc:identifier xsi:type="dcndl:NDLBibID">000002730077</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">99037684</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">US41</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC9">049.1</dc:subject>
+      <dc:description>奥付のタイトル: かくかくしかじか</dc:description>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I000002730077"/>
+      <rdfs:seeAlso rdf:resource="https://dl.ndl.go.jp/pid/13168305"/>
+      <dc:description> 1998</dc:description>
+    </item>
+    <item>
+      <title>かくかくしかじか</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I034089209</link>
+      <description><![CDATA[<p>松竹事業推進部,2025,<p><ul><li>タイトル：かくかくしかじか</li><li>タイトル（読み）：カクカク シカジカ</li><li>責任表示：松竹株式会社事業推進部 編集</li></ul>]]></description>
+      <author>松竹株式会社事業推進部 編集</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I034089209</guid>
+      <pubDate>Mon, 2 Jun 2025 20:09:38 +0900</pubDate>
+      <dc:title>かくかくしかじか</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ</dcndl:titleTranscription>
+      <dc:publisher>松竹事業推進部</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2025</dc:date>
+      <dcterms:issued>2025.5</dcterms:issued>
+      <dcndl:price>900円</dcndl:price>
+      <dc:extent>1冊 (ページ付なし)</dc:extent>
+      <dc:identifier xsi:type="dcndl:NDLBibID">034089209</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">24121159</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">Y93</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.lib.pref.miyazaki.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1102662152"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I034089209"/>
+      <dc:description> 2025</dc:description>
+    </item>
+    <item>
+      <title>かくかくしかじか</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000136-I1970867909797056663</link>
+      <description><![CDATA[<p>おふいす・ぐう,1998,<p><ul><li>タイトル：かくかくしかじか</li><li>タイトル（読み）：カクカク シカジカ</li><li>責任表示：伊奈かっぺい著</li><li>NDC(9)：914.6</li></ul>]]></description>
+      <author>伊奈, かっぺい,伊奈かっぺい著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000136-I1970867909797056663</guid>
+      <pubDate>Fri, 25 Sep 2026 11:13:32 +0900</pubDate>
+      <dc:title>かくかくしかじか</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ</dcndl:titleTranscription>
+      <dc:creator>伊奈, かっぺい</dc:creator>
+      <dcndl:creatorTranscription>イナ, カッペイ</dcndl:creatorTranscription>
+      <dc:publisher>おふいす・ぐう</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">1998</dc:date>
+      <dcterms:issued>1998.6</dcterms:issued>
+      <dc:identifier xsi:type="dcndl:NIIBibID">BA39639978</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDC9">914.6</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC8">914.6</dc:subject>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.sapporo.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1001001094911"/>
+      <rdfs:seeAlso rdf:resource="https://www.plib.pref.aomori.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1101047513"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.iwate.jp/opac/advanced-search"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.miyagi.jp/winj/opac/switch-detail-iccap.do?bibid=1108073444"/>
+      <rdfs:seeAlso rdf:resource="https://www.apl.pref.akita.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009810060988"/>
+      <rdfs:seeAlso rdf:resource="https://opac.lib.pref.yamagata.jp/winj/opac/switch-detail-iccap.do?bibid=1100339246"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.fcs.ed.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1001100951660"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.chiba.lg.jp/licsxp-iopac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000001060386"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.pref.gifu.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1100453865"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970867909797056663"/>
+      <dc:description> 1998</dc:description>
+    </item>
+    <item>
+      <title>かくかくしかじか : 映画ノベライズ</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I034022571</link>
+      <description><![CDATA[<p>集英社,2025,978-4-08-680620-6<p><ul><li>タイトル：かくかくしかじか : 映画ノベライズ</li><li>タイトル（読み）：カクカク シカジカ : エイガ ノベライズ</li><li>責任表示：せひらあやみ 著,東村アキコ 原作,東村アキコ, 伊達さん 脚本</li><li>シリーズ名：集英社オレンジ文庫 ; せ1-10</li><li>シリーズ名（読み）：シュウエイシャ オレンジ ブンコ ; セ-1-10</li><li>NDC(10)：913.6</li></ul>]]></description>
+      <author>せひら, あやみ,東村, アキコ, 1975-,伊達さん,せひらあやみ 著,東村アキコ 原作,東村アキコ, 伊達さん 脚本</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I034022571</guid>
+      <pubDate>Mon, 19 May 2025 22:09:03 +0900</pubDate>
+      <dc:title>かくかくしかじか : 映画ノベライズ</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ : エイガ ノベライズ</dcndl:titleTranscription>
+      <dc:creator>せひら, あやみ</dc:creator>
+      <dc:creator>東村, アキコ, 1975-</dc:creator>
+      <dc:creator>伊達さん</dc:creator>
+      <dcndl:creatorTranscription>セヒラ, アヤミ</dcndl:creatorTranscription>
+      <dcndl:creatorTranscription>ヒガシムラ, アキコ, 1975-</dcndl:creatorTranscription>
+      <dcndl:creatorTranscription>ダテサン</dcndl:creatorTranscription>
+      <dcndl:seriesTitle>集英社オレンジ文庫 ; せ1-10</dcndl:seriesTitle>
+      <dcndl:seriesTitleTranscription>シュウエイシャ オレンジ ブンコ ; セ-1-10</dcndl:seriesTitleTranscription>
+      <dc:publisher>集英社</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2025</dc:date>
+      <dcterms:issued>2025.4</dcterms:issued>
+      <dcndl:price>630円</dcndl:price>
+      <dc:extent>249p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-08-680620-6</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">034022571</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">24115538</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">34725818</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH971</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://www.apl.pref.akita.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009921177637"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.chiba.jp/licsxp-opac/WOpacTifSchCmpdDispAction.do"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.kawasaki.jp/bookdetail?num=3878834&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.nagoya.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1002510008693"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.osaka.jp/bib/?B17137450"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1002000032466"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib-sakai.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1007001480079"/>
+      <rdfs:seeAlso rdf:resource="http://www.library.city.hiroshima.jp/winj/opac/switch-detail-iccap.do?bibid=1110824645"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib.pref.miyazaki.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1102657434"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I034022571"/>
+      <rdfs:seeAlso rdf:resource="https://library.sapie.or.jp/cgi-bin/CN1MN1?S00101=J00DTL04&amp;S00222=4772853"/>
+      <rdfs:seeAlso rdf:resource="https://library.sapie.or.jp/cgi-bin/CN1MN1?S00101=J00DTL04&amp;S00222=4772855"/>
+      <rdfs:seeAlso rdf:resource="https://library.sapie.or.jp/cgi-bin/CN1MN1?S00101=J00DTL04&amp;S00222=4789188"/>
+      <rdfs:seeAlso rdf:resource="https://library.sapie.or.jp/cgi-bin/CN1MN1?S00101=J00DTL04&amp;S00222=4798968"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970304959903078797"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/08680620950527000000"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784086806206"/>
+      <dc:description> 2025</dc:description>
+    </item>
+    <item>
+      <title>核覺然々結編</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I034641737</link>
+      <description><![CDATA[<p>[命樞府],<p><ul><li>タイトル：核覺然々結編</li><li>タイトル（読み）：カクカク シカジカ ケツペン</li><li>NDC(10)：160.49</li></ul>]]></description>
+      <author>命樞府</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I034641737</guid>
+      <pubDate>Fri, 22 May 2026 22:59:19 +0900</pubDate>
+      <dc:title>核覺然々結編</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ ケツペン</dcndl:titleTranscription>
+      <dc:creator>命樞府</dc:creator>
+      <dcndl:creatorTranscription>メイスウフ</dcndl:creatorTranscription>
+      <dc:publisher>[命樞府]</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dcterms:issued>[2000年代]</dcterms:issued>
+      <dc:extent>1冊 (ページ付なし)</dc:extent>
+      <dc:identifier xsi:type="dcndl:NDLBibID">034641737</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">24255732</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">HK9</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC10">160.49</dc:subject>
+      <dc:description>出版</dc:description>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I034641737"/>
+      <dc:description/>
+    </item>
+    <item>
+      <title>かくかくしかじか : 後藤靖香 = kaku-kaku-shika-jika : Yasuka Goto</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000136-I1970304959901425989</link>
+      <description><![CDATA[<p>Tezukayama Gallery,2015,<p><ul><li>タイトル：かくかくしかじか : 後藤靖香 = kaku-kaku-shika-jika : Yasuka Goto</li><li>タイトル（読み）：カクカクシカジカ : ゴトウ ヤスカ</li></ul>]]></description>
+      <author>後藤, 靖香,Tezukayama Gallery</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000136-I1970304959901425989</guid>
+      <pubDate>Fri, 25 Sep 2026 11:13:32 +0900</pubDate>
+      <dc:title>かくかくしかじか : 後藤靖香 = kaku-kaku-shika-jika : Yasuka Goto</dc:title>
+      <dcndl:titleTranscription>カクカクシカジカ : ゴトウ ヤスカ</dcndl:titleTranscription>
+      <dc:creator>後藤, 靖香</dc:creator>
+      <dc:creator>Tezukayama Gallery</dc:creator>
+      <dcndl:creatorTranscription>ゴトウ, ヤスカ</dcndl:creatorTranscription>
+      <dc:publisher>Tezukayama Gallery</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2015</dc:date>
+      <dcterms:issued>c2015</dcterms:issued>
+      <dc:identifier xsi:type="dcndl:NIIBibID">BD08482625</dc:identifier>
+      <dc:subject>展覧会カタログ</dc:subject>
+      <dc:description>展覧会カタログ</dc:description>
+      <dc:description>会期・会場: 2015年9月4日-10月3日:Tezukayama Gallery</dc:description>
+      <dc:description>略歴あり</dc:description>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970304959901425989"/>
+      <dc:description> 2015</dc:description>
+    </item>
+    <item>
+      <title>かくかくしかじか : 辻ゆう子詩集</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I000007544427</link>
+      <description><![CDATA[<p>ふらんす堂,2004,4-89402-675-9<p><ul><li>タイトル：かくかくしかじか : 辻ゆう子詩集</li><li>タイトル（読み）：カクカク シカジカ : ツジ ユウコ シシュウ</li><li>責任表示：辻ゆう子 著</li><li>NDC(9)：911.56</li></ul>]]></description>
+      <author>辻, ゆう子, 1942-,辻ゆう子 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I000007544427</guid>
+      <pubDate>Thu, 25 Nov 2004 23:39:03 +0900</pubDate>
+      <dc:title>かくかくしかじか : 辻ゆう子詩集</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ : ツジ ユウコ シシュウ</dcndl:titleTranscription>
+      <dc:creator>辻, ゆう子, 1942-</dc:creator>
+      <dcndl:creatorTranscription>ツジ, ユウコ, 1942-</dcndl:creatorTranscription>
+      <dc:publisher>ふらんす堂</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2004</dc:date>
+      <dcterms:issued>2004.11</dcterms:issued>
+      <dcndl:price>2476円</dcndl:price>
+      <dc:extent>90p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">4-89402-675-9</dc:identifier>
+      <dc:identifier xsi:type="dcndl:ISBN13">4-89402-675-9</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">000007544427</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">20690440</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">KH639</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC9">911.56</dc:subject>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I000007544427"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784894026759"/>
+      <dc:description> 2004</dc:description>
+    </item>
+    <item>
+      <title>かくかく私価時価 : 無資本主義商品論1997-2003</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I000004280316</link>
+      <description><![CDATA[<p>ビー・エヌ・エヌ新社,2003,4-89369-958-X<p><ul><li>タイトル：かくかく私価時価 : 無資本主義商品論1997-2003</li><li>タイトル（読み）：カクカク シカジカ : ムシホン シュギ ショウヒンロン 1997 - 2003</li><li>責任表示：小田嶋隆 著</li><li>NDC(9)：049.1</li></ul>]]></description>
+      <author>小田嶋, 隆, 1956-2022,小田嶋隆 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I000004280316</guid>
+      <pubDate>Fri, 9 Dec 2022 20:11:15 +0900</pubDate>
+      <dc:title>かくかく私価時価 : 無資本主義商品論1997-2003</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ : ムシホン シュギ ショウヒンロン 1997 - 2003</dcndl:titleTranscription>
+      <dc:creator>小田嶋, 隆, 1956-2022</dc:creator>
+      <dcndl:creatorTranscription>オダジマ, タカシ, 1956-2022</dcndl:creatorTranscription>
+      <dc:publisher>ビー・エヌ・エヌ新社</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2003</dc:date>
+      <dcterms:issued>2003.3</dcterms:issued>
+      <dcndl:price>1600円</dcndl:price>
+      <dc:extent>327p</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">4-89369-958-X</dc:identifier>
+      <dc:identifier xsi:type="dcndl:ErrorISBN">4-48936-958-X</dc:identifier>
+      <dc:identifier xsi:type="dcndl:ISBN13">4-89369-958-X</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">000004280316</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">20517021</dc:identifier>
+      <dc:subject xsi:type="dcndl:NDLC">US41</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC9">049.1</dc:subject>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.sapporo.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1006300022072"/>
+      <rdfs:seeAlso rdf:resource="https://www.plib.pref.aomori.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1102403379"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib.city.saitama.jp/bookdetail?num=1201709&amp;ctg=1"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.chiba.lg.jp/licsxp-iopac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000001368874"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.chiba.jp/licsxp-opac/WOpacTifSchCmpdDispAction.do"/>
+      <rdfs:seeAlso rdf:resource="https://www.library-archives.pref.fukui.lg.jp/wo/opc_srh/srh_detail/1104335118/"/>
+      <rdfs:seeAlso rdf:resource="https://www.toshokan.city.shizuoka.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1001100280149"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.nagoya.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009913000323"/>
+      <rdfs:seeAlso rdf:resource="https://www.shiga-pref-library.jp/wo/opc_srh/srh_detail/1635944/"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.osaka.jp/bib/?B11125867"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000010497853"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib-sakai.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000001591443"/>
+      <rdfs:seeAlso rdf:resource="https://opac.libnet.pref.okayama.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009810449673"/>
+      <rdfs:seeAlso rdf:resource="https://alislibopac.bunmori.tokushima.jp/winj/opac/switch-detail-iccap.do?bibid=1101303223"/>
+      <rdfs:seeAlso rdf:resource="https://www2.tosyo-saga.jp/kentosyo2/opac/switch-detail-iccap.do?bibid=1100567840"/>
+      <rdfs:seeAlso rdf:resource="https://opac.miraionlibrary.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1009810560137"/>
+      <rdfs:seeAlso rdf:resource="https://library.pref.oita.jp/winj/opac/switch-detail-iccap.do?bibid=1109398523"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I000004280316"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1971712334718709692"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784893699589"/>
+      <dc:description> 2003</dc:description>
+    </item>
+    <item>
+      <title>かくかくしかじか</title>
+      <link>https://ndlsearch.ndl.go.jp/books/R100000002-I023785401</link>
+      <description><![CDATA[<p>1,集英社,2012,978-4-08-782457-5<p><ul><li>タイトル：かくかくしかじか</li><li>タイトル（読み）：カクカク シカジカ</li><li>責任表示：東村アキコ 著</li><li>NDC(9)：726.1</li></ul>]]></description>
+      <author>東村, アキコ, 1975-,東村アキコ 著</author>
+      <category>図書</category>
+      <category>紙</category>
+      <guid isPermaLink="true">https://ndlsearch.ndl.go.jp/books/R100000002-I023785401</guid>
+      <pubDate>Mon, 22 Nov 2021 19:27:11 +0900</pubDate>
+      <dc:title>かくかくしかじか</dc:title>
+      <dcndl:titleTranscription>カクカク シカジカ</dcndl:titleTranscription>
+      <dc:creator>東村, アキコ, 1975-</dc:creator>
+      <dcndl:creatorTranscription>ヒガシムラ, アキコ, 1975-</dcndl:creatorTranscription>
+      <dcndl:volume>1</dcndl:volume>
+      <dc:publisher>集英社</dc:publisher>
+      <dcndl:publicationPlace>JP</dcndl:publicationPlace>
+      <dc:date xsi:type="dcterms:W3CDTF">2012</dc:date>
+      <dcterms:issued>2012.7</dcterms:issued>
+      <dcndl:price>743円</dcndl:price>
+      <dc:extent>1冊</dc:extent>
+      <dc:identifier xsi:type="dcndl:ISBN">978-4-08-782457-5</dc:identifier>
+      <dc:identifier xsi:type="dcndl:NDLBibID">023785401</dc:identifier>
+      <dc:identifier xsi:type="dcndl:JPNO">22107272</dc:identifier>
+      <dc:identifier xsi:type="dcndl:TOHANMARCNO">32784358</dc:identifier>
+      <dcndl:genre>漫画</dcndl:genre>
+      <dcndl:genreTranscription>マンガ</dcndl:genreTranscription>
+      <dc:subject xsi:type="dcndl:NDLC">Y84</dc:subject>
+      <dc:subject xsi:type="dcndl:NDC9">726.1</dc:subject>
+      <rdfs:seeAlso rdf:resource="https://www.library.city.sapporo.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1008000565747"/>
+      <rdfs:seeAlso rdf:resource="https://catalog.library.metro.tokyo.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1152124482"/>
+      <rdfs:seeAlso rdf:resource="https://opac.lib.city.yokohama.lg.jp/winj/opac/switch-detail-iccap.do?bibid=1113526792"/>
+      <rdfs:seeAlso rdf:resource="https://www.lib.sagamihara.kanagawa.jp/TOSHOW/asp/WwShousaiKen.aspx?FCode=2009318"/>
+      <rdfs:seeAlso rdf:resource="https://www.library.pref.ishikawa.lg.jp/wo/opc_srh/srh_detail/1100000578864/"/>
+      <rdfs:seeAlso rdf:resource="https://www.oml.city.osaka.lg.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000012562663"/>
+      <rdfs:seeAlso rdf:resource="https://opac.miraionlibrary.jp/licsxp-opac/WOpacMsgNewListToTifTilDetailAction.do?tilcod=1000002073374"/>
+      <rdfs:seeAlso rdf:resource="https://ndlsearch.ndl.go.jp/books/R100000002-I023785401"/>
+      <rdfs:seeAlso rdf:resource="https://cir.nii.ac.jp/crid/1970023484916296091"/>
+      <rdfs:seeAlso rdf:resource="https://www.books.or.jp/book-details/9784087824575"/>
+      <dc:description> 2012</dc:description>
+    </item>
+  </channel>
+</rss>
