@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
+import { api, isNovel, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { duplicatesHref, organizeHistoryHref, organizeHref, readHref } from "../route";
 import { ViewTabs } from "../works/ViewTabs";
 
 /** 一覧のカードに出す読書状態の文言 */
-export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress">): string {
+export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress" | "format">): string {
   if (!v.progress) return "未読";
   if (v.progress.finished) return "既読";
   const total = v.page_count ?? "?";
+  // 小説の page は区切り(章など)の番号。ページ数は文字サイズで変わるので出さない
+  if (isNovel(v.format)) return `読みかけ(${v.progress.page + 1} / ${total})`;
   return `${v.progress.page + 1} / ${total} ページ`;
+}
+
+/** 一覧のカードに出す大きさの文言 */
+export function sizeLabel(v: Pick<VolumeSummary, "page_count" | "format">): string {
+  if (v.format === "epub") return "EPUB";
+  if (v.format === "text") return "テキスト";
+  return v.page_count === null ? "ページ数未確定" : `${v.page_count} ページ`;
 }
 
 /** 巻番号の範囲の表示(1 / 1〜3) */
@@ -130,8 +139,9 @@ export function Library() {
             <>
               <span className="volume-title">{v.title}</span>
               {v.parent_title && <span className="volume-meta">「{v.parent_title}」の中</span>}
-              <span className="volume-meta">{v.page_count === null ? "ページ数未確定" : `${v.page_count} ページ`}</span>
+              <span className="volume-meta">{sizeLabel(v)}</span>
               <span className={`volume-progress${v.progress?.finished ? " done" : ""}`}>{progressLabel(v)}</span>
+              {isNovel(v.format) && <span className="badge novel-badge">小説</span>}
               {v.offline && <span className="badge">オフライン</span>}
               {v.findings.length > 0 && <span className="badge">巻の食い違い</span>}
             </>
@@ -169,7 +179,7 @@ export function Library() {
                   </button>
                 </div>
               )}
-              {!v.offline && (
+              {!v.offline && !isNovel(v.format) && (
                 <a className="organize-link" href={organizeHref(v.id)}>
                   CBZ に整理
                 </a>

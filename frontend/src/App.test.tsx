@@ -53,7 +53,7 @@ describe("一覧", () => {
     expect(offline.querySelector("a")).toBeNull(); // 開けない巻はリンクにしない
 
     fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
-    expect(await screen.findByText(/6 巻を検出しました/)).toBeTruthy();
+    expect(await screen.findByText(/8 巻を検出しました/)).toBeTruthy();
     expect(screen.getByText(/E:\/漫画/)).toBeTruthy();
     expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/scan")).toBe(true);
   });

@@ -207,3 +207,29 @@ button.secondary { background: transparent; color: var(--accent); }
 .evidence-lines { margin: 6px 0; padding-left: 1.2em; font-size: 0.9rem; }
 .merge-note p { margin: 4px 0; }
 .work-move { border-top: 1px solid var(--border); margin-top: 12px; }
+
+/* 小説の縦書きリーダー(#57)。本文の帯(.novel-text)を右端に置き、画面幅ずつ translateX で右から左へ送る */
+.reader.novel { background: #f7f3e9; color: #222; }
+.novel-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; touch-action: pinch-zoom; user-select: none; -webkit-user-select: none; }
+.novel-page { position: relative; overflow: hidden; }
+.novel-text {
+  position: absolute; top: 0; right: 0;
+  writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+  text-align: start; word-break: normal; line-break: strict; overflow-wrap: anywhere;
+  pointer-events: none;
+}
+/* 行の幅(line-height)を揃えて、行がページの境目で切れないようにする(見出しも同じ行の幅) */
+.novel-text p, .novel-text div, .novel-text li, .novel-text blockquote { margin: 0; }
+.novel-text h1, .novel-text h2, .novel-text h3, .novel-text h4, .novel-text h5, .novel-text h6 { font-size: 1em; margin: 0; font-weight: bold; }
+.novel-text ruby rt { font-size: 0.5em; }
+.novel-text img { display: block; max-height: 100%; max-width: var(--novel-page-width, 100vw); height: auto; margin: 0; object-fit: contain; }
+.novel-text .tcy { text-combine-upright: all; -webkit-text-combine: horizontal; }
+.novel-text .upright { text-orientation: upright; }
+.novel-text .sideways { text-orientation: sideways; }
+.novel-text .em-sesame { text-emphasis-style: sesame; -webkit-text-emphasis-style: sesame; }
+.novel .page-loading { color: #333; background: rgba(255, 255, 255, 0.85); }
+.novel .reader-notice { color: #fff; }
+.reader-options button { padding: 6px 10px; }
+.muted-dark { color: #aaa; font-size: 0.85rem; }
+.badge.novel-badge { background: #e7f0e3; color: #2f5a2a; }
