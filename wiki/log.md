@@ -153,4 +153,4 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-02] ingest | 拡張子ではなく先頭のマジックバイトでアーカイブの形式を判定する(#49)
 - 更新: [[archive-reading]]
-- 備考: 本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。
+- 備考: #49、PR #60。本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。
