@@ -26,7 +26,7 @@ from ..archive import ArchiveError, list_entries, open_archive
 from ..archive.base import reader_available
 from ..cache import CacheTooLarge
 from ..config import Settings
-from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable
+from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
 from ..pages import is_image, natural_key
 from ..scanner import SCAN_VERSION, Scanner, VolumeSpec, _fs_name_bytes, resolve_source_path, root_is_accessible
 from . import cbz, fs
@@ -105,14 +105,18 @@ class Organizer:
         base = self.settings.organize_base(root)
         problems: list[str] = []
         warnings: list[str] = []
-        vols = [dict(v) for v in self.conn.execute(
-            """SELECT id, title, page_count, container_path, entry_prefix FROM volumes
-               WHERE source_id = ? AND missing = 0 AND organized_op_id IS NULL""", (source_id,))]
-        vols.sort(key=lambda v: (natural_key(v["entry_prefix"]), natural_key(v["container_path"] or "")))
+        # 整理の単位は「読める巻」= 見えている子を持たない巻。分解済みの内側アーカイブは、親(まとめ)ではなく
+        # 子の巻ごとに 1 CBZ にする(親と子を両方 CBZ にすると同じページが二重になる)
+        all_rows = [dict(v) for v in self.conn.execute(
+            """SELECT v.*, EXISTS (SELECT 1 FROM volumes c WHERE c.parent_id = v.id AND c.missing = 0) AS has_children
+               FROM volumes v WHERE v.source_id = ? AND v.missing = 0 AND v.organized_op_id IS NULL""", (source_id,))]
+        vols = [v for v in all_rows if not v["has_children"]]
+        vols.sort(key=lambda v: (natural_key(v["entry_prefix"]), natural_key(v["container_path"] or ""),
+                                 natural_key(v["inner_path"] or "")))
         plan = {
             "source_id": source_id, "root_id": src["root_id"], "root_path": str(root), "source_rel_path": rel,
             "source_kind": src["kind"], "organize_base": str(base), "fingerprint": None,
-            "volumes": [], "warnings": warnings, "problems": problems,
+            "volumes": [], "warnings": warnings, "problems": problems, "needs_analysis": [],
         }
         if src["offline"] or not root_is_accessible(root):
             problems.append("蔵書フォルダが今オフラインです")
@@ -126,6 +130,7 @@ class Organizer:
             return self._finish_plan(plan, vols)
         if not vols:
             problems.append("整理できる巻がありません")
+        plan["needs_analysis"] = self._unanalyzed(all_rows, problems)
         problems.extend(self._drive_problems(source_path, base))
         if fs.is_within(base, source_path):
             problems.append("作業場・退避フォルダが元のフォルダの中にあります")
@@ -147,6 +152,27 @@ class Organizer:
             taken.add(name.casefold())
             v["output_rel_path"] = _rel_posix(root, source_path.parent / name)
         return self._finish_plan(plan, vols)
+
+    def _unanalyzed(self, rows: list[dict], problems: list[str]) -> list[int]:
+        """中の巻をまだ調べていない(または調べた後に元が変わった・調べられなかった)内側アーカイブの巻の id。
+
+        その巻が中に複数の巻を持つかは調べるまで分からず、1 CBZ にまとめてよいか決められない
+        (分解済みなら子ごとに 1 CBZ)。プレビューは書き込まない約束なので、ここで解析せず、先に調べるよう促して
+        整理を始めさせない。調べ方は一覧の「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)。
+        """
+        needs = []
+        for v in rows:
+            if v["container_path"] is None or v["parent_id"] is not None or v["inner_path"] is not None:
+                continue  # 分解の対象になる内側アーカイブの巻(親を持たない)だけ
+            row = get_volume_row(self.conn, v["id"])
+            current = self.library.current_analysis_version(row)
+            if v["analyzed_version"] is None or v["analysis_error"] is not None or v["analyzed_version"] != current:
+                needs.append(v["id"])
+                reason = f"(前回は調べられませんでした: {v['analysis_error']})" if v["analysis_error"] else ""
+                problems.append(f"内側アーカイブ「{v['title']}」の中の巻をまだ調べていません{reason}。"
+                                "先に「中の巻を調べる」を実行してください(1 つの中に複数の巻があると、"
+                                "巻ごとの CBZ にするため)")
+        return needs
 
     def _drive_problems(self, source_path: Path, base: Path) -> list[str]:
         problems = []
@@ -437,7 +463,8 @@ class Organizer:
     def _view_plan(plan: dict) -> dict:
         return {"source_id": plan["source_id"], "source_rel_path": plan["source_rel_path"],
                 "source_kind": plan["source_kind"], "volumes": plan["volumes"],
-                "warnings": plan["warnings"], "problems": plan["problems"]}
+                "warnings": plan["warnings"], "problems": plan["problems"],
+                "needs_analysis": plan.get("needs_analysis", [])}
 
     def get(self, op_id: str) -> dict:
         op, plan = self._load(op_id)

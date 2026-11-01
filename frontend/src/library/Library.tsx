@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type ScanResult, type VolumeSummary } from "../api";
+import { api, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { organizeHistoryHref, organizeHref, readHref } from "../route";
 
 /** 一覧のカードに出す読書状態の文言 */
@@ -10,11 +10,47 @@ export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress">)
   return `${v.progress.page + 1} / ${total} ページ`;
 }
 
+/** 巻番号の範囲の表示(1 / 1〜3) */
+export function rangeText(n: Pick<VolumeNumber, "start" | "end">): string {
+  return n.start === n.end ? `${n.start}` : `${n.start}〜${n.end}`;
+}
+
+const numbersText = (ns: number[]) => (ns.length ? ns.join("・") : "なし");
+
+function FindingDetail({ f }: { f: Finding }) {
+  return (
+    <div className="finding">
+      <p>{f.message}</p>
+      <dl>
+        <dt>名前の範囲</dt>
+        <dd>
+          {rangeText(f.name_range)} 巻(「{f.subject}」の「{f.name_range.evidence}」)
+        </dd>
+        <dt>中身の巻番号</dt>
+        <dd>{numbersText(f.found)}</dd>
+        {f.missing.length > 0 && (
+          <>
+            <dt>欠け</dt>
+            <dd>{numbersText(f.missing)}</dd>
+          </>
+        )}
+        {f.extra.length > 0 && (
+          <>
+            <dt>範囲外</dt>
+            <dd>{numbersText(f.extra)}</dd>
+          </>
+        )}
+      </dl>
+    </div>
+  );
+}
+
 export function Library() {
   const [volumes, setVolumes] = useState<VolumeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [analyzing, setAnalyzing] = useState<VolumeSummary["id"] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +75,18 @@ export function Library() {
       setError("スキャンに失敗しました。");
     } finally {
       setScanning(false);
+    }
+  };
+
+  const analyze = async (id: VolumeSummary["id"]) => {
+    setAnalyzing(id);
+    try {
+      await api.analyze(id);
+      await load();
+    } catch {
+      setError("中の巻を調べられませんでした。");
+    } finally {
+      setAnalyzing(null);
     }
   };
 
@@ -76,9 +124,11 @@ export function Library() {
           const body = (
             <>
               <span className="volume-title">{v.title}</span>
+              {v.parent_title && <span className="volume-meta">「{v.parent_title}」の中</span>}
               <span className="volume-meta">{v.page_count === null ? "ページ数未確定" : `${v.page_count} ページ`}</span>
               <span className={`volume-progress${v.progress?.finished ? " done" : ""}`}>{progressLabel(v)}</span>
               {v.offline && <span className="badge">オフライン</span>}
+              {v.findings.length > 0 && <span className="badge">巻の食い違い</span>}
             </>
           );
           return (
@@ -91,6 +141,21 @@ export function Library() {
                 <a className="volume-link" href={readHref(v.id)}>
                   {body}
                 </a>
+              )}
+              {v.findings.length > 0 && (
+                <details className="volume-extra">
+                  <summary>食い違いの説明</summary>
+                  {v.findings.map((f, i) => (
+                    <FindingDetail key={i} f={f} />
+                  ))}
+                </details>
+              )}
+              {v.can_analyze && (
+                <div className="volume-extra">
+                  <button type="button" className="small" onClick={() => analyze(v.id)} disabled={analyzing !== null}>
+                    {analyzing === v.id ? "調べています…" : "中の巻を調べる"}
+                  </button>
+                </div>
               )}
               {!v.offline && (
                 <a className="organize-link" href={organizeHref(v.id)}>

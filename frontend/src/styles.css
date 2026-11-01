@@ -52,9 +52,9 @@ button:disabled { opacity: 0.6; cursor: default; }
   display: grid; gap: 10px;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* 375px 幅で 2 列 */
 }
-.volume-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.volume-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; min-width: 0; display: flex; flex-direction: column; }
 .volume-card.offline { opacity: 0.55; }
-.volume-link { display: flex; flex-direction: column; gap: 4px; padding: 12px; color: inherit; text-decoration: none; height: 100%; }
+.volume-link { display: flex; flex-direction: column; gap: 4px; padding: 12px; color: inherit; text-decoration: none; flex: 1; }
 .volume-title { font-weight: 600; overflow-wrap: anywhere; }
 .volume-meta, .volume-progress { font-size: 0.85rem; color: var(--muted); }
 .volume-progress.done { color: var(--done); }
@@ -75,6 +75,13 @@ button:disabled { opacity: 0.6; cursor: default; }
 .notice.warn { border-color: var(--warn); }
 
 .badge { align-self: flex-start; font-size: 0.75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); }
+.volume-extra { padding: 0 12px 10px; font-size: 0.85rem; }
+.volume-extra summary { cursor: pointer; color: var(--warn); }
+.finding p { margin: 6px 0; overflow-wrap: anywhere; }
+.finding dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 0; }
+.finding dt { color: var(--muted); }
+.finding dd { margin: 0; overflow-wrap: anywhere; }
+button.small { padding: 4px 10px; font-size: 0.8rem; }
 
 /* リーダー */
 .reader { position: fixed; inset: 0; background: #000; color: #eee; overflow: hidden; }
@@ -88,7 +95,32 @@ button:disabled { opacity: 0.6; cursor: default; }
 .page { display: block; max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
 .stage.is-spread .page { max-width: 50%; }
 .page-broken { display: flex; align-items: center; justify-content: center; width: 50%; height: 60%; color: #bbb; border: 1px dashed #555; }
-.reader-message { padding: 24px 16px; }
+.reader-message {
+  position: absolute; inset: 0; padding: 24px 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  text-align: center; overflow-wrap: anywhere;
+}
+.reader-message p { margin: 0 0 8px; max-width: 32em; }
+.reader-message a { color: #9ec1ff; padding: 8px; }
+.reader-hint { font-size: 0.85rem; color: #aaa; }
+/* ページ画像の読み込み待ち。すぐ読み終わるページ送りでちらつかないよう、少し遅れて出す */
+.page-loading {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(0, 0, 0, 0.6); padding: 8px 16px; border-radius: 999px;
+  pointer-events: none; opacity: 0; animation: fade-in 0.2s ease 0.3s forwards;
+}
+.spinner {
+  display: inline-block; width: 24px; height: 24px; flex: none;
+  border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #eee; border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+.reader-message .spinner { width: 36px; height: 36px; margin-bottom: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fade-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 3s; }
+}
 .reader-notice {
   position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.75); padding: 8px 16px; border-radius: 999px; pointer-events: none;

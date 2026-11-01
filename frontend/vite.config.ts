@@ -5,7 +5,11 @@ import { createMockBackend } from "./src/mock/mockBackend";
 
 // `npm run dev:mock` のときだけ /api をモックで返す(バックエンド無しで画面を確かめる用)
 function mockApi(): Plugin {
-  const backend = createMockBackend();
+  // 遅延・失敗の再現: 「ページ数未確定の巻(入れ子)」は初回だけ 4 秒かかる。#/read/too-big は展開上限超過、#/read/999 は 404
+  const backend = createMockBackend(undefined, {
+    firstOpenDelayMs: 4000,
+    failures: { "too-big": { status: 422, detail: "この巻を読めません: キャッシュの上限(2147483648 バイト)より大きい: 3221225472 バイト" } },
+  });
   return {
     name: "spinebox-mock-api",
     configureServer(server) {
@@ -15,9 +19,11 @@ function mockApi(): Plugin {
         req.on("data", (c) => (body += c));
         req.on("end", () => {
           const r = backend.handle(req.method ?? "GET", req.url!, body || undefined);
-          res.statusCode = r.status;
-          res.setHeader("Content-Type", r.contentType);
-          res.end(r.body);
+          setTimeout(() => {
+            res.statusCode = r.status;
+            res.setHeader("Content-Type", r.contentType);
+            res.end(r.body);
+          }, r.delayMs ?? 0);
         });
       });
     },

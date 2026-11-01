@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import sqlite3
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Iterator
 
@@ -15,13 +18,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import db
+from .analysis import compute_findings
 from .buildinfo import current_commit
 from .cache import CacheTooLarge, ExtractionCache
 from .config import Settings
-from .library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_offline
+from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_analyzable,
+                      is_offline)
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
-from .scanner import Scanner
+from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner
+
+log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -45,13 +52,62 @@ def _progress(row) -> dict | None:
     return {"page": row["page"], "finished": bool(row["finished"])}
 
 
+def _number(row) -> dict | None:
+    """名前から読んだ巻・話の番号の候補(確定ではない)。"""
+    if row["number_kind"] is None:
+        return None
+    return {"kind": row["number_kind"], "start": row["number_start"], "end": row["number_end"],
+            "evidence": row["number_evidence"]}
+
+
+def _chain_text(inner_path: str | None) -> str:
+    try:
+        return "/".join(json.loads(inner_path)) if inner_path else ""
+    except ValueError:
+        return inner_path or ""
+
+
+def _list_sort_key(r) -> tuple:
+    """一覧の並び。子の巻は親の位置に、入れ子の名前・フォルダの自然順で並べる。"""
+    if r["parent_id"] is None:
+        return (natural_key(r["rel_path"]), natural_key(r["entry_prefix"]), natural_key(r["container_path"] or ""),
+                natural_key(""), natural_key(""))
+    return (natural_key(r["rel_path"]), natural_key(r["parent_prefix"] or ""), natural_key(r["container_path"] or ""),
+            natural_key(_chain_text(r["inner_path"])), natural_key(r["entry_prefix"]))
+
+
 def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND_DIST) -> FastAPI:
-    app = FastAPI(title="SpineBox")
     conn = db.open_db(settings.db_path)  # 起動時にマイグレーションを当てる
     conn.close()
     cache = ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)
     library = Library(settings, cache)
     scan_lock = threading.Lock()
+
+    def background_analysis(stop: threading.Event) -> None:
+        """裏で少しずつ解析する(設定で有効なときだけ)。1 回に 1 巻。スキャン中は待つ。失敗しても止まらない。"""
+        while not stop.wait(settings.background_analysis_interval):
+            if scan_lock.locked():
+                continue
+            try:
+                c = db.connect(settings.db_path)
+                try:
+                    library.analyze_next(c)
+                finally:
+                    c.close()
+            except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
+                log.exception("裏の解析に失敗しました")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        stop = threading.Event()
+        if settings.background_analysis:
+            threading.Thread(target=background_analysis, args=(stop,), name="spinebox-analysis", daemon=True).start()
+        try:
+            yield
+        finally:
+            stop.set()
+
+    app = FastAPI(title="SpineBox", lifespan=lifespan)
     app.state.settings = settings
     app.state.cache = cache
     app.state.scan_lock = scan_lock
@@ -114,14 +170,14 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/volumes")
     def list_volumes(conn: sqlite3.Connection = Depends(get_conn)):
         rows = conn.execute(
-            """SELECT v.id, v.title, v.page_count, v.container_path, v.entry_prefix, s.rel_path,
-                      s.offline AS source_offline, r.online AS root_online, p.page, p.finished
-               FROM volumes v JOIN sources s ON s.id = v.source_id JOIN library_roots r ON r.id = s.root_id
-               LEFT JOIN reading_progress p ON p.volume_id = v.id
-               WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0 AND v.organized_op_id IS NULL"""
+            """SELECT v.id, v.title, v.page_count, v.container_path, v.entry_prefix, v.inner_path, v.parent_id,
+                      v.number_kind, v.number_start, v.number_end, v.number_evidence, v.analyzed_version,
+                      pv.title AS parent_title, pv.entry_prefix AS parent_prefix, s.rel_path,
+                      s.offline AS source_offline, r.online AS root_online, p.page, p.finished"""
+            + LISTED_VOLUMES_JOIN + " LEFT JOIN reading_progress p ON p.volume_id = v.id " + LISTED_VOLUMES_WHERE
         ).fetchall()
-        rows.sort(key=lambda r: (natural_key(r["rel_path"]), natural_key(r["entry_prefix"]),
-                                 natural_key(r["container_path"] or "")))
+        rows.sort(key=_list_sort_key)
+        findings = compute_findings(conn)
         return [{
             "id": r["id"],
             "title": r["title"],
@@ -129,6 +185,11 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "page_count": r["page_count"],
             "offline": is_offline(r),
             "progress": _progress(r),
+            "parent_id": r["parent_id"],
+            "parent_title": r["parent_title"],
+            "volume_number": _number(r),
+            "findings": findings.get(r["id"], []),
+            "can_analyze": is_analyzable(r) and r["analyzed_version"] is None and not is_offline(r),
         } for r in rows]
 
     def _get_progress(conn, volume_id: int):
@@ -138,6 +199,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/volumes/{volume_id}")
     def get_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         with library.open(conn, volume_id) as vol:
+            # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)
+            library.register_analysis(conn, vol)
             row = get_volume_row(conn, volume_id)
             return {
                 "id": volume_id,
@@ -145,7 +208,27 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "page_count": len(vol.page_names),
                 "pages": [{"index": i, "name": n.rsplit("/", 1)[-1]} for i, n in enumerate(vol.page_names)],
                 "progress": _get_progress(conn, volume_id),
+                "parent_id": row["parent_id"],
+                "volume_number": _number(row),
+                "findings": compute_findings(conn).get(volume_id, []),
             }
+
+    @app.post("/api/volumes/{volume_id}/analyze")
+    def analyze_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """明示操作の解析。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は analyzed: false。"""
+        analyzed = library.analyze(conn, volume_id, force=True)
+        children = conn.execute(
+            """SELECT id, title, page_count, number_kind, number_start, number_end, number_evidence, inner_path,
+                      entry_prefix FROM volumes WHERE parent_id = ? AND missing = 0""", (volume_id,)).fetchall()
+        children = sorted(children, key=lambda r: (natural_key(_chain_text(r["inner_path"])),
+                                                   natural_key(r["entry_prefix"])))
+        return {
+            "id": volume_id,
+            "analyzed": analyzed,
+            "children": [{"id": r["id"], "title": r["title"], "page_count": r["page_count"],
+                          "volume_number": _number(r)} for r in children],
+            "findings": compute_findings(conn).get(volume_id, []),
+        }
 
     @app.get("/api/volumes/{volume_id}/pages/{index}")
     def get_page(volume_id: int, index: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):

@@ -31,8 +31,11 @@ def test_scan_and_list(make_client, library):
     assert set(vols) == {"FolderBook", "single", "Vol1", "Vol2", "inner1", "inner2", "inner3"}
     v = vols["Vol1"]
     assert v == {"id": v["id"], "title": "Vol1", "source_name": "multi.zip", "page_count": 2,
-                 "offline": False, "progress": None}
+                 "offline": False, "progress": None, "parent_id": None, "parent_title": None,
+                 "volume_number": {"kind": "volume", "start": 1, "end": 1, "evidence": "Vol1"},
+                 "findings": [], "can_analyze": False}
     assert vols["inner1"]["page_count"] is None
+    assert vols["inner1"]["can_analyze"] is True
     assert vols["inner1"]["source_name"] == "nested.zip"
 
 

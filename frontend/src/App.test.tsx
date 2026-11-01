@@ -58,6 +58,29 @@ describe("一覧", () => {
     expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/scan")).toBe(true);
   });
 
+  it("未解析の内側アーカイブを調べると子の巻に分かれ、食い違いのバッジと説明が出る", async () => {
+    setViewport(375, 812);
+    render(<App />);
+    const parent = (await screen.findByText("v01-03")).closest("li")!;
+    expect(screen.queryByText("巻の食い違い")).toBeNull();
+    fireEvent.click(within(parent).getByRole("button", { name: "中の巻を調べる" }));
+
+    const child = (await screen.findByText("v01")).closest("li")!;
+    expect(screen.queryByText("v01-03")).toBeNull(); // 親(まとめ)は一覧から消え、子が並ぶ
+    expect(screen.getByText("v03")).toBeTruthy();
+    expect(within(child).getByText("「v01-03」の中")).toBeTruthy();
+    expect(within(child).getByText("巻の食い違い")).toBeTruthy();
+    expect(screen.getAllByText("巻の食い違い")).toHaveLength(2);
+    // 説明はリンクの外(開いてもリーダーへ飛ばない)
+    const details = within(child).getByText("食い違いの説明").closest("details")!;
+    expect(details.closest("a")).toBeNull();
+    expect(within(details).getByText(/2 巻が見当たらない/)).toBeTruthy();
+    expect(within(details).getByText("1〜3 巻(「v01-03」の「v01-03」)")).toBeTruthy();
+    expect(within(details).getByText("1・3")).toBeTruthy();
+    expect(within(details).getByText("欠け").nextElementSibling!.textContent).toBe("2");
+    expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/volumes/5/analyze")).toBe(true);
+  });
+
   it("API が落ちていてもエラー表示で止まる", async () => {
     vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
     render(<App />);
