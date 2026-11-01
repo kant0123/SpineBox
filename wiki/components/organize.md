@@ -30,17 +30,17 @@ related: [overview, backend, frontend, volume-split]
 | パス | 役割 |
 | --- | --- |
 | `spinebox/organize/organizer.py:90 plan` | 計画。DB・stat・外側アーカイブの目次だけを読み、問題(実行不可)と注意を出す。整理の単位(読める巻)を選ぶのもここ |
-| `spinebox/organize/organizer.py:164 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出。出力名の決定(フェーズ 4 の命名テンプレートの差し込み先)は `plan` の `stem = fs.safe_stem(v["title"])` の箇所 |
-| `spinebox/organize/organizer.py:218 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
-| `spinebox/organize/organizer.py:322 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
-| `spinebox/organize/organizer.py:391 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す |
+| `spinebox/organize/organizer.py:156 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出。出力名の決定(フェーズ 4 の命名テンプレートの差し込み先)は `plan` の `stem = fs.safe_stem(v["title"])` の箇所 |
+| `spinebox/organize/organizer.py:244 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
+| `spinebox/organize/organizer.py:348 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
+| `spinebox/organize/organizer.py:417 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:462 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す |
+| `spinebox/organize/organizer.py:489 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す |
 
 置き場は `spinebox/config.py:53 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:144 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:155 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
