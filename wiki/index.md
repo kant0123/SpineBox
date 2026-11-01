@@ -25,7 +25,7 @@ Wiki 全ページのカタログ。質問に答えるとき・作業に着手す
 
 ## Components — モジュール・機能単位 (`components/`)
 
-- [[archive-reading]] — アーカイブの目次読みと 1 エントリの読み出し。zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
+- [[archive-reading]] — アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
 - [[backend]] — FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 - [[frontend]] — 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 - [[metadata-clients]] — 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
