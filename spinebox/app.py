@@ -16,9 +16,9 @@ from typing import Iterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field, StrictBool, StrictInt
+from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import db
+from . import db, works
 from .analysis import compute_findings
 from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
 from .buildinfo import current_commit
@@ -46,6 +46,27 @@ class OrganizePlanIn(BaseModel):
 class ProgressIn(BaseModel):
     page: StrictInt = Field(ge=0)
     finished: StrictBool
+
+
+class WorkEditIn(BaseModel):
+    """作品の手動編集。送ったものだけ直す(author は null / 空文字で空欄にできる)。"""
+    title: StrictStr | None = None
+    author: StrictStr | None = None
+
+
+class AliasIn(BaseModel):
+    alias: StrictStr
+
+
+class MergeIn(BaseModel):
+    other_id: StrictInt
+
+
+class AssignIn(BaseModel):
+    """巻の付け替え。work_id が null なら新しい作品に分ける(title は新しい作品の名前。省略すると巻の名前から)。"""
+    volume_ids: list[StrictInt] = Field(min_length=1)
+    work_id: StrictInt | None = None
+    title: StrictStr | None = None
 
 
 def _progress(row) -> dict | None:
@@ -78,8 +99,17 @@ def _list_sort_key(r) -> tuple:
             natural_key(_chain_text(r["inner_path"])), natural_key(r["entry_prefix"]))
 
 
+def _sync_works(conn: sqlite3.Connection) -> None:
+    """巻を作品に割り当て直す。名前の解析と DB の更新だけで、失敗しても本体(スキャン・閲覧)を止めない。"""
+    try:
+        works.sync(conn)
+    except Exception:  # noqa: BLE001 (派生データの更新で本体を止めない)
+        log.exception("作品の割り当てに失敗しました")
+
+
 def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND_DIST) -> FastAPI:
     conn = db.open_db(settings.db_path)  # 起動時にマイグレーションを当てる
+    _sync_works(conn)  # 作品への割り当てを取り直す(作品の機能が入る前の DB は、ここで初めて作品になる)
     conn.close()
     cache = ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)
     library = Library(settings, cache)
@@ -170,6 +200,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             raise HTTPException(409, "スキャン中です")
         try:
             result = Scanner(conn, settings).scan()
+            _sync_works(conn)  # 名前の解析だけ。内側のアーカイブは取り出さない
         finally:
             scan_lock.release()
         return {"volumes": result.volumes, "offline_roots": result.offline_roots}
@@ -186,6 +217,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         rows.sort(key=_list_sort_key)
         findings = compute_findings(conn)
         duplicates = candidate_counts(conn)
+        work_ids = works.assignments(conn)
         return [{
             "id": r["id"],
             "title": r["title"],
@@ -198,6 +230,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "volume_number": _number(r),
             "findings": findings.get(r["id"], []),
             "duplicate_count": duplicates.get(r["id"], 0),
+            "work_id": work_ids.get(r["id"]),
             "can_analyze": is_analyzable(r) and r["analyzed_version"] is None and not is_offline(r),
         } for r in rows]
 
@@ -209,7 +242,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def get_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         with library.open(conn, volume_id) as vol:
             # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)
-            library.register_analysis(conn, vol)
+            if library.register_analysis(conn, vol):
+                _sync_works(conn)  # 中の巻(子)が現れた
             row = get_volume_row(conn, volume_id)
             return {
                 "id": volume_id,
@@ -226,6 +260,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def analyze_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         """明示操作の解析。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は analyzed: false。"""
         analyzed = library.analyze(conn, volume_id, force=True)
+        if analyzed:
+            _sync_works(conn)
         children = conn.execute(
             """SELECT id, title, page_count, number_kind, number_start, number_end, number_evidence, inner_path,
                       entry_prefix FROM volumes WHERE parent_id = ? AND missing = 0""", (volume_id,)).fetchall()
@@ -251,6 +287,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 duplicate_state.update(done=done, total=total)
 
             summary = DuplicateScanner(c, library, progress).run()
+            _sync_works(c)  # 重複候補の証拠で、作品の統合を提案・実行する
             duplicate_state.update(summary=asdict(summary), error=None)
         except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
             log.exception("重複候補の調査に失敗しました")
@@ -326,6 +363,85 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.post("/api/duplicates/{candidate_id}/restore")
     def restore_duplicate(candidate_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         return _set_dismissed(candidate_id, conn, restore=True)
+
+    # --- 作品(#43) ------------------------------------------------------------------------
+
+    @app.exception_handler(works.WorkNotFound)
+    def _work_not_found(request: Request, exc: works.WorkNotFound):
+        return JSONResponse({"detail": "作品が見つかりません"}, status_code=404)
+
+    @app.exception_handler(works.ProposalNotFound)
+    def _proposal_not_found(request: Request, exc: works.ProposalNotFound):
+        return JSONResponse({"detail": "提案が見つかりません"}, status_code=404)
+
+    @app.exception_handler(works.Conflict)
+    def _work_conflict(request: Request, exc: works.Conflict):
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+
+    @app.exception_handler(works.InvalidValue)
+    def _work_invalid(request: Request, exc: works.InvalidValue):
+        return JSONResponse({"detail": str(exc)}, status_code=422)
+
+    @app.get("/api/works")
+    def list_works(conn: sqlite3.Connection = Depends(get_conn)):
+        """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。"""
+        return works.list_works(conn)
+
+    @app.post("/api/works/refresh")
+    def refresh_works(conn: sqlite3.Connection = Depends(get_conn)):
+        """作品への割り当てと統合の提案を取り直す(名前の解析と DB の更新だけ)。手動の決定は変えない。"""
+        return asdict(works.sync(conn))
+
+    @app.get("/api/works/proposals")
+    def list_work_proposals(status: str = "open", conn: sqlite3.Connection = Depends(get_conn)):
+        """統合の提案。status は open / dismissed / applied。"""
+        return works.list_proposals(conn, status)
+
+    @app.post("/api/works/proposals/{proposal_id}/{action}")
+    def decide_work_proposal(proposal_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)):
+        """action: approve(統合する)/ dismiss(別の作品として却下)/ restore(却下を取り消す)。"""
+        return works.decide_proposal(conn, proposal_id, action)
+
+    @app.post("/api/works/assign")
+    def assign_work_volumes(body: AssignIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """巻を別の作品へ付け替える(work_id が null なら新しい作品に分ける)。手動の決定として残る。"""
+        work_id = works.assign_volumes(conn, body.volume_ids, body.work_id, body.title)
+        _sync_works(conn)
+        return {"work_id": work_id}
+
+    @app.get("/api/works/{work_id}")
+    def get_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return works.get_work(conn, work_id)
+
+    @app.patch("/api/works/{work_id}")
+    def edit_work(work_id: int, body: WorkEditIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """作品名・著者を手で直す。手動の項目は再計算でも外部ソースでも上書きしない。"""
+        sent = body.model_fields_set
+        if not sent & {"title", "author"}:
+            raise HTTPException(422, "title か author を指定してください")
+        if "title" in sent and body.title is None:
+            raise HTTPException(422, "作品名は null にできません")
+        works.update_fields(conn, work_id, title=body.title, author=body.author,
+                            set_title="title" in sent, set_author="author" in sent)
+        _sync_works(conn)  # 直した作品名が別の作品の名前と一致したら、統合の提案が出る
+        return works.get_work(conn, work_id)
+
+    @app.post("/api/works/{work_id}/aliases")
+    def add_work_alias(work_id: int, body: AliasIn, conn: sqlite3.Connection = Depends(get_conn)):
+        works.add_alias(conn, work_id, body.alias)
+        _sync_works(conn)
+        return works.get_work(conn, work_id)
+
+    @app.delete("/api/works/{work_id}/aliases/{alias_id}")
+    def remove_work_alias(work_id: int, alias_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        works.dismiss_alias(conn, work_id, alias_id)
+        return works.get_work(conn, work_id)
+
+    @app.post("/api/works/{work_id}/merge")
+    def merge_work(work_id: int, body: MergeIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """work_id に other_id を統合する(手動)。"""
+        works.merge_manual(conn, work_id, body.other_id)
+        return works.get_work(conn, work_id)
 
     @app.get("/api/volumes/{volume_id}/pages/{index}")
     def get_page(volume_id: int, index: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):

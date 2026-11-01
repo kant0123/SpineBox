@@ -113,3 +113,41 @@ def test_reference_samples_duplicate_candidates(sample_dir, sevenzip, make_setti
     listed = client.get("/api/volumes").json()
     assert sum(1 for v in listed if v["duplicate_count"]) == 4
     assert fingerprint(sample_dir) == before  # 原本は 1 バイトも変わらない
+
+
+def test_reference_samples_works(sample_dir, sevenzip, make_settings, capsys):
+    """#43: お気楽領主の 8 巻(ローマ字名 5・日本語名 3)が重複候補の証拠で 1 つの作品になり、かくかくしかじかは別の作品。"""
+    before = fingerprint(sample_dir)
+    settings = make_settings(sample_dir, sevenzip_path=sevenzip)
+    client = TestClient(create_app(settings, frontend_dist=None))
+    assert client.post("/api/scan").status_code == 200
+    assert list(settings.cache_dir.iterdir()) == []  # 名前の解析だけ。内側アーカイブは取り出さない
+    # 重複の証拠の前は、お気楽領主はローマ字名の作品と日本語名の作品に分かれている
+    titles = {w["title"] for w in client.get("/api/works").json()["works"]}
+    assert titles == {"Okiraku ryoshu no tanoshi ryochi", "お気楽領主の楽しい領地防衛", "Kakukaku Shikajika"}
+
+    state = client.post("/api/duplicates/scan?wait=true").json()
+    assert state["error"] is None
+    works = {w["title"]: w for w in client.get("/api/works").json()["works"]}
+    assert set(works) == {"お気楽領主の楽しい領地防衛", "Kakukaku Shikajika"}
+    ok, kaku = works["お気楽領主の楽しい領地防衛"], works["Kakukaku Shikajika"]
+    assert ok["volume_count"] == 8 and ok["merged"] is True and ok["author"] == "青色まろ、赤池宗"
+    assert [a["alias"] for a in ok["aliases"]] == ["Okiraku ryoshu no tanoshi ryochi"]
+    assert ok["max_volume"] == 6 and ok["missing_volumes"] == []
+
+    d = client.get(f"/api/works/{ok['id']}").json()
+    assert [(s["label"], len(s["volumes"]), s["duplicate"]) for s in d["slots"]] == [
+        ("1巻", 2, True), ("2巻", 2, True), ("3巻", 1, False), ("4巻", 1, False), ("5巻", 1, False), ("6巻", 1, False)]
+    (m,) = d["merges"]
+    assert m["status"] == "auto" and m["rule"] == "duplicate" and m["confidence"] >= 0.97
+    assert len(m["evidence"]["duplicate"]) == 2
+
+    assert kaku["volume_count"] == 4 and kaku["max_volume"] == 4 and kaku["missing_volumes"] == []
+    assert kaku["author"] == "東村アキコ" and [a["alias"] for a in kaku["aliases"]] == ["かくかくしかじか"]
+    kd = client.get(f"/api/works/{kaku['id']}").json()
+    assert [s["label"] for s in kd["slots"]] == ["1巻", "2巻", "3巻", "4巻"]  # v01-03 は解析で 1・2・3 巻に分解されている
+    assert client.get("/api/works").json()["unassigned"] == 0
+    assert client.get("/api/works/proposals").json() == []
+    with capsys.disabled():
+        print(f"\nworks: {sorted(works)}; Okiraku merge confidence {m['confidence']}")
+    assert fingerprint(sample_dir) == before  # 原本は 1 バイトも変わらない
