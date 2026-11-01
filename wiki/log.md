@@ -154,3 +154,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-02] ingest | 展開の RAM 層(7z / rar のページのまとめ取り出しと目次の持ち越し)
 - 更新: [[extraction-cache]], [[archive-reading]], [[server-setup]], [[overview]], [[backend]](コード参照の行番号のみ), [[volume-split]](コード参照の行番号のみ)
 - 備考: #54。利用者の提案(サーバー機では RAM を 8 GiB まで使ってよい)。先に `scripts/bench_reading.py` で RAM 層の有無を API 越しに測れるようにし、合成データ(cbz・zip 入り zip・ソリッド 7z・7z 入り rar・zip 入り 7z)で比べた。効いたのは 7z / rar だけ(ソリッド 7z の 1 巻 60 ページ通読でページ送りの平均 892 → 60 ms、7z 入り rar 23 → 7 ms、同じページの再表示 42 → 4 ms。まとめ取り出しが走るページの最大の待ちは変わらない)。zip のページ・内側 zip の本体を RAM に置く案は差が出なかったので入れていない。実データ(`_参考/`)の計測はローカル側で同じスクリプトを使う。
+
+## [2026-11-02] ingest | 拡張子ではなく先頭のマジックバイトでアーカイブの形式を判定する(#49)
+- 更新: [[archive-reading]]
+- 備考: #49、PR #60。本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。

@@ -1,6 +1,6 @@
 ---
 type: component
-summary: アーカイブの目次読みと 1 エントリの読み出し。zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
+summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
 updated: 2026-11-02
 related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection]
 ---
@@ -19,12 +19,31 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/archive/base.py:101 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
-| `spinebox/archive/base.py:146 open_archive` | 拡張子でリーダーを選ぶ。`reader_available()` は 7z / rar を「7-Zip が見つかるとき」だけ true にする |
+| `spinebox/archive/base.py:102 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
+| `spinebox/archive/base.py:185 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
 | `spinebox/archive/sevenzip.py:251 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
 | `spinebox/pages.py:48 page_sort_key` | ページの並び(表紙 → 自然順) |
+
+## 形式の判定(拡張子ではなく中身)
+
+本番蔵書に、拡張子は .cbz なのに中身が zip でないファイルがあった(#49。途中停止時点で 12 件。rar / 7z を改名したものと思われる)。
+拡張子で zipfile に渡すと「File is not a zip file」で一覧から外れるので、先頭のマジックバイトで形式を選ぶ。
+
+- 読むのは先頭 8 バイトだけ(`MAGIC_BYTES`。読み取り専用で開く)。zip は `PK\x03\x04` / `PK\x05\x06`(空)/ `PK\x07\x08`、
+  rar は `Rar!\x1a\x07\x00`(RAR4)/ `Rar!\x1a\x07\x01\x00`(RAR5)、7z は `7z\xbc\xaf\x27\x1c`
+- 中身と拡張子が食い違えば中身に従う。.cbr でも中身が zip なら zipfile で読む(7-Zip なしで読め、名前の復号も zip の規則になる)。
+  7-Zip は拡張子が違っても中身で開く(7-Zip 23.01 で終了コード 0 を確認)ので、`-t` で形式を固定していない
+- 中身が rar / 7z で 7-Zip が無ければ `UnsupportedArchive`「未対応(中身は rar。拡張子は .cbz): 7-Zip が見つからない」。
+  スキャンは理由を記録してサイズ・mtime を更新しないので、7-Zip を入れて再スキャンすれば拾う
+- 先頭で分からない zip / cbz(自己解凍形式・先頭に別物が付いた zip・短すぎる・壊れた)はまず zipfile で開き、駄目なら 7-Zip でも
+  目次まで読んでみる。どちらでも開けなければ両方の理由を付けた `ArchiveError`(= 従来どおり「読めないアーカイブ」で飛ばす)。
+  zipfile で開けたものに 7-Zip は呼ばない
+- 内側アーカイブは取り出す前は目次の名前しか無いので、**取り出した後のキャッシュのファイルで同じ判定をする**(`open_archive(cached, entry.name)`)。
+  ただし取り出す前の `reader_available(entry.name)` は名前で見るので、7-Zip が無いときは .rar という名前の中身 zip を取り出さずに未対応とする
+  (読めない形式を無駄に取り出さないための事前判定。7-Zip がある本番では起きない)
+- 整理処理の事前検査は元ファイルがディスクにあるので中身で見る(`file_reader_available()`)
 
 ## 名前の復号
 
@@ -95,3 +114,4 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 - #14 で zip / cbz を実装
 - #16 で 7z / rar を 7-Zip CLI で実装。実データで入れ子が深さ 3 あったため `max_depth` の既定を 1 から 3 に上げた。テストの rar は
   無圧縮の RAR5 を `tests/archives7z.py:rar5_bytes` で手組みしている(rar の圧縮器が無くても 7-Zip 側の読み取りを試せる)
+- #49 で形式の判定を拡張子から先頭のマジックバイトに変えた。改名した rar / 7z の合成データは `tests/test_archive_magic.py`(7z が無ければ skip)
