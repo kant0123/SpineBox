@@ -497,7 +497,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                     counts[status] = counts.get(status, 0) + 1
                 _sync_works(c, apply_links=False)
             _sync_works(c)
-            metadata_state.update(summary={"works": len(ids), "sources": counts}, error=None)
+            metadata_state.update(done=len(ids), summary={"works": len(ids), "sources": counts}, error=None)
         except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
             log.exception("公開 DB の情報の補完に失敗しました")
             metadata_state.update(error=str(e))

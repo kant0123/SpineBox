@@ -163,10 +163,6 @@ class _Work:
     names: dict[str, _Name] = field(default_factory=dict)
     manual_volumes: int = 0
 
-    @property
-    def manual_involved(self) -> bool:
-        return self.title_manual or self.author_manual or self.manual_volumes > 0
-
 
 class _State:
     def __init__(self, c: sqlite3.Connection):

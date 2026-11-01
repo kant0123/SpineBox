@@ -152,7 +152,7 @@ grep "^## \[" wiki/log.md | tail -5
   375px と横長の組み込みブラウザで、問題を含む合成蔵書のスキャン結果表示を確認。`_参考/サンプル本` は 10 巻・問題 0 件・原本不変。
 
 ## [2026-11-02] ingest | PR #61 公開 DB の情報を作品・巻へ結線する(空欄だけ埋める・手動は不変・低確信度は確認・クレジット表示)
-- 更新: [[backend]], [[frontend]], [[metadata-clients]], [[metadata-sources]], [[work-grouping]], [[overview]]
+- 更新: [[backend]], [[frontend]], [[metadata-clients]], [[metadata-sources]], [[work-grouping]], [[overview]], [[recurring-review-findings]], [[server-setup]](コード参照の行番号のみ)
 - 新規: [[metadata-linking]]
 - 備考: #50、クレジット表示は #45。マイグレーション 7(`work_links` / `volume_fields`)。連携は取得元ごとに自動(≥0.75 かつ 2 位と 0.15 差)/ 確認待ち / 該当なし、NDL は 1 冊ずつでなく組を単位にする。
   実通信(`_参考/サンプル本` を読み取りのみで蔵書にし、データは別の場所): かくかくしかじかは 3 取得元とも自動で連携し作品名がローマ字から日本語になった。お気楽領主は NDL が漫画/小説で同点のため 3 取得元とも確認待ちで、

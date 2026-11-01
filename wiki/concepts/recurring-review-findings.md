@@ -76,6 +76,8 @@ push 前に確かめること:
 
 - PR #8 — `review/agy_review.py` — `cmd_review` / `cmd_triage` / `cmd_check` / `call_agy` / `ci_state` にテストが無かった
 - PR #23 — `review/agy_review.py call_agy()` — 再試行時の `--conversation` 付与にテストが無かった
+- PR #61 — `spinebox/app.py background_metadata()` — 設定で有効にしたときに常駐する裏のスレッドにテストが無かった(既存の裏の解析は `tests/test_analysis.py` に有る。足したら同じ形で足す)
+- PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 
@@ -147,7 +149,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #47 — `spinebox/works.py _manual_involved()` / `_Work.manual_involved` — 手動の著者を「手動が絡む」に数えず、確信度の高い自動統合の対象にしていた(手動の著者だけを入れた作品が重複証拠で自動統合されることを再現)
+- PR #47 — `spinebox/works.py _manual_involved()`(旧 `_Work.manual_involved`) — 手動の著者を「手動が絡む」に数えず、確信度の高い自動統合の対象にしていた(手動の著者だけを入れた作品が重複証拠で自動統合されることを再現)
 - PR #47 — `spinebox/works.py merge_works()` — 吸収される作品の手動の著者を、残る作品のファイル名由来の著者が隠していた(手動統合で再現)
 - PR #47 — `spinebox/app.py add_work_alias()` — 別名の一致で自動統合され操作した作品が吸収されると、吸収された id で詳細を引いて 404 を返していた(ローマ字の作品へ日本語名の別名を足して再現)
 - PR #61 — `spinebox/works.py _manual_involved()` — 利用者が選んだ公開 DB の連携(`work_links.manual`)を「手動が絡む」に数えず、強い証拠があれば自動統合で吸収されうる状態だった(新しい手動の列を足したのに判定を足していなかった)

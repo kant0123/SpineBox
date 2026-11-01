@@ -568,7 +568,7 @@ def test_global_fetch_state_and_disabled_sources(env_factory):
     status = env.client.get("/api/works/metadata").json()
     assert status["sources"] == ["ndl", "anilist", "mangaupdates"] and status["state"]["running"] is False
     r = env.client.post("/api/works/metadata/fetch?wait=true").json()
-    assert r["running"] is False and r["error"] is None and r["total"] == 1
+    assert r["running"] is False and r["error"] is None and r["total"] == 1 and r["done"] == r["total"]
     assert r["summary"]["sources"]["linked"] == 3
     again = env.client.post("/api/works/metadata/fetch?wait=true").json()               # 取得済みは対象外
     assert again["total"] == 0
@@ -715,3 +715,25 @@ def test_unknown_source_is_404(env_factory, action):
     env.fetch(wid)
     r = env.client.post(f"/api/works/{wid}/links/nosuch/{action}", json={"source_id": None})
     assert r.status_code == 404
+
+
+def test_background_fetch_runs_when_enabled_and_stops_with_the_app(env_factory):
+    env = env_factory("kaku", KAKU_FILES, background=True, background_interval_seconds=1)
+    wid = env.work_id()
+    assert env.work(wid)["links"][0]["status"] is None
+    with env.client:  # アプリの起動(lifespan)で裏の取得が動き出す
+        import time
+        deadline = time.monotonic() + 15
+        while env.link(env.work(wid), "ndl")["status"] != "linked":
+            assert time.monotonic() < deadline, "裏の取得で連携されなかった"
+            time.sleep(0.2)
+    assert env.work(wid)["fields"]["kind"]["value"] == "manga"
+
+
+def test_background_fetch_is_off_by_default(env_factory):
+    env = env_factory("kaku", KAKU_FILES)
+    assert env.settings.metadata.background is False
+    with env.client:
+        import time
+        time.sleep(1.5)
+    assert env.work(env.work_id())["links"][0]["status"] is None
