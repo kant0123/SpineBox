@@ -7,6 +7,15 @@ export interface MockResponse {
   status: number;
   contentType: string;
   body: string;
+  /** 応答を返すまで待つ時間。呼び出し側(Vite の middleware・テストの fetch 差し替え)が守る */
+  delayMs?: number;
+}
+
+export interface MockOptions {
+  /** ページ数未確定(入れ子)の巻を初めて開くときの遅延。実機で内側を取り出す 3〜8 秒を再現する */
+  firstOpenDelayMs?: number;
+  /** 巻 ID ごとに `GET /api/volumes/{id}` を失敗させる。一覧に無い ID でもよい(`#/read/<id>` で直接開く) */
+  failures?: Record<string, { status: number; detail: string }>;
 }
 
 type MockVolume = Omit<VolumeSummary, "id"> & {
@@ -76,8 +85,9 @@ function pageSvg(title: string, index: number, total: number): string {
 }
 
 /** 状態を持つモック。progress の保存は次の GET に反映される。 */
-export function createMockBackend(volumes: MockVolume[] = defaultVolumes()) {
+export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), options: MockOptions = {}) {
   const log: { method: string; path: string; body?: unknown }[] = [];
+  const opened = new Set<number>();
   // ページ数未確定の巻は、開いた時点で数が決まる(入れ子の内側を開いたとき)想定
   const pagesOf = (v: MockVolume) => v.page_count ?? 6;
 
@@ -95,6 +105,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes()) {
       return json(200, { volumes: shown().length, offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [] });
     }
     const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|pages\/(\d+)))?$/);
+    const failure = m && !m[2] && method === "GET" ? options.failures?.[decodeURIComponent(m[1])] : undefined;
+    if (failure) return json(failure.status, { detail: failure.detail });
     const v = m ? volumes.find((x) => String(x.id) === decodeURIComponent(m[1])) : undefined;
     if (!m || !v) return json(404, { detail: "見つかりません" });
 
@@ -111,7 +123,9 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes()) {
         volume_number: v.volume_number,
         findings: v.findings,
       };
-      return json(200, detail);
+      const first = v.page_count === null && !opened.has(v.id);
+      opened.add(v.id);
+      return { ...json(200, detail), delayMs: first ? options.firstOpenDelayMs : undefined };
     }
     if (m[2] === "analyze" && method === "POST") {
       if (!v.can_analyze) return json(200, { id: v.id, analyzed: false, children: [], findings: [] });
