@@ -94,6 +94,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #27、PR #28。main 696fdec で `py -3.12 scripts/ci_local.py --no-report` 成功(pytest 250 passed)、`SPINEBOX_SAMPLE_DIR` 指定の `tests/test_reference_samples.py` 成功。`_参考/サンプル本` を蔵書ルートにした実起動でスキャン 10 巻・直後のキャッシュ 0 件、375px の組み込みブラウザで入れ子 3 段の rar 巻を 1→472 ページまで読み既読保存、zip 巻の 4 ページ目から再開を確認。原本 2 ファイルのサイズ・mtime・sha256 は検証前後で一致。サーバー機での常駐・LAN 閲覧は人間確認待ち #20。初回オープン時に読み込み表示が無い点は #26。
 
 ## [2026-11-01] ingest | 巻への分解と名前の巻範囲の食い違い検出
-- 更新: [[backend]], [[archive-reading]], [[extraction-cache]], [[frontend]], [[overview]]
+- 更新: [[backend]], [[archive-reading]], [[extraction-cache]], [[frontend]], [[overview]], [[server-setup]](コード参照の行番号のみ)
 - 新規: [[volume-split]]
 - 備考: #30。内側アーカイブの巻を開いたとき・`POST /api/volumes/{id}/analyze`・設定で有効にした裏の解析で中の巻の単位を子の巻として登録し、親は一覧から隠す。食い違いは欠け・余りだけ(重複は後続の重複検出に任せて出さない)。分解前の親の読書位置は親に残し、子へ写す。マイグレーション 2 と `SCAN_VERSION` 2。クラウドでは合成の入れ子 zip でテストし、`_参考/サンプル本` での確認はローカル引き取り時。作業中に 7-Zip を PATH に入れた環境で落ちる既存テストを見つけて #33 に起票した。

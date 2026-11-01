@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
 updated: 2026-11-01
-related: [backend, archive-reading, extraction-cache, frontend]
+related: [overview, backend, archive-reading, extraction-cache, frontend]
 ---
 
 # 巻への分解と巻範囲の食い違い

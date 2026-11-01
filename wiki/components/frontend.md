@@ -25,7 +25,7 @@ related: [overview, local-ci, server-setup, volume-split]
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/api.ts:94 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
-| `frontend/src/mock/mockBackend.ts:49 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用 |
+| `frontend/src/mock/mockBackend.ts:79 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用 |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
