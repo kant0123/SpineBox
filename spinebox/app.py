@@ -462,7 +462,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.post("/api/works/proposals/{proposal_id}/{action}")
     def decide_work_proposal(proposal_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)):
         """action: approve(統合する)/ dismiss(別の作品として却下)/ restore(却下を取り消す)。"""
-        return works.decide_proposal(conn, proposal_id, action)
+        res = works.decide_proposal(conn, proposal_id, action)
+        if action == "approve":
+            _sync_works(conn)  # 統合で増えた巻へ、残った作品の連携から書誌を入れる
+        return res
 
     @app.post("/api/works/assign")
     def assign_work_volumes(body: AssignIn, conn: sqlite3.Connection = Depends(get_conn)):

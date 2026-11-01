@@ -379,7 +379,10 @@ def _merge_links(c, keep: int, drop: int) -> None:
 def _manual_involved(c, work_id: int) -> bool:
     if c.execute("SELECT 1 FROM work_fields WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone():
         return True  # 手で直した作品名・著者
-    return c.execute("SELECT 1 FROM work_volumes WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone() is not None
+    if c.execute("SELECT 1 FROM work_volumes WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone():
+        return True  # 手動の巻の割り当て
+    # 利用者が選んだ公開 DB の連携(「どれでもない」も)。統合で片方が消えると、その決定が失われうる
+    return c.execute("SELECT 1 FROM work_links WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone() is not None
 
 
 def _pair(a: int, b: int) -> tuple[int, int]:

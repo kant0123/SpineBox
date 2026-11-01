@@ -335,12 +335,18 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
     return result
 
 
+def _known_source(source: str) -> None:
+    if source not in SEARCH_ORDER:
+        raise works.WorkNotFound(f"取得元 {source} はありません")
+
+
 def choose(conn: sqlite3.Connection, work_id: int, source: str, source_id: str | None) -> None:
     """確認待ち(または別の候補への変更)の候補を選ぶ。source_id が None なら「該当なし」。
     選んだ結果は手動の決定として固定し、再取得で変えない。"""
     with db.transaction(conn) as c:
         if works.root_of(c, work_id) != work_id:
             raise works.WorkNotFound(work_id)
+        _known_source(source)
         row = _link_row(c, work_id, source)
         if row is None:
             raise works.Conflict("この取得元はまだ取得していません")
@@ -369,6 +375,7 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
     with db.transaction(conn) as c:
         if works.root_of(c, work_id) != work_id:
             raise works.WorkNotFound(work_id)
+        _known_source(source)
         row = _link_row(c, work_id, source)
         if row is None or not row["manual"]:
             raise works.Conflict("この連携は手動で選ばれていません")
@@ -513,6 +520,7 @@ def _usable_alias(name: str) -> bool:
 
 def _apply_aliases(c, work_id: int, links: dict[str, sqlite3.Row]) -> None:
     title = normalize_title(works._title_of(c, work_id)[0])
+    wanted: set[str] = set()
     for source, r in links.items():
         if r["status"] != "linked" or not r["item"]:
             continue
@@ -527,10 +535,16 @@ def _apply_aliases(c, work_id: int, links: dict[str, sqlite3.Row]) -> None:
                 continue
             if added >= ALIAS_LIMIT:
                 break
+            wanted.add(normalize_title(name))
             works._insert_alias(c, work_id, name.strip(), works.SOURCE_PUBLIC_DB, manual=False,
                                 confidence=min(float(r["confidence"] or 0.0), 1.0),
                                 evidence={"source": source, "source_id": r["source_id"]})
             added += 1
+    # 連携が外れた(または別の候補になった)ら、その公開 DB 由来の別名も外す。手動の別名と、利用者が外した別名は触らない
+    for a in c.execute("SELECT id, norm FROM work_aliases WHERE work_id = ? AND source = ? AND manual = 0 "
+                       "AND dismissed_at IS NULL", (work_id, works.SOURCE_PUBLIC_DB)).fetchall():
+        if a["norm"] not in wanted:
+            c.execute("DELETE FROM work_aliases WHERE id = ?", (a["id"],))
 
 
 def _apply_volumes(c, work_id: int, links: dict[str, sqlite3.Row], findings: dict[int, list]) -> None:

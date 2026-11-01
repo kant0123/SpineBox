@@ -656,3 +656,62 @@ def test_volume_fields_are_transferred_to_the_new_volume(env_factory):
     kept = conn.execute("SELECT value FROM volume_fields WHERE volume_id = ? AND field = 'publisher'", (new,)).fetchone()[0]
     conn.close()
     assert kept == "手で直した出版社"
+
+
+# --- agy レビュー(PR #61)で見つかった抜けの回帰 ---------------------------------------------------
+
+
+def test_a_manually_chosen_link_keeps_the_work_out_of_automatic_merging(env_factory):
+    """手動で選んだ連携は手動の決定。強い証拠(同じ作品名)があっても、自動では統合せず提案に留める。"""
+    env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
+    ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
+    put_link(env, ws["Kakukaku Shikajika"], "anilist",
+             {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []}, confidence=0.95, manual=True)
+    env.client.post("/api/works/refresh")
+    assert len(env.client.get("/api/works").json()["works"]) == 2
+    proposals = env.client.get("/api/works/proposals").json()
+    assert len(proposals) == 1 and proposals[0]["rule"] == "alias"
+
+
+def test_public_db_aliases_go_away_with_the_link(env_factory):
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    w = env.fetch(wid)
+    assert any(a["source"] == "public_db" for a in w["aliases"])
+    for source in ("ndl", "anilist", "mangaupdates"):
+        r = env.client.post(f"/api/works/{wid}/links/{source}/choose", json={"source_id": None})
+        assert r.status_code == 200, r.text
+    w = env.work(wid)
+    assert [a["alias"] for a in w["aliases"] if a["source"] == "public_db"] == []
+    # 手動の別名は残る
+    env.client.post(f"/api/works/{wid}/aliases", json={"alias": "手で足した別名"})
+    env.client.post(f"/api/works/{wid}/links/anilist/reset")
+    assert "手で足した別名" in [a["alias"] for a in env.work(wid)["aliases"]]
+
+
+def test_approving_a_proposal_fills_the_volumes_that_joined_the_work(env_factory):
+    env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
+    ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
+    record = {"source_id": "r1", "volume": 1, "volume_label": "1", "title": KAKU, "subtitle": None, "publisher": "集英社",
+              "label": None, "released": "2012-01", "isbn": "9784088700000", "url": None, "score": 1.0, "response_key": None}
+    put_link(env, ws[KAKU], "ndl", {"title": KAKU, "authors": [], "kind": "manga", "publisher": "集英社", "label": None,
+                                    "records": [record]}, confidence=0.95)
+    put_link(env, ws["Kakukaku Shikajika"], "anilist",
+             {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []}, confidence=0.8)
+    env.client.post("/api/works/refresh")
+    proposal = env.client.get("/api/works/proposals").json()[0]
+    assert env.client.post(f"/api/works/proposals/{proposal['id']}/approve").status_code == 200
+    survivor = env.client.get("/api/works").json()["works"]
+    assert len(survivor) == 1
+    vols = env.volumes(env.work(survivor[0]["id"]))
+    first = next(v for v in vols if v["volume_number"] and v["volume_number"]["start"] == 1)
+    assert first["metadata"]["publisher"]["value"] == "集英社"
+
+
+@pytest.mark.parametrize("action", ["choose", "reset"])
+def test_unknown_source_is_404(env_factory, action):
+    env = env_factory("okiraku", OKIRAKU_FILES)
+    wid = env.work_id()
+    env.fetch(wid)
+    r = env.client.post(f"/api/works/{wid}/links/nosuch/{action}", json={"source_id": None})
+    assert r.status_code == 404
