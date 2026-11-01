@@ -85,7 +85,10 @@ def test_unsafe_entries_skipped_with_reason(tmp_path):
 
 
 def test_unsupported_formats(tmp_path):
+    # 7-Zip が見つからないときは 7z / rar を未対応にする。PATH に 7z がある環境(Actions の ubuntu)でも
+    # 確かめられるよう、存在しない 7-Zip のパスを明示する
+    missing = str(tmp_path / "no-such-7z")
     for name in ["a.7z", "a.rar", "a.cbr"]:
         (tmp_path / name).write_bytes(b"junk")
         with pytest.raises(UnsupportedArchive):
-            open_archive(tmp_path / name)
+            open_archive(tmp_path / name, sevenzip_path=missing)
