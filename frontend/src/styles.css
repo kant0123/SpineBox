@@ -234,3 +234,4 @@ button.secondary { background: transparent; color: var(--accent); }
 .bib-field { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
 .credits { margin: 24px 0 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
 .credits a { color: var(--accent); }
+.work-edit, .work-section, .credits { max-width: 720px; }

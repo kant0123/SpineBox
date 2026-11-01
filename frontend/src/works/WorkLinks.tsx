@@ -47,7 +47,13 @@ function Candidate({ c, action }: { c: LinkCandidate; action?: ReactNode }) {
 }
 
 function LinkCard({ l, busy, run, workId, onWork }: { l: WorkLink; busy: boolean; run: Run; workId: number; onWork: (w: WorkDetail) => void }) {
-  const choose = (sourceId: string | null) => run(async () => onWork(await api.chooseLink(workId, l.source as SourceName, sourceId)));
+  const choose = (sourceId: string | null) =>
+    run(async () => {
+      const chosen = await api.chooseLink(workId, l.source as SourceName, sourceId);
+      // 種別が決まって保留が解けた取得元は、保存済みの応答で連携し直す(新しい問い合わせは出ない)
+      const held = chosen.links.some((x) => x.hold === "kind_unresolved") && chosen.kind !== null;
+      onWork(held ? await api.fetchWorkMetadata(workId) : chosen);
+    });
   const reset = () => run(async () => onWork(await api.resetLink(workId, l.source as SourceName)));
   const others = l.candidates.filter((c) => c.source_id !== l.source_id);
   return (
@@ -113,7 +119,8 @@ function LinkCard({ l, busy, run, workId, onWork }: { l: WorkLink; busy: boolean
       )}
       {l.responses.length > 0 && (
         <p className="volume-meta">
-          取得: {l.responses.map((r) => `${r.fetched_at.slice(0, 16).replace("T", " ")}${r.stale ? "(古い保存分)" : r.from_cache ? "(保存分)" : ""}`).join(" / ")}
+          最終取得: {l.responses.map((r) => r.fetched_at).sort().slice(-1)[0].slice(0, 16).replace("T", " ")} (UTC)
+          {l.responses.some((r) => r.stale) ? "・古い保存分を使用" : l.responses.every((r) => r.from_cache) ? "・保存分を使用" : ""}
         </p>
       )}
     </li>
