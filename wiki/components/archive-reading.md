@@ -19,9 +19,9 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/archive/base.py:94 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
-| `spinebox/archive/base.py:139 open_archive` | 拡張子でリーダーを選ぶ。`reader_available()` は 7z / rar を「7-Zip が見つかるとき」だけ true にする |
-| `spinebox/archive/sevenzip.py:200 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
+| `spinebox/archive/base.py:101 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
+| `spinebox/archive/base.py:146 open_archive` | 拡張子でリーダーを選ぶ。`reader_available()` は 7z / rar を「7-Zip が見つかるとき」だけ true にする |
+| `spinebox/archive/sevenzip.py:251 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
 | `spinebox/pages.py:48 page_sort_key` | ページの並び(表紙 → 自然順) |

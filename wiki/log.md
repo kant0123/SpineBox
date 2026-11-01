@@ -146,5 +146,5 @@ grep "^## \[" wiki/log.md | tail -5
 
 
 ## [2026-11-02] ingest | 展開の RAM 層(7z / rar のページのまとめ取り出しと目次の持ち越し)
-- 更新: [[extraction-cache]], [[archive-reading]], [[server-setup]], [[overview]]
+- 更新: [[extraction-cache]], [[archive-reading]], [[server-setup]], [[overview]], [[backend]](コード参照の行番号のみ), [[volume-split]](コード参照の行番号のみ)
 - 備考: #54。利用者の提案(サーバー機では RAM を 8 GiB まで使ってよい)。先に `scripts/bench_reading.py` で RAM 層の有無を API 越しに測れるようにし、合成データ(cbz・zip 入り zip・ソリッド 7z・7z 入り rar・zip 入り 7z)で比べた。効いたのは 7z / rar だけ(ソリッド 7z の 1 巻通読でページ送りの平均 878 → 約 70〜80 ms、7z 入り rar 21 → 7 ms、同じページの再表示 44 → 4 ms)。zip のページ・内側 zip の本体を RAM に置く案は差が出なかったので入れていない。実データ(`_参考/`)の計測はローカル側で同じスクリプトを使う。
