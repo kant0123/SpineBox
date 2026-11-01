@@ -2,7 +2,7 @@
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
 updated: 2026-11-01
-related: [overview, backend, extraction-cache, server-setup, volume-split]
+related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection]
 ---
 
 # アーカイブの読み取り
@@ -65,6 +65,7 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 - 実データ(`_参考/サンプル本`)の形: 7z の中に rar があり、その中に rar と zip があり、さらに zip がある(深さ 3)。
   内側にさらにアーカイブがあれば、深さの上限(`max_depth` 既定 3)まで開いて、各段の画像 → 入れ子の順で続ける。
   開いたときに中の巻の単位を集めて子の巻に分ける([[volume-split]])。`max_depth` を変えると見える単位が変わるので、解析し直す
+  重複候補のための指紋(全ページの縮小デコード)も、この経路で巻を開いて 1 ページずつ読む([[duplicate-detection]])
 
 ## 危険なエントリ名と展開上限
 

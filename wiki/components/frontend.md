@@ -27,7 +27,7 @@ related: [overview, local-ci, server-setup, volume-split, duplicate-detection]
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/api.ts:162 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:48 Library()` | 一覧。食い違いの説明は `FindingDetail()` |
-| `frontend/src/mock/mockBackend.ts:88 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
+| `frontend/src/mock/mockBackend.ts:118 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗を差し込める |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
