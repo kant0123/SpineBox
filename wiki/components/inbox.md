@@ -22,10 +22,10 @@ related: [overview, backend, frontend, organize, work-grouping]
 | パス | 役割 |
 | --- | --- |
 | `spinebox/organize/intake.py:78 Intake` | 整理案(`evaluate`)、一覧・プレビュー(`list_items` / `preview`)、承認(`approve`)。`Decision` が利用者の選択(作品・新しい作品名・番号・取り込まない・見た出力先) |
-| `spinebox/config.py:73 InboxSetting` | 設定 `inbox_dirs`(受け入れフォルダと、入れる書庫の組)。検証は `_inboxes()` |
+| `spinebox/config.py:85 InboxSetting` | 設定 `inbox_dirs`(受け入れフォルダと、入れる書庫の組)。検証は `_inboxes()` |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 受け入れフォルダの巻を一覧から外す条件(`r.inbox = 0`)。受け入れの走査は `scan_inbox()` |
 | `spinebox/organize/organizer.py:352 execute` ほか | `kind="intake"` の実行・元に戻す(`execute` の `mode="move"`、`_undo_move_in`) |
-| `spinebox/app.py:925 inbox_list` | `GET /api/inbox`・`POST /api/inbox/sync`・`/preview`・`/approve` |
+| `spinebox/app.py:1039 inbox_list` | `GET /api/inbox`・`POST /api/inbox/sync`・`/preview`・`/approve` |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 画面(`#/inbox`)。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択 → 承認 → 履歴から元に戻す |
 
 ## 流れ

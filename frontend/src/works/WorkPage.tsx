@@ -8,6 +8,7 @@ import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from 
 import { VolumeMeta } from "./VolumeMeta";
 import { WorkLinks } from "./WorkLinks";
 import { ProposalCard } from "./WorkProposals";
+import { WorkFollowPanel } from "../follows/Follows";
 
 const FIELD_NAMES: Record<WorkFieldName, string> = {
   title: "作品名", author: "著者", kind: "種別", publisher: "出版社", genres: "ジャンル", tags: "タグ",
@@ -197,6 +198,7 @@ export function WorkPage({ id }: { id: string }) {
           {error}
         </div>
       )}
+      <WorkFollowPanel workId={work.id} follow={work.follow} onChanged={(follow) => setWork({ ...work, follow })} />
 
       <section className="work-section" aria-label="作品の情報">
         <form

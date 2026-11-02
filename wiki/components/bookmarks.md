@@ -24,7 +24,7 @@ related: [backend, frontend, organize, work-grouping, volume-split, overview]
 | `spinebox/works.py:379 _merge_bookmarks()` | 統合で吸収先へ移す(`merge_works()` から) |
 | `spinebox/db.py:40 MIGRATIONS` | 版 12 の `bookmarks`。作品か巻のどちらか一方(CHECK)、それぞれ部分一意索引で 1 つにつき 1 行 |
 | `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` | 付け外しのボタン。巻の一覧・作品ページ(作品と各巻)・リーダー / 小説リーダーのメニューに置く |
-| `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | 一覧の画面。入口は `frontend/src/route.ts:50 bookmarksHref` |
+| `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | 一覧の画面。入口は `frontend/src/route.ts:58 bookmarksHref` |
 
 ## 決めたこと
 

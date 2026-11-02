@@ -306,6 +306,15 @@ button.secondary { background: transparent; color: var(--accent); }
 .link-button { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; font: inherit; font-size: 0.85rem; text-decoration: underline; }
 .inbox-approve { align-items: center; }
 
+/* フォロー(#87) */
+.follow-card-head, .follow-entry { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.follow-releases { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.follow-release { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.follow-release.seen { opacity: 0.6; }
+.follow-kind { font-size: 0.75rem; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--border); }
+.follow-kind.new { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.follow-volume { font-weight: 600; overflow-wrap: anywhere; }
+.follow-panel { margin: 8px 0; }
 /* ブックマーク(#86) */
 button.bookmark-button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 0.85rem; background: transparent; color: var(--accent); border-color: var(--border); white-space: nowrap; }
 button.bookmark-button.on { color: var(--warn); border-color: var(--warn); }
