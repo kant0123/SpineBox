@@ -30,7 +30,8 @@ from .novel.books import Books
 from .metadata import MetadataService
 from .metadata.http import HttpFetcher
 from .organize.intake import MAX_NUMBER, Decision, Intake
-from .organize.organizer import OperationNotFound, OrganizeError, Organizer
+from .organize.organizer import OperationNotFound, OrganizeError, Organizer, RangeError, RangeNotFound
+from .organize.template import PARAMETERS, PRESETS, NameTemplate, TemplateError, range_examples
 from .pages import media_type, natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, safe_text
 from .thumbs import ThumbnailUnavailable, Thumbnails
@@ -62,6 +63,22 @@ class RenamePlanIn(BaseModel):
     """作品の全巻をテンプレートの名前へ改名・移動する計画。exclude_volume_ids は衝突などで外す巻。"""
     work_id: StrictInt
     exclude_volume_ids: list[StrictInt] = Field(default_factory=list)
+
+
+class RangePlanIn(BaseModel):
+    """範囲指定の整理(#84)。path は蔵書ルートからの相対(空ならルート全体。サブフォルダも対象)。
+    file_template / folder_template が両方空ならファイル名の整理だけ。exclude_volume_ids は外す巻。"""
+    root_id: StrictInt
+    path: StrictStr = ""
+    file_template: StrictStr = ""
+    folder_template: StrictStr = ""
+    exclude_volume_ids: list[StrictInt] = Field(default_factory=list)
+
+
+class RangeExampleIn(BaseModel):
+    file_template: StrictStr = ""
+    folder_template: StrictStr = ""
+    path: StrictStr = ""
 
 
 class InboxDecisionIn(BaseModel):
@@ -305,6 +322,14 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.exception_handler(OperationNotFound)
     def _op_not_found(request: Request, exc: OperationNotFound):
         return JSONResponse({"detail": "整理の操作が見つかりません"}, status_code=404)
+
+    @app.exception_handler(RangeError)
+    def _range_error(request: Request, exc: RangeError):
+        return JSONResponse({"detail": str(exc)}, status_code=422)
+
+    @app.exception_handler(RangeNotFound)
+    def _range_not_found(request: Request, exc: RangeNotFound):
+        return JSONResponse({"detail": str(exc)}, status_code=404)
 
     @app.exception_handler(OrganizeError)
     def _organize_error(request: Request, exc: OrganizeError):
@@ -856,6 +881,39 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.post("/api/organize/rename-plan")
     def organize_rename_plan(body: RenamePlanIn, conn: sqlite3.Connection = Depends(get_conn)):
         return organizer(conn).plan_rename(body.work_id, exclude_volume_ids=body.exclude_volume_ids)
+
+    # 範囲指定の整理(#84。データ管理の「整理」節)。選択肢・パスの例・フォルダ一覧・計画は読むだけ。
+    # 実行と元に戻すは他の整理と同じ /api/organize/{op_id}/execute・undo(ジョブの自動実行には入れない)
+
+    @app.get("/api/organize/range/options")
+    def organize_range_options(conn: sqlite3.Connection = Depends(get_conn)):
+        file_template, folder_template = NameTemplate(settings.name_template).range_templates()
+        roots = [{"id": r["id"], "path": r["path"], "online": bool(r["online"])} for r in conn.execute(
+            "SELECT id, path, online FROM library_roots WHERE enabled = 1 AND inbox = 0 ORDER BY id")]
+        return {"roots": roots, "defaults": {"file_template": file_template, "folder_template": folder_template},
+                "presets": [{"label": l, "file_template": f, "folder_template": d} for l, f, d in PRESETS],
+                "parameters": [{"token": t, "label": l} for t, l in PARAMETERS]}
+
+    @app.post("/api/organize/range/example")
+    def organize_range_example(body: RangeExampleIn):
+        """パスの例。テンプレートが不正なら error に理由を入れて返す(入力中に毎回呼ぶので 422 にしない)。"""
+        try:
+            return {"error": None, "examples": range_examples(body.file_template, body.folder_template, body.path)}
+        except TemplateError as e:
+            return {"error": str(e), "examples": []}
+
+    @app.get("/api/organize/range/folders")
+    def organize_range_folders(root_id: int, path: str = "", conn: sqlite3.Connection = Depends(get_conn)):
+        return organizer(conn).range_folders(root_id, path)
+
+    @app.post("/api/organize/range-plan")
+    def organize_range_plan(body: RangePlanIn, conn: sqlite3.Connection = Depends(get_conn)):
+        try:
+            return organizer(conn).plan_range(body.root_id, body.path, file_template=body.file_template,
+                                              folder_template=body.folder_template,
+                                              exclude_volume_ids=body.exclude_volume_ids)
+        except TemplateError as e:
+            raise HTTPException(422, str(e)) from e
 
     @app.get("/api/organize")
     def organize_history(conn: sqlite3.Connection = Depends(get_conn)):

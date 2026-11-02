@@ -8,6 +8,7 @@ import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
 import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
+import { OrganizeFilesPage } from "./organize/OrganizeFiles";
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
@@ -31,6 +32,8 @@ export function App() {
       return <Duplicates />;
     case "inbox":
       return <Inbox />;
+    case "organize-files":
+      return <OrganizeFilesPage />;
     case "works":
       return <Works />;
     case "work":

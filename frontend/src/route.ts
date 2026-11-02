@@ -11,13 +11,15 @@ export type Route =
   | { name: "works" }
   | { name: "work"; id: string }
   | { name: "work-proposals" }
-  | { name: "inbox" };
+  | { name: "inbox" }
+  | { name: "organize-files" };
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
+  if (/^\/data\/organize\/?$/.test(h)) return { name: "organize-files" };
   if (/^\/works\/?$/.test(h)) return { name: "works" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
@@ -43,6 +45,8 @@ export const libraryHref = "#/";
 export const duplicatesHref = "#/duplicates";
 /** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
 export const inboxHref = "#/inbox";
+/** 範囲指定の整理(ファイル名・フォルダーのテンプレート、ファイル名の整理)。データ管理ページ(#83)の「整理」節の単独版 */
+export const organizeFilesHref = "#/data/organize";
 export const worksHref = "#/works";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;

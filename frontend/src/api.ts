@@ -461,11 +461,14 @@ export interface OrganizeItem {
   reason: string | null;
   /** 1 巻 = 1 CBZ でない巻。この巻から「CBZ に整理」(テンプレートの名前)を始められる */
   cbz_volume_id: number | null;
+  /** ファイル名の整理で何を直したか(範囲指定の整理でテンプレートを空にしたとき) */
+  changes?: string[];
 }
 
 /** cbz: 1 ソース → 巻ごとの CBZ / rename: 1 巻 = 1 CBZ の巻をテンプレートの名前へ改名・移動するだけ /
+ *  range: 範囲(蔵書ルートの中のパス)の巻を整理画面のテンプレート・ファイル名の整理で改名・移動するだけ(#84) /
  *  intake: 受け入れフォルダの本を書庫へ入れる(#66。mode が cbz なら CBZ にして、move なら中身を変えずに移す) */
-export type OrganizeKind = "cbz" | "rename" | "intake";
+export type OrganizeKind = "cbz" | "rename" | "range" | "intake";
 /** 出力名: 巻の表示名(title)か命名テンプレート(template) */
 export type OrganizeNaming = "title" | "template";
 
@@ -474,8 +477,10 @@ export interface OrganizeOp {
   kind?: OrganizeKind;
   naming?: OrganizeNaming;
   template?: string | null;
-  work_id?: number;
+  work_id?: number | null;
   items?: OrganizeItem[];
+  /** 範囲指定の整理(kind が range)のとき */
+  scope?: OrganizeScope;
   /** 受け入れ(kind が intake)のとき */
   mode?: "cbz" | "move" | null;
   work?: { kind: string; work_id: number | null; title: string; decided: boolean } | null;
@@ -495,6 +500,46 @@ export interface OrganizeOp {
   problems: string[];
   /** 中の巻をまだ調べていない内側アーカイブの巻 id(先に api.analyze が要る) */
   needs_analysis?: number[];
+}
+
+export interface OrganizeScope {
+  root_id: number;
+  root_path: string;
+  /** 蔵書ルートからの相対パス(空ならルート全体) */
+  path: string;
+  file_template: string;
+  folder_template: string;
+}
+
+// 範囲指定の整理(#84。データ管理の「整理」節)の選択肢・パスの例・フォルダ一覧
+export interface RangeOptions {
+  roots: { id: number; path: string; online: boolean }[];
+  /** 設定 name_template を整理画面の書き方にしたもの */
+  defaults: { file_template: string; folder_template: string };
+  presets: { label: string; file_template: string; folder_template: string }[];
+  parameters: { token: string; label: string }[];
+}
+
+export interface RangeExample {
+  label: string;
+  path: string | null;
+  reason: string | null;
+}
+
+export interface RangeFolders {
+  root_id: number;
+  path: string;
+  /** 1 つ上(ルートなら null) */
+  parent: string | null;
+  folders: string[];
+}
+
+export interface RangePlanRequest {
+  root_id: number;
+  path: string;
+  file_template: string;
+  folder_template: string;
+  exclude_volume_ids: number[];
 }
 
 // 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ。spinebox/organize/intake.py)
@@ -647,6 +692,21 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ work_id: Number(workId), exclude_volume_ids: excludeVolumeIds }),
+    }),
+  rangeOptions: () => request<RangeOptions>("/api/organize/range/options"),
+  rangeExample: (fileTemplate: string, folderTemplate: string, path: string) =>
+    request<{ error: string | null; examples: RangeExample[] }>("/api/organize/range/example", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_template: fileTemplate, folder_template: folderTemplate, path }),
+    }),
+  rangeFolders: (rootId: number, path: string) =>
+    request<RangeFolders>(`/api/organize/range/folders?root_id=${rootId}&path=${encodeURIComponent(path)}`),
+  planRange: (body: RangePlanRequest) =>
+    request<OrganizeOp>("/api/organize/range-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     }),
   executeOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/execute`, { method: "POST" }),
   undoOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/undo`, { method: "POST" }),
