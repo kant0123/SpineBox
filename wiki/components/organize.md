@@ -44,7 +44,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:773 plan_range` | 範囲指定の整理の計画(#84)。範囲のパスは `range_path`、フォルダを選ぶ一覧は `range_folders`。振り分けは `plan_rename` と共有の `_classify_renames`、対象の判定は `_range_ineligible` |
 | `spinebox/organize/template.py:273 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
 | `spinebox/organize/cleanup.py:85 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定は `fix_mojibake` |
-| `frontend/src/organize/OrganizeFiles.tsx:178 OrganizeFilesSection` | 整理画面の中身。データ管理ページ(`frontend/src/data/DataJobs.tsx`。[[data-jobs]])の下の「整理」節にこの部品を置く。一覧の「ファイル名の整理」の入口 `#/data/organize` は同じページの「整理」節へ移す |
+| `frontend/src/organize/OrganizeFiles.tsx:178 OrganizeFilesSection` | 整理画面の中身。管理のデータ管理タブ(`frontend/src/data/DataJobs.tsx`。[[data-jobs]])の下の「整理」節にこの部品を置く。単独の入口 `#/data/organize` は同じタブの「整理」節へ移す(巻の一覧のヘッダーの「ファイル名の整理」は、データ管理タブに同じ入口があるので外した) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
 | `spinebox/organize/organizer.py:1184 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークは写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |

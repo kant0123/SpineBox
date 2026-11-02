@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import bookmarks, db, follows, linking, search, works
+from . import bookmarks, db, follows, linking, search, stats, works
 from .analysis import compute_findings
 from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
 from .duplicates import CandidateNotFound, candidate_counts, dismiss
@@ -36,7 +36,7 @@ from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer, RangeError, RangeNotFound
 from .organize.template import PARAMETERS, PRESETS, NameTemplate, TemplateError, range_examples
 from .pages import media_type, natural_key
-from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, safe_text
+from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, inbox_prefixes, safe_text
 from .thumbs import ThumbnailUnavailable, Thumbnails
 
 log = logging.getLogger(__name__)
@@ -404,14 +404,29 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return {"volumes": result.volumes, "offline_roots": result.offline_roots,
                 "issues": result.issues, "issues_total": result.issues_total}
 
+    @app.get("/api/libraries")
+    def list_libraries(conn: sqlite3.Connection = Depends(get_conn)):
+        """蔵書の切り替え(#85)の候補: 設定にある蔵書ルート(受け入れフォルダを除く)と、一覧に見えている巻の数。
+
+        id を /api/works・/api/volumes・/api/stats の root に渡すと、その蔵書ルートの巻だけに絞る。
+        オフラインのルートも出す(巻はオフラインとして一覧に残る)。
+        """
+        counts = {r[0]: r[1] for r in conn.execute(
+            "SELECT r.id, COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + " GROUP BY r.id")}
+        rows = conn.execute("SELECT id, path, online FROM library_roots WHERE enabled = 1 AND inbox = 0 ORDER BY id")
+        return [{"id": r["id"], "name": _root_name(r["path"]), "path": r["path"], "online": bool(r["online"]),
+                 "volume_count": counts.get(r["id"], 0)} for r in rows]
+
     @app.get("/api/volumes")
-    def list_volumes(conn: sqlite3.Connection = Depends(get_conn)):
+    def list_volumes(root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+        """一覧に見えている巻。root は蔵書の切り替え(/api/libraries の id。知らない id なら空)。"""
         rows = conn.execute(
             """SELECT v.id, v.title, v.page_count, v.container_path, v.entry_prefix, v.inner_path, v.parent_id,
                       v.number_kind, v.number_start, v.number_end, v.number_evidence, v.analyzed_version,
                       v.format, pv.title AS parent_title, pv.entry_prefix AS parent_prefix, s.rel_path,
                       s.offline AS source_offline, r.online AS root_online, p.page, p.finished, p.position"""
             + LISTED_VOLUMES_JOIN + " LEFT JOIN reading_progress p ON p.volume_id = v.id " + LISTED_VOLUMES_WHERE
+            + ("" if root is None else " AND r.id = ?"), () if root is None else (root,)
         ).fetchall()
         rows.sort(key=_list_sort_key)
         findings = compute_findings(conn)
@@ -592,14 +607,39 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.get("/api/works")
     def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
-                   genre: str | None = None, tag: str | None = None, status: str | None = None,
-                   conn: sqlite3.Connection = Depends(get_conn)):
+                   genre: str | None = None, tag: str | None = None, publisher: str | None = None,
+                   status: str | None = None, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
 
-        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / status は絞り込み。
+        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status は絞り込み。
+        root は蔵書の切り替え(#85。/api/libraries の id。その蔵書ルートの巻だけで数える。知らない id なら空)。
         """
         return works.list_works(conn, q, {"author": author, "kind": kind, "genre": genre, "tag": tag,
-                                          "status": status})
+                                          "publisher": publisher, "status": status}, root_id=root)
+
+    @app.get("/api/works/facets/{name}")
+    def list_work_facet(name: str, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+        """著者・タグ・出版社などの一覧(#85): 値と、その値を持つ作品の数。name は author / kind / genre / tag / publisher。"""
+        if name not in search.FILTER_FIELDS:
+            raise HTTPException(404, f"未対応の項目: {name}")
+        listing = works.list_works(conn, root_id=root)
+        return {"name": name, "values": search.facet_counts(search.field_values(conn),
+                                                             [w["id"] for w in listing["works"]], name)}
+
+    @app.get("/api/stats")
+    def get_stats(root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+        """管理の統計タブ(#85)の数値。root は蔵書の切り替え(読めなかったもの・キャッシュは絞らない)。"""
+        return stats.collect(conn, root_id=root, thumbs=thumbs, disk=cache, memory=memory, thumb_store=thumbs.store,
+                             inbox_prefixes=inbox_prefixes(settings))
+
+    @app.get("/api/settings")
+    def get_settings():
+        """管理の好みタブ(#85)に出すサーバー側の設定(読み取りだけ。変えるのは設定ファイル)。"""
+        return {"untranslated_terms": settings.metadata.untranslated_terms,
+                "cache_limit_bytes": settings.cache_limit_bytes,
+                "memory_cache_limit_bytes": settings.memory_cache_limit_bytes,
+                "metadata_sources": list(enabled_sources),
+                "metadata_background": settings.metadata.background}
 
     @app.post("/api/works/refresh")
     def refresh_works():
@@ -1044,6 +1084,12 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     if frontend_dist is not None and (frontend_dist / "index.html").is_file():
         _mount_frontend(app, frontend_dist)
     return app
+
+
+def _root_name(path: str) -> str:
+    """蔵書ルートの表示名: 最後のフォルダ名(ドライブ直下なら文字列のまま)。サーバー機の Windows のパスも区切る。"""
+    name = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    return name or path
 
 
 def _mount_frontend(app: FastAPI, dist: Path) -> None:

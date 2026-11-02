@@ -290,8 +290,8 @@ export interface WorkSummary {
 
 export type ReadingState = "unread" | "reading" | "finished";
 
-/** 作品一覧の絞り込み(#56)。kind / genre / tag は公開 DB の項目(#50)があるときだけ候補が出る */
-export type WorkFilterName = "author" | "kind" | "genre" | "tag";
+/** 作品一覧の絞り込み(#56)。kind / genre / tag / publisher は公開 DB の項目(#50)があるときだけ候補が出る */
+export type WorkFilterName = "author" | "kind" | "genre" | "tag" | "publisher";
 
 export interface WorkQuery {
   /** 全文検索の語(空白区切りで AND。作品名・別名・著者・巻の名前・その他の項目) */
@@ -300,7 +300,10 @@ export interface WorkQuery {
   kind?: string;
   genre?: string;
   tag?: string;
+  publisher?: string;
   status?: ReadingState;
+  /** 蔵書の切り替え(#85。LibraryRoot の id)。その蔵書ルートの巻だけで一覧を作る */
+  root?: string;
 }
 
 export interface WorkList {
@@ -810,7 +813,62 @@ async function errorDetail(res: Response): Promise<string | undefined> {
   }
 }
 
+/** 蔵書ルート(サイドバーの蔵書の切り替え #85) */
+export interface LibraryRoot {
+  id: number;
+  /** 最後のフォルダ名 */
+  name: string;
+  /** サーバー機のパス */
+  path: string;
+  online: boolean;
+  volume_count: number;
+}
+
+/** 著者・タグ・出版社などの一覧の 1 行 */
+export interface FacetValue {
+  value: string;
+  /** その値を持つ作品の数 */
+  count: number;
+}
+
+export interface CacheUsage {
+  used_bytes: number;
+  limit_bytes: number;
+}
+
+/** 管理の統計タブ(GET /api/stats) */
+export interface LibraryStats {
+  root_id: number | null;
+  works: {
+    total: number; manga: number; novel: number; kind_unknown: number;
+    finished: number; reading: number; unread: number;
+    /** 公開 DB の候補が確認待ちの作品 */
+    link_pending: number;
+    with_missing: number;
+    /** 表紙をまだ作っていない作品(画像の巻がある作品だけ) */
+    no_cover: number;
+  };
+  volumes: { total: number; images: number; novels: number; offline: number; finished: number; reading: number; unread: number };
+  /** 画像の巻のページ数。unknown_volumes はページ数が未確定(入れ子で未展開)の巻 */
+  pages: { total: number; unknown_volumes: number };
+  unassigned_volumes: number;
+  duplicate_candidates: number;
+  /** 読めなかったもの(蔵書の切り替えでは絞らない) */
+  scan_issues: number;
+  cache: { disk: CacheUsage; memory: CacheUsage; thumbnails: CacheUsage };
+}
+
+/** サーバー側の設定(読み取りだけ。変えるのはサーバー機の設定ファイル) */
+export interface ServerSettings {
+  untranslated_terms: "hide" | "keep" | string;
+  cache_limit_bytes: number;
+  memory_cache_limit_bytes: number;
+  metadata_sources: SourceName[];
+  metadata_background: boolean;
+}
+
 const vid = (id: VolumeId) => encodeURIComponent(String(id));
+const rootQuery = (root?: string | null) => (root ? `?root=${encodeURIComponent(root)}` : "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -822,7 +880,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  listVolumes: () => request<VolumeSummary[]>("/api/volumes"),
+  listVolumes: (root?: string | null) => request<VolumeSummary[]>(`/api/volumes${rootQuery(root)}`),
+  /** 蔵書の切り替えの候補(受け入れフォルダを除く蔵書ルート) */
+  listLibraries: () => request<LibraryRoot[]>("/api/libraries"),
+  /** 著者・タグ・出版社などの値と作品数 */
+  listFacet: (name: WorkFilterName, root?: string | null) =>
+    request<{ name: WorkFilterName; values: FacetValue[] }>(`/api/works/facets/${name}${rootQuery(root)}`),
+  stats: (root?: string | null) => request<LibraryStats>(`/api/stats${rootQuery(root)}`),
+  serverSettings: () => request<ServerSettings>("/api/settings"),
   getVolume: (id: VolumeId) => request<VolumeDetail>(`/api/volumes/${vid(id)}`),
   scan: () => request<ScanResult>("/api/scan", { method: "POST" }),
   analyze: (id: VolumeId) => request<AnalyzeResult>(`/api/volumes/${vid(id)}/analyze`, { method: "POST" }),

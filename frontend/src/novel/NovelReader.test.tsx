@@ -69,7 +69,7 @@ afterEach(() => {
 describe("縦書きリーダー", () => {
   it("一覧に小説として出て、縦書きで最初から最後まで読め、既読で保存される", async () => {
     await act(async () => {
-      window.location.hash = "";
+      window.location.hash = "#/volumes";
     });
     render(<App />);
     const card = (await screen.findByText("縦書きの小説 第1巻")).closest("li")!;

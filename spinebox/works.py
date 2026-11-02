@@ -1051,13 +1051,20 @@ def _volume_meta(c) -> dict[int, dict]:
     return meta
 
 
-def _listed_volumes(c, with_meta: bool = False) -> dict[int, list[dict]]:
+def _listed_volumes(c, with_meta: bool = False, root_id: int | None = None) -> dict[int, list[dict]]:
+    """作品 id → 一覧に見えている巻。root_id を渡すと、その蔵書ルートの巻だけ(蔵書の切り替え #85)。"""
     dups = candidate_counts(c)
     meta = _volume_meta(c) if with_meta else None
     by_work: dict[int, list[dict]] = defaultdict(list)
-    for r in c.execute(_VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE):
+    where, params = _root_condition(root_id)
+    for r in c.execute(_VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE + where, params):
         by_work[r["work_id"]].append(_volume_json(r, dups, meta))
     return by_work
+
+
+def _root_condition(root_id: int | None) -> tuple[str, tuple]:
+    """一覧に見えている巻の条件(LISTED_VOLUMES_WHERE)に足す、蔵書ルートの絞り込み。"""
+    return ("", ()) if root_id is None else (" AND r.id = ?", (root_id,))
 
 
 def _open_proposal_counts(c) -> dict[int, int]:
@@ -1110,11 +1117,13 @@ def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) 
     }
 
 
-def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None) -> dict:
+def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None,
+               root_id: int | None = None) -> dict:
     """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
 
-    q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / status(読書状態)の絞り込み。
-    total は絞る前の作品数、facets は絞り込みの候補(絞る前の作品から作る)。
+    q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / publisher / status(読書状態)の絞り込み。
+    root_id は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・読書状態などもそのルートの巻で数える。
+    total は絞る前の作品数(蔵書の切り替えの後)、facets は絞り込みの候補(同じく絞る前の作品から作る)。
     """
     wanted = search.check_filters(filters or {})
     try:
@@ -1127,7 +1136,7 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
     hits = search.match_ids(conn, q)
     values = search.field_values(conn)
     works = _work_rows(conn)
-    vols = _listed_volumes(conn)
+    vols = _listed_volumes(conn, root_id=root_id)
     opens = _open_proposal_counts(conn)
     pending_links = {r["work_id"]: r["n"] for r in conn.execute(
         "SELECT work_id, COUNT(*) AS n FROM work_links WHERE status = 'pending' GROUP BY work_id")}
@@ -1145,7 +1154,8 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
         s["merged"] = wid in merged_roots
         out.append(s)
     out.sort(key=lambda s: natural_key(s["title"]))
-    total = conn.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
+    where, params = _root_condition(root_id)
+    total = conn.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + where, params).fetchone()[0]
     assigned = sum(len(v) for v in vols.values())
     facets = search.facets(values, [s["id"] for s in out])
     shown = [s for s in out if (hits is None or s["id"] in hits)

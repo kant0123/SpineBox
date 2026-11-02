@@ -92,13 +92,31 @@ WHERE v.id = ?
 """
 
 
+def _is_hidden(row: sqlite3.Row | None) -> bool:
+    # 整理処理で CBZ に置き換えた巻(organized_op_id)は、行を残したまま見えない扱いにする
+    return (row is None or bool(row["missing"] or row["source_missing"] or not row["root_enabled"]
+            or row["parent_missing"] or row["organized_op_id"] is not None))
+
+
 def get_volume_row(conn: sqlite3.Connection, volume_id: int) -> sqlite3.Row:
     row = conn.execute(VOLUME_QUERY, (volume_id,)).fetchone()
-    # 整理処理で CBZ に置き換えた巻(organized_op_id)は、行を残したまま見えない扱いにする
-    if (row is None or row["missing"] or row["source_missing"] or not row["root_enabled"]
-            or row["parent_missing"] or row["organized_op_id"] is not None):
+    if _is_hidden(row):
         raise VolumeNotFound(volume_id)
     return row
+
+
+def get_volume_rows(conn: sqlite3.Connection, volume_ids: list[int]) -> dict[int, sqlite3.Row]:
+    """見える巻の行を、500 件ずつ IN でまとめて引く(get_volume_row と同じ見え方。見えない巻は含めない)。
+    多数の巻を 1 件ずつ引くと巻の数だけ SELECT を発行するので、全作品を見る処理(統計)はこちらを使う。"""
+    out: dict[int, sqlite3.Row] = {}
+    ids = list(dict.fromkeys(volume_ids))
+    base = VOLUME_QUERY.replace("WHERE v.id = ?", "WHERE v.id IN ({})")
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        for row in conn.execute(base.format(",".join("?" * len(chunk))), chunk):
+            if not _is_hidden(row):
+                out[row["id"]] = row
+    return out
 
 
 def is_analyzable(row) -> bool:

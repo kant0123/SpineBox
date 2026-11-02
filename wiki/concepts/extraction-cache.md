@@ -1,14 +1,14 @@
 ---
 type: concept
 summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ(ディスク)と、7z / rar のページと目次を置く RAM 層。どちらも容量上限つき LRU、スキャンでは使わない。RAM 層を 7z / rar に絞った計測結果と、実データでの計測
-updated: 2026-11-02
+updated: 2026-11-03
 related: [overview, backend, archive-reading, volume-split, duplicate-detection, server-setup, cover-thumbnails]
 ---
 
 # 展開キャッシュと RAM 層
 
 内側アーカイブ(アーカイブの中のアーカイブ)の巻を開いたときだけ、内側アーカイブを丸ごと `data_dir/cache/` に取り出す。
-入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:349 _expand`(入れ子の各段を再帰で開く)。
+入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:368 _expand`(入れ子の各段を再帰で開く)。
 
 ## 内容
 
@@ -33,7 +33,7 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
   まとめる枚数は前回の取り出しの続きを読むたびに 1 → 2 → 4 … 64 枚と倍にし、続きでなければ 1 枚に戻す(`_ArchiveState`)。
   バイト数は 128 MiB と RAM 層の上限の 1/4 の小さい方まで。同じ書庫の取り出しは直列化し(フロントは前後を並行で先読みする)、
   後から来た要求は先の取り出しが置いたものを使う。まとめ取り出しが失敗したら、要求されたページだけを 1 枚で読み直す
-- **分解で作った子の巻も同じキーで取り出す**(`spinebox/library.py:303 _extract`)。親を開いた後に子を開いても取り出し直さない。
+- **分解で作った子の巻も同じキーで取り出す**(`spinebox/library.py:337 _extract`)。親を開いた後に子を開いても取り出し直さない。
   子は親の内側アーカイブから自分の段までだけを取り出すので、v01 を読むのに v02・v03 の zip は取り出さない([[volume-split]])
 
 ## なぜこうなっているか

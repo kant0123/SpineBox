@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
+summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
 updated: 2026-11-03
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
@@ -20,6 +20,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 | パス | 役割 |
 | --- | --- |
+| `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:72 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
+| `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
+| `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
+| `frontend/src/admin/Admin.tsx:29 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口) |
+| `frontend/src/browse/FacetList.tsx:17 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧 |
 | `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
 | `frontend/src/reader/Reader.tsx:49 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
 | `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
@@ -28,12 +33,12 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:150 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。「情報を補完」で全作品の取得を起動し、実行中は 2 秒ごとに状態を見る)。作品ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
-| `frontend/src/data/DataJobs.tsx:130 DataJobs()` | データ管理の画面(`#/data`。[[data-jobs]])。作品・巻の一覧のタブ `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` から辿る。モックは `frontend/src/mock/mockJobs.ts` |
-| `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()`(`#/follows/manage`)はフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。#85 のサイドバー・管理のタブが入るまでは、作品一覧のヘッダーの「フォロー」から入る |
+| `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。モックは `frontend/src/mock/mockJobs.ts` |
+| `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。「表紙を作る」と進み具合は `Works()` |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
-| `frontend/src/api.ts:824 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:882 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 
@@ -54,7 +59,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:77 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:119 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
@@ -96,14 +101,46 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **作品ページの「手で直した項目」は出所を明示する。** 作品名・著者・別名・巻の割り当てごとに「手動で編集 / ファイル名から(確信度 90%)/ 重複候補の証拠で統合」を出す。名寄せは名前の推測なので、利用者が根拠を見て直せるようにするため。
   提案は確信度と根拠(一致ページ数)を見せ、承認するまで統合しない。巻の付け替えは巻のチェックボックスで選んで「新しい作品に分ける」/「この作品へ移す」(手動の決定になり再計算で戻らない)
 - **ジャンル・タグ・出版社・候補はサーバーが日本語にして返すので、画面では訳さない**(#74)。あらすじは #82 で廃止し、作品ページに表示・編集の欄を置かない([[metadata-linking]] の「あらすじの廃止」)
-- **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(公開 DB の情報がまだ無い作品だけのときの種別・ジャンル・タグ)は選択欄ごと出さない。種別の候補は `manga` / `novel` で届くので `KIND_TEXT` で漫画・小説と表示する。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/mock/mockWorks.ts:22 normalizeSearch()` でバックエンドと同じ正規化を真似ている
+- **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(公開 DB の情報がまだ無い作品だけのときの種別・ジャンル・タグ)は選択欄ごと出さない。種別の候補は `manga` / `novel` で届くので `KIND_TEXT` で漫画・小説と表示する。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/util/normalize.ts:2 normalizeSearch()` でバックエンドと同じ正規化を真似ている
 - **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
   取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
-- **データ管理(`#/data`。#83)は一覧のタブ(作品 / 巻 / データ管理)から辿る。** ヘッダーのボタンは 375px で既に 3 段に折り返すので、ボタンを足さずタブに置いた。ページの下に「整理」節(#84 の `OrganizeFilesSection`。ジョブではなく、プレビュー → 実行 → 元に戻す)があり、`#/data/organize` はそこへ移す。
-  ジョブを見出し(日常の同期 / ライブラリ全体 / 個別)ごとに説明と対象の件数つきで並べ、実行中は進み具合・今の対象・「中止」、待ち行列は「取り下げ」、履歴は新しい順で失敗の理由を出す。
+- **ホーム(`#/`)は作品の一覧。** 巻の一覧は `#/volumes`(作品一覧の「巻」タブ)。#85 までは `#/` が巻の一覧だったので、リーダー・整理の画面の「一覧へ」(`libraryHref`)はホームへ戻る。`#/works` もホームと同じ画面
+
+## 画面構成(#85。Peach との対応)
+
+利用者の求めで、Peach(動画向けのローカルメディア管理アプリ)と同じく「常に表示するサイドバー + 管理のタブ」にした。
+
+| Peach | SpineBox |
+| --- | --- |
+| メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
+| ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
+| フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86)。どちらも単独の画面をそのままサイドバーの中に出す |
+| 管理: 統計・好み・データ管理・フォロー管理・タスクセンター | 同じ 5 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `follows` / `tasks`) |
+| 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
+
+- **既存の画面はサイドバーの中に収め、どのナビの下かを `activeNav()` で決める。** 作品ページ・巻の一覧・提案はホーム、重複の候補・受け入れ・整理は管理。
+  リーダーだけはサイドバーを出さない(読むときに画面を狭めない)。直リンク `#/read/<id>` もそのまま
+- **横長では常に表示し、開閉ボタンでアイコンだけの帯(60px)にする。スマホ幅(CSS の 768px 未満)ではハンバーガーの引き出し。**
+  幅の判定は CSS だけで行い、JS は「細くしたか(`spinebox.sidebar`)」と「引き出しが開いているか」だけを持つ(回転で幅が変わっても状態が食い違わない)。
+  引き出しはナビを選ぶ・画面が変わる・Esc・背景のタップで閉じる
+- **ライト/ダークは CSS 変数の 2 組。** `<html data-theme>` があればそちら、無ければ `prefers-color-scheme` に従う。既定は OS に従い、
+  サイドバーの切り替えを押すと「いま効いている方の逆」を `localStorage`(`spinebox.theme`)に記憶する。OS に従うへ戻すのは好みタブから。
+  `main.tsx` で描画の前に適用するのは、ダークで開いたときに一瞬ライトになるのと、リーダーから直接開いたときに付かないのを避けるため
+- **蔵書の切り替えは端末ごとに記憶し(`spinebox.library`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
+  設定からルートを外しても、端末に残った id で一覧が空になり続けないように。オフラインのルートも候補に出す(巻はオフラインとして残る)
+- **好みタブの各項目の置き場所:** テーマ・リーダーの既定(見開き・表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。リーダーの中で変えたものと同じ鍵)。
+  スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
+  画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため
+- **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)
+- **管理のタブへの組み込み(`frontend/src/admin/panels.tsx`)。** フォロー管理は `FollowManage`(`embedded` で見出しを外す)、データ管理・タスクセンターは `DataJobs`(下)と、データ管理の下の今ある画面(巻の一覧のスキャン・重複の候補・統合の提案・受け入れ・整理の履歴)への入口。
+  タブの中に置いた既存の画面は、自前の余白・幅の上限を CSS(`.admin-panel .library` ほか)で外して二重に空かないようにする。
+  旧 `#/follows/manage`・`#/data` は管理のフォロー管理タブを開く(`followManageHref` は `#/admin/follows`)。単独の `#/data/organize` は管理のデータ管理タブの整理の節を開く
+- **データ管理(#83)とタスクセンターは同じジョブの画面を 2 つのタブに分けて出す。** `DataJobs` の `view="data"` はジョブを見出し(日常の同期 / ライブラリ全体 / 個別)ごとに説明と対象の件数つきで並べて依頼する画面と、
+  下の「整理」節(#84 の `OrganizeFilesSection`。ジョブではなく、プレビュー → 実行 → 元に戻す。`#/data/organize` はそこへ移る)。`view="tasks"` は実行中の進み具合・今の対象・「中止」、待ち行列の「取り下げ」、履歴(新しい順で失敗の理由つき)。
   実行中・待ちがある間だけ 1.5 秒ごとに状態を見に行き、全部終わったら対象の件数を取り直す。依頼済みの種類のボタンは「依頼済み」で押せない。
-  既存の画面の「表紙を作る」「情報を補完」「名寄せを取り直す」の失敗はサーバーの `detail`(ほかのジョブの実行中など)をそのまま出す
-- **作品の一覧と巻の一覧は別画面で、既定は巻の一覧のまま。** 作品の画面は `#/works`。巻の一覧のカード・リーダーは変えていない
+  既存の画面の「表紙を作る」「情報を補完」「名寄せを取り直す」の失敗はサーバーの `detail`(ほかのジョブの実行中など)をそのまま出す。
+  #83 では一覧の「作品 / 巻 / データ管理」のタブから辿っていたが、サイドバーが入ったので外した(巻の一覧のヘッダーの「ファイル名の整理」「整理の履歴」も、データ管理のタブに同じ入口があるので外した)
+- **作品の一覧(ホーム)と巻の一覧(`#/volumes`)は別画面。** 巻の一覧のカード・リーダーは変えていない
 
 ## 落とし穴
 
@@ -136,7 +173,10 @@ npm run build      # frontend/dist
 
 ## 経緯
 
-- #83 でデータ管理の画面(`#/data`。[[data-jobs]])を足した。合成の蔵書(入れ子の zip・受け入れフォルダつき)と実バックエンドを 375px と 1100px のヘッドレス Chromium で開き、
+- #85 でサイドバーと管理のタブ(Peach と同じ画面構成)、ライト/ダーク、蔵書の切り替え、著者・タグ・出版社の一覧、統計・好みタブを足した。ホームを作品一覧にし、巻の一覧を `#/volumes` へ移した。
+  `npm run dev:mock` を 375px と 1280px のヘッドレス Chromium(ライト・ダークの両方)で開き、ホーム・著者・管理(統計・好み・データ管理)・巻の一覧・作品ページ・受け入れ・リーダーで横スクロールが出ないこと、
+  引き出し・細い帯・蔵書の切り替え・テーマの記憶(再読み込み後も残る)を確認した。コンソールのエラーは表紙の 404 pending(既存の挙動)だけ。ローカル引き取りで main(#86・#87・#84・#83)を取り込み、フォロー・ブックマークをサイドバーへ、フォロー管理・整理を管理のタブへ載せ、`_参考/サンプル本` の実サーバーで 375px・横長を確認した(詳細は `wiki/log.md`)。データ管理のジョブ・タスクセンターは #83 の `DataJobs` を載せた
+- #83 でデータ管理の画面(当時は `#/data`。[[data-jobs]])を足した。合成の蔵書(入れ子の zip・受け入れフォルダつき)と実バックエンドを 375px と 1100px のヘッドレス Chromium で開き、
   タブから辿る → 「ライブラリ全体を同期」と「重複を調べる」を続けて依頼(2 本目は待ち行列)→ 進み具合 → 履歴に成功で残る、を確認した。横スクロールは無く、コンソールのエラーは作品一覧の未作成の表紙の 404(既存の挙動)だけ。実データでの確認はローカルで引き取る
 - #75 で作品カードに表紙と「表紙を作る」を足した([[cover-thumbnails]])。モック API は入れ子の巻(`page_count` 未確定)の表紙を、開くか作るまで 404 pending にする。
   `npm run dev:mock` を 375px と 1000px のヘッドレス Chromium で開き、作成前は入れ子の作品が文字だけのカード・作成後に表紙が出ること、横スクロールとコンソールのエラーが無いことを確認した。

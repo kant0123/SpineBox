@@ -25,7 +25,7 @@ afterEach(() => {
 describe("フォロー", () => {
   it("ルートと発売日の文面", () => {
     expect(parseRoute("#/follows")).toEqual({ name: "follows" });
-    expect(parseRoute("#/follows/manage")).toEqual({ name: "follow-manage" });
+    expect(parseRoute("#/follows/manage")).toEqual({ name: "admin", tab: "follows" });
     expect(releasedText("2015-03")).toBe("2015年3月");
     expect(releasedText("2015")).toBe("2015年");
     expect(releasedText(null)).toBe("発売日不明");
@@ -78,10 +78,15 @@ describe("フォロー", () => {
     expect(within(panel).getByText("5 巻")).toBeTruthy();
   });
 
-  it("作品一覧からフォローへ行ける", async () => {
+  it("サイドバーからフォローへ行け、フォロー管理は管理のタブとして開く", async () => {
     window.location.hash = "#/works";
     render(<App />);
     const link = await screen.findByRole("link", { name: "フォロー" });
     expect(link.getAttribute("href")).toBe("#/follows");
+    window.location.hash = "#/follows/manage";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    const tab = await screen.findByRole("link", { name: "フォロー管理" });
+    expect(tab.getAttribute("aria-current")).toBe("page");
+    expect(tab.getAttribute("href")).toBe("#/admin/follows");
   });
 });

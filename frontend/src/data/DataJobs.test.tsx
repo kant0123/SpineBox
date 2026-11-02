@@ -23,13 +23,20 @@ afterEach(() => {
 });
 
 describe("ルートと入口", () => {
-  it("#/data をデータ管理の画面として読み、作品・巻の一覧のタブから辿れる", async () => {
-    expect(parseRoute("#/data")).toEqual({ name: "data" });
-    expect(parseRoute("#/data/")).toEqual({ name: "data" });
+  it("#/data は管理のデータ管理タブを開き、ジョブはデータ管理(依頼)とタスクセンター(実行中・履歴)に分かれる", async () => {
+    expect(parseRoute("#/data")).toEqual({ name: "admin", tab: "data" });
+    expect(parseRoute("#/data/")).toEqual({ name: "admin", tab: "data" });
+    window.location.hash = "#/data";
     render(<App />);
-    await screen.findByText("サンプル漫画 第01巻");
-    const tab = screen.getByRole("link", { name: "データ管理" });
-    expect(tab.getAttribute("href")).toBe("#/data");
+    await screen.findByText("補完待ちの作品を補完");
+    const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" }));
+    expect(tabs.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("heading", { name: "履歴" })).toBeNull(); // 履歴はタスクセンター
+    expect(tabs.getByRole("link", { name: "タスクセンター" }).getAttribute("href")).toBe("#/admin/tasks");
+    window.location.hash = "#/admin/tasks";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(await screen.findByRole("heading", { name: "履歴" })).toBeTruthy();
+    expect(screen.queryByText("補完待ちの作品を補完")).toBeNull(); // 依頼の一覧はデータ管理
   });
 });
 
@@ -98,6 +105,7 @@ describe("整理の節", () => {
     window.location.hash = "#/data/organize";
     render(<App />);
     await screen.findByLabelText("ファイル名テンプレート");
+    expect(screen.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { name: "実行中" })).toBeTruthy();
   });
 });

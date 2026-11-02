@@ -233,7 +233,7 @@ def test_invalid_filters_are_422(env):
     _, client = env
     assert client.get("/api/works", params={"status": "done"}).status_code == 422
     with pytest.raises(search.InvalidFilter):
-        search.check_filters({"publisher": "x"})
+        search.check_filters({"label": "x"})
 
 
 def test_kind_genre_tag_filters_use_the_public_db_fields(env):

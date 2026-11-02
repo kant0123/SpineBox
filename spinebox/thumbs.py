@@ -21,7 +21,7 @@ from PIL import Image
 
 from .cache import ExtractionCache, cache_key
 from .fingerprint import MAX_PIXELS
-from .library import Library, VolumeNotFound, VolumeOffline, get_volume_row, is_offline
+from .library import Library, VolumeNotFound, VolumeOffline, get_volume_row, get_volume_rows, is_offline
 from .scanner import resolve_source_path, root_is_accessible
 
 # 作り方(大きさ・画質)を変えたら上げる(古いサムネイルを使わせない)
@@ -102,6 +102,23 @@ class Thumbnails:
     def has(self, conn: sqlite3.Connection, volume_id: int) -> bool:
         """作成済みか(元が変わっていれば作成済みではない)。"""
         return self.store.read(self._key(get_volume_row(conn, volume_id))) is not None
+
+    def is_built(self, conn: sqlite3.Connection, volume_id: int) -> bool:
+        """has() と同じ判定を、表紙を読まずに行う(管理の統計で全作品を見る用。最後に使った順も変えない)。"""
+        return self.store.contains(self._key(get_volume_row(conn, volume_id)))
+
+    def are_built(self, conn: sqlite3.Connection, volume_ids: list[int]) -> dict[int, bool]:
+        """is_built() を多数の巻にまとめて行う(巻の行は IN でまとめて引き、巻ごとの SELECT を発行しない)。
+        見えない・オフライン・見つからない巻は False。"""
+        rows = get_volume_rows(conn, volume_ids)
+        out: dict[int, bool] = {}
+        for vid in volume_ids:
+            row = rows.get(vid)
+            try:
+                out[vid] = row is not None and self.store.contains(self._key(row))
+            except (VolumeNotFound, VolumeOffline):
+                out[vid] = False
+        return out
 
     def build(self, conn: sqlite3.Connection, volume_ids: list[int],
               progress: Callable[[int, int], None] | None = None) -> BuildSummary:

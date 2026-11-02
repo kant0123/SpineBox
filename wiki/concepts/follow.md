@@ -10,7 +10,7 @@ related: [metadata-linking, metadata-clients, metadata-sources, work-grouping, b
 フォローした作品について、**蔵書に無い巻番号**(手元の最大の巻より後 = 続刊、間 = 欠け)と発売日を公開 DB で調べて知らせる(#87)。
 入口は `spinebox/follows.py:115 check_work()`(調べる)と `spinebox/follows.py:273 list_releases()`(サイドバーの「フォロー」)、
 `spinebox/follows.py:255 list_follows()`(フォロー管理)。画面は `frontend/src/follows/Follows.tsx:94 FollowReleases()`(`#/follows`)・
-`frontend/src/follows/Follows.tsx:155 FollowManage()`(`#/follows/manage`)・作品ページの `frontend/src/follows/Follows.tsx:277 WorkFollowPanel()`。
+`frontend/src/follows/Follows.tsx:155 FollowManage()`(管理の「フォロー管理」タブ `#/admin/follows`。旧 `#/follows/manage` も同じタブを開く)・作品ページの `frontend/src/follows/Follows.tsx:277 WorkFollowPanel()`。
 
 ## 読み替え
 
@@ -41,8 +41,8 @@ Peach のフォローは追いかけている対象の新着を見る機能。Sp
 
 - 明示操作: フォロー管理の「続刊を調べる」(全作品・1 作品)。`POST /api/follows/check` はデータ管理のジョブ `follow_check`([[data-jobs]])として 1 本ずつ動く(同じ取得元を叩く補完・重複・表紙と並ばない)。既定は待ち行列に入れて 202、`wait=true` でほかのジョブが動いていれば 409。中止できる(調べた作品の結果は記録済み)
 - 定期実行: `[follow] background = true` のときだけ(既定は無効)。`background_interval_seconds` ごとに裏の定期処理(ジョブ `background_follow`。何も動いていないときだけ)が見回り、`interval_hours` 以上調べていない作品を 1 回に 1 作品。続けて動いた分は履歴の 1 行にまとまる
-- **#83 のジョブに載せた(`spinebox/datajobs.py _follow_check()` / `background_follow()`)。** 手順は `follows.check_many()` に `progress(done, total, 現在の作品)` を渡し、中止は 1 作品ごとの区切り。#85 の画面は未マージで、
-  画面は `followsHref`(サイドバーの「フォロー」)と `followManageHref`(管理の「フォロー管理」タブ)を指せばよい。今は作品一覧のヘッダーに「フォロー」のリンクを置いている
+- **#83 のジョブに載せた(`spinebox/datajobs.py _follow_check()` / `background_follow()`)。** 手順は `follows.check_many()` に `progress(done, total, 現在の作品)` を渡し、中止は 1 作品ごとの区切り。画面は #85 で組み込み済み:
+  `followsHref` はサイドバーの「フォロー」、`followManageHref`(`#/admin/follows`)は管理の「フォロー管理」タブ(`FollowManage` の `embedded`)。作品一覧のヘッダーに置いていた「フォロー」のリンクは外した
 
 ## 却下した案
 

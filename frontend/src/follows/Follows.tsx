@@ -152,7 +152,7 @@ export function FollowReleases() {
 }
 
 /** 管理の「フォロー管理」: フォロー中の作品の一覧・解除・最後に調べた日時、続刊を調べる */
-export function FollowManage() {
+export function FollowManage({ embedded = false }: { embedded?: boolean }) {
   const [data, setData] = useState<FollowList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -206,7 +206,7 @@ export function FollowManage() {
   return (
     <div className="library follows">
       <header className="library-header">
-        <h1>フォロー管理</h1>
+        {embedded ? <span /> : <h1>フォロー管理</h1>}
         <div className="header-actions">
           <a className="header-link" href={followsHref}>
             フォロー

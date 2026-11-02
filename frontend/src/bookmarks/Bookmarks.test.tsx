@@ -38,6 +38,7 @@ describe("ルート", () => {
 
 describe("付け外し", () => {
   it("巻の一覧で付けた巻が、ブックマークの一覧に出る", async () => {
+    window.location.hash = "#/volumes";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画 第02巻")).closest("li")!;
     const button = within(card).getByRole("button", { name: "サンプル漫画 第02巻 をブックマーク" });
@@ -71,6 +72,7 @@ describe("付け外し", () => {
 
   it("失敗したら表示を戻して理由を出す", async () => {
     failPut = true;
+    window.location.hash = "#/volumes";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画 第02巻")).closest("li")!;
     const button = within(card).getByRole("button", { name: "サンプル漫画 第02巻 をブックマーク" });

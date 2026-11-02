@@ -242,8 +242,7 @@ class Scanner:
         return result
 
     def _inbox_prefixes(self) -> tuple[str, ...]:
-        """ソースに結び付かない問題(entry_name = 走査中のパス)が受け入れフォルダのものかを見分ける接頭辞。"""
-        return tuple(safe_text(str(i.path).replace("\\", "/")) for i in self.settings.inboxes)
+        return inbox_prefixes(self.settings)
 
     # --- 想定外の例外 ---------------------------------------------------------
     # 想定した失敗(ArchiveError など)は読み込む側が理由つきで捕まえる。ここに来るのは「想定していなかった」例外で、
@@ -552,6 +551,11 @@ def _links_to_ancestor(dirpath: str, child: str) -> bool:
     target = os.path.normcase(os.path.realpath(child))
     here = os.path.normcase(os.path.realpath(dirpath))
     return here == target or here.startswith(target.rstrip(os.sep) + os.sep)
+
+
+def inbox_prefixes(settings: Settings) -> tuple[str, ...]:
+    """ソースに結び付かない問題(entry_name = 走査中のパス)が受け入れフォルダのものかを見分ける接頭辞。"""
+    return tuple(safe_text(str(i.path).replace("\\", "/")) for i in settings.inboxes)
 
 
 def collect_issues(conn: sqlite3.Connection, limit: int = MAX_REPORTED_ISSUES, *, inbox: bool = False,

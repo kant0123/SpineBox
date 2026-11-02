@@ -8,12 +8,12 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 # 表紙のサムネイル
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
-入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:822 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:843 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
+入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:862 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
+`spinebox/app.py:883 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
 
 ## 内容
 
-- **表紙にする巻は `spinebox/works.py:1072 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
+- **表紙にする巻は `spinebox/works.py:1081 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
   巻番号が最小のもの。番号の無い巻は後ろ、同じ番号(重複)は巻の名前の自然順。`GET /api/works` の各作品に `cover_volume_id` で載る
 - **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。Pillow で 240x360 に収めた JPEG
   (`spinebox/thumbs.py:38 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`)
@@ -21,7 +21,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   (`thumb_cache_limit_bytes`、既定 256 MiB)で使う。キーは作り方の版・大きさ・元ファイルのパス・サイズ・mtime・巻の位置
   (`container_path` / `inner_path` / `entry_prefix`)。元が変われば別のキーになり、古いものは LRU で消える。消えてもよいもの
 - **一覧から呼ばれる `GET /api/volumes/{id}/thumbnail` は、取り出し・7-Zip の起動が要らない巻だけその場で作る。**
-  `Library.open(extract=False)`(`spinebox/library.py:124 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
+  `Library.open(extract=False)`(`spinebox/library.py:142 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。小説・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type Job, type JobKind, type JobOrigin, type JobsSnapshot, type JobStatus } from "../api";
 import { OrganizeFilesSection } from "../organize/OrganizeFiles";
-import { ViewTabs } from "../works/ViewTabs";
+import { dataHref, tasksHref } from "../route";
 
 /** 実行中・待ちがあるあいだ状態を見に行く間隔 */
 const POLL_MS = 1500;
@@ -128,8 +128,12 @@ function errorText(e: unknown, fallback: string): string {
   return e instanceof ApiError && e.detail ? e.detail : fallback;
 }
 
-/** focus="organize" は単独の入口 #/data/organize(一覧の「ファイル名の整理」)。ページの下の「整理」節へ移す */
-export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?: "organize" }) {
+/**
+ * 管理(#85)の「データ管理」と「タスクセンター」の中身。同じジョブの状態を、依頼する側(data)と
+ * 実行中・待ち・履歴を見る側(tasks)に分けて出す(all は両方。単体テストで流れを通すため)。
+ * focus="organize" は単独の入口 #/data/organize。データ管理の「整理」節へ移す。
+ */
+export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: number; focus?: "organize"; view?: "all" | "data" | "tasks" }) {
   const organizeRef = useRef<HTMLElement>(null);
   const scrolled = useRef(false);
   const [snap, setSnap] = useState<JobsSnapshot | null>(null);
@@ -203,15 +207,17 @@ export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?:
   const groups = [...new Set((kinds ?? []).map((k) => k.group))];
 
   return (
-    <div className="library data-jobs">
-      <header className="library-header">
-        <h1>SpineBox</h1>
-      </header>
-      <ViewTabs current="data" />
-      <p className="muted">
-        スキャンや情報の補完をジョブとして 1 本ずつ動かします。実行中に依頼したものは待ち行列に入り、順に動きます。
-        ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません(蔵書を動かす整理は、下の「整理」節と受け入れの画面で、プレビューを見てから実行します)。
-      </p>
+    <div className="data-jobs">
+      {view !== "tasks" ? (
+        <p className="muted">
+          スキャンや情報の補完をジョブとして 1 本ずつ動かします。実行中に依頼したものは待ち行列に入り、順に動きます(進み具合・履歴は<a href={tasksHref}>タスクセンター</a>)。
+          ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません(蔵書を動かす整理は、下の「整理」節と受け入れの画面で、プレビューを見てから実行します)。
+        </p>
+      ) : (
+        <p className="muted">
+          ジョブの実行中・待ち行列・履歴です。ジョブは<a href={dataHref}>データ管理</a>から依頼します。
+        </p>
+      )}
       {error && (
         <div className="notice error" role="alert">
           {error}
@@ -240,7 +246,7 @@ export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?:
         )}
       </section>
 
-      {groups.map((g) => (
+      {view !== "tasks" && groups.map((g) => (
         <section className="job-section" key={g} aria-label={g}>
           <h2>{g}</h2>
           <ul className="job-kinds">
@@ -274,6 +280,7 @@ export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?:
         </section>
       ))}
 
+      {view !== "data" && (
       <section className="job-section" aria-labelledby="job-history-title">
         <h2 id="job-history-title">履歴</h2>
         {snap && snap.history.length === 0 && <p className="muted">まだ何も実行していません。</p>}
@@ -281,12 +288,15 @@ export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?:
           {snap?.history.map((j) => <HistoryRow key={j.id} job={j} />)}
         </ul>
       </section>
+      )}
 
+      {view !== "tasks" && (
       <section className="job-section" id="data-organize" ref={organizeRef} aria-labelledby="job-organize-title">
         <h2 id="job-organize-title">整理</h2>
         <p className="muted">ファイル名・フォルダーの整理です。蔵書を動かすのでジョブには入れず、プレビューを見てから実行し、まとめて元に戻せます。</p>
         <OrganizeFilesSection />
       </section>
+      )}
     </div>
   );
 }

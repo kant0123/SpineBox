@@ -8,7 +8,7 @@ related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, me
 # データ管理とジョブ
 
 スキャン・公開 DB の補完・表紙・中の巻の解析・重複・名寄せ・受け入れフォルダの同期を「ジョブ」として 1 本ずつ動かし、
-何が動いているか・いつ何をしたかを 1 か所(画面 `#/data`、API `/api/jobs`)で見られるようにしている。
+何が動いているか・いつ何をしたかを 1 か所(画面は管理の「データ管理」「タスクセンター」タブ `#/admin/data`・`#/admin/tasks`、API `/api/jobs`)で見られるようにしている。
 Peach(動画向けのローカルメディア管理アプリ)の「スキャンと収集」に相当する。
 
 ## 入口
@@ -17,9 +17,9 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | --- | --- |
 | `spinebox/jobs.py:138 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
 | `spinebox/datajobs.py:82 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
-| `spinebox/app.py:296 run_job_now()` / `spinebox/app.py:504 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/app.py:296 run_job_now()` / `spinebox/app.py:519 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:183 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
-| `frontend/src/data/DataJobs.tsx:130 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
+| `frontend/src/data/DataJobs.tsx:136 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 
 ## ジョブの一覧と対応する処理
 
@@ -36,7 +36,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る |
 | `background_analysis` / `background_metadata` / `background_follow` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
 
-**整理処理(CBZ 化・改名・受け入れの承認)はジョブに入れない**(画面には #84 の「整理」節として同じページの下に置き、`#/data/organize` から入れる。ジョブの待ち行列・履歴には載らない)。 蔵書を動かすので、今どおりプレビューを見てから明示的に実行する
+**整理処理(CBZ 化・改名・受け入れの承認)はジョブに入れない**(画面には #84 の「整理」節としてデータ管理タブの下に置き、`#/data/organize` から入れる。ジョブの待ち行列・履歴には載らない)。 蔵書を動かすので、今どおりプレビューを見てから明示的に実行する
 (GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ジョブはどれも蔵書を読むだけ。
 
 既存のボタン・API(一覧の「スキャン」・「表紙を作る」・重複の「重複を調べる」・「情報を補完」・作品ページの「情報を取得」・
@@ -80,7 +80,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 ## 関連
 
 - [[backend]] — API 契約(`/api/jobs`)とロックの扱い
-- [[frontend]] — 画面(`#/data`)
+- [[frontend]] — 画面(管理のデータ管理・タスクセンターのタブ)
 - [[duplicate-detection]] / [[cover-thumbnails]] / [[metadata-linking]] / [[volume-split]] / [[inbox]] — 各ジョブの中身
 - [[organize]] — ジョブに入れない整理処理(同じロックで排他)
 - [[follow]] — `follow_check` の中身(続刊・欠けの調べ方)

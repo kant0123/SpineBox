@@ -24,7 +24,7 @@ related: [backend, frontend, organize, work-grouping, volume-split, overview]
 | `spinebox/works.py:379 _merge_bookmarks()` | 統合で吸収先へ移す(`merge_works()` から) |
 | `spinebox/db.py:40 MIGRATIONS` | 版 12 の `bookmarks`。作品か巻のどちらか一方(CHECK)、それぞれ部分一意索引で 1 つにつき 1 行 |
 | `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` | 付け外しのボタン。巻の一覧・作品ページ(作品と各巻)・リーダー / 小説リーダーのメニューに置く |
-| `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | 一覧の画面。入口は `frontend/src/route.ts:66 bookmarksHref` |
+| `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | 一覧の画面。入口は `frontend/src/route.ts:103 bookmarksHref` |
 
 ## 決めたこと
 
@@ -40,8 +40,7 @@ related: [backend, frontend, organize, work-grouping, volume-split, overview]
   整理で置き換わった元の巻・missing・受け入れフォルダ・設定から外したルートの巻は出さない(行は残す)
 - **作品名順の並び:** 作品の印と巻の印を混ぜ、巻は巻の作品名で並べる。同じ作品の中では作品の印を先に、巻は巻番号 → 名前の順
 - **一覧の画面で外した行は開き直すまで残す。** 押し間違えをその場で付け直せるようにするため(付け直すと日時は新しくなる)
-- **入口:** サイドバー(#85)がまだ無いので、一覧の「作品 / 巻」の切り替え(`ViewTabs()`)の右端に「☆ ブックマーク」を置いている。
-  サイドバーが入ったら `bookmarksHref` をサイドバーの「ブックマーク」に使い、`ViewTabs()` からは外す
+- **入口:** サイドバー(#85)の「ブックマーク」(`bookmarksHref`)。サイドバーが入るまで置いていた、一覧の「作品 / 巻」の切り替え(`ViewTabs()`)の「☆ ブックマーク」は外した
 
 ## 経緯
 
