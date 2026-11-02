@@ -292,5 +292,5 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]]
 - 備考: #101。SpineBox の象徴である本の背表紙(Spine)と箱(Box)を組み合わせた案A「ブックボックス」のファビコンアセット一式(frontend/public/ 配下の favicon.svg, favicon.ico, apple-touch-icon.png)を追加し、frontend/index.html に link タグを配置した。Vite ビルド(npm run build)で frontend/dist/ へコピーされ、FastAPI の静的配信(/)経由で配信される。
 
-## [2026-11-03] ingest | DADS(v2.18.2)準拠の画面作成・修正スキルを追加
+## [2026-11-03] ingest | PR #111 DADS(v2.18.2)準拠の画面作成・修正スキルを追加
 - 備考: #108。`.agent/skills/dads-ui/`(と `.claude/skills/` の写し)を追加した。DADS の公式 Markdown 一式(2026-10-21 版 = v2.18.2)・HTML 版スニペット・`@digital-go-jp/design-tokens` 2.1.0 を一次情報として参照する手順、トークン値(色・タイポ・余白・角丸・影・768px)、コンポーネント対応、検証チェックリストを置いた。Wiki のページは更新していない(画面の見た目の規約はスキル側に置き、[[frontend]] は構造と振る舞いのページのため)。
