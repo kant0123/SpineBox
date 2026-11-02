@@ -29,6 +29,7 @@ from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, 
 from .novel.books import Books
 from .metadata import MetadataService
 from .metadata.http import HttpFetcher
+from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, safe_text
@@ -60,6 +61,31 @@ class RenamePlanIn(BaseModel):
     """作品の全巻をテンプレートの名前へ改名・移動する計画。exclude_volume_ids は衝突などで外す巻。"""
     work_id: StrictInt
     exclude_volume_ids: list[StrictInt] = Field(default_factory=list)
+
+
+class InboxDecisionIn(BaseModel):
+    """受け入れフォルダの 1 件(ソース)について、利用者が選んだこと。省略したものは自動(確信度が高いときだけ決まる)。
+    numbers は巻 id(文字列)→ 巻の番号。expect_outputs は承認で、プレビューで見た出力先(違っていたら実行しない)。"""
+    source_id: StrictInt
+    work_id: StrictInt | None = None
+    new_title: StrictStr | None = None
+    numbers: dict[str, StrictInt] = Field(default_factory=dict)
+    skip_volume_ids: list[StrictInt] = Field(default_factory=list)
+    expect_outputs: list[StrictStr] | None = None
+
+    def to_decision(self) -> Decision:
+        try:
+            numbers = {int(k): v for k, v in self.numbers.items()}
+        except ValueError:
+            raise HTTPException(422, "numbers のキーは巻の id(整数)で指定してください") from None
+        if any(not 0 <= v <= MAX_NUMBER for v in numbers.values()):
+            raise HTTPException(422, f"巻の番号は 0〜{MAX_NUMBER} で指定してください")
+        return Decision(self.source_id, self.work_id, self.new_title, numbers, frozenset(self.skip_volume_ids),
+                        self.expect_outputs)
+
+
+class InboxItemsIn(BaseModel):
+    items: list[InboxDecisionIn] = Field(max_length=1000)
 
 
 class ProgressIn(BaseModel):
@@ -785,7 +811,40 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.post("/api/organize/{op_id}/undo")
     def organize_undo(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
-        return _exclusive(lambda: organizer(conn).undo(op_id))
+        res = _exclusive(lambda: organizer(conn).undo(op_id))
+        if res.get("kind") == "intake":
+            _sync_works(conn)  # 書庫から外れた巻の分、作品の割り当てを取り直す
+        return res
+
+    # --- 受け入れ(#66)。受け入れフォルダ → 同期で検出 → 整理案のプレビュー → 承認で書庫へ。
+    #     同期とプレビューは何も動かさない。動かすのは承認(approve)だけで、履歴から元に戻せる ---
+
+    def intake(conn) -> Intake:
+        return Intake(organizer(conn), sync_works=lambda: _sync_works(conn))
+
+    @app.get("/api/inbox")
+    def inbox_list(conn: sqlite3.Connection = Depends(get_conn)):
+        """受け入れフォルダの設定と、いま記録されている受け入れ待ちの本の整理案(ファイルは開かない)。"""
+        return intake(conn).list_items()
+
+    @app.post("/api/inbox/sync")
+    def inbox_sync(conn: sqlite3.Connection = Depends(get_conn)):
+        """受け入れフォルダを走査して新しいものを検出し、整理案を返す。読み取りだけ(蔵書にも受け入れフォルダにも書かない)。"""
+        def run():
+            result = Scanner(conn, settings).scan_inbox()
+            return {**intake(conn).list_items(), "volumes": result.volumes, "offline_roots": result.offline_roots}
+        return _exclusive(run)
+
+    @app.post("/api/inbox/preview")
+    def inbox_preview(body: InboxItemsIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """選んだ内容(作品・番号・取り込まない)での整理案を作り直す。目次を読み、何も書かない。"""
+        return intake(conn).preview([d.to_decision() for d in body.items])
+
+    @app.post("/api/inbox/approve")
+    def inbox_approve(body: InboxItemsIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """選んだものだけを書庫へ入れる(1 件ずつ。失敗した件は巻き戻し済みで、受け入れフォルダに残る)。"""
+        decisions = [d.to_decision() for d in body.items]
+        return _exclusive(lambda: intake(conn).approve(decisions))
 
     if frontend_dist is not None and (frontend_dist / "index.html").is_file():
         _mount_frontend(app, frontend_dist)

@@ -449,8 +449,9 @@ export interface OrganizeItem {
   cbz_volume_id: number | null;
 }
 
-/** cbz: 1 ソース → 巻ごとの CBZ / rename: 1 巻 = 1 CBZ の巻をテンプレートの名前へ改名・移動するだけ */
-export type OrganizeKind = "cbz" | "rename";
+/** cbz: 1 ソース → 巻ごとの CBZ / rename: 1 巻 = 1 CBZ の巻をテンプレートの名前へ改名・移動するだけ /
+ *  intake: 受け入れフォルダの本を書庫へ入れる(#66。mode が cbz なら CBZ にして、move なら中身を変えずに移す) */
+export type OrganizeKind = "cbz" | "rename" | "intake";
 /** 出力名: 巻の表示名(title)か命名テンプレート(template) */
 export type OrganizeNaming = "title" | "template";
 
@@ -461,6 +462,12 @@ export interface OrganizeOp {
   template?: string | null;
   work_id?: number;
   items?: OrganizeItem[];
+  /** 受け入れ(kind が intake)のとき */
+  mode?: "cbz" | "move" | null;
+  work?: { kind: string; work_id: number | null; title: string; decided: boolean } | null;
+  skipped?: { volume_id: number; title: string; reason: string | null }[];
+  inbox_path?: string;
+  library_path?: string;
   state: OrganizeState;
   error?: string | null;
   created_at?: string;
@@ -474,6 +481,87 @@ export interface OrganizeOp {
   problems: string[];
   /** 中の巻をまだ調べていない内側アーカイブの巻 id(先に api.analyze が要る) */
   needs_analysis?: number[];
+}
+
+// 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ。spinebox/organize/intake.py)
+/** ready = 承認できる / choose = 作品・番号・取り込まないの確認が要る / blocked = 取り込めない(理由つき) */
+export type InboxStatus = "ready" | "choose" | "blocked";
+export type InboxCategory = "existing_work" | "new_work" | "duplicate" | "unreadable" | "unsupported" | "unknown_work";
+
+export interface InboxVolume {
+  volume_id: number;
+  title: string;
+  page_count: number | null;
+  number: { kind: "volume" | "episode" | null; start: number; end: number | null; source: "name" | "manual" } | null;
+  output_rel_path: string | null;
+  duplicate_of: { volume_id: number; title: string; rel_path: string }[];
+  skipped: boolean;
+  reason: string | null;
+}
+
+export interface InboxWork {
+  match: "existing" | "new" | "unknown";
+  work_id: number | null;
+  title: string;
+  decided: boolean;
+  confident: boolean;
+  confidence: number;
+  reason: string;
+  candidates: { work_id: number; title: string }[];
+}
+
+export interface InboxItem {
+  source_id: number;
+  inbox: string;
+  rel_path: string;
+  name: string;
+  kind: "folder" | "archive";
+  status: InboxStatus;
+  category: InboxCategory;
+  /** cbz: 巻ごとに CBZ にして書庫へ / move: 中身を変えずに書庫へ移す */
+  mode: "cbz" | "move" | null;
+  reasons: string[];
+  warnings: string[];
+  issues: string[];
+  work: InboxWork | null;
+  volumes: InboxVolume[];
+  /** 中の巻をまだ調べていない内側アーカイブの巻 id(先に api.analyze が要る) */
+  needs_analysis: number[];
+  expect_outputs: string[];
+}
+
+export interface InboxInfo {
+  path: string;
+  library: string;
+  problems: string[];
+  synced_at: string | null;
+}
+
+export interface InboxState {
+  inboxes: InboxInfo[];
+  items: InboxItem[];
+  /** 同期したときだけ */
+  volumes?: number;
+  offline_roots?: string[];
+}
+
+/** 利用者が選んだこと。numbers は巻 id(文字列)→ 番号。expect_outputs は承認で、プレビューで見た出力先 */
+export interface InboxDecision {
+  source_id: number;
+  work_id?: number | null;
+  new_title?: string | null;
+  numbers?: Record<string, number>;
+  skip_volume_ids?: number[];
+  expect_outputs?: string[];
+}
+
+export interface InboxApproveResult {
+  source_id: number;
+  ok: boolean;
+  error?: string;
+  warning?: string;
+  op?: OrganizeOp | null;
+  item: InboxItem;
 }
 
 export class ApiError extends Error {
@@ -584,4 +672,22 @@ export const api = {
   decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
     request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),
   organizeHistory: () => request<OrganizeOp[]>("/api/organize"),
+  /** 受け入れフォルダの設定と、いま記録されている受け入れ待ちの本(ファイルは開かない) */
+  inbox: () => request<InboxState>("/api/inbox"),
+  /** 受け入れフォルダを走査して新しいものを検出する(読み取りだけ) */
+  syncInbox: () => request<InboxState>("/api/inbox/sync", { method: "POST" }),
+  /** 選んだ内容での整理案を作り直す(何も動かさない) */
+  previewInbox: (items: InboxDecision[]) =>
+    request<InboxState>("/api/inbox/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    }),
+  /** 選んだものだけを書庫へ入れる(1 件ずつ。失敗した件は受け入れフォルダに残る) */
+  approveInbox: (items: InboxDecision[]) =>
+    request<{ results: InboxApproveResult[] }>("/api/inbox/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    }),
 };

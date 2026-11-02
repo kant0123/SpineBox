@@ -11,6 +11,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .organize.fs import is_within
 from .organize.template import DEFAULT_NAME_TEMPLATE, NameTemplate, TemplateError
 
 CONFIG_ENV = "SPINEBOX_CONFIG"
@@ -61,8 +62,17 @@ class MetadataSettings:
 
 
 @dataclass(frozen=True)
+class InboxSetting:
+    """受け入れフォルダと、承認で本を入れる書庫(`library_roots` のうちの 1 つ)。"""
+    path: Path
+    library: Path
+
+
+@dataclass(frozen=True)
 class Settings:
     library_roots: tuple[Path, ...] = ()
+    # 受け入れフォルダ(`inbox_dirs`)。蔵書には数えない。同期で検出し、承認した分だけ書庫へ入れる
+    inboxes: tuple[InboxSetting, ...] = ()
     data_dir: Path = Path("data")
     cache_limit_bytes: int = 2 * GIB
     # RAM 層(ページのバイト列と 7z / rar の目次)の上限。0 なら RAM 層を使わない。サーバー機では 8 GiB まで上げてよい
@@ -89,10 +99,63 @@ class Settings:
     def cache_dir(self) -> Path:
         return self.data_dir / "cache"
 
+    def inbox_for(self, path: Path | str) -> InboxSetting | None:
+        """path(DB に記録した受け入れフォルダ)の設定。設定から外されていれば None。"""
+        key = _path_key(path)
+        return next((i for i in self.inboxes if _path_key(i.path) == key), None)
+
     def organize_base(self, root: Path) -> Path:
         """root の整理処理の置き場(作業場 work/ と退避フォルダ trash/ の親)。"""
         path = Path(self.organize_dir).expanduser()
         return path if path.is_absolute() else Path(root) / path
+
+
+def _path_key(path: Path | str) -> str:
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+
+def _inboxes(data: dict, roots: tuple[Path, ...], base_dir: Path) -> tuple[InboxSetting, ...]:
+    """`inbox_dirs`: 文字列(書庫が 1 つだけのとき)か {path, library} の配列。
+
+    受け入れフォルダと書庫は重ならない(書庫の中に受け入れフォルダがあると、スキャンが受け入れ待ちの本を蔵書に数える)。
+    同じドライブかどうかは、ドライブが見えない間もあるので設定の読み込みでは見ず、同期・承認のときに確かめる。
+    """
+    raw = data.get("inbox_dirs", [])
+    if not isinstance(raw, list):
+        raise ConfigError("inbox_dirs は配列で指定してください")
+    out: list[InboxSetting] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            path_text, library_text = entry, None
+        elif isinstance(entry, dict):
+            path_text, library_text = entry.get("path"), entry.get("library")
+            if set(entry) - {"path", "library"}:
+                raise ConfigError(f"inbox_dirs の項目は path と library だけです: {entry!r}")
+            if library_text is not None and not isinstance(library_text, str):
+                raise ConfigError(f"inbox_dirs の library は文字列で指定してください: {library_text!r}")
+        else:
+            raise ConfigError(f"inbox_dirs の項目は文字列か {{ path, library }} で指定してください: {entry!r}")
+        if not isinstance(path_text, str) or not path_text:
+            raise ConfigError(f"inbox_dirs の path は空でない文字列で指定してください: {entry!r}")
+        path = _resolve(base_dir, path_text)
+        if library_text:
+            library = _resolve(base_dir, library_text)
+            if _path_key(library) not in {_path_key(r) for r in roots}:
+                raise ConfigError(f"inbox_dirs の library は library_roots のどれかを指定してください: {library_text!r}")
+        elif len(roots) == 1:
+            library = roots[0]
+        else:
+            raise ConfigError(f"書庫(library)が決まりません。library_roots が複数あるので、inbox_dirs の library で"
+                              f"指定してください: {path_text!r}")
+        out.append(InboxSetting(path, library))
+    for i, a in enumerate(out):
+        for r in roots:
+            if is_within(a.path, r) or is_within(r, a.path):
+                raise ConfigError(f"受け入れフォルダと蔵書フォルダは重ねられません: {a.path} / {r}")
+        for b in out[i + 1:]:
+            if is_within(a.path, b.path) or is_within(b.path, a.path):
+                raise ConfigError(f"受け入れフォルダどうしは重ねられません: {a.path} / {b.path}")
+    return tuple(out)
 
 
 def _int(table: dict, key: str, default: int, *, minimum: int = 0) -> int:
@@ -207,8 +270,10 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         max_depth=_int(limits_table, "max_depth", d.max_depth, minimum=0),
     )
     defaults = Settings()
+    library_roots = tuple(_resolve(base_dir, r) for r in roots)
     return Settings(
-        library_roots=tuple(_resolve(base_dir, r) for r in roots),
+        library_roots=library_roots,
+        inboxes=_inboxes(data, library_roots, base_dir),
         data_dir=_resolve(base_dir, _str(data, "data_dir", str(defaults.data_dir))),
         cache_limit_bytes=_int(data, "cache_limit_bytes", defaults.cache_limit_bytes, minimum=1),
         memory_cache_limit_bytes=_int(data, "memory_cache_limit_bytes", defaults.memory_cache_limit_bytes, minimum=0),

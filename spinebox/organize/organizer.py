@@ -75,6 +75,9 @@ class _Built:
     work_path: Path
     output_path: Path
     records: list[cbz.PageRecord] = field(default_factory=list)
+    # 移動だけの受け入れ(mode="move")では CBZ を作らないので、ページ数と形式は計画から持ってくる
+    page_count: int | None = None
+    format: str | None = None
 
 
 def new_op_id() -> str:
@@ -271,9 +274,13 @@ class Organizer:
                                 "巻ごとの CBZ にするため)")
         return needs
 
-    def _drive_problems(self, source_path: Path, base: Path) -> list[str]:
+    def _drive_problems(self, source_path: Path, base: Path, *, out_base: Path | None = None,
+                        out_root: Path | None = None) -> list[str]:
+        """元と、作業場・退避フォルダ・出力先が同じドライブか。受け入れ(out_root あり)は退避・作業場・書庫を別々に見る。"""
         problems = []
-        for label, target in (("作業場・退避フォルダ", base), ("出力先", source_path.parent)):
+        targets = ((("作業場・退避フォルダ", base), ("出力先", source_path.parent)) if out_root is None else
+                   (("退避フォルダ", base), ("作業場", out_base or base), ("書庫", out_root)))
+        for label, target in targets:
             try:
                 ok = self.same_drive(source_path, target)
             except OSError as e:
@@ -348,12 +355,12 @@ class Organizer:
             raise OrganizeError(f"この操作は実行できる状態ではありません({op['state']})", self.get(op_id))
         if plan.get("kind") == "rename":
             return self._execute_rename(op_id, plan)
-        root = Path(plan["root_path"])
-        base = Path(plan["organize_base"])
-        work_dir = base / "work" / op_id
+        root, base, out_root, out_base = self._roots_of(plan)
+        move_only = plan.get("mode") == "move"
+        work_dir = out_base / "work" / op_id
         trash_path = base / "trash" / op_id / "original" / plan["source_rel_path"]
         try:
-            source_path = self._check_before_execute(plan, root, base)
+            source_path = self._check_before_execute(plan, root, base, out_root, out_base)
         except OrganizeError as e:
             self._set_state(op_id, "failed", error=str(e))
             raise OrganizeError(str(e), self.get(op_id)) from e
@@ -362,10 +369,21 @@ class Organizer:
         done_steps: list[_Step] = []
         built: list[_Built] = []
         try:
+            if move_only:
+                # 受け入れで、既に 1 巻 = 1 つのファイル(CBZ・EPUB・テキスト)のものは、中身をそのまま
+                # テンプレートの名前で書庫へ改名で移す
+                for v in plan["volumes"]:
+                    b = _Built(v, work_dir, out_root / v["output_rel_path"], page_count=v["page_count"],
+                               format=v.get("format"))
+                    built.append(b)
+                    self._mkdir_steps(op_id, "execute", out_root, out_base, b.output_path, done_steps)
+                    self._move_step(op_id, "execute", "move_in", source_path, b.output_path, done_steps)
+                self._record_executed(op_id, plan, out_root, built)
+                return self.get(op_id)
             work_dir.mkdir(parents=True, exist_ok=False)
             # 1. 全巻の CBZ を作業場に作る(元にも出力先にもまだ触らない)
             for i, v in enumerate(plan["volumes"]):
-                b = _Built(v, work_dir / f"{i + 1:04d}.cbz", root / v["output_rel_path"])
+                b = _Built(v, work_dir / f"{i + 1:04d}.cbz", out_root / v["output_rel_path"])
                 built.append(b)
                 with self.library.open(self.conn, v["volume_id"]) as opened:
                     if not opened.page_names:
@@ -376,11 +394,11 @@ class Organizer:
                 cbz.verify_cbz(b.work_path, b.records)
             # 3. 改名で確定 → 4. 元を退避
             for b in built:
-                self._mkdir_steps(op_id, "execute", root, base, b.output_path, done_steps)
+                self._mkdir_steps(op_id, "execute", out_root, out_base, b.output_path, done_steps)
                 self._move_step(op_id, "execute", "commit", b.work_path, b.output_path, done_steps)
             self._move_step(op_id, "execute", "trash_original", source_path, trash_path, done_steps)
             # 5. DB: 新しい CBZ の巻を登録し、読書位置を引き継ぎ、元の巻を「整理済み」にする
-            self._record_executed(op_id, plan, root, built)
+            self._record_executed(op_id, plan, out_root, built)
         except BaseException as e:
             ok = self._revert(done_steps)
             for b in built:
@@ -398,20 +416,37 @@ class Organizer:
         _rmdir_quietly(work_dir)
         return self.get(op_id)
 
-    def _check_before_execute(self, plan: dict, root: Path, base: Path) -> Path:
+    @staticmethod
+    def _roots_of(plan: dict) -> tuple[Path, Path, Path, Path]:
+        """(元のあるルート, 元の退避の置き場, 出力先のルート, 作業場・作った CBZ の退避の置き場)。
+
+        整理は元と出力先が同じルート。受け入れ(kind="intake")は元が受け入れフォルダ、出力先が書庫のルートで、
+        元の退避は受け入れフォルダの側、作業場は書庫の側に置く(どちらも同じドライブの中)。
+        """
+        root, base = Path(plan["root_path"]), Path(plan["organize_base"])
+        return (root, base, Path(plan.get("out_root_path") or plan["root_path"]),
+                Path(plan.get("out_base") or plan["organize_base"]))
+
+    def _check_before_execute(self, plan: dict, root: Path, base: Path, out_root: Path | None = None,
+                              out_base: Path | None = None) -> Path:
         """書き込みを始める前の確認。どれかに当たれば何も書かずに止める。"""
+        intake = out_root is not None and out_root != root
+        out_root = out_root or root
         if not root_is_accessible(root):
-            raise OrganizeError("蔵書フォルダが今オフラインです")
+            raise OrganizeError("受け入れフォルダが今オフラインです" if intake else "蔵書フォルダが今オフラインです")
+        if intake and not root_is_accessible(out_root):
+            raise OrganizeError("書庫が今オフラインです")
         source_path = resolve_source_path(root, plan["source_rel_path"])
         if not source_path.exists():
             raise OrganizeError("元のファイル・フォルダが見つかりません")
-        problems = self._drive_problems(source_path, base)
+        problems = (self._drive_problems(source_path, base, out_base=out_base, out_root=out_root) if intake
+                    else self._drive_problems(source_path, base))
         if problems:
             raise OrganizeError(problems[0])
         if fingerprint(source_path) != plan["fingerprint"]:
             raise OrganizeError("計画を作った後に元が変わりました。計画を作り直してください")
         for v in plan["volumes"]:
-            out = root / v["output_rel_path"]
+            out = out_root / v["output_rel_path"]
             if os.path.lexists(out):
                 raise OrganizeError(f"出力先に既にファイルがあります: {v['output_rel_path']}")
             if not self.same_drive(source_path, out):
@@ -424,27 +459,29 @@ class Organizer:
         return source_path
 
     def _record_executed(self, op_id: str, plan: dict, root: Path, built: list[_Built]) -> None:
+        """root は出力先のルート(受け入れでは書庫)。新しい巻はそこのソースとして登録する。"""
         scanner = Scanner(self.conn, self.settings)
         now = db.now()
         with db.transaction(self.conn) as c:
             for b in built:
                 rel = _rel_posix(root, b.output_path)
                 st = b.output_path.stat()
+                pages = len(b.records) if b.records else b.page_count
                 # スキャナーがこの CBZ から作るのと同じ巻(直下の画像 = entry_prefix '')として登録する
-                src = scanner._upsert_source(c, plan["root_id"], rel, "archive")
+                src = scanner._upsert_source(c, plan.get("out_root_id", plan["root_id"]), rel, "archive")
                 stem = b.output_path.stem
                 scanner._replace_volumes(c, src["id"], [VolumeSpec(
-                    None, "", stem, _fs_name_bytes(b.output_path.name), "filesystem", len(b.records))])
+                    None, "", stem, _fs_name_bytes(b.output_path.name), "filesystem", pages, b.format)])
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, now, src["id"]))
                 new_vid = c.execute("""SELECT id FROM volumes WHERE source_id = ? AND container_path IS NULL
                                        AND entry_prefix = ''""", (src["id"],)).fetchone()["id"]
                 old_vid = b.volume["volume_id"]
-                transfer_volume_state(c, old_vid, new_vid, len(b.records))
+                transfer_volume_state(c, old_vid, new_vid, pages)
                 c.execute("UPDATE volumes SET organized_op_id = ?, page_count = ?, updated_at = ? WHERE id = ?",
-                          (op_id, len(b.records), now, old_vid))
+                          (op_id, pages, now, old_vid))
                 c.execute("""UPDATE organize_volumes SET new_volume_id = ?, page_count = ?
-                             WHERE op_id = ? AND old_volume_id = ?""", (new_vid, len(b.records), op_id, old_vid))
+                             WHERE op_id = ? AND old_volume_id = ?""", (new_vid, pages, op_id, old_vid))
             # 元は退避フォルダへ移ったので、スキャンが見るのと同じく missing にする(行は消さない)
             c.execute("UPDATE sources SET missing = 1 WHERE id = ?", (plan["source_id"],))
             c.execute("UPDATE organize_ops SET state = 'done', error = NULL, executed_at = ?, updated_at = ? WHERE id = ?",
@@ -458,8 +495,9 @@ class Organizer:
             raise OrganizeError(f"この操作は元に戻せる状態ではありません({op['state']})", self.get(op_id))
         if plan.get("kind") == "rename":
             return self._undo_rename(op_id, plan)
-        root = Path(plan["root_path"])
-        base = Path(plan["organize_base"])
+        root, base, out_root, out_base = self._roots_of(plan)
+        if plan.get("mode") == "move":
+            return self._undo_move_in(op_id, plan, root, out_root)
         steps = {s["action"]: s for s in self.conn.execute(
             "SELECT * FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND state = 'done'", (op_id,))}
         trash = steps.get("trash_original")
@@ -469,10 +507,10 @@ class Organizer:
         outputs = [Path(s["to_path"]) for s in self.conn.execute(
             """SELECT to_path FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND action = 'commit'
                AND state = 'done' ORDER BY id""", (op_id,))]
-        created_dir = base / "trash" / op_id / "created"
+        created_dir = out_base / "trash" / op_id / "created"
         problem = None
-        if not root_is_accessible(root):
-            problem = "蔵書フォルダが今オフラインです"
+        if not root_is_accessible(root) or not root_is_accessible(out_root):
+            problem = "蔵書フォルダ(受け入れ・書庫)が今オフラインです"
         elif os.path.lexists(original):
             problem = f"元の場所に別のファイル・フォルダがあるので戻しません: {_rel_posix(root, original)}"
         elif not trashed.exists():
@@ -480,7 +518,7 @@ class Organizer:
         else:
             for out in outputs:
                 if not out.is_file():
-                    problem = f"作った CBZ が見つかりません(移動・改名された?): {_rel_posix(root, out)}"
+                    problem = f"作った CBZ が見つかりません(移動・改名された?): {_rel_posix(out_root, out)}"
                     break
         if problem:
             raise OrganizeError(problem, self.get(op_id))
@@ -489,10 +527,11 @@ class Organizer:
         done_steps: list[_Step] = []
         try:
             for out in outputs:
-                self._move_step(op_id, "undo", "trash_created", out, created_dir / _rel_posix(root, out), done_steps)
+                self._move_step(op_id, "undo", "trash_created", out, created_dir / _rel_posix(out_root, out),
+                                done_steps)
             self._move_step(op_id, "undo", "restore_original", trashed, original, done_steps)
             self._rmdir_created(op_id, done_steps)
-            self._record_undone(op_id, plan, root, outputs)
+            self._record_undone(op_id, plan, out_root, outputs)
         except BaseException as e:
             ok = self._revert(done_steps)
             message = _describe(e)
@@ -507,18 +546,58 @@ class Organizer:
             raise
         return self.get(op_id)
 
+    def _undo_move_in(self, op_id: str, plan: dict, root: Path, out_root: Path) -> dict:
+        """受け入れで移しただけ(mode="move")のものを、元の場所へ戻す。移した先のファイルが移したときのままのときだけ。"""
+        step = self.conn.execute(
+            """SELECT * FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND action = 'move_in'
+               AND state = 'done'""", (op_id,)).fetchone()
+        if step is None:
+            raise OrganizeError("移動の記録が見つかりません", self.get(op_id))
+        original, moved = Path(step["from_path"]), Path(step["to_path"])
+        problem = None
+        if not root_is_accessible(root) or not root_is_accessible(out_root):
+            problem = "蔵書フォルダ(受け入れ・書庫)が今オフラインです"
+        elif os.path.lexists(original):
+            problem = f"元の場所に別のファイル・フォルダがあるので戻しません: {_rel_posix(root, original)}"
+        elif not moved.is_file():
+            problem = f"移した先のファイルが見つかりません(移動・改名された?): {_rel_posix(out_root, moved)}"
+        elif fingerprint(moved) != plan["fingerprint"]:
+            problem = f"移した後にファイルが変わったので戻しません: {_rel_posix(out_root, moved)}"
+        if problem:
+            raise OrganizeError(problem, self.get(op_id))
+        self._set_state(op_id, "undoing")
+        done_steps: list[_Step] = []
+        try:
+            self._move_step(op_id, "undo", "restore_original", moved, original, done_steps)
+            self._rmdir_created(op_id, done_steps)
+            self._record_undone(op_id, plan, out_root, [moved])
+        except BaseException as e:
+            ok = self._revert(done_steps)
+            message = _describe(e)
+            if ok:
+                self._set_state(op_id, "done", error=f"元に戻せませんでした: {message}")
+            else:
+                self._set_state(op_id, "undo_failed",
+                                error=f"{message}(巻き戻しに失敗した手順があります。ジャーナルを確認してください)")
+            if isinstance(e, Exception):
+                raise OrganizeError(message, self.get(op_id)) from e
+            raise
+        return self.get(op_id)
+
     def _record_undone(self, op_id: str, plan: dict, root: Path, outputs: list[Path]) -> None:
+        """root は出力先のルート(受け入れでは書庫)。受け入れ(kind="intake")の元の巻は受け入れフォルダの待ち行列なので、
+        書庫で付いた作品の割り当て・読書位置は写し戻さない(受け入れフォルダの巻が作品に入ってしまう)。"""
         now = db.now()
         with db.transaction(self.conn) as c:
             for m in c.execute("SELECT * FROM organize_volumes WHERE op_id = ?", (op_id,)).fetchall():
-                if m["new_volume_id"] is not None:
+                if m["new_volume_id"] is not None and plan.get("kind") != "intake":
                     transfer_volume_state(c, m["new_volume_id"], m["old_volume_id"], m["page_count"])
                 c.execute("UPDATE volumes SET organized_op_id = NULL, updated_at = ? WHERE id = ?",
                           (now, m["old_volume_id"]))
             c.execute("UPDATE sources SET missing = 0 WHERE id = ?", (plan["source_id"],))
             # 作った CBZ は退避フォルダへ移ったので、そのソースは missing にする(行・読書位置は消さない)
             c.executemany("UPDATE sources SET missing = 1 WHERE root_id = ? AND rel_path = ?",
-                          [(plan["root_id"], _rel_posix(root, out)) for out in outputs])
+                          [(plan.get("out_root_id", plan["root_id"]), _rel_posix(root, out)) for out in outputs])
             c.execute("UPDATE organize_ops SET state = 'undone', error = NULL, undone_at = ?, updated_at = ? WHERE id = ?",
                       (now, now, op_id))
 
@@ -874,6 +953,9 @@ class Organizer:
                 "source_kind": plan["source_kind"], "volumes": plan["volumes"],
                 "warnings": plan["warnings"], "problems": plan["problems"],
                 "needs_analysis": plan.get("needs_analysis", [])}
+        if plan.get("kind") == "intake":
+            view.update(mode=plan.get("mode"), work=plan.get("work"), skipped=plan.get("skipped", []),
+                        inbox_path=plan.get("root_path"), library_path=plan.get("out_root_path"))
         if plan.get("kind") == "rename":
             view["work_id"] = plan["work_id"]
             view["items"] = [{k: it[k] for k in ("volume_id", "title", "from_rel_path", "output_rel_path", "status",

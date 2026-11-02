@@ -12,6 +12,7 @@ import type {
   VolumeDetail,
   VolumeSummary,
 } from "../api";
+import { createMockInbox } from "./mockInbox";
 import { createMockWorks } from "./mockWorks";
 
 export interface MockResponse {
@@ -173,6 +174,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   // 整理(CBZ 化)の操作。ページ数未確定の巻(入れ子)は読めない内側があるものとして実行不可にする
   const ops: OrganizeOp[] = [];
   let opSeq = 0;
+  const inbox = createMockInbox(ops, () => `op-${++opSeq}`);
   const sections = mockSections();
 
   // テンプレートどおりの改名・移動(作品 1 だけ)。巻 1 と 6 は同じ名前になる衝突、3 は 1 巻 = 1 CBZ でない対象外
@@ -270,8 +272,14 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       const list: VolumeSummary[] = shown().map(({ hidden: _hidden, ...v }) => ({ ...v }));
       return json(200, list);
     }
+    if (path.startsWith("/api/inbox")) {
+      const r = inbox.handle(method, path, parsed);
+      if (r) return json(r.status, r.body);
+    }
     if (path.startsWith("/api/organize")) {
       const r = handleOrganize(method, path, parsed);
+      const undo = path.match(/^\/api\/organize\/([^/]+)\/undo$/);
+      if (r && undo && r.status === 200) inbox.undone(decodeURIComponent(undo[1]));
       if (r) return r;
     }
     if (method === "POST" && path === "/api/scan") {

@@ -30,12 +30,12 @@ py -3.12 -m spinebox                                          # 手動で起動�
 - `sevenzip_path` は 7z.exe のパス(例 `C:/Program Files/7-Zip/7z.exe`)を書く。常駐タスクの実行ユーザー(SYSTEM 等)の PATH に
   7z が無いことが多いので、名前だけにせずパスで指定する。見つからないと 7z / rar は「未対応」として一覧から外れる([[archive-reading]])
 - `host` の既定は `127.0.0.1`(自機だけ)。LAN で使うときはサーバー機の LAN アドレスか `0.0.0.0` を**明示して**設定する。
-  127.0.0.1 以外のときは起動時に注意を stderr へ出す(`spinebox/__main__.py:15 main`)
-- `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:162 create_app` の `healthz`)。DB を開けなければ 503。
+  127.0.0.1 以外のときは起動時に注意を stderr へ出す(`spinebox/__main__.py:17 main`)
+- `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:188 create_app` の `healthz`)。DB を開けなければ 503。
   `commit` は**プロセスが起動時に読んだ**コミット(`spinebox/buildinfo.py:14 current_commit`)で、git が使えず `.git` も読めなければ null。
   古いプロセスが生き残っていると 200 のまま古い `commit` を返すので、更新後は `commit` で反映を見分ける
 - `/read/<id>` を直接開いてもよい。バックエンドは未知のパスに `index.html` を返し(SPA fallback)、
-  フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:48 canonicalUrl`)。ルート自体はハッシュで決まるため、
+  フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:57 canonicalUrl`)。ルート自体はハッシュで決まるため、
   この直しが無いと一覧が開く
 
 ### メモリ(RAM 層)の設定
@@ -110,7 +110,7 @@ Start-ScheduledTask SpineBox
    `-m spinebox` のプロセスで、親をたどっても生きている親が居ない(= 親が先に死んだ孤児)ものだけを、子孫ごと止めて
    `supervisor.log` に PID 付きで残す。**親が生きているもの(手で起動した SpineBox・別のプログラム)は止めず、
    警告だけ出して起動を試みる**(bind に失敗して通常の再起動の間隔で待つ)。`-NoReapOrphan` で、孤児も止めず記録だけにできる。
-   ポートは `python -m spinebox --print-bind` で設定ファイルから取る(TOML を PowerShell で読み直さない。`spinebox/__main__.py:15 main`)
+   ポートは `python -m spinebox --print-bind` で設定ファイルから取る(TOML を PowerShell で読み直さない。`spinebox/__main__.py:17 main`)
 
 親の生死は `ParentProcessId` の先に実在するプロセスがあり、かつ子より古いこと(PID は再利用される)で判定する。
 Ctrl+C など「正常な中断」では `finally` が python の木を止めるので、1 段目は強制終了のための備え。

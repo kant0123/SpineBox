@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-02
-related: [metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search]
+related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search]
 ---
 
 # バックエンド
@@ -22,21 +22,21 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:162 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
-| `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
+| `spinebox/app.py:188 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:367 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:249 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
-| `spinebox/scanner.py:221 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:489 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:391 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:273 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:245 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:518 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:120 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
-| `spinebox/library.py:344 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:92 parse_number`([[volume-split]]) |
-| `spinebox/duplicates.py:283 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
-| `spinebox/linking.py:299 fetch_work()` / `spinebox/linking.py:601 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
-| `spinebox/works.py:392 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
+| `spinebox/library.py:347 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:95 parse_number`([[volume-split]]) |
+| `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
+| `spinebox/linking.py:302 fetch_work()` / `spinebox/linking.py:601 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
+| `spinebox/works.py:394 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
-| `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
-| `spinebox/config.py:237 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
+| `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
+| `spinebox/config.py:302 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:42 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
@@ -71,7 +71,8 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 | `POST /api/organize/plan` | body `{"volume_id"}` か `{"source_id"}`(どちらか一方)と、任意の `naming`(`"title"` 既定 / `"template"`: 出力先を命名テンプレートで決める)。その巻を含むソース全体の計画。整理の単位は見えている子を持たない巻(分解済みなら子の巻ごと)。問題があれば `state: "blocked"`・`op_id: null`(保存しない)。中の巻を調べていない内側アーカイブは `needs_analysis`(巻 id の配列)で返す。蔵書に書かない |
 | `POST /api/organize/{op_id}/execute` / `.../undo` | 操作(`{"op_id", "state", "volumes": [{"volume_id", "output_rel_path", "new_volume_id", ...}], "warnings", "problems", "error", ...}`)。始められない・失敗(巻き戻し済み)は 409 で `{"detail", "op"}`。スキャン中も 409 |
 | `POST /api/organize/rename-plan` | body `{"work_id", "exclude_volume_ids"}`。作品の全巻をテンプレートの名前へ改名・移動する計画(`kind: "rename"`)。`items` に各巻の `status`(move / unchanged / excluded / conflict / skipped)・`reason`・`from_rel_path`・`output_rel_path`。動かす巻が無ければ `blocked`。実行・元に戻すは上と同じエンドポイント |
-| `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない)。各操作に `kind`(cbz / rename)・`naming`・`template` |
+| `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない)。各操作に `kind`(cbz / rename / intake)・`naming`・`template` |
+| `GET /api/inbox` / `POST /api/inbox/sync` / `POST /api/inbox/preview` / `POST /api/inbox/approve` | 受け入れ([[inbox]])。`{"inboxes": [{path, library, problems, synced_at}], "items": [...]}`(sync は `volumes`・`offline_roots` も)。preview・approve の body は `{"items": [{"source_id", "work_id"?, "new_title"?, "numbers"?, "skip_volume_ids"?, "expect_outputs"?}]}`。approve は `{"results": [{source_id, ok, item, op?, error?, warning?}]}`(HTTP 200 でも項目ごとに失敗がありうる)。sync・approve はスキャンと同じロックで、実行中は 409。preview と一覧は何も書かない |
 
 すべての応答に `Content-Security-Policy`(`spinebox/app.py:41 APP_CSP`。インラインのスクリプトと外部の読み込みを止める)と `X-Content-Type-Options: nosniff` を付ける。
 画面に外部のスクリプト・画像・フォントを足すときは、この CSP を同じ PR で直す([[novel-reader]] の安全方針の 3 段目)。
@@ -133,6 +134,8 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 ## 経緯
 
+- #66 で受け入れ([[inbox]])を足した。マイグレーション 10(`library_roots.inbox`)。設定 `inbox_dirs`(受け入れフォルダと書庫の組)。
+  受け入れフォルダは蔵書と同じスキャナーで走査するが `inbox = 1` の行として分け、一覧・作品・検索・重複・結線の対象外にする
 - #57 で小説(EPUB・テキスト)を足した([[novel-reader]])。マイグレーション 8(`volumes.format`・`reading_progress.position`)。
   小説のソースは 1 ファイルなので `sources.kind` は `archive`(CHECK を作り直さないため)。新しい種類のソースなので `SCAN_VERSION` は上げていない
 - #56 で作品の全文検索と絞り込みを足した([[work-search]])。マイグレーション 9(`work_search_dirty` と、索引が古くなる変更で印を付けるトリガー)。
@@ -158,5 +161,5 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   `LISTED_VOLUMES_WHERE` に `organized_op_id IS NULL` を足し、一覧・スキャンの件数が整理済みの巻を数えないようにしている
 - #19 で `/healthz` と常駐・LAN 公開の運用([[server-setup]])を足した。`host` の既定は 127.0.0.1 のまま、127.0.0.1 以外にしたときは起動時に注意を出す
 - #14 で骨格を作った。zip / cbz だけを対象にした
-- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:325 _expand` は入れ子を再帰で開く。
+- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:328 _expand` は入れ子を再帰で開く。
   実データ(`_参考/サンプル本`)で、スキャンが 10 巻を一覧に出し、キャッシュは空のまま、全巻の全ページが 200 で返ることを確かめた

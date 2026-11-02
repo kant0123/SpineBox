@@ -48,7 +48,7 @@ FROM volumes v JOIN sources s ON s.id = v.source_id JOIN library_roots r ON r.id
 LEFT JOIN volumes pv ON pv.id = v.parent_id
 """
 LISTED_VOLUMES_WHERE = """
-WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0
+WHERE r.enabled = 1 AND r.inbox = 0 AND v.missing = 0 AND s.missing = 0
   AND (v.parent_id IS NULL OR pv.missing = 0)
   AND NOT EXISTS (SELECT 1 FROM volumes c WHERE c.parent_id = v.id AND c.missing = 0)
   AND v.organized_op_id IS NULL
@@ -166,23 +166,36 @@ class Scanner:
 
     # --- ルート -------------------------------------------------------------
 
-    def _sync_roots(self) -> list[tuple[int, Path]]:
-        configured = [Path(p) for p in self.settings.library_roots]
+    def _sync_roots(self, inbox: bool = False) -> list[tuple[int, Path]]:
+        """設定のルート(inbox=True なら受け入れフォルダ)を DB に合わせる。もう一方の種類の行には触れない。"""
+        configured = ([Path(i.path) for i in self.settings.inboxes] if inbox
+                      else [Path(p) for p in self.settings.library_roots])
         paths = [str(p) for p in configured]
+        flag = int(inbox)
         with db.transaction(self.conn) as c:
             for p in paths:
                 c.execute("INSERT OR IGNORE INTO library_roots (path) VALUES (?)", (p,))
-            c.execute("UPDATE library_roots SET enabled = 0")
+            # 同じパスを蔵書から受け入れへ(またはその逆に)付け替えた場合も、設定のとおりにする
+            c.executemany("UPDATE library_roots SET inbox = ? WHERE path = ?", [(flag, p) for p in paths])
+            c.execute("UPDATE library_roots SET enabled = 0 WHERE inbox = ?", (flag,))
             c.executemany("UPDATE library_roots SET enabled = 1 WHERE path = ?", [(p,) for p in paths])
         ids = dict(self.conn.execute("SELECT path, id FROM library_roots").fetchall())
         return [(ids[str(p)], p) for p in configured]
 
-    def scan(self) -> ScanResult:
+    def scan_inbox(self) -> ScanResult:
+        """受け入れフォルダを走査する(蔵書の走査と同じく読み取りだけ)。蔵書には数えない。"""
+        return self.scan(inbox=True)
+
+    def scan(self, *, inbox: bool = False) -> ScanResult:
         result = ScanResult(volumes=0)
         with db.transaction(self.conn) as c:
-            # ソースに結び付かない問題(読めなかったフォルダなど)は毎回の走査で作り直す
-            c.execute("DELETE FROM scan_issues WHERE source_id IS NULL")
-        for root_id, root in self._sync_roots():
+            # ソースに結び付かない問題(読めなかったフォルダなど)は毎回の走査で作り直す。
+            # 蔵書の走査と受け入れフォルダの走査は互いの記録を消さない
+            prefixes = self._inbox_prefixes()
+            stale = [r["id"] for r in c.execute("SELECT id, entry_name FROM scan_issues WHERE source_id IS NULL")
+                     if _under_any(r["entry_name"] or "", prefixes) == inbox]
+            c.executemany("DELETE FROM scan_issues WHERE id = ?", [(i,) for i in stale])
+        for root_id, root in self._sync_roots(inbox):
             try:
                 if root_is_accessible(root):
                     self._scan_root(root_id, root)
@@ -192,10 +205,21 @@ class Scanner:
             except Exception as e:  # noqa: BLE001 (1 つのルートの想定外で、ほかのルートを止めない)
                 self._unexpected(e, f"蔵書フォルダ {safe_text(root)} のスキャンを中断")
                 self._record_pathless(str(root), f"スキャンを中断した: {describe_exception(e)}")
-        result.volumes = self.conn.execute(
-            "SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
-        result.issues, result.issues_total = collect_issues(self.conn)
+        if inbox:
+            result.volumes = self.conn.execute(
+                """SELECT COUNT(*) FROM volumes v JOIN sources s ON s.id = v.source_id
+                   JOIN library_roots r ON r.id = s.root_id
+                   WHERE r.inbox = 1 AND r.enabled = 1 AND v.missing = 0 AND s.missing = 0""").fetchone()[0]
+        else:
+            result.volumes = self.conn.execute(
+                "SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
+        result.issues, result.issues_total = collect_issues(
+            self.conn, inbox=inbox, inbox_prefixes=self._inbox_prefixes())
         return result
+
+    def _inbox_prefixes(self) -> tuple[str, ...]:
+        """ソースに結び付かない問題(entry_name = 走査中のパス)が受け入れフォルダのものかを見分ける接頭辞。"""
+        return tuple(safe_text(str(i.path).replace("\\", "/")) for i in self.settings.inboxes)
 
     # --- 想定外の例外 ---------------------------------------------------------
     # 想定した失敗(ArchiveError など)は読み込む側が理由つきで捕まえる。ここに来るのは「想定していなかった」例外で、
@@ -472,6 +496,11 @@ class Scanner:
                 c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))
 
 
+def _under_any(path: str, prefixes: tuple[str, ...]) -> bool:
+    """path が prefixes のどれか(`/` 区切りのパス)そのもの、またはその下か。"""
+    return any(path == p or path.startswith(p + "/") for p in prefixes)
+
+
 def _links_to_ancestor(dirpath: str, child: str) -> bool:
     """child がシンボリックリンク/ジャンクションで、dirpath(とその祖先)を指しているか。
 
@@ -486,18 +515,30 @@ def _links_to_ancestor(dirpath: str, child: str) -> bool:
     return here == target or here.startswith(target.rstrip(os.sep) + os.sep)
 
 
-def collect_issues(conn: sqlite3.Connection, limit: int = MAX_REPORTED_ISSUES) -> tuple[list[dict], int]:
+def collect_issues(conn: sqlite3.Connection, limit: int = MAX_REPORTED_ISSUES, *, inbox: bool = False,
+                   inbox_prefixes: tuple[str, ...] = ()) -> tuple[list[dict], int]:
     """画面に出す「読めなかったもの」(scan_issues の現在の内容)と総数。
 
     見えなくなったソース・オフラインのルート・設定から外したルートの記録は出さない(DB には残る)。
     ソースに結び付かない記録(source_id NULL)は entry_name が走査中のパス。
+    蔵書の画面には受け入れフォルダのもの(inbox=False では inbox_prefixes 以下のパスと受け入れフォルダのソース)を出さず、
+    受け入れの画面(inbox=True)には受け入れフォルダのものだけを出す。
     """
-    where = """FROM scan_issues i LEFT JOIN sources s ON s.id = i.source_id
+    params: list = []
+    pathless = "i.source_id IS NULL"
+    if inbox_prefixes:
+        match = " OR ".join("(i.entry_name = ? OR substr(i.entry_name, 1, ?) = ?)" for _ in inbox_prefixes)
+        for p in inbox_prefixes:
+            params += [p, len(p) + 1, p + "/"]
+        pathless = f"(i.source_id IS NULL AND {'' if inbox else 'NOT '}({match}))"
+    elif inbox:
+        pathless = "0"
+    where = f"""FROM scan_issues i LEFT JOIN sources s ON s.id = i.source_id
                LEFT JOIN library_roots r ON r.id = s.root_id
-               WHERE i.source_id IS NULL OR (s.missing = 0 AND s.offline = 0 AND r.enabled = 1)"""
-    total = conn.execute("SELECT COUNT(*) " + where).fetchone()[0]
+               WHERE {pathless} OR (s.missing = 0 AND s.offline = 0 AND r.enabled = 1 AND r.inbox = {int(inbox)})"""
+    total = conn.execute("SELECT COUNT(*) " + where, params).fetchone()[0]
     rows = conn.execute("SELECT i.source_id, i.container_path, i.entry_name, i.reason, s.rel_path, r.path AS root_path "
-                        + where + " ORDER BY i.id LIMIT ?", (limit,)).fetchall()
+                        + where + " ORDER BY i.id LIMIT ?", (*params, limit)).fetchall()
     issues = []
     for r in rows:
         if r["source_id"] is None:

@@ -343,6 +343,12 @@ MIGRATIONS: list[list[str]] = [
         "CREATE TABLE work_search_dirty (work_id INTEGER PRIMARY KEY)",
         *_dirty_triggers(),
     ],
+    # 10: 受け入れフォルダ(#66)。library_roots.inbox = 1 は受け入れフォルダ(設定の inbox_dirs)で、
+    #     一覧・作品・検索・重複・結線の対象にしない(spinebox/scanner.py の LISTED_VOLUMES_WHERE)。
+    #     スキャンの仕組みと巻・ソースの表はそのまま使い、「同期」で検出するだけにする
+    [
+        "ALTER TABLE library_roots ADD COLUMN inbox INTEGER NOT NULL DEFAULT 0",
+    ],
 ]
 
 
