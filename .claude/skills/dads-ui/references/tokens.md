@@ -1,7 +1,8 @@
 # トークン(値の一覧)
 
-出どころは `@digital-go-jp/design-tokens@2.1.0` の `dist/tokens.css` と、HTML 版スニペットの
-`src/global.css`。バージョンが上がったら一次情報で引き直す(`SKILL.md` の取得コマンド)。
+出どころは `@digital-go-jp/design-tokens@2.1.0` の `dist/tokens.css` と、HTML 版スニペット
+(タグ `v20261021` = v2.18.2)の `src/global.css`。バージョンが上がったら一次情報で引き直す
+(`SKILL.md` の取得コマンド)。
 
 ## 色
 

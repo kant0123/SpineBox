@@ -2,9 +2,9 @@
 
 slug は公式サイト `https://design.digital.go.jp/dads/components/<slug>/` と、
 公式 Markdown の `components/<slug>/index.md`。実装は
-`https://github.com/digital-go-jp/design-system-example-components-html/tree/main/src/components/<name>` で、
+`https://github.com/digital-go-jp/design-system-example-components-html/tree/v20261021/src/components/<name>` で、
 `<name>` は概ね slug と同じ。`form-control-label` はサイトのコンポーネント一覧に無いが、
-フォームの実装で使う。
+フォームの実装で使う。タグ `v20261021` が v2.18.2 に対応する(`main` は最新)。
 
 ## テキスト
 

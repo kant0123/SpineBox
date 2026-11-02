@@ -35,7 +35,7 @@ DADS はプラットフォーム型のデザインシステムで、そのまま
 | 何 | 場所 | 使い方 |
 | --- | --- | --- |
 | 仕様本文 | 公式 Markdown 一式(v2.18.2 / 2026-10-21) | `components/<slug>/index.md` の「使い方」「アクセシビリティ」を読む |
-| 実装の正 | [HTML 版スニペット](https://github.com/digital-go-jp/design-system-example-components-html) | `src/components/<name>/<name>.css` と `*.html`。状態・寸法・ARIA はここが一次 |
+| 実装の正 | [HTML 版スニペット](https://github.com/digital-go-jp/design-system-example-components-html/tree/v20261021)(v2.18.2 はタグ `v20261021`) | `src/components/<name>/<name>.css` と `*.html`。状態・寸法・ARIA はここが一次 |
 | トークン | `@digital-go-jp/design-tokens@2.1.0` | `dist/tokens.css`(Figma 2.0.4〜2.18.1 対応。v2.18.2 の更新はコンポーネント側で、トークン値の変更はない) |
 | バージョン | [サイトのトップ](https://design.digital.go.jp/dads/) | 「v2.18.2」の表示と zip の日付を確認 |
 
@@ -46,9 +46,10 @@ Expand-Archive "$d\docs.zip" "$d\docs" -Force
 Select-String -Path "$d\docs\components\button\index.md" -Pattern '^#{1,3} '
 
 # 実装 CSS(例: ボタン)
-Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/digital-go-jp/design-system-example-components-html/main/src/components/button/button.css
+Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/digital-go-jp/design-system-example-components-html/v20261021/src/components/button/button.css
 ```
 
+- `main` は最新版。v2.18.2 に対応するタグは `v20261021`(日付タグ)。取得はタグに固定する。
 - サイトのトップが v2.18.2 でなくなっていたら、このスキルの数値は古い。取得した Markdown と CSS を優先する。
 - 「使い方」ページが未整備のコンポーネント(タブ・モーダル等)は、HTML 版スニペットが実質の仕様。
 
