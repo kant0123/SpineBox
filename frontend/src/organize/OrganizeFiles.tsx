@@ -1,8 +1,8 @@
 // 範囲指定の整理(#84)。蔵書フォルダの中の範囲を選び、ファイル名テンプレート・フォルダーテンプレート(空ならファイル名の整理だけ)で
 // 改名・移動をまとめてプレビュー → 実行 → 1 回分をまとめて元に戻す。蔵書に書き込むのは「実行」「元に戻す」の明示操作だけ。
 //
-// データ管理ページ(#83)の「整理」節に置く部品として OrganizeFilesSection を export する。#83 がまだ無い間は
-// OrganizeFilesPage を単独のルート(#/data/organize)で出す。
+// データ管理ページ(#83。frontend/src/data/DataJobs.tsx)の「整理」節に置く部品として OrganizeFilesSection を export する。
+// 単独の入口 #/data/organize は同じページの「整理」節へ移す。
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
@@ -14,7 +14,7 @@ import {
   type RangeFolders,
   type RangeOptions,
 } from "../api";
-import { libraryHref, organizeHistoryHref, organizeTemplateHref } from "../route";
+import { organizeHistoryHref, organizeTemplateHref } from "../route";
 import { ITEM_LABELS, STATE_LABELS } from "./Organize";
 
 const STORAGE_KEY = "spinebox.organizeFiles";
@@ -460,19 +460,6 @@ export function OrganizeFilesSection() {
           <RangeItems op={op} onExclude={editable ? (id) => plan([...excluded, id]) : undefined} />
         </div>
       )}
-    </div>
-  );
-}
-
-/** データ管理ページ(#83)ができるまでの単独のページ */
-export function OrganizeFilesPage() {
-  return (
-    <div className="organize">
-      <p>
-        <a href={libraryHref}>← 一覧へ</a>
-      </p>
-      <h1>ファイル名・フォルダーの整理</h1>
-      <OrganizeFilesSection />
     </div>
   );
 }

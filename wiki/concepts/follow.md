@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: フォロー(#87)。Peach のフォローを「フォローした作品の続刊・欠けを公開 DB で調べて知らせる」に読み替えた理由(本の入手はしない)、国立国会図書館サーチの連携した組だけで数える取得の方針、確認済みの持ち方、組み込み口(#85 のサイドバー・管理のタブ、#83 のジョブ)
-updated: 2026-11-02
-related: [metadata-linking, metadata-clients, metadata-sources, work-grouping, backend, frontend, overview]
+updated: 2026-11-03
+related: [metadata-linking, metadata-clients, metadata-sources, work-grouping, backend, frontend, overview, data-jobs]
 ---
 
 # フォロー(続刊・欠けの通知)
@@ -22,7 +22,7 @@ Peach のフォローは追いかけている対象の新着を見る機能。Sp
 | 規則 | 理由 |
 | --- | --- |
 | 数えるのは国立国会図書館サーチの**連携した組**([[metadata-linking]] の `_ndl_groups()`)の巻ごとの書誌だけ | 巻ごとの発売日を持つのは NDL だけ(AniList / MangaUpdates は作品単位で、全巻数はあっても各巻の発売日が無い)。組は種別・作品名・シリーズ名・著者が同じ書誌なので、**漫画と小説が同名で並ぶ作品(お気楽領主)でも、連携した種別の巻だけが数えられる** |
-| 調べるときは `linking.fetch_work(..., sources=("ndl",))` で連携を取り直し、その中身で数える。保存済みの応答の有効期限だけ短くする(`[follow] response_ttl_days`、既定 1 日) | 連携の判定(自動/確認待ち・種別の保留・手動の固定)を別に書かず #50 の規則に乗せる。補完の有効期限(30 日)のままだと新刊が 1 か月拾えない。レート制限の関門は補完と共有する(`spinebox/app.py:251 follow_service()` は元の設定の共有 fetcher を明示的に渡す。設定を変えたものを渡すと共有の fetcher が作り直されて関門がリセットされる) |
+| 調べるときは `linking.fetch_work(..., sources=("ndl",))` で連携を取り直し、その中身で数える。保存済みの応答の有効期限だけ短くする(`[follow] response_ttl_days`、既定 1 日) | 連携の判定(自動/確認待ち・種別の保留・手動の固定)を別に書かず #50 の規則に乗せる。補完の有効期限(30 日)のままだと新刊が 1 か月拾えない。レート制限の関門は補完と共有する(`spinebox/app.py:250 follow_service()` は元の設定の共有 fetcher を明示的に渡す。設定を変えたものを渡すと共有の fetcher が作り直されて関門がリセットされる) |
 | 連携が確認待ち・該当なしなら数えない(`unlinked`)。作品ページで候補を選ぶと次の確認で数える | 漫画か小説か決まらないうちに数えると、小説の 4〜6 巻を漫画の続刊として出す(実データのお気楽領主で起きる) |
 | 作品の種別と連携の組の種別が違えば数えない(`kind_mismatch`) | 手動で種別を直した後も、手動の連携は再取得で変わらないため |
 | 手元の巻に巻番号が読める巻が 1 つも無ければ数えない(`no_numbers`)。取得元にも問い合わせない | 話数だけの作品・番号の無い単巻で、全巻を「欠け」として出さない |
@@ -39,9 +39,9 @@ Peach のフォローは追いかけている対象の新着を見る機能。Sp
 
 ## 確認のタイミング
 
-- 明示操作: フォロー管理の「続刊を調べる」(全作品・1 作品)。`POST /api/follows/check` は補完と同じ `metadata_lock` で直列にする(同じ取得元を叩くため)。実行中は 409
-- 定期実行: `[follow] background = true` のときだけ(既定は無効)。`background_interval_seconds` ごとに見回り、`interval_hours` 以上調べていない作品を 1 回に 1 作品
-- **#83 のジョブ・#85 の画面はこの PR の時点で main に無い。** 組み込み口として、ジョブからは `spinebox/follows.py:187 check_many()`(`progress(done, total, 現在の作品)` を渡せる)を呼び、
+- 明示操作: フォロー管理の「続刊を調べる」(全作品・1 作品)。`POST /api/follows/check` はデータ管理のジョブ `follow_check`([[data-jobs]])として 1 本ずつ動く(同じ取得元を叩く補完・重複・表紙と並ばない)。既定は待ち行列に入れて 202、`wait=true` でほかのジョブが動いていれば 409。中止できる(調べた作品の結果は記録済み)
+- 定期実行: `[follow] background = true` のときだけ(既定は無効)。`background_interval_seconds` ごとに裏の定期処理(ジョブ `background_follow`。何も動いていないときだけ)が見回り、`interval_hours` 以上調べていない作品を 1 回に 1 作品。続けて動いた分は履歴の 1 行にまとまる
+- **#83 のジョブに載せた(`spinebox/datajobs.py _follow_check()` / `background_follow()`)。** 手順は `follows.check_many()` に `progress(done, total, 現在の作品)` を渡し、中止は 1 作品ごとの区切り。#85 の画面は未マージで、
   画面は `followsHref`(サイドバーの「フォロー」)と `followManageHref`(管理の「フォロー管理」タブ)を指せばよい。今は作品一覧のヘッダーに「フォロー」のリンクを置いている
 
 ## 却下した案

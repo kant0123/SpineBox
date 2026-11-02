@@ -1,8 +1,8 @@
 ---
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
-updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks]
+updated: 2026-11-03
+related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs]
 ---
 
 # 整理処理(CBZ 化・テンプレートどおりの改名)
@@ -44,14 +44,14 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:773 plan_range` | 範囲指定の整理の計画(#84)。範囲のパスは `range_path`、フォルダを選ぶ一覧は `range_folders`。振り分けは `plan_rename` と共有の `_classify_renames`、対象の判定は `_range_ineligible` |
 | `spinebox/organize/template.py:273 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
 | `spinebox/organize/cleanup.py:85 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定は `fix_mojibake` |
-| `frontend/src/organize/OrganizeFiles.tsx:178 OrganizeFilesSection` | 整理画面の中身。データ管理ページ(#83)へはこの部品を「整理」節として置く。単独のページは `OrganizeFilesPage`(`#/data/organize`) |
+| `frontend/src/organize/OrganizeFiles.tsx:178 OrganizeFilesSection` | 整理画面の中身。データ管理ページ(`frontend/src/data/DataJobs.tsx`。[[data-jobs]])の下の「整理」節にこの部品を置く。一覧の「ファイル名の整理」の入口 `#/data/organize` は同じページの「整理」節へ移す |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
 | `spinebox/organize/organizer.py:1184 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークは写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
 置き場は `spinebox/config.py:134 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:263 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:287 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
@@ -171,7 +171,7 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 
 - `same_drive` は存在する祖先で判定する。まだ無い作業場を作る前に調べられるようにするため。テストでは
   `Organizer(same_drive=...)` で差し替えて別ドライブ構成を作る(`move=` で途中失敗も作れる)
-- 実行と元に戻すはスキャンと同じロックで直列化する(`/api/scan` と同時に走ると半端な状態を走査する)
+- 実行と元に戻すはスキャンと同じロックで直列化する(`/api/scan` と同時に走ると半端な状態を走査する)。#83 からはデータ管理のジョブ全部と同じロックで、ジョブの実行中・待ち中は 409。整理そのものはジョブに入れない([[data-jobs]])
 - プロセスが実行中に落ちると、操作は `running` のまま残る。ジャーナルに各移動の from / to と状態があるので手で戻せるが、
   起動時の自動復旧は無い(#36)
 - 新しい CBZ の巻は、スキャナーが同じ CBZ から作るのと同じ形(直下の画像 = `entry_prefix ''`、`SCAN_VERSION` つき)で
@@ -181,7 +181,7 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 
 - #84 で範囲指定の整理を足した。プレビューの前後で蔵書が変わらないこと(ルート全体・サブフォルダ)、複数作品をまとめて実行 → まとめて元に戻すでパス・バイト列・mtime・フォルダまで一致すること、
   手動の作品名・手動の割り当て・読書位置が残ることを `tests/test_organize_range.py` で確かめている。データ管理ページ(#83)はこの時点で main に無かったので、画面は単独のルート
-  `#/data/organize` で出し、一覧のヘッダーに「ファイル名の整理」を置いた。#83 が入ったら `OrganizeFilesSection` を「整理」節として置く
+  `#/data/organize` で出し、一覧のヘッダーに「ファイル名の整理」を置いた。#83 のマージ時に `OrganizeFilesSection` をデータ管理ページの「整理」節へ置いた(単独のページは廃止し、`#/data/organize` は同じページの整理へ移す。ジョブには入れない)
 
 - #66 で受け入れ(`kind="intake"`。[[inbox]])を足した。元と出力先を別ルートにし、`mode="move"`(`move_in`)を足した。往復後に受け入れフォルダと書庫がパス・バイト列・mtime まで一致することを `tests/test_inbox.py` で確かめている
 

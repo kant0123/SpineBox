@@ -7,10 +7,10 @@ import { WorkPage } from "./works/WorkPage";
 import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
+import { DataJobs } from "./data/DataJobs";
 import { FollowManage, FollowReleases } from "./follows/Follows";
 import { Bookmarks } from "./bookmarks/Bookmarks";
 import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
-import { OrganizeFilesPage } from "./organize/OrganizeFiles";
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
@@ -34,8 +34,10 @@ export function App() {
       return <Duplicates />;
     case "inbox":
       return <Inbox />;
+    case "data":
+      return <DataJobs />;
     case "organize-files":
-      return <OrganizeFilesPage />;
+      return <DataJobs focus="organize" />;
     case "works":
       return <Works />;
     case "work":

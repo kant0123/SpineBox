@@ -1,7 +1,7 @@
-import { bookmarksHref, libraryHref, worksHref } from "../route";
+import { bookmarksHref, dataHref, libraryHref, worksHref } from "../route";
 
-/** 一覧の表示の切り替え(作品 / 巻)。 */
-export function ViewTabs({ current }: { current: "works" | "volumes" }) {
+/** 一覧の表示の切り替え(作品 / 巻)と、データ管理(スキャン・補完などのジョブ)への入口。 */
+export function ViewTabs({ current }: { current: "works" | "volumes" | "data" }) {
   return (
     <nav className="view-tabs" aria-label="表示">
       <a href={worksHref} aria-current={current === "works" ? "page" : undefined}>
@@ -10,7 +10,10 @@ export function ViewTabs({ current }: { current: "works" | "volumes" }) {
       <a href={libraryHref} aria-current={current === "volumes" ? "page" : undefined}>
         巻
       </a>
-      {/* サイドバー(#85)が入ったら、そちらの「ブックマーク」へ移す */}
+      <a href={dataHref} aria-current={current === "data" ? "page" : undefined}>
+        データ管理
+      </a>
+      {/* サイドバー(#85)が入ったら、そちらの「ブックマーク」とデータ管理へ移す */}
       <a className="view-tabs-extra" href={bookmarksHref}>
         ☆ ブックマーク
       </a>

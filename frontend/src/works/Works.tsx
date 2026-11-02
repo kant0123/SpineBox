@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
+import { api, ApiError, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
 import { duplicatesHref, followsHref, workHref, workProposalsHref } from "../route";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
@@ -84,8 +84,8 @@ export function Works() {
   const buildCovers = async () => {
     try {
       setThumbs(await api.buildThumbnails());
-    } catch {
-      setError("表紙を作れませんでした(スキャン中か、すでに作っています)。");
+    } catch (e) {
+      setError(e instanceof ApiError && e.detail ? e.detail : "表紙の作成を依頼できませんでした。");
     }
   };
 
@@ -93,8 +93,8 @@ export function Works() {
     try {
       const state = await api.fetchAllMetadata();
       setMeta((m) => (m ? { ...m, state } : m));
-    } catch {
-      setError("公開データベースの情報を取得できませんでした(取得元が無効か、すでに実行中です)。");
+    } catch (e) {
+      setError(e instanceof ApiError && e.detail ? e.detail : "公開データベースの情報の取得を依頼できませんでした。");
     }
   };
 
@@ -118,8 +118,9 @@ export function Works() {
     try {
       await api.refreshWorks();
       await Promise.all([load(query), loadProposals()]);
-    } catch {
-      setError("作品の割り当てを取り直せませんでした。");
+    } catch (e) {
+      // ほかのジョブ(データ管理)が動いている間は 409 で、その旨が detail に入る
+      setError(e instanceof ApiError && e.detail ? e.detail : "作品の割り当てを取り直せませんでした。");
     } finally {
       setBusy(false);
     }

@@ -1,8 +1,8 @@
 ---
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
-updated: 2026-11-02
-related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow]
+updated: 2026-11-03
+related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
 
 # フロントエンド(`frontend/`)
@@ -28,11 +28,12 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:150 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。「情報を補完」で全作品の取得を起動し、実行中は 2 秒ごとに状態を見る)。作品ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/data/DataJobs.tsx:130 DataJobs()` | データ管理の画面(`#/data`。[[data-jobs]])。作品・巻の一覧のタブ `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` から辿る。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()`(`#/follows/manage`)はフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。#85 のサイドバー・管理のタブが入るまでは、作品一覧のヘッダーの「フォロー」から入る |
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。「表紙を作る」と進み具合は `Works()` |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
-| `frontend/src/api.ts:697 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:824 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 
@@ -53,7 +54,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:73 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:77 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
@@ -98,6 +99,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(公開 DB の情報がまだ無い作品だけのときの種別・ジャンル・タグ)は選択欄ごと出さない。種別の候補は `manga` / `novel` で届くので `KIND_TEXT` で漫画・小説と表示する。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/mock/mockWorks.ts:22 normalizeSearch()` でバックエンドと同じ正規化を真似ている
 - **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
   取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
+- **データ管理(`#/data`。#83)は一覧のタブ(作品 / 巻 / データ管理)から辿る。** ヘッダーのボタンは 375px で既に 3 段に折り返すので、ボタンを足さずタブに置いた。ページの下に「整理」節(#84 の `OrganizeFilesSection`。ジョブではなく、プレビュー → 実行 → 元に戻す)があり、`#/data/organize` はそこへ移す。
+  ジョブを見出し(日常の同期 / ライブラリ全体 / 個別)ごとに説明と対象の件数つきで並べ、実行中は進み具合・今の対象・「中止」、待ち行列は「取り下げ」、履歴は新しい順で失敗の理由を出す。
+  実行中・待ちがある間だけ 1.5 秒ごとに状態を見に行き、全部終わったら対象の件数を取り直す。依頼済みの種類のボタンは「依頼済み」で押せない。
+  既存の画面の「表紙を作る」「情報を補完」「名寄せを取り直す」の失敗はサーバーの `detail`(ほかのジョブの実行中など)をそのまま出す
 - **作品の一覧と巻の一覧は別画面で、既定は巻の一覧のまま。** 作品の画面は `#/works`。巻の一覧のカード・リーダーは変えていない
 
 ## 落とし穴
@@ -131,6 +136,8 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #83 でデータ管理の画面(`#/data`。[[data-jobs]])を足した。合成の蔵書(入れ子の zip・受け入れフォルダつき)と実バックエンドを 375px と 1100px のヘッドレス Chromium で開き、
+  タブから辿る → 「ライブラリ全体を同期」と「重複を調べる」を続けて依頼(2 本目は待ち行列)→ 進み具合 → 履歴に成功で残る、を確認した。横スクロールは無く、コンソールのエラーは作品一覧の未作成の表紙の 404(既存の挙動)だけ。実データでの確認はローカルで引き取る
 - #75 で作品カードに表紙と「表紙を作る」を足した([[cover-thumbnails]])。モック API は入れ子の巻(`page_count` 未確定)の表紙を、開くか作るまで 404 pending にする。
   `npm run dev:mock` を 375px と 1000px のヘッドレス Chromium で開き、作成前は入れ子の作品が文字だけのカード・作成後に表紙が出ること、横スクロールとコンソールのエラーが無いことを確認した。
   375px ではヘッダーのボタンが 3 段に折り返す。実バックエンド・実データでの確認はローカルで引き取る
