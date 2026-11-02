@@ -4,6 +4,7 @@ rar / 7z を .zip / .cbz に改名したもの・壊れたもの・先頭が短�
 `sevenzip` fixture が見つからなければ skip する(CI の ubuntu など)。
 """
 import re
+import zlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -367,3 +368,21 @@ def test_inner_reader_problem_allows_rar_content_when_7zip_is_found(tmp_path, mo
     with open_archive(path, sevenzip_path="7z") as r:
         (entry,) = list_entries(r, LIMITS).entries
         assert base.inner_reader_problem(r, entry, "7z") is None
+
+
+@pytest.mark.parametrize("exc", [RuntimeError("password required"), NotImplementedError("compression type 99"),
+                                 zlib.error("bad data")])
+def test_zip_read_head_that_cannot_decode_falls_back_to_the_name(tmp_path, monkeypatch, exc):
+    # 暗号化・未対応の圧縮方式などで先頭を読めない内側は、名前で判定する(取り出し時に具体的な理由が出る)
+    path = tmp_path / "outer.zip"
+    write_zip(path, [("a.rar", zip_bytes([("1.jpg", page_bytes("z"))])), ("b.cbz", b"x" * 20)])
+    with open_archive(path, sevenzip_path=NO_SEVENZIP) as r:
+        entries = {e.name: e for e in list_entries(r, LIMITS).entries}
+
+        def boom(*a, **kw):
+            raise exc
+
+        monkeypatch.setattr(r._zip, "open", boom)
+        assert r.read_head(entries["a.rar"], base.MAGIC_BYTES) is None
+        assert "拡張子は .rar" in base.inner_reader_problem(r, entries["a.rar"], NO_SEVENZIP)  # 名前が rar なら未対応
+        assert base.inner_reader_problem(r, entries["b.cbz"], NO_SEVENZIP) is None
