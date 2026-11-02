@@ -11,6 +11,7 @@ related: [metadata-linking, metadata-clients, metadata-sources, work-grouping, b
 入口は `spinebox/follows.py:115 check_work()`(調べる)と `spinebox/follows.py:273 list_releases()`(サイドバーの「フォロー」)、
 `spinebox/follows.py:255 list_follows()`(フォロー管理)。画面は `frontend/src/follows/Follows.tsx:94 FollowReleases()`(`#/follows`)・
 `frontend/src/follows/Follows.tsx:155 FollowManage()`(管理の「フォロー管理」タブ `#/admin/follows`。旧 `#/follows/manage` も同じタブを開く)・作品ページの `frontend/src/follows/Follows.tsx:277 WorkFollowPanel()`。
+タイトル一覧(`frontend/src/works/WorkTitles.tsx:18 WorkTitles()`)も、その作品の欠け・最新巻を点線の行で出す(#115)。
 
 ## 読み替え
 

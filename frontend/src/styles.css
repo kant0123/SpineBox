@@ -8,6 +8,9 @@
   --accent: #2f6fdb;
   --done: #2e8b57;
   --warn: #b5541c;
+  /* タイトル一覧(#115)の行の色。未読は --card のまま、読書中と読了だけ色を付ける */
+  --reading-bg: #eaf1fd;
+  --finished-bg: #e8f4ec;
   --sidebar-bg: #ecebe6;
   --sidebar-active: #dcdfe8;
   --sidebar-w: 220px;
@@ -24,6 +27,8 @@
     --accent: #6ea0ff;
     --done: #5fc48d;
     --warn: #f0995e;
+    --reading-bg: #1f2a3b;
+    --finished-bg: #1e2d25;
     --sidebar-bg: #1d1d21;
     --sidebar-active: #2c3246;
     color-scheme: dark;
@@ -38,6 +43,8 @@
   --accent: #6ea0ff;
   --done: #5fc48d;
   --warn: #f0995e;
+  --reading-bg: #1f2a3b;
+  --finished-bg: #1e2d25;
   --sidebar-bg: #1d1d21;
   --sidebar-active: #2c3246;
   color-scheme: dark;
@@ -249,23 +256,56 @@ button.small { padding: 4px 10px; font-size: 0.8rem; }
 .work-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 button.secondary { background: transparent; color: var(--accent); }
 
-/* 作品のタイトル一覧(#105)。作品カードから開き、管理ページへはボタンで移る */
+/* 作品のタイトル一覧(#105 / #115)。作品カードから開き、管理ページへはボタンで移る。
+   各行は 表紙 → 巻の番号 → 名前・進み具合 の順。色は読書状態(未読 / 読書中 / 読了) */
 .work-titles .library-header { flex-wrap: wrap; align-items: flex-start; }
 .work-titles-head { min-width: 0; }
 .work-titles-head h1 { overflow-wrap: anywhere; }
 .work-titles-meta { margin: 0 0 8px; }
+.work-progress { margin: 0 0 8px; max-width: 320px; }
+.work-progress-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.work-progress-bar span { display: block; height: 100%; background: var(--done); }
+.work-progress p { margin: 4px 0 0; }
 .manage-button {
   flex: none; display: inline-block; margin: 4px 0;
   padding: 8px 16px; border-radius: 8px;
   background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
   white-space: nowrap;
 }
+.title-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.title-head h2 { margin: 0; }
+.title-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; list-style: none; padding: 0; margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); }
+.title-legend li { display: inline-flex; align-items: center; gap: 4px; }
+.legend-swatch { flex: none; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--muted); background: var(--card); }
+.legend-swatch.reading { background: var(--reading-bg); border-color: var(--accent); }
+.legend-swatch.finished { background: var(--finished-bg); border-color: var(--done); }
+.legend-swatch.missing { background: transparent; border-style: dashed; }
 .title-list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
-.title-item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+.title-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0;
+  padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  color: inherit; font: inherit; text-align: left;
+}
+a.title-item, button.title-item { cursor: pointer; text-decoration: none; }
+a.title-item:hover, button.title-item:hover { border-color: var(--accent); }
+.title-item.status-reading { background: var(--reading-bg); }
+.title-item.status-finished { background: var(--finished-bg); }
 .title-item.offline { opacity: 0.6; }
-.title-number { flex: none; min-width: 3.5em; font-size: 0.85rem; color: var(--muted); }
+.title-item.missing { background: transparent; border-style: dashed; color: var(--muted); }
+.title-cover { flex: none; display: block; width: 44px; aspect-ratio: 2 / 3; border-radius: 4px; overflow: hidden; background: var(--border); }
+.title-cover .work-cover { width: 100%; height: 100%; border-radius: 0; align-self: stretch; }
+.title-cover.placeholder { opacity: 0.4; }
+.title-number { flex: none; min-width: 3.2em; font-size: 0.85rem; color: var(--muted); }
 .title-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.title-body a { color: var(--accent); text-decoration: none; }
+.title-body .volume-title { overflow-wrap: anywhere; }
+.title-note { margin-top: 0; }
+.title-modal-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.5); }
+.title-modal { width: min(520px, 100%); max-height: 80vh; overflow-y: auto; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--fg); }
+.title-modal h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.dup-list { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.dup-choice { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; color: inherit; text-decoration: none; }
+a.dup-choice:hover { border-color: var(--accent); }
+.dup-choice .title-body { flex: 1; }
 
 .work-page h2 { font-size: 1.05rem; margin: 16px 0 6px; }
 .work-page h3 { font-size: 0.95rem; margin: 12px 0 6px; }
