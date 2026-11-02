@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import db, linking, works
+from . import db, linking, search, works
 from .analysis import compute_findings
 from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
 from .buildinfo import current_commit
@@ -164,6 +164,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     """metadata_fetcher はテスト用の差し替え(通常はプロセス共有の fetcher を使う)。"""
     conn = db.open_db(settings.db_path)  # 起動時にマイグレーションを当てる
     _sync_works(conn)  # 作品への割り当てを取り直す(作品の機能が入る前の DB は、ここで初めて作品になる)
+    try:
+        search.prepare(conn)  # 検索の索引が無ければ作る(検索の機能が入る前の DB・SQLite を替えた後)
+    except Exception:  # noqa: BLE001 (派生データの更新で起動を止めない。一覧の取得時にもう一度試す)
+        log.exception("検索の索引を用意できませんでした")
     conn.close()
     cache = ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)
     memory = MemoryCache(settings.memory_cache_limit_bytes)
@@ -499,13 +503,23 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def _work_invalid(request: Request, exc: works.InvalidValue):
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
+    @app.exception_handler(search.InvalidFilter)
+    def _search_invalid(request: Request, exc: search.InvalidFilter):
+        return JSONResponse({"detail": str(exc)}, status_code=422)
+
     def work_detail(conn: sqlite3.Connection, work_id: int) -> dict:
         return works.get_work(conn, work_id, enabled_sources)
 
     @app.get("/api/works")
-    def list_works(conn: sqlite3.Connection = Depends(get_conn)):
-        """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。"""
-        return works.list_works(conn)
+    def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
+                   genre: str | None = None, tag: str | None = None, status: str | None = None,
+                   conn: sqlite3.Connection = Depends(get_conn)):
+        """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
+
+        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / status は絞り込み。
+        """
+        return works.list_works(conn, q, {"author": author, "kind": kind, "genre": genre, "tag": tag,
+                                          "status": status})
 
     @app.post("/api/works/refresh")
     def refresh_works(conn: sqlite3.Connection = Depends(get_conn)):

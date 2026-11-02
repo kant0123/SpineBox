@@ -2,7 +2,7 @@
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
 updated: 2026-11-02
-related: [metadata-sources, metadata-linking, overview, backend]
+related: [metadata-sources, metadata-linking, overview, backend, work-search]
 ---
 
 # 公開 DB クライアント(`spinebox/metadata/`)
@@ -39,7 +39,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | `spinebox/metadata/match.py:113 score_item` | 確からしさの計算 |
 | `spinebox/metadata/http.py:152 HttpFetcher` | タイムアウト・再試行・User-Agent・取得元ごとの関門(`spinebox/metadata/http.py:86 Gate`) |
 | `spinebox/metadata/store.py:32 ResponseStore` | 生応答の保存。`get_by_key(source, request_key)` で候補の `response_key` から引ける |
-| `spinebox/db.py:16 MIGRATIONS` の 5 番 | `metadata_responses` |
+| `spinebox/db.py:40 MIGRATIONS` の 5 番 | `metadata_responses` |
 | `scripts/metadata_probe.py` | 実通信の確認と、記録(`tests/fixtures/metadata/`)の採取。手動実行のみ、CI では動かさない |
 
 ## 失敗の表現
@@ -100,3 +100,4 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - [[metadata-sources]] — 取得元ごとの癖・制限・利用条件・採否
 - [[backend]] — 設定とマイグレーション
 - [[overview]] — 全体像
+- [[work-search]] — 結線が種別・ジャンル・タグを `work_fields` の `kind` / `genres` / `tags`(配列は JSON)に足すと、そのまま絞り込みと全文検索に効く

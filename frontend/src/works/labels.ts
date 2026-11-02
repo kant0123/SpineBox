@@ -1,4 +1,4 @@
-import type { FieldInfo, LinkFailure, MergeEvidence, SourceName, WorkKind, WorkLink, WorkSource, WorkSummary } from "../api";
+import type { FieldInfo, LinkFailure, MergeEvidence, ReadingState, SourceName, WorkKind, WorkLink, WorkSource, WorkSummary } from "../api";
 
 const SOURCE_TEXT: Record<WorkSource, string> = {
   filename: "ファイル名から",
@@ -37,6 +37,9 @@ export function evidenceLines(ev: MergeEvidence): string[] {
   }
   return lines;
 }
+
+/** 読書状態の表示(#56) */
+export const READING_STATE_TEXT: Record<ReadingState, string> = { unread: "未読", reading: "読書中", finished: "既読" };
 
 /** 公開データベースの取得元の名前・サイト・利用している API(表示義務のあるクレジット) */
 export const SOURCE_SITES: Record<SourceName, { name: string; api: string; url: string }> = {

@@ -136,6 +136,7 @@ push 前に確かめること:
 
 - PR #40 — `wiki/log.md` — 取り込みで触った `wiki/components/organize.md` と、`archive-reading` の相互参照を「更新:」に載せていなかった
 - PR #34 — `wiki/overview.md` — リンクを足したが `updated` をプレースホルダーのまま残し、log の「更新:」にも載せなかった
+- PR #59 — `wiki/log.md` / 各ページの `updated` — クラウドで書いたエントリの日付が UTC の `2026-11-01` で、main の JST の `2026-11-02` より前に巻き戻っていた(agy の NITPICK。`git log` の日付と、直前のエントリの日付で確かめて直した)
 
 ### 「手動の決定を守る」判定が、手動になりうる項目の全部を見ていない
 

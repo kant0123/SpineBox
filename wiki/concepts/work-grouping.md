@@ -2,7 +2,7 @@
 type: concept
 summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
 updated: 2026-11-02
-related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking]
+related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search]
 ---
 
 # 作品の名寄せ(`spinebox/works.py`)
@@ -17,7 +17,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   入口: `spinebox/works.py:392 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
-  統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:16 MIGRATIONS` の版 6。「手動か」「出所」は
+  統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
 - **名前の読み方。** `spinebox/naming.py:170 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
   `spinebox/naming.py:147 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
@@ -91,3 +91,4 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - [[frontend]] — 作品の一覧・作品ページ・統合の提案の画面
 - [[volume-split]] — 巻番号の候補、分解された子の巻の扱い
 - [[organize]] — CBZ 化で作品の割り当てを引き継ぐ
+- [[work-search]] — 作品名・別名・著者・巻の名前の全文検索。正規化は `normalize_title` を共用

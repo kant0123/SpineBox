@@ -208,6 +208,8 @@ export interface WorkSummary {
   pending_proposals: number;
   /** 統合された作品(根拠は詳細の merges) */
   merged: boolean;
+  /** 読書状態。全巻読了 = finished、1 巻も開いていない = unread、それ以外 = reading(#56) */
+  reading_state: ReadingState;
   /** 公開データベース由来(または手で直した)作品の情報(#50) */
   kind: WorkKind | null;
   publisher: string | null;
@@ -217,10 +219,40 @@ export interface WorkSummary {
   link_pending: number;
 }
 
+export type ReadingState = "unread" | "reading" | "finished";
+
+/** 作品一覧の絞り込み(#56)。kind / genre / tag は公開 DB の項目(#50)があるときだけ候補が出る */
+export type WorkFilterName = "author" | "kind" | "genre" | "tag";
+
+export interface WorkQuery {
+  /** 全文検索の語(空白区切りで AND。作品名・別名・著者・巻の名前・その他の項目) */
+  q?: string;
+  author?: string;
+  kind?: string;
+  genre?: string;
+  tag?: string;
+  status?: ReadingState;
+}
+
 export interface WorkList {
+  /** 検索語・絞り込みに合う作品 */
   works: WorkSummary[];
+  /** 絞る前の作品数 */
+  total: number;
+  /** 絞り込みの候補(絞る前の作品の値) */
+  facets: Record<WorkFilterName, string[]>;
   /** 作品に割り当てられていない巻の数 */
   unassigned: number;
+}
+
+/** 検索語・絞り込みをクエリ文字列にする(空の値は付けない) */
+export function workQueryString(query: WorkQuery = {}): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (typeof v === "string" && v.trim()) params.set(k, v.trim());
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
 }
 
 export interface WorkVolume {
@@ -512,7 +544,7 @@ export const api = {
   executeOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/execute`, { method: "POST" }),
   undoOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/undo`, { method: "POST" }),
   refreshWorks: () => request<unknown>("/api/works/refresh", { method: "POST" }),
-  listWorks: () => request<WorkList>("/api/works"),
+  listWorks: (query: WorkQuery = {}) => request<WorkList>(`/api/works${workQueryString(query)}`),
   getWork: (id: number | string) => request<WorkDetail>(`/api/works/${vid(id)}`),
   editWork: (id: number | string, body: WorkEditBody) =>
     request<WorkDetail>(`/api/works/${vid(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),

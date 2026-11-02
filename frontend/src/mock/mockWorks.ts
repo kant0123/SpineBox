@@ -1,6 +1,6 @@
 // 作品(#43)のモック API。mockBackend.ts から使う。アプリ本体からは import しない。
 
-import type { FieldInfo, LinkCandidate, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkLink, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
+import type { FieldInfo, LinkCandidate, ReadingState, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkLink, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
 
 interface MockWork {
   id: number;
@@ -16,6 +16,19 @@ interface MockWork {
   previous: Record<string, FieldInfo<any> | null>;
   links: WorkLink[];
 }
+
+
+/** バックエンド(spinebox/naming.py normalize_title)と同じ正規化: NFKC・小文字・カタカナ → ひらがな・記号と空白を落とす */
+export function normalizeSearch(text: string): string {
+  return Array.from(text.normalize("NFKC").toLowerCase())
+    .map((ch) => (ch >= "ァ" && ch <= "ヶ" ? String.fromCharCode(ch.charCodeAt(0) - 0x60) : ch))
+    .filter((ch) => /[\p{L}\p{N}]/u.test(ch))
+    .join("");
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v ? [String(v)] : []);
+
+const splitValues = (v: string | null | undefined) => (v ?? "").split(/[、,，;；]/).map((x) => x.trim()).filter(Boolean);
 
 const SOURCES: SourceName[] = ["ndl", "anilist", "mangaupdates"];
 const LABELS: Record<SourceName, string> = { ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates" };
@@ -73,8 +86,8 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
           volume_a: { id: 1, title: "サンプル漫画 第01巻" }, volume_b: { id: 6, title: "Sample manga v01" } }] },
       }],
     },
-    { id: 2, title: "外付けの作品", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [4], merges: [], extra: {}, previous: {}, links: SOURCES.map(emptyLink) },
-    { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [], extra: {}, previous: {}, links: SOURCES.map(emptyLink) },
+    { id: 2, title: "外付けの作品", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [4], merges: [], extra: { genres: { value: ["ファンタジー", "コメディ"], source: "public_db", manual: false, confidence: 0.9 } }, previous: {}, links: SOURCES.map(emptyLink) },
+    { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [], extra: { kind: { value: "novel", source: "public_db", manual: false, confidence: 0.9 } }, previous: {}, links: SOURCES.map(emptyLink) },
   ];
   const proposals: (WorkProposal & { dismissed: boolean })[] = [{
     id: 1, rule: "duplicate", confidence: 0.6, status: "open", dismissed: false,
@@ -148,9 +161,45 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       finished_count: vols.filter((v) => v.progress?.finished).length,
       duplicate_slots: slots(vols).slots.filter((s) => s.duplicate).length,
       max_volume: m.max, missing_volumes: m.missing, missing_episodes: [], pending_proposals: openFor(w.id), merged: w.merges.length > 0,
+      reading_state: readingState(vols),
       kind: val(w, "kind") ?? null, publisher: val(w, "publisher") ?? null, genres: val(w, "genres") ?? [], tags: val(w, "tags") ?? [],
       link_pending: w.links.filter((l) => l.status === "pending").length,
     };
+  }
+
+  function readingState(vols: WorkVolume[]): ReadingState {
+    if (vols.length && vols.every((v) => v.progress?.finished)) return "finished";
+    return vols.some((v) => v.progress) ? "reading" : "unread";
+  }
+
+  const valuesOf = (w: MockWork): Record<WorkFilterName, string[]> => ({
+    author: splitValues(w.author), kind: strings(val(w, "kind")), genre: strings(val(w, "genres")), tag: strings(val(w, "tags")),
+  });
+
+  /** GET /api/works の検索・絞り込み(バックエンドと同じ規則の簡易版: 語は AND、項目は値の一致) */
+  function listWorks(query: string): Res {
+    const params = new URLSearchParams(query);
+    const all = works.filter((w) => w.volumeIds.some((id) => vol(id)));
+    const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [] };
+    for (const w of all) {
+      const vals = valuesOf(w);
+      for (const k of Object.keys(facets) as WorkFilterName[]) facets[k] = [...new Set([...facets[k], ...vals[k]])].sort();
+    }
+    const status = params.get("status");
+    if (status && !["unread", "reading", "finished"].includes(status)) return res(422, { detail: "status は unread / reading / finished" });
+    const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
+    const shown = all.filter((w) => {
+      const body = [w.title, ...w.aliases.map((a) => a.alias), w.author ?? "", ...Object.values(w.extra).flatMap((f) => strings(f.value)), ...volumesOf(w).map((v) => v.title)]
+        .map(normalizeSearch).join("\n");
+      if (!terms.every((t) => body.includes(t))) return false;
+      const vals = valuesOf(w);
+      for (const k of Object.keys(facets) as WorkFilterName[]) {
+        const wanted = params.get(k);
+        if (wanted && !vals[k].some((v) => normalizeSearch(v) === normalizeSearch(wanted))) return false;
+      }
+      return !status || readingState(volumesOf(w)) === status;
+    });
+    return res(200, { works: shown.map(summary), total: all.length, facets, unassigned: 0 });
   }
 
   function detail(w: MockWork): WorkDetail {
@@ -246,8 +295,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
   /** 作品の API を処理する。対象外のパスは null */
   function handle(method: string, path: string, query: string, body: any): Res | null {
     if (!path.startsWith("/api/works") && !/^\/api\/volumes\/\d+\/metadata/.test(path)) return null;
-    const live = () => works.filter((w) => w.volumeIds.some((id) => vol(id)));
-    if (method === "GET" && path === "/api/works") return res(200, { works: live().map(summary), unassigned: 0 });
+    if (method === "GET" && path === "/api/works") return listWorks(query);
     if (method === "POST" && path === "/api/works/refresh") return res(200, { works_created: 0, volumes_assigned: 0, merged: 0, proposals_open: proposals.length });
     if (method === "GET" && path === "/api/works/proposals") {
       const status = new URLSearchParams(query).get("status") ?? "open";
