@@ -226,6 +226,13 @@ describe("管理", () => {
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
     expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "データ管理", "フォロー管理", "タスクセンター"]);
+    expect(tabs.map((t) => t.getAttribute("href"))).toEqual([
+      "#/admin",
+      "#/admin/preferences",
+      "#/admin/data",
+      "#/admin/follows",
+      "#/admin/tasks",
+    ]);
     expect(tabs[0].getAttribute("aria-current")).toBe("page");
     await navigate("#/admin/data");
     expect(screen.getByRole("link", { name: "重複の候補" }).getAttribute("href")).toBe("#/duplicates");
@@ -275,5 +282,20 @@ describe("管理", () => {
     expect(await screen.findByText("出さない(hide)")).toBeTruthy();
     expect(screen.getByText("2.0 GB")).toBeTruthy();
     expect(backend.log.filter((l) => l.method !== "GET")).toEqual([]); // サーバーの設定は変えない
+  });
+
+  it("スタイル定義で画面全体の .page に pointer-events: none が適用されていない(#99)", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const css = fs.readFileSync(path.resolve(__dirname, "../styles.css"), "utf-8");
+    const matches = Array.from(css.matchAll(/(^|\n)([^\n{]+)\{[^}]*pointer-events:\s*none[^}]*\}/g));
+    for (const [, , selector] of matches) {
+      const parts = selector.split(",").map((s) => s.trim());
+      for (const part of parts) {
+        if (/(^|[\s>+~])\.page($|[\s>+~])/.test(part)) {
+          expect(part).toContain(".stage");
+        }
+      }
+    }
   });
 });
