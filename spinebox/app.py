@@ -556,7 +556,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         works.reset_field(conn, work_id, field)
         linking.apply_work(conn, work_id)
         _sync_works(conn)
-        return work_detail(conn, work_id)
+        # 手動が外れて止まっていた自動統合が成り立ち、この作品が吸収されることがある。吸収先を返す(404 にしない)
+        return work_detail(conn, works.root_of(conn, work_id) or work_id)
 
     @app.post("/api/works/{work_id}/metadata/fetch")
     def fetch_work_metadata(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):

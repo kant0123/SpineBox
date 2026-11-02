@@ -225,3 +225,21 @@ describe("公開データベースの情報(#50)", () => {
     await waitFor(() => expect(within(row).queryByRole("button", { name: "ISBNを自動に戻す" })).toBeNull());
   });
 });
+
+describe("統合された作品のページ", () => {
+  it("情報の取得で別の作品に自動統合されたら、吸収先の作品ページへ移る", async () => {
+    window.location.hash = "#/works/2";
+    // 取得の結果、作品 2 が作品 3 に吸収された(サーバーは吸収先の詳細を返す)
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/works/2/metadata/fetch")) {
+        const r = backend.handle("GET", "/api/works/3");
+        return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+      }
+      return stub(url, init);
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "情報を取得" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/works/3"));
+  });
+});

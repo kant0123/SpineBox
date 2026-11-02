@@ -65,6 +65,11 @@ export function WorkPage({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
 
   const apply = useCallback((w: WorkDetail) => {
+    // 取得・自動に戻すなどで別の作品に自動統合され、吸収先の詳細が返ったときは、吸収先のページへ移る
+    if (String(w.id) !== id) {
+      window.location.hash = workHref(w.id);
+      return;
+    }
     setWork(w);
     setTitle(w.title);
     setAuthor(w.author ?? "");
@@ -74,7 +79,7 @@ export function WorkPage({ id }: { id: string }) {
     setTags(w.tags.join("、"));
     setSynopsis((w.fields.synopsis?.value as string | undefined) ?? "");
     setSelected(new Set());
-  }, []);
+  }, [id]);
 
   const load = useCallback(async () => {
     try {

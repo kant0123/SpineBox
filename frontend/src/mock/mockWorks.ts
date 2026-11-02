@@ -230,7 +230,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
         volPrev[`${id}:${name}`] = meta[name]?.manual ? (volPrev[`${id}:${name}`] ?? null) : (meta[name] ?? null);
         meta[name] = { value: raw || null, source: "manual", manual: true, confidence: 1 };
       }
-      return res(200, { id, metadata: meta });
+      return res(200, { volume_id: id, metadata: meta });
     }
     if (reset) {
       const name = reset as VolumeMetaField;
@@ -238,7 +238,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       const prev = volPrev[`${id}:${name}`];
       if (prev) meta[name] = prev;
       else delete meta[name];
-      return res(200, { id, metadata: meta });
+      return res(200, { volume_id: id, metadata: meta });
     }
     return res(405, { detail: "未対応" });
   }

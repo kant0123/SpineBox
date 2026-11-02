@@ -267,9 +267,12 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
                 c.execute("UPDATE work_links SET failure = NULL, attempted_at = ?, checked_at = ? WHERE work_id = ? "
                           "AND source = ?", (now, now, work_id, source))
             return "linked"
-        if row is not None and row["status"] == "linked" and row["source_id"] in by_id:
-            # 自動で連携した候補が今回も見つかった: 連携を保つ(順位が少し動いただけで外れて値が消えるのを避ける)
-            status, chosen = "linked", by_id[row["source_id"]]
+        kept = by_id.get(row["source_id"]) if row is not None and row["status"] == "linked" else None
+        kind_ok = kept is not None and not (known_kind and kept["summary"]["kind"] and kept["summary"]["kind"] != known_kind)
+        if kept is not None and kind_ok and not hold:
+            # 自動で連携した候補が今回も見つかった: 連携を保つ(順位が少し動いただけで外れて値が消えるのを避ける)。
+            # ただし作品の種別と食い違う、または種別が未決になったものは保たない(通常の判定に戻す)
+            status, chosen = "linked", kept
             shown = sorted(cands, key=lambda x: x["summary"]["score"], reverse=True)[:SHOW_LIMIT]
             if chosen not in shown:
                 shown = [chosen, *shown[:SHOW_LIMIT - 1]]
@@ -380,12 +383,19 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
         if row is None or not row["manual"]:
             raise works.Conflict("この連携は手動で選ばれていません")
         cands = json.loads(row["candidates"]) if row["candidates"] else []
-        # 種別では絞らない(手動の連携が決めた種別に縛られて、ほかの候補が消えるのを避ける)
-        status, chosen, shown, margin = decide(cands, None)
         prev = json.loads(row["evidence"]) if row["evidence"] else {}
+        # まず連携を外した状態(確認待ち)にする。手動の連携が決めた種別を、決め直しの前提に使わないため
+        c.execute("""UPDATE work_links SET status = 'pending', source_id = NULL, manual = 0, item = NULL
+                     WHERE work_id = ? AND source = ?""", (work_id, source))
+    apply_work(conn, work_id)  # この連携から入った項目(種別など)を外す
+    with db.transaction(conn) as c:
+        hold = source != "ndl" and kind_unresolved(c, work_id)
+        # 種別が決まっていなければ絞らない(ほかの候補が消えるのを避ける)。決まっていれば違う種別の候補は除く
+        status, chosen, shown, margin = decide(cands, _context(c, work_id).kind, hold)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin,
-              "responses": prev.get("responses", [])}
+              "responses": prev.get("responses", []),
+              "hold": "kind_unresolved" if hold and status == "pending" else None}
         c.execute("""UPDATE work_links SET status = ?, source_id = ?, manual = 0, confidence = ?, evidence = ?,
                      item = ?, candidates = ? WHERE work_id = ? AND source = ?""",
                   (status, chosen["summary"]["source_id"] if chosen else None,

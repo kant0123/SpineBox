@@ -101,6 +101,7 @@ push 前に確かめること:
 - PR #47 — `.agent/rules/git-workflow.md` / `knowledge-wiki.md` — `CLAUDE.md` の写しとして足したが、agy レビュー・両論併記・lint はコミット後の不変条件が抜けていた(外部レビューで発覚)
 - PR #61 — `spinebox/app.py decide_work_proposal()` — 手動の統合には連携の反映(`_sync_works`)を足したのに、同じ統合を行う提案の承認には足さず、統合で増えた巻に書誌が入らなかった
 - PR #61 — `spinebox/linking.py choose()` / `reset_link()` — API 契約と mock は未知の取得元を 404 としたが、実装は 409 を返した(契約・mock・実装の突き合わせ漏れ)
+- PR #61 — `spinebox/linking.py reset_link()` / `_store()` — 連携を決める通常の経路(`fetch_work`)には「種別が未決なら保留」「作品の種別と食い違う候補は除く」があるのに、手動の選択を解除する経路と、自動連携を保つ近道は通らず、規則を飛ばして連携した(同じ判定を `decide()` へ集める。近道は判定の前提を満たすときだけ)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
@@ -153,6 +154,7 @@ push 前に確かめること:
 - PR #47 — `spinebox/works.py merge_works()` — 吸収される作品の手動の著者を、残る作品のファイル名由来の著者が隠していた(手動統合で再現)
 - PR #47 — `spinebox/app.py add_work_alias()` — 別名の一致で自動統合され操作した作品が吸収されると、吸収された id で詳細を引いて 404 を返していた(ローマ字の作品へ日本語名の別名を足して再現)
 - PR #61 — `spinebox/works.py _manual_involved()` — 利用者が選んだ公開 DB の連携(`work_links.manual`)を「手動が絡む」に数えず、強い証拠があれば自動統合で吸収されうる状態だった(新しい手動の列を足したのに判定を足していなかった)
+- PR #61 — `spinebox/app.py reset_work_field()` / `frontend/src/works/WorkPage.tsx apply()` — 手動の項目を自動に戻すと止まっていた自動統合が成り立って操作した作品が吸収されうるのに、吸収された id で詳細を引いて 404 にした。画面も、吸収先の詳細が返ってもページの URL を旧 id のままにしていた(別名の追加では対処済みだった。作品を返すエンドポイントと画面の更新口を全部見る)
 
 ### 導出した行を、元(連携・設定)が消えても残す
 

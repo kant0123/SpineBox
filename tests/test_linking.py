@@ -267,9 +267,13 @@ def test_choosing_none_is_remembered_and_not_requested_again(env_factory):
     churn(env, wid)
     assert env.net.count(NDL) == before                      # 該当なしにした取得元には要求を出さない
     assert env.link(env.work(wid), "ndl")["status"] == "none"
-    # 手動を解除すると、保存済みの候補から自動の規則で決め直す(確認待ちに戻る)
+    # 手動を解除すると、保存済みの候補から自動の規則で決め直す。ほかの取得元で種別(漫画)が決まっているので、
+    # 種別の違う候補は除かれ、再取得したときと同じ結果になる
     w = env.client.post(f"/api/works/{wid}/links/ndl/reset").json()
-    assert (env.link(w, "ndl")["status"], env.link(w, "ndl")["manual"]) == ("pending", False)
+    reset = env.link(w, "ndl")
+    assert reset["manual"] is False and reset["status"] == "linked" and reset["linked"]["kind"] == "manga"
+    again = env.link(env.fetch(wid), "ndl")
+    assert (again["status"], again["source_id"]) == (reset["status"], reset["source_id"])
 
 
 def test_reset_to_automatic_restores_previous_value_or_public_db(env_factory):
@@ -737,3 +741,54 @@ def test_background_fetch_is_off_by_default(env_factory):
         import time
         time.sleep(1.5)
     assert env.work(env.work_id())["links"][0]["status"] is None
+
+
+def test_resetting_a_field_that_unblocks_an_auto_merge_returns_the_surviving_work(env_factory):
+    """手動の作品名を自動に戻すと、元の名前が別の作品と一致して自動統合が成立し、操作した作品が吸収されうる。
+    その id で詳細を引いて 404 にしない。"""
+    env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
+    ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
+    romaji, jp = ws["Kakukaku Shikajika"], ws[KAKU]
+    assert romaji < jp                                                       # 吸収されるのは id の大きい日本語名の側
+    assert env.client.patch(f"/api/works/{jp}", json={"title": "手で付けた名前"}).status_code == 200
+    put_link(env, romaji, "anilist", {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []},
+             confidence=0.95)
+    env.client.post("/api/works/refresh")
+    assert len(env.client.get("/api/works").json()["works"]) == 2           # 手動の作品名があるので提案止まり
+    # 直す前の名前の別名を外すと、提案の根拠が無くなって提案も消える
+    for a in env.work(jp)["aliases"]:
+        if a["alias"] == KAKU:
+            assert env.client.delete(f"/api/works/{jp}/aliases/{a['id']}").status_code == 200
+    env.client.post("/api/works/refresh")
+    assert env.client.get("/api/works/proposals").json() == []
+    r = env.client.post(f"/api/works/{jp}/fields/title/reset")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == romaji and len(env.client.get("/api/works").json()["works"]) == 1
+
+
+def test_resetting_a_manual_link_keeps_the_hold_while_the_kind_is_unresolved(env_factory):
+    env = env_factory("okiraku", OKIRAKU_FILES)
+    wid = env.work_id()
+    w = env.fetch(wid)
+    anilist = env.link(w, "anilist")
+    assert anilist["status"] == "pending" and anilist["hold"] == "kind_unresolved"
+    manga = next(c for c in anilist["candidates"] if c["kind"] == "manga")
+    r = env.client.post(f"/api/works/{wid}/links/anilist/choose", json={"source_id": manga["source_id"]})
+    assert r.status_code == 200
+    r = env.client.post(f"/api/works/{wid}/links/anilist/reset")
+    assert r.status_code == 200, r.text
+    after = env.link(r.json(), "anilist")
+    assert after["status"] == "pending" and after["hold"] == "kind_unresolved" and after["manual"] is False
+    assert r.json()["kind"] is None
+
+
+def test_an_auto_link_whose_kind_contradicts_the_known_kind_is_dropped_on_refetch(env_factory):
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    w = env.fetch(wid)
+    assert env.link(w, "anilist")["status"] == "linked"
+    assert env.client.patch(f"/api/works/{wid}", json={"kind": "novel"}).status_code == 200
+    w = env.fetch(wid)
+    assert env.link(w, "anilist")["status"] != "linked"
+    assert w["fields"]["kind"]["value"] == "novel" and w["fields"]["kind"]["manual"]
+    assert "Comedy" not in (w["fields"].get("genres") or {}).get("value", [])      # 漫画側の候補の分類は残さない
