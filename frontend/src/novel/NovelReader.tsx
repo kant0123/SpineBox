@@ -4,6 +4,7 @@ import { libraryHref } from "../route";
 import { loadNovelSettings, saveNovelSettings } from "../settings";
 import { keyAction, swipeAction, tapAction, type Action } from "../reader/layout";
 import { volumeErrorMessage } from "../reader/loadError";
+import { nextVolumeStep } from "../reader/nextVolume";
 import { createProgressSaver } from "../reader/progressSaver";
 import { ErrorMessage } from "../reader/Reader";
 import { useViewport } from "../reader/useViewport";
@@ -189,7 +190,13 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
       if (!ready || !layout) return;
       const step = stepNovel(section, layout.page, layout.starts.length, count, a === "next" ? 1 : -1);
       if (step === null) {
-        setNotice(a === "next" ? "最後のページです" : "最初のページです");
+        // 最終ページからさらに進もうとしたら、同じ作品の次の巻へ移る(#113)
+        const next = a === "next" ? nextVolumeStep(detail) : null;
+        if (next && "href" in next) {
+          window.location.hash = next.href;
+          return;
+        }
+        setNotice(next && "notice" in next ? next.notice : a === "next" ? "最後のページです" : "最初のページです");
         return;
       }
       setMenu(false);
