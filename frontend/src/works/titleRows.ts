@@ -2,6 +2,7 @@
 // 画面を描かずに試せるよう、判定はここへ分ける。
 
 import type { FollowRelease, WorkDetail, WorkVolume } from "../api";
+import { releasedText } from "../follows/Follows";
 
 /** 行の読書状態。未読 = まだ開いていない、読了 = 最後まで読んだ */
 export type TitleStatus = "unread" | "reading" | "finished";
@@ -113,6 +114,14 @@ function missingRow(workTitle: string, release: FollowRelease): MissingTitleRow 
     kind: "missing", key: `release-${release.kind}-${release.volume}`, label: `${release.volume}巻`,
     title: `${workTitle} 第${release.volume}巻`, missing: release.kind === "new" ? "new" : "gap", release,
   };
+}
+
+/**
+ * 持っていない巻の行に出す発売日(#115)。日付の分からない巻で「発売日不明 発売」にならないよう、
+ * 文までここで作る。
+ */
+export function releaseDateText(released: string | null): string {
+  return released ? `${releasedText(released)} 発売` : "発売日不明";
 }
 
 export interface WorkProgress {

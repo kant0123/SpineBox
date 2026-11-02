@@ -1,7 +1,7 @@
 // タイトル一覧(#115)の行の決まり。表示は Works.test.tsx で確かめるので、ここでは判定だけを試す。
 import { describe, expect, it } from "vitest";
 import type { FollowRelease, WorkDetail, WorkSlot, WorkVolume } from "../api";
-import { buildTitleRows, percentText, volumeStatus, volumeTitle, workProgress } from "./titleRows";
+import { buildTitleRows, percentText, releaseDateText, volumeStatus, volumeTitle, workProgress } from "./titleRows";
 
 const vol = (id: number, over: Partial<WorkVolume> = {}): WorkVolume => ({
   id, title: `巻 ${id}`, parent_title: null, page_count: 10, offline: false, progress: null,
@@ -77,6 +77,14 @@ describe("一覧の行", () => {
   it("フォローしていなければ欠け・続刊は出さない", () => {
     const rows = buildTitleRows(work([slot(1, [vol(1)])], []));
     expect(rows.map((r) => r.label)).toEqual(["1巻"]);
+  });
+});
+
+describe("持っていない巻の発売日", () => {
+  it("日付があれば「2014年1月 発売」、無ければ「発売日不明」だけにする", () => {
+    expect(releaseDateText("2014-01")).toBe("2014年1月 発売");
+    expect(releaseDateText("2014")).toBe("2014年 発売");
+    expect(releaseDateText(null)).toBe("発売日不明");
   });
 });
 

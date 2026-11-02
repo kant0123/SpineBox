@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type WorkDetail } from "../api";
-import { releasedText } from "../follows/Follows";
 import { readHref, workHref, worksHref } from "../route";
 import { KIND_TEXT } from "./labels";
 import {
-  buildTitleRows, percentText, STATUS_TEXT, volumeStatus, workProgress,
+  buildTitleRows, percentText, releaseDateText, STATUS_TEXT, volumeStatus, workProgress,
   type OwnedTitleRow, type TitleStatus, type TitleRow,
 } from "./titleRows";
 import { WorkCover } from "./WorkCover";
@@ -121,7 +120,7 @@ export function WorkTitles({ id }: { id: string }) {
         <span className="title-number">{row.label}</span>
         <span className="title-body">
           <span className="volume-title">{row.title}</span>
-          <span className="volume-meta">{releasedText(row.release.released)} 発売</span>
+          <span className="volume-meta">{releaseDateText(row.release.released)}</span>
         </span>
         <span className={`badge ${row.missing}-badge`}>{row.missing === "new" ? "最新巻" : "欠け"}</span>
       </div>
