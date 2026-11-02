@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createMockBackend } from "./mock/mockBackend";
-import { organizeHistoryHref, organizeHref, organizeTemplateHref, readHref, workHref, workOrganizeHref } from "./route";
+import { organizeHistoryHref, organizeHref, organizeTemplateHref, readHref, volumesHref, workHref, workOrganizeHref } from "./route";
 
 let backend: ReturnType<typeof createMockBackend>;
 
@@ -25,7 +25,7 @@ const puts = () => backend.log.filter((l) => l.method === "PUT").map((l) => ({ p
 
 beforeEach(() => {
   backend = createMockBackend();
-  window.location.hash = "";
+  window.location.hash = volumesHref; // 巻の一覧(ホームは作品一覧 #85)
   localStorage.clear();
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
@@ -168,7 +168,7 @@ describe("リーダー(スマホ縦 375px)", () => {
     expect(await screen.findByText("最後のページです")).toBeTruthy();
 
     // 待たずに一覧へ戻っても最後の位置が送られる
-    await navigate("#/");
+    await navigate(volumesHref);
     expect(puts().at(-1)).toEqual({ path: "/api/volumes/2/progress", body: { page: 7, finished: true } });
     const card = (await screen.findByText("サンプル漫画 第02巻")).closest("li")!;
     await waitFor(() => expect(within(card).getByText("既読")).toBeTruthy());
@@ -177,7 +177,7 @@ describe("リーダー(スマホ縦 375px)", () => {
     await navigate(readHref(2));
     await waitFor(() => expect(shownPages()).toEqual(["8 ページ"]));
     press("ArrowRight");
-    await navigate("#/");
+    await navigate(volumesHref);
     expect(puts().at(-1)?.body).toEqual({ page: 6, finished: true });
   });
 

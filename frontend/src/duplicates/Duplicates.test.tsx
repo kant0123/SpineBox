@@ -11,7 +11,7 @@ let backend: ReturnType<typeof createMockBackend>;
 
 beforeEach(() => {
   backend = createMockBackend();
-  window.location.hash = "";
+  window.location.hash = "#/volumes";
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
     return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });

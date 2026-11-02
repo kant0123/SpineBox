@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
+summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
 updated: 2026-11-02
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails]
 ---
@@ -20,6 +20,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 | パス | 役割 |
 | --- | --- |
+| `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:72 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
+| `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
+| `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
+| `frontend/src/admin/Admin.tsx:29 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理・フォロー管理・タスクセンターは `frontend/src/admin/panels.tsx:6 DataPanel()` ほか(組み込み口) |
+| `frontend/src/browse/FacetList.tsx:17 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧 |
 | `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
 | `frontend/src/reader/Reader.tsx:49 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
 | `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
@@ -96,7 +101,36 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(公開 DB の情報がまだ無い作品だけのときの種別・ジャンル・タグ)は選択欄ごと出さない。種別の候補は `manga` / `novel` で届くので `KIND_TEXT` で漫画・小説と表示する。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/mock/mockWorks.ts:22 normalizeSearch()` でバックエンドと同じ正規化を真似ている
 - **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
   取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
-- **作品の一覧と巻の一覧は別画面で、既定は巻の一覧のまま。** 作品の画面は `#/works`。巻の一覧のカード・リーダーは変えていない
+- **ホーム(`#/`)は作品の一覧。** 巻の一覧は `#/volumes`(作品一覧の「巻」タブ)。#85 までは `#/` が巻の一覧だったので、リーダー・整理の画面の「一覧へ」(`libraryHref`)はホームへ戻る。`#/works` もホームと同じ画面
+
+## 画面構成(#85。Peach との対応)
+
+利用者の求めで、Peach(動画向けのローカルメディア管理アプリ)と同じく「常に表示するサイドバー + 管理のタブ」にした。
+
+| Peach | SpineBox |
+| --- | --- |
+| メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
+| ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
+| フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86) |
+| 管理: 統計・好み・データ管理・フォロー管理・タスクセンター | 同じ 5 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `follows` / `tasks`) |
+| 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
+
+- **既存の画面はサイドバーの中に収め、どのナビの下かを `activeNav()` で決める。** 作品ページ・巻の一覧・提案はホーム、重複の候補・受け入れ・整理は管理。
+  リーダーだけはサイドバーを出さない(読むときに画面を狭めない)。直リンク `#/read/<id>` もそのまま
+- **横長では常に表示し、開閉ボタンでアイコンだけの帯(60px)にする。スマホ幅(CSS の 768px 未満)ではハンバーガーの引き出し。**
+  幅の判定は CSS だけで行い、JS は「細くしたか(`spinebox.sidebar`)」と「引き出しが開いているか」だけを持つ(回転で幅が変わっても状態が食い違わない)。
+  引き出しはナビを選ぶ・画面が変わる・Esc・背景のタップで閉じる
+- **ライト/ダークは CSS 変数の 2 組。** `<html data-theme>` があればそちら、無ければ `prefers-color-scheme` に従う。既定は OS に従い、
+  サイドバーの切り替えを押すと「いま効いている方の逆」を `localStorage`(`spinebox.theme`)に記憶する。OS に従うへ戻すのは好みタブから。
+  `main.tsx` で描画の前に適用するのは、ダークで開いたときに一瞬ライトになるのと、リーダーから直接開いたときに付かないのを避けるため
+- **蔵書の切り替えは端末ごとに記憶し(`spinebox.library`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
+  設定からルートを外しても、端末に残った id で一覧が空になり続けないように。オフラインのルートも候補に出す(巻はオフラインとして残る)
+- **好みタブの各項目の置き場所:** テーマ・リーダーの既定(見開き・表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。リーダーの中で変えたものと同じ鍵)。
+  スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
+  画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため
+- **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)
+- **まだ中身の無い画面(#83・#84・#86・#87)は枠だけ。** フォロー・ブックマークは `frontend/src/browse/Pending.tsx`、データ管理・フォロー管理・タスクセンターは
+  `frontend/src/admin/panels.tsx` の各パネルを差し替えて組み込む。データ管理には今ある画面(巻の一覧のスキャン・重複の候補・統合の提案・受け入れ・整理の履歴)への入口を置いている
 
 ## 落とし穴
 
@@ -128,6 +162,10 @@ npm run build      # frontend/dist
 ```
 
 ## 経緯
+
+- #85 でサイドバーと管理のタブ(Peach と同じ画面構成)、ライト/ダーク、蔵書の切り替え、著者・タグ・出版社の一覧、統計・好みタブを足した。ホームを作品一覧にし、巻の一覧を `#/volumes` へ移した。
+  `npm run dev:mock` を 375px と 1280px のヘッドレス Chromium(ライト・ダークの両方)で開き、ホーム・著者・管理(統計・好み・データ管理)・巻の一覧・作品ページ・受け入れ・リーダーで横スクロールが出ないこと、
+  引き出し・細い帯・蔵書の切り替え・テーマの記憶(再読み込み後も残る)を確認した。コンソールのエラーは表紙の 404 pending(既存の挙動)だけ。実バックエンド・実データ・実機での確認はローカルで引き取る
 
 - #75 で作品カードに表紙と「表紙を作る」を足した([[cover-thumbnails]])。モック API は入れ子の巻(`page_count` 未確定)の表紙を、開くか作るまで 404 pending にする。
   `npm run dev:mock` を 375px と 1000px のヘッドレス Chromium で開き、作成前は入れ子の作品が文字だけのカード・作成後に表紙が出ること、横スクロールとコンソールのエラーが無いことを確認した。

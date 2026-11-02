@@ -1,6 +1,9 @@
 // 作品(#43)のモック API。mockBackend.ts から使う。アプリ本体からは import しない。
 
 import type { FieldInfo, LinkCandidate, ReadingState, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkLink, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
+import { normalizeSearch } from "../util/normalize";
+
+export { normalizeSearch };
 
 interface MockWork {
   id: number;
@@ -17,14 +20,6 @@ interface MockWork {
   links: WorkLink[];
 }
 
-
-/** バックエンド(spinebox/naming.py normalize_title)と同じ正規化: NFKC・小文字・カタカナ → ひらがな・記号と空白を落とす */
-export function normalizeSearch(text: string): string {
-  return Array.from(text.normalize("NFKC").toLowerCase())
-    .map((ch) => (ch >= "ァ" && ch <= "ヶ" ? String.fromCharCode(ch.charCodeAt(0) - 0x60) : ch))
-    .filter((ch) => /[\p{L}\p{N}]/u.test(ch))
-    .join("");
-}
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v ? [String(v)] : []);
 
@@ -56,7 +51,8 @@ type Res = { status: number; body: unknown };
 /** 画面確認用の巻番号(モックの巻の番号とは別に、作品ページの欠け表示を見せるため) */
 const NUMBERS: Record<number, number> = { 1: 1, 6: 1, 2: 2, 3: 4 };
 
-export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: boolean })[]) {
+/** rootOf は巻 id → 蔵書ルートの id(蔵書の切り替え #85。省略すると全部 1) */
+export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: boolean })[], rootOf: (volumeId: number) => number = () => 1) {
   let aliasSeq = 10;
   let workSeq = 10;
   const works: MockWork[] = [
@@ -128,7 +124,9 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       metadata: volMeta[id] ?? {},
     };
   };
-  const volumesOf = (w: MockWork) => w.volumeIds.map(volJson).filter((v): v is WorkVolume => v !== null);
+  /** root を渡すと、その蔵書ルートの巻だけ */
+  const volumesOf = (w: MockWork, root: string | null = null) =>
+    w.volumeIds.filter((id) => !root || String(rootOf(id)) === root).map(volJson).filter((v): v is WorkVolume => v !== null);
 
   function slots(vols: WorkVolume[]): { slots: WorkSlot[]; unnumbered: WorkVolume[] } {
     const groups = new Map<number, WorkVolume[]>();
@@ -161,8 +159,8 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     return ok[0]?.id ?? null;
   };
 
-  function summary(w: MockWork): WorkSummary {
-    const vols = volumesOf(w);
+  function summary(w: MockWork, root: string | null = null): WorkSummary {
+    const vols = volumesOf(w, root);
     const m = missingOf(vols);
     return {
       id: w.id, title: w.title, title_source: w.title_manual ? "manual" : "filename", title_manual: w.title_manual,
@@ -186,13 +184,33 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
 
   const valuesOf = (w: MockWork): Record<WorkFilterName, string[]> => ({
     author: splitValues(w.author), kind: strings(val(w, "kind")), genre: strings(val(w, "genres")), tag: strings(val(w, "tags")),
+    publisher: strings(val(w, "publisher")),
   });
+
+  /** 見えている巻を持つ作品(root を渡すとその蔵書ルートに巻があるものだけ) */
+  const listed = (root: string | null) => works.filter((w) => volumesOf(w, root).length > 0);
+
+  /** GET /api/works/facets/{name}: 値と作品数 */
+  function facetValues(name: string, root: string | null): Res {
+    if (!["author", "kind", "genre", "tag", "publisher"].includes(name)) return res(404, { detail: `未対応の項目: ${name}` });
+    const counts = new Map<string, { value: string; count: number }>();
+    for (const w of listed(root)) {
+      for (const v of new Set(valuesOf(w)[name as WorkFilterName])) {
+        const key = normalizeSearch(v);
+        const e = counts.get(key) ?? { value: v, count: 0 };
+        e.count++;
+        counts.set(key, e);
+      }
+    }
+    return res(200, { name, values: [...counts.values()].sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0)) });
+  }
 
   /** GET /api/works の検索・絞り込み(バックエンドと同じ規則の簡易版: 語は AND、項目は値の一致) */
   function listWorks(query: string): Res {
     const params = new URLSearchParams(query);
-    const all = works.filter((w) => w.volumeIds.some((id) => vol(id)));
-    const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [] };
+    const root = params.get("root");
+    const all = listed(root);
+    const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [], publisher: [] };
     for (const w of all) {
       const vals = valuesOf(w);
       for (const k of Object.keys(facets) as WorkFilterName[]) facets[k] = [...new Set([...facets[k], ...vals[k]])].sort();
@@ -201,7 +219,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     if (status && !["unread", "reading", "finished"].includes(status)) return res(422, { detail: "status は unread / reading / finished" });
     const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
     const shown = all.filter((w) => {
-      const body = [w.title, ...w.aliases.map((a) => a.alias), w.author ?? "", ...Object.values(w.extra).flatMap((f) => strings(f.value)), ...volumesOf(w).map((v) => v.title)]
+      const body = [w.title, ...w.aliases.map((a) => a.alias), w.author ?? "", ...Object.values(w.extra).flatMap((f) => strings(f.value)), ...volumesOf(w, root).map((v) => v.title)]
         .map(normalizeSearch).join("\n");
       if (!terms.every((t) => body.includes(t))) return false;
       const vals = valuesOf(w);
@@ -209,9 +227,9 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
         const wanted = params.get(k);
         if (wanted && !vals[k].some((v) => normalizeSearch(v) === normalizeSearch(wanted))) return false;
       }
-      return !status || readingState(volumesOf(w)) === status;
+      return !status || readingState(volumesOf(w, root)) === status;
     });
-    return res(200, { works: shown.map(summary), total: all.length, facets, unassigned: 0 });
+    return res(200, { works: shown.map((w) => summary(w, root)), total: all.length, facets, unassigned: 0 });
   }
 
   function detail(w: MockWork): WorkDetail {
@@ -312,6 +330,8 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
   function handle(method: string, path: string, query: string, body: any): Res | null {
     if (!path.startsWith("/api/works") && !/^\/api\/volumes\/\d+\/metadata/.test(path)) return null;
     if (method === "GET" && path === "/api/works") return listWorks(query);
+    const facet = path.match(/^\/api\/works\/facets\/([a-z]+)$/);
+    if (facet && method === "GET") return facetValues(facet[1], new URLSearchParams(query).get("root"));
     if (method === "POST" && path === "/api/works/refresh") return res(200, { works_created: 0, volumes_assigned: 0, merged: 0, proposals_open: proposals.length });
     if (method === "GET" && path === "/api/works/proposals") {
       const status = new URLSearchParams(query).get("status") ?? "open";
@@ -426,5 +446,5 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     return res(405, { detail: "未対応" });
   }
 
-  return { handle, works, proposals };
+  return { handle, works, proposals, summary, listed };
 }

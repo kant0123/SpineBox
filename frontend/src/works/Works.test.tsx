@@ -26,10 +26,10 @@ afterEach(() => {
 
 describe("ルートと文言", () => {
   it("作品・作品ページ・提案のルートを読む", () => {
-    expect(parseRoute("#/works")).toEqual({ name: "works" });
+    expect(parseRoute("#/works")).toEqual({ name: "works", scope: { by: "all" } });
     expect(parseRoute("#/works/12")).toEqual({ name: "work", id: "12" });
     expect(parseRoute("#/works/proposals")).toEqual({ name: "work-proposals" });
-    expect(parseRoute("#/works/abc")).toEqual({ name: "library" });
+    expect(parseRoute("#/works/abc")).toEqual({ name: "works", scope: { by: "all" } });
   });
 
   it("日本語の文かの判定(サーバーの is_japanese と同じ)", () => {
@@ -62,7 +62,7 @@ describe("作品の一覧", () => {
     expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1");
     expect(screen.getByText(/統合の提案が 1 件/).closest("a")!.getAttribute("href")).toBe("#/works/proposals");
     // 巻の一覧と行き来できる
-    expect(screen.getByRole("link", { name: "巻" }).getAttribute("href")).toBe("#/");
+    expect(screen.getByRole("link", { name: "巻" }).getAttribute("href")).toBe("#/volumes");
   });
 });
 

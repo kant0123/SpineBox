@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
-import { duplicatesHref, workHref, workProposalsHref } from "../route";
+import { duplicatesHref, facetListHref, workHref, workProposalsHref, type WorksScope } from "../route";
+import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
@@ -9,11 +10,31 @@ import { WorkCover } from "./WorkCover";
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
 const SEARCH_DELAY_MS = 250;
 
-const FILTER_LABELS: Record<WorkFilterName, string> = { author: "著者", kind: "種別", genre: "ジャンル", tag: "タグ" };
-const FILTER_NAMES: WorkFilterName[] = ["author", "kind", "genre", "tag"];
+const FILTER_LABELS: Record<WorkFilterName, string> = { author: "著者", kind: "種別", genre: "ジャンル", tag: "タグ", publisher: "出版社" };
+const FILTER_NAMES: WorkFilterName[] = ["author", "kind", "genre", "tag", "publisher"];
 
-/** 作品の一覧(作品カード → 作品ページ)。上に全文検索と絞り込み(#56)。 */
-export function Works() {
+/** サイドバーから開いた一覧に固定で掛ける絞り込み(#85。漫画・小説・著者・タグ・出版社) */
+export function scopeQuery(scope: WorksScope): WorkQuery {
+  if (scope.by === "all") return {};
+  if (scope.by === "kind") return { kind: scope.kind };
+  return { [scope.by]: scope.value };
+}
+
+/** 一覧の見出し */
+export function scopeTitle(scope: WorksScope): string {
+  if (scope.by === "all") return "ホーム";
+  if (scope.by === "kind") return scope.kind === "manga" ? "漫画" : "小説";
+  return `${FILTER_LABELS[scope.by]}: ${scope.value}`;
+}
+
+/**
+ * 作品の一覧(作品カード → 作品ページ)。上に全文検索と絞り込み(#56)。
+ * scope はサイドバーの漫画・小説・著者・タグ・出版社から開いたときの固定の条件(その項目の選択は出さない)、
+ * 蔵書の切り替え(#85)はサイドバーで選んだ蔵書ルート。
+ */
+export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
+  const { root } = useLibraryScope();
+  const fixed = scopeQuery(scope);
   const [data, setData] = useState<WorkList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,17 +47,18 @@ export function Works() {
   const [coverRev, setCoverRev] = useState(0);
   const seq = useRef(0);
 
+  const fixedKey = JSON.stringify(fixed);
   const load = useCallback(async (q: WorkQuery) => {
     const mine = ++seq.current;
     try {
-      const list = await api.listWorks(q);
+      const list = await api.listWorks({ ...q, ...JSON.parse(fixedKey), ...(root ? { root } : {}) });
       if (mine !== seq.current) return; // 後から出した検索の結果を古い結果で上書きしない
       setData(list);
       setError(null);
     } catch {
       if (mine === seq.current) setError("作品一覧を読み込めませんでした。サーバーが動いているか確認してください。");
     }
-  }, []);
+  }, [fixedKey, root]);
 
   const loadProposals = useCallback(async () => {
     try {
@@ -110,7 +132,8 @@ export function Works() {
     setQuery({});
   };
 
-  const activeFilters = FILTER_NAMES.filter((n) => query[n]).length + (query.status ? 1 : 0);
+  const selectable = FILTER_NAMES.filter((n) => !(n in fixed));
+  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0);
   const filtering = activeFilters > 0 || !!query.q?.trim();
 
   const refresh = async () => {
@@ -128,7 +151,7 @@ export function Works() {
   return (
     <div className="library works">
       <header className="library-header">
-        <h1>SpineBox</h1>
+        <h1>{scopeTitle(scope)}</h1>
         <div className="header-actions">
           <a className="header-link" href={duplicatesHref}>
             重複の候補
@@ -148,7 +171,10 @@ export function Works() {
           </button>
         </div>
       </header>
-      <ViewTabs current="works" />
+      {scope.by === "all" && <ViewTabs current="works" />}
+      {(scope.by === "author" || scope.by === "tag" || scope.by === "publisher") && (
+        <p className="scope-back"><a className="back-link" href={facetListHref(scope.by)}>‹ {FILTER_LABELS[scope.by]}の一覧へ</a></p>
+      )}
       {error && (
         <div className="notice error" role="alert">
           {error}
@@ -195,7 +221,7 @@ export function Works() {
                 ))}
               </select>
             </label>
-            {FILTER_NAMES.filter((n) => (data?.facets[n].length ?? 0) > 0 || query[n]).map((n) => (
+            {selectable.filter((n) => (data?.facets[n]?.length ?? 0) > 0 || query[n]).map((n) => (
               <label key={n}>
                 {FILTER_LABELS[n]}
                 <select value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
@@ -220,7 +246,11 @@ export function Works() {
       {data && data.works.length === 0 && filtering && data.total > 0 && (
         <p className="muted">条件に合う作品がありません。語を短くするか、絞り込みを外してください。</p>
       )}
-      {data && data.total === 0 && <p className="muted">作品がありません。蔵書フォルダを設定してスキャンしてください。</p>}
+      {data && data.total === 0 && !root && <p className="muted">作品がありません。蔵書フォルダを設定してスキャンしてください。</p>}
+      {data && data.total === 0 && root && <p className="muted">この蔵書には作品がありません。</p>}
+      {data && data.total > 0 && data.works.length === 0 && !filtering && scope.by !== "all" && (
+        <p className="muted">この条件の作品はありません。</p>
+      )}
       {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります(「巻」の表示にあります)。</p>}
       <ul className="work-grid">
         {data?.works.map((w) => {

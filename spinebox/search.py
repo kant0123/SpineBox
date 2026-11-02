@@ -26,7 +26,7 @@ INDEX_TABLE = "work_search"
 # 絞り込みの名前(API のクエリ名)→ 作品の項目名(work_fields.field。公開 DB の結線 #50 の名前)。
 # 値は 1 つずつ(JSON 配列か、区切り文字で分けたもの)に分け、正規化して一致で比べる。
 # 行が無い項目は絞り込みの候補も出ない
-FILTER_FIELDS = {"author": "author", "kind": "kind", "genre": "genres", "tag": "tags"}
+FILTER_FIELDS = {"author": "author", "kind": "kind", "genre": "genres", "tag": "tags", "publisher": "publisher"}
 # 索引に入れない項目(検索語に当たってほしくない数値など)
 UNINDEXED_FIELDS = ("total_volumes",)
 # 種別(work_fields.kind の値)の日本語表記。検索語にも絞り込みの値にも使える
@@ -252,3 +252,20 @@ def facets(values_by_work: dict[int, dict[str, list[str]]], work_ids) -> dict[st
                 seen.setdefault(_comparable(name, v), v)
         out[name] = sorted(seen.values())
     return out
+
+
+def facet_counts(values_by_work: dict[int, dict[str, list[str]]], work_ids, name: str) -> list[dict]:
+    """1 つの項目の値と、その値を持つ作品の数(著者・タグ・出版社の一覧 #85)。表記の揺れは facets と同じくまとめる。"""
+    if name not in FILTER_FIELDS:
+        raise InvalidFilter(f"未対応の項目: {name}")
+    found: dict[str, list] = {}
+    for wid in work_ids:
+        seen: set[str] = set()
+        for v in values_by_work.get(wid, {}).get(name, []):
+            key = _comparable(name, v)
+            if key in seen:
+                continue
+            seen.add(key)
+            entry = found.setdefault(key, [v, 0])
+            entry[1] += 1
+    return [{"value": v, "count": n} for v, n in sorted(found.values(), key=lambda e: e[0])]

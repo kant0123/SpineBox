@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, isNovel, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { duplicatesHref, inboxHref, organizeHistoryHref, organizeHref, readHref } from "../route";
+import { useLibraryScope } from "../shell/libraryScope";
 import { ViewTabs } from "../works/ViewTabs";
 
 /** 一覧のカードに出す読書状態の文言 */
@@ -79,6 +80,7 @@ function ScanIssues({ result }: { result: ScanResult }) {
 }
 
 export function Library() {
+  const { root } = useLibraryScope();
   const [volumes, setVolumes] = useState<VolumeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -87,12 +89,12 @@ export function Library() {
 
   const load = useCallback(async () => {
     try {
-      setVolumes(await api.listVolumes());
+      setVolumes(await api.listVolumes(root));
       setError(null);
     } catch {
       setError("蔵書一覧を読み込めませんでした。サーバーが動いているか確認してください。");
     }
-  }, []);
+  }, [root]);
 
   useEffect(() => {
     void load();
@@ -127,7 +129,7 @@ export function Library() {
   return (
     <div className="library">
       <header className="library-header">
-        <h1>SpineBox</h1>
+        <h1>巻の一覧</h1>
         <div className="header-actions">
           <a className="header-link" href={duplicatesHref}>
             重複の候補

@@ -36,6 +36,8 @@ export interface MockOptions {
   firstOpenDelayMs?: number;
   /** 巻 ID ごとに `GET /api/volumes/{id}` を失敗させる。一覧に無い ID でもよい(`#/read/<id>` で直接開く) */
   failures?: Record<string, { status: number; detail: string }>;
+  /** `GET /api/stats` を失敗させる */
+  statsFailure?: boolean;
   /** `POST /api/scan` の「読めなかったもの」。省略すると 2 件 */
   scanIssues?: ScanIssue[];
   /** `POST /api/scan` を失敗させる(サーバーの `detail` を画面に出す確認用) */
@@ -164,7 +166,13 @@ function pageSvg(title: string, index: number, total: number): string {
 /** 状態を持つモック。progress の保存は次の GET に反映される。 */
 export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), options: MockOptions = {}) {
   const log: { method: string; path: string; body?: unknown }[] = [];
-  const mockWorks = createMockWorks(() => volumes);
+  // 蔵書ルート(#85 の蔵書の切り替え)。外付けドライブの巻(オフライン)だけ 2 つ目のルート
+  const roots = [
+    { id: 1, name: "本", path: "D:/本", online: true },
+    { id: 2, name: "漫画", path: "E:/漫画", online: false },
+  ];
+  const rootOf = (volumeId: number) => (volumes.find((v) => v.id === volumeId)?.offline ? 2 : 1);
+  const mockWorks = createMockWorks(() => volumes, rootOf);
   const opened = new Set<number>();
   const candidates = defaultCandidates(volumes);
   const idleScan: DuplicateScanState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
@@ -274,9 +282,50 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (w) return json(w.status, w.body);
 
     const shown = () => volumes.filter((v) => !v.hidden);
+    const query = new URLSearchParams(rawPath.split("?")[1] ?? "");
+    const root = query.get("root");
+    const inRoot = (v: MockVolume) => !root || String(rootOf(Number(v.id))) === root;
     if (method === "GET" && path === "/api/volumes") {
-      const list: VolumeSummary[] = shown().map(({ hidden: _hidden, ...v }) => ({ ...v }));
+      const list: VolumeSummary[] = shown().filter(inRoot).map(({ hidden: _hidden, ...v }) => ({ ...v }));
       return json(200, list);
+    }
+    if (method === "GET" && path === "/api/libraries") {
+      return json(200, roots.map((r) => ({ ...r, volume_count: shown().filter((v) => rootOf(Number(v.id)) === r.id).length })));
+    }
+    if (method === "GET" && path === "/api/settings") {
+      return json(200, { untranslated_terms: "hide", cache_limit_bytes: 2 * 1024 ** 3, memory_cache_limit_bytes: 256 * 1024 ** 2,
+        metadata_sources: ["ndl", "anilist", "mangaupdates"], metadata_background: false });
+    }
+    if (method === "GET" && path === "/api/stats") {
+      if (options.statsFailure) return json(500, { detail: "失敗" });
+      const vols = shown().filter(inRoot);
+      const images = vols.filter((v) => !v.format || v.format === "images");
+      const ws = mockWorks.listed(root).map((w) => mockWorks.summary(w, root));
+      const ids = new Set(vols.map((v) => String(v.id)));
+      return json(200, {
+        root_id: root ? Number(root) : null,
+        works: {
+          total: ws.length, manga: ws.filter((w) => w.kind === "manga").length, novel: ws.filter((w) => w.kind === "novel").length,
+          kind_unknown: ws.filter((w) => !w.kind).length,
+          finished: ws.filter((w) => w.reading_state === "finished").length, reading: ws.filter((w) => w.reading_state === "reading").length,
+          unread: ws.filter((w) => w.reading_state === "unread").length, link_pending: ws.filter((w) => w.link_pending > 0).length,
+          with_missing: ws.filter((w) => w.missing_volumes.length > 0).length, no_cover: thumbsBuilt ? 0 : ws.filter((w) => w.cover_volume_id !== null).length,
+        },
+        volumes: {
+          total: vols.length, images: images.length, novels: vols.length - images.length, offline: vols.filter((v) => v.offline).length,
+          finished: vols.filter((v) => v.progress?.finished).length, reading: vols.filter((v) => v.progress && !v.progress.finished).length,
+          unread: vols.filter((v) => !v.progress).length,
+        },
+        pages: { total: images.reduce((n, v) => n + (v.page_count ?? 0), 0), unknown_volumes: images.filter((v) => v.page_count === null).length },
+        unassigned_volumes: 0,
+        duplicate_candidates: candidates.filter((c) => !c.dismissed && ids.has(String(c.a.id)) && ids.has(String(c.b.id))).length,
+        scan_issues: (options.scanIssues ?? defaultScanIssues()).length,
+        cache: {
+          disk: { used_bytes: 734 * 1024 ** 2, limit_bytes: 2 * 1024 ** 3 },
+          memory: { used_bytes: 48 * 1024 ** 2, limit_bytes: 256 * 1024 ** 2 },
+          thumbnails: { used_bytes: 3 * 1024 ** 2, limit_bytes: 512 * 1024 ** 2 },
+        },
+      });
     }
     if (path.startsWith("/api/inbox")) {
       const r = inbox.handle(method, path, parsed);
