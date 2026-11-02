@@ -427,6 +427,20 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX jobs_kind ON jobs (kind, id)",
     ],
+    # 15: 著者・タグ・出版社の一覧のスター(#117)。field は FILTER_FIELDS の項目名(author / tag / publisher 等)、
+    #     key は search._facet_key(field, value) で正規化した値(表記揺れをまとめた一覧と同じ単位)。
+    #     蔵書がオフラインになっても・その値を持つ作品が一時的に見えなくなってもレコードは消さない
+    [
+        """
+        CREATE TABLE facet_stars (
+            field TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (field, key)
+        )
+        """,
+    ],
 ]
 
 

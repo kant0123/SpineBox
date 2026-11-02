@@ -132,6 +132,73 @@ def test_facets_count_works_per_value_and_follow_root(env):
     assert client.get("/api/works/facets/synopsis").status_code == 404
 
 
+def test_facet_stars_toggle_and_normalize_and_handle_symbol_only_values(env, tmp_path):
+    """タグ・著者・出版社の値ごとにスターを付け外しでき(#117)、表記揺れは同じキーにまとまり、記号のみの値も衝突しない。"""
+    import pytest
+    from spinebox import search
+
+    settings, client, _, _ = env
+    set_fields(settings, {KAKU: {"tags": '["コメディ", "美大", "!?"]', "publisher": "集英社"},
+                          OKIRAKU: {"tags": '["領地経営", "!!"]', "publisher": "ホビージャパン"}}, client)
+    before = {v["value"]: v["starred"] for v in client.get("/api/works/facets/tag").json()["values"]}
+    assert before == {"!?": False, "!!": False, "コメディ": False, "宮崎": False, "美大": False, "領地経営": False} or \
+           before == {"!?": False, "!!": False, "コメディ": False, "美大": False, "領地経営": False}
+
+    # スターを付ける(半角カタカナの表記揺れでも同じキーに付き、2 回目は created_at が変わらない)
+    r1 = client.put("/api/works/facets/tag/star", json={"value": "ｺﾒﾃﾞｨ", "starred": True})
+    assert r1.status_code == 200 and r1.json()["starred"] is True and r1.json()["created_at"]
+    r2 = client.put("/api/works/facets/tag/star", json={"value": "コメディ", "starred": True})
+    assert r2.status_code == 200 and r2.json()["created_at"] == r1.json()["created_at"]
+
+    # 記号だけのタグ("!?" と "!!")も別々にスターを付けられる
+    assert client.put("/api/works/facets/tag/star", json={"value": "!?", "starred": True}).status_code == 200
+    tags = {v["value"]: v["starred"] for v in client.get("/api/works/facets/tag").json()["values"]}
+    assert tags == {"!?": True, "!!": False, "コメディ": True, "美大": False, "領地経営": False}
+
+    # 著者・出版社とは別項目として独立している
+    assert client.put("/api/works/facets/author/star", json={"value": "東村アキコ", "starred": True}).status_code == 200
+    authors = {v["value"]: v["starred"] for v in client.get("/api/works/facets/author").json()["values"]}
+    assert authors["東村アキコ"] is True and authors["赤池宗"] is False
+    assert client.put("/api/works/facets/publisher/star", json={"value": "集英社", "starred": True}).status_code == 200
+    pubs = {v["value"]: v["starred"] for v in client.get("/api/works/facets/publisher").json()["values"]}
+    assert pubs == {"集英社": True, "ホビージャパン": False}
+
+    # スターを外す
+    off = client.put("/api/works/facets/tag/star", json={"value": "コメディ", "starred": False})
+    assert off.status_code == 200 and off.json() == {"name": "tag", "value": "コメディ", "starred": False, "created_at": None}
+    assert {v["value"]: v["starred"] for v in client.get("/api/works/facets/tag").json()["values"]}["コメディ"] is False
+
+    # 異常系: 未対応の項目は 404、空文字は 422、型違いは 422
+    assert client.put("/api/works/facets/synopsis/star", json={"value": "x", "starred": True}).status_code == 404
+    assert client.put("/api/works/facets/tag/star", json={"value": "   ", "starred": True}).status_code == 422
+    assert client.put("/api/works/facets/tag/star", json={"value": "美大", "starred": "yes"}).status_code == 422
+    conn = db.open_db(settings.db_path)
+    try:
+        with pytest.raises(search.InvalidFilter):
+            search.starred_facet_keys(conn, "synopsis")
+        with pytest.raises(search.InvalidFilter):
+            search.set_facet_star(conn, "synopsis", "x", True)
+    finally:
+        conn.close()
+
+    # マイグレーション 15: 版 14 の DB から開いても facet_stars が作られる
+    v14_path = tmp_path / "v14.db"
+    c14 = db.connect(v14_path)
+    with db.transaction(c14) as c:
+        for m in db.MIGRATIONS[:14]:
+            for stmt in m:
+                c.execute(stmt)
+        c.execute("PRAGMA user_version = 14")
+    c14.close()
+    upgraded = db.open_db(v14_path)
+    try:
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) >= 15
+        assert search.set_facet_star(upgraded, "tag", "SF", True)["starred"] is True
+        assert search.starred_facet_keys(upgraded, "tag") == {"sf"}
+    finally:
+        upgraded.close()
+
+
 def test_publisher_filter_selects_works(env):
     settings, client, _, _ = env
     set_fields(settings, {KAKU: {"publisher": "集英社"}}, client)

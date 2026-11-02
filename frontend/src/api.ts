@@ -839,6 +839,15 @@ export interface FacetValue {
   value: string;
   /** その値を持つ作品の数 */
   count: number;
+  /** スター(お気に入り)が付いているか(#117) */
+  starred?: boolean;
+}
+
+export interface FacetStarState {
+  name: WorkFilterName;
+  value: string;
+  starred: boolean;
+  created_at: string | null;
 }
 
 export interface CacheUsage {
@@ -896,6 +905,13 @@ export const api = {
   /** 著者・タグ・出版社などの値と作品数 */
   listFacet: (name: WorkFilterName, root?: string | null) =>
     request<{ name: WorkFilterName; values: FacetValue[] }>(`/api/works/facets/${name}${rootQuery(root)}`),
+  /** 著者・タグ・出版社などの値にスターを付ける / 外す(#117) */
+  setFacetStar: (name: WorkFilterName, value: string, starred: boolean) =>
+    request<FacetStarState>(`/api/works/facets/${name}/star`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value, starred }),
+    }),
   stats: (root?: string | null) => request<LibraryStats>(`/api/stats${rootQuery(root)}`),
   serverSettings: () => request<ServerSettings>("/api/settings"),
   getVolume: (id: VolumeId) => request<VolumeDetail>(`/api/volumes/${vid(id)}`),

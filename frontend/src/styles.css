@@ -467,15 +467,27 @@ a.dup-choice:hover { border-color: var(--accent); }
 .page-header h1 { font-size: 1.3rem; margin: 8px 0; }
 .scope-back { margin: 0 0 4px; }
 
-/* 著者・タグ・出版社の一覧 */
+/* 著者・タグ・出版社の一覧(#85 / #117。DADS v2.18.2 準拠の境界 3:1・ターゲット 44px・二重フォーカスリング) */
 .facet-toolbar { display: flex; gap: 8px; margin: 4px 0 8px; }
-.facet-toolbar input { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); }
-.facet-toolbar select { flex: none; font: inherit; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); }
-.facet-count { margin: 4px 0; font-size: 0.85rem; }
-.facet-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-.facet-list a { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); color: var(--fg); text-decoration: none; }
-.facet-value { min-width: 0; overflow-wrap: anywhere; }
-.facet-n { flex: none; font-size: 0.8rem; color: var(--muted); }
+.facet-toolbar input { flex: 1; min-width: 0; min-height: 44px; font: inherit; padding: 8px 12px; border: 1px solid #666666; border-radius: 8px; background: var(--card); color: var(--fg); }
+.facet-toolbar select { flex: none; min-height: 44px; font: inherit; padding: 8px 12px; border: 1px solid #666666; border-radius: 8px; background: var(--card); color: var(--fg); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .facet-toolbar input,
+  :root:not([data-theme="light"]) .facet-toolbar select { border-color: #6b6b75; }
+}
+:root[data-theme="dark"] .facet-toolbar input,
+:root[data-theme="dark"] .facet-toolbar select { border-color: #6b6b75; }
+.facet-count { margin: 4px 0; font-size: 0.875rem; }
+.facet-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.facet-item { display: flex; align-items: stretch; min-width: 0; border-radius: 8px; background: var(--card); border: 1px solid var(--border); }
+.facet-item.starred { border-color: var(--warn); }
+.facet-link { flex: 1; min-width: 0; min-height: 44px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px 0 0 8px; color: var(--fg); text-decoration: none; }
+.facet-value { min-width: 0; overflow-wrap: anywhere; text-decoration: underline; }
+.facet-n { flex: none; font-size: 0.875rem; color: var(--muted); }
+button.facet-star { flex: none; min-width: 44px; min-height: 44px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; color: var(--muted); font-size: 1.125rem; line-height: 1; cursor: pointer; }
+button.facet-star.on { color: var(--warn); }
+button.facet-star:hover { background: var(--sidebar-active); }
+.facets :is(a, button, input, select):focus-visible { outline: 4px solid #000000; outline-offset: 2px; box-shadow: 0 0 0 2px #ffd43d; }
 
 /* 管理のタブ。スマホ幅ではタブの列だけを横に送る(ページは横スクロールさせない) */
 .admin-tabs { display: flex; gap: 4px; margin: 4px 0 12px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }

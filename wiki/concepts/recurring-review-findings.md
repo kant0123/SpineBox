@@ -108,6 +108,7 @@ push 前に確かめること:
 - PR #61 — `spinebox/app.py decide_work_proposal()` — 手動の統合には連携の反映(`_sync_works`)を足したのに、同じ統合を行う提案の承認には足さず、統合で増えた巻に書誌が入らなかった
 - PR #61 — `spinebox/linking.py choose()` / `reset_link()` — API 契約と mock は未知の取得元を 404 としたが、実装は 409 を返した(契約・mock・実装の突き合わせ漏れ)
 - PR #61 — `spinebox/linking.py reset_link()` / `_store()` — 連携を決める通常の経路(`fetch_work`)には「種別が未決なら保留」「作品の種別と食い違う候補は除く」があるのに、手動の選択を解除する経路と、自動連携を保つ近道は通らず、規則を飛ばして連携した(同じ判定を `decide()` へ集める。近道は判定の前提を満たすときだけ)
+- PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
