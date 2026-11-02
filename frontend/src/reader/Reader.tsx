@@ -18,6 +18,7 @@ import {
 import { volumeErrorMessage } from "./loadError";
 import { createProgressSaver } from "./progressSaver";
 import { useViewport } from "./useViewport";
+import { BookmarkButton } from "../bookmarks/BookmarkButton";
 
 /** 初めて開く入れ子のアーカイブは、内側を取り出すまで数秒かかる。その間に出す補足までの待ち時間 */
 export const SLOW_HINT_MS = 1500;
@@ -258,6 +259,7 @@ export function Reader({ id }: { id: string }) {
           <div className="reader-bar top">
             <a href={libraryHref}>‹ 一覧へ</a>
             <span className="reader-title">{detail.title}</span>
+            <BookmarkButton target="volume" id={id} initial={detail.bookmarked ?? false} label={detail.title} dark />
             <span className="reader-page" data-testid="page-label">
               {pageLabel} / {pageCount}
             </span>
