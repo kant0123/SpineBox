@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 公開 DB の情報を作品・巻へ結線する規則(#50)。連携(work_links)の自動/確認待ちの基準、空欄だけを埋める・手動は不変・名前由来の値を置き換える条件、英語の語彙を日本語にして反映する規則(#74)、あらすじの廃止(#82)、失敗の扱い、保存場所(全文検索・絞り込みが乗る列)、却下した代替案
-updated: 2026-11-02
+updated: 2026-11-03
 related: [metadata-clients, metadata-sources, work-grouping, work-search, backend, frontend, overview, follow, data-jobs]
 ---
 

@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ と、命名テンプレートどおりの改名・移動)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
-updated: 2026-11-02
+updated: 2026-11-03
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs]
 ---
 
