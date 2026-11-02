@@ -82,6 +82,20 @@ Python 自体・展開途中のバッファ(1 回のまとめ取り出しは最�
 
 ## 更新手順
 
+普段は `deploy\update_spinebox.bat`(更新して再起動)と `deploy\restart_spinebox.bat`(再起動だけ)をダブルクリックする(#96)。
+バッチは管理者への昇格を求め、`deploy/update_spinebox.ps1` を呼ぶだけ(cmd は OEM の文字コードで読むので、バッチは ASCII だけで書く)。
+スクリプトは止める(`install_task.ps1 -Action Stop`)→(Update なら)`git pull --ff-only` → pip → `npm ci` → ビルド → `Start-ScheduledTask` →
+`/healthz` の応答と、稼働中のコミットがリポジトリの HEAD と一致することを確かめる。
+
+- `/healthz` の URL は `python -m spinebox --print-bind`(設定の host / port)から決める。`host = "0.0.0.0"` なら 127.0.0.1 で確かめる。
+  手で `-HealthUrl` を合わせる必要が無い(#20 では省いて Status が失敗した。`install_task.ps1` 側の既定値は #76)
+- 途中の手順が失敗しても最後に起動し直す(止めたまま放置しない)。`git pull` が失敗したならコードは前の版のまま。
+  ビルドが失敗したときは `frontend/dist` が前の版のままか壊れている可能性があるので、ログを見て直してから更新し直す
+- `-DryRun` で何も変えずに手順だけ表示できる(管理者権限も要らない)。Python は既定で `py -3.12`(`-PythonPath` / `-PythonArguments` で変えられる)
+- 終了コード: 0 = 成功 / 1 = 手順か起動の確認に失敗 / 2 = 引数・前提の誤り(管理者でない・タスク未登録・設定が読めない)
+
+手で行うときの中身は次のとおり。
+
 ```powershell
 .\deploy\install_task.ps1 -Action Stop
 git pull --ff-only ; py -3.12 -m pip install -r requirements.txt

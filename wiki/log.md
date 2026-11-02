@@ -279,3 +279,7 @@ grep "^## \[" wiki/log.md | tail -5
   375px ではハンバーガーの引き出しが開閉しナビを選ぶと閉じること、横長では細い帯(60px)⇄通常(220px)に切り替わり記憶されること、ライト/ダークの切り替えが再読み込み後も残り OS 設定(ライト)に従うこと、蔵書の切り替えで作品一覧・統計・巻の一覧が 2 つ目のルートの 2 巻に絞られること、
   リーダーがサイドバーなしの全画面のままで、直リンク `#/read/<id>` と `/read/<id>` が開き画像が読めることを確認した
 - agy レビュー(1 回目): 統計の「表紙なし」が作品ごとに巻の行を SELECT していた(N+1)指摘は、`is_built()` が 1 巻ごとに `get_volume_row()` を呼ぶ経路を確かめて妥当と判定し、`Thumbnails.are_built()`(500 件ずつの IN)にした。文の数のテストあり。台帳 [[recurring-review-findings]] にも追記
+
+## [2026-11-03] ingest | PR #97 README の更新とサーバー機の再起動・更新用バッチ
+- 更新: [[server-setup]]
+- 備考: #96。README をフェーズ 1〜4 完了後の現状(できること・画面構成・蔵書を壊さない約束・サーバー機での導入と更新)に書き直した。`deploy/update_spinebox.ps1`(`-Mode Restart / Update`、`-DryRun`)と、ダブルクリック用の `deploy/restart_spinebox.bat`・`deploy/update_spinebox.bat`(管理者へ昇格して呼ぶだけ・ASCII・CRLF。`.gitattributes` に `*.bat text eol=crlf`)を足した。稼働確認の URL は `python -m spinebox --print-bind` から決める。`tests/test_deploy_scripts.py` に BOM・構文・バッチの ASCII/CRLF・DryRun が何も変えないこと・リポジトリ不在や設定不正で終了コード 2 のテストを足した(27 passed)。

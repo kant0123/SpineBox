@@ -4,7 +4,7 @@
 
 | 種類 | ファイル | 状態 |
 | --- | --- | --- |
-| **常駐運用のスクリプト**(サーバー機で使う) | `start_spinebox.ps1` / `install_task.ps1` / `firewall_rule.ps1` | 導入済み。下の「常駐運用」 |
+| **常駐運用のスクリプト**(サーバー機で使う) | `start_spinebox.ps1` / `install_task.ps1` / `firewall_rule.ps1` / `update_spinebox.ps1` と、`restart_spinebox.bat` / `update_spinebox.bat` | 導入済み。下の「常駐運用」 |
 | **CD のテンプレート**(`.example`) | `auto_deploy.ps1.example` / `watchdog.ps1.example` | **未導入**。CD の方式と時期は未決事項(GOAL.md)。下の「CD テンプレート」以降 |
 
 ## 常駐運用(サーバー機で SpineBox を常駐させる)
@@ -16,6 +16,8 @@
 | `start_spinebox.ps1` | `python -m spinebox` を起動し、終了したら再起動する(間隔は倍々で最大 60 秒)。起動ごとのログを `logs/` に残す。強制終了されても python が孤児にならず、前回の孤児がポートを握っていれば止める |
 | `install_task.ps1` | タスクスケジューラへの登録・解除・状態確認・停止(`-Action Register / Unregister / Status / Stop`)。OS 起動時にログオン不要で開始 |
 | `firewall_rule.ps1` | LAN 内(プライベートプロファイル・同一サブネット)だけに開く受信規則の追加・削除・確認 |
+| `update_spinebox.ps1` | 再起動(`-Mode Restart`)・更新して再起動(`-Mode Update`: git pull・pip・npm ci・ビルド)。止める → 起動 → `/healthz` と稼働中のコミットを確かめる。`-DryRun` で手順だけ表示 |
+| `restart_spinebox.bat` / `update_spinebox.bat` | ダブルクリック用。管理者への昇格を求め、`update_spinebox.ps1` を `-Mode Restart` / `-Mode Update` で呼ぶ(ASCII のみ・CRLF) |
 
 - 登録・規則の追加は管理者権限の PowerShell が要る。`-WhatIf` で内容の表示だけできる(システムは変更しない)
 - リポジトリ・Python・設定ファイルのパスは引数で渡す(特定のドライブ文字・ユーザー名を前提にしない)
