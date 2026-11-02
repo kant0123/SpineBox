@@ -288,7 +288,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]]
 - 備考: #99。リーダーの紙面画像用のスタイル `.page { pointer-events: none; }` がグローバルに定義されていたため、管理画面 `<div className="page admin">` やファセット一覧 `<div className="page facets">` の画面コンテナ枠と衝突し、画面全体でクリックイベントが無効化されていた。`.stage .page` にセレクタを絞り込むことで、リーダー画像のスタイルを保護しつつ管理画面のタブリンクやボタンが正常に操作できるようにした。`frontend/src/shell/AppShell.test.tsx` に各タブの href 検証および `.page` 単体への `pointer-events: none` 適用を防ぐリグレッションテストを追加した。
 
-## [2026-11-03] ingest | PR #TBD 作品一覧のヘッダーの操作を管理のデータ管理タブへ集約
+## [2026-11-03] ingest | PR #110 作品一覧のヘッダーの操作を管理のデータ管理タブへ集約
 - 更新: [[frontend]], [[data-jobs]], [[cover-thumbnails]], [[metadata-linking]]
 - 備考: #102。ホーム・漫画・小説・著者・タグ・出版社の一覧(`Works`)のヘッダーから「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」を外した。同じ操作は管理のデータ管理タブ(#83 のジョブと「ほかの画面」の入口)に揃っている。使わなくなった進み具合のポーリング・`thumbs`・`coverRev` と、表紙の `?rev=` のキャッシュ避けを削除した。
   モック API(`npm run dev:mock`)を 375px と 1280px のヘッドレス Chrome で開き、作品一覧のヘッダーに 4 つの操作が無いこと(`.library-header .header-actions` が 0)、データ管理タブに「作品情報のみ補完」「表紙のみ補完」「作品の名寄せを計算し直す」「重複を調べる」と「重複の候補」への入口があること、`scrollWidth` が `clientWidth` と一致し横スクロールが無いことを確認した。コンソールのエラーは既存の表紙の 404 pending(`/api/volumes/5/thumbnail`)だけ。
