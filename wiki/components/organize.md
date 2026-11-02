@@ -2,7 +2,7 @@
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading]
+related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks]
 ---
 
 # 整理処理(CBZ 化・テンプレートどおりの改名)
@@ -47,7 +47,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `frontend/src/organize/OrganizeFiles.tsx:178 OrganizeFilesSection` | 整理画面の中身。データ管理ページ(#83)へはこの部品を「整理」節として置く。単独のページは `OrganizeFilesPage`(`#/data/organize`) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:1166 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
+| `spinebox/organize/organizer.py:1167 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークは写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
 置き場は `spinebox/config.py:121 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
