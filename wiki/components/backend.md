@@ -32,11 +32,11 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/library.py:120 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:347 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:95 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
-| `spinebox/linking.py:302 fetch_work()` / `spinebox/linking.py:601 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
+| `spinebox/linking.py:319 fetch_work()` / `spinebox/linking.py:624 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
 | `spinebox/works.py:394 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
-| `spinebox/config.py:302 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:42 MetadataSettings` と `_metadata()` |
+| `spinebox/config.py:320 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
@@ -145,6 +145,8 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   サーバー機のトレースバックは未取得(利用者に依頼中)。合成データで確かめた再現は、同名の内側アーカイブを持つ zip(`IntegrityError`)と、
   孤立サロゲート・不正バイトを含むファイル名(`UnicodeEncodeError`)で、どちらも修正前は 500 でスキャン全体が止まった。
   応答に `issues`・`issues_total` を足し(契約は上の表)、画面で「読めなかったもの N 件」と理由を見せる。マイグレーションは足していない
+- #74 で公開 DB の英語の語彙を日本語にして反映するようにした([[metadata-linking]] の「日本語での表示」)。設定 `[metadata]` に `untranslated_terms`(`hide` / `keep`)・`english_synopsis`(`fold` / `hide`)。
+  `create_app` が起動時に `linking.configure()` してから反映するので、入っている英語の値は起動で日本語になる。マイグレーションは足していない(取得した元の値は `work_links.item` にあるので、反映し直すだけで済む)
 - #50 で公開 DB の結線を足した([[metadata-linking]])。マイグレーション 7(`work_links` / `volume_fields`)。設定 `[metadata]` に `background`(定期取得、既定は無効)・`background_interval_seconds`・`recheck_days`・`retry_hours`。
   `SearchQuery.limit` を足した(NDL のみ。連携は 100 件引いて巻を揃える)。`merge_works` は種別・出版社・ジャンルなども手動優先で引き継ぎ、整理で巻が作り直されても書誌は `transfer_volume_fields` で引き継ぐ
 - #43 で作品の名寄せを足した([[work-grouping]])。マイグレーション 6(`works` / `work_fields` / `work_aliases` / `work_volumes` / `work_merge_proposals`)。

@@ -189,6 +189,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                metadata_fetcher: HttpFetcher | None = None) -> FastAPI:
     """metadata_fetcher はテスト用の差し替え(通常はプロセス共有の fetcher を使う)。"""
     conn = db.open_db(settings.db_path)  # 起動時にマイグレーションを当てる
+    linking.configure(settings.metadata)  # 日本語での表示の方針。下の反映で、入っている英語の値も日本語になる
     _sync_works(conn)  # 作品への割り当てを取り直す(作品の機能が入る前の DB は、ここで初めて作品になる)
     try:
         search.prepare(conn)  # 検索の索引が無ければ作る(検索の機能が入る前の DB・SQLite を替えた後)

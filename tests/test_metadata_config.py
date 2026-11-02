@@ -36,6 +36,22 @@ def test_linking_settings_defaults_and_overrides():
     assert (m.background, m.background_interval_seconds, m.recheck_days, m.retry_hours) == (True, 30, 7.0, 0.5)
 
 
+def test_japanese_display_settings_defaults_and_overrides():
+    m = parse(None)
+    assert (m.untranslated_terms, m.english_synopsis) == ("hide", "fold")
+    m = parse({"untranslated_terms": "keep", "english_synopsis": "hide"})
+    assert (m.untranslated_terms, m.english_synopsis) == ("keep", "hide")
+
+
+@pytest.mark.parametrize("table", [
+    {"untranslated_terms": "show"}, {"untranslated_terms": True}, {"english_synopsis": "show"},
+    {"english_synopsis": ""},
+])
+def test_invalid_japanese_display_settings_are_rejected(table):
+    with pytest.raises(ConfigError):
+        parse(table)
+
+
 @pytest.mark.parametrize("table", [
     {"background": "yes"}, {"background": 1}, {"background_interval_seconds": 5}, {"background_interval_seconds": 60.5},
     {"recheck_days": 0}, {"retry_hours": 0}, {"retry_hours": "6"},

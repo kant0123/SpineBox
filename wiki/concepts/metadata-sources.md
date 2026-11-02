@@ -37,6 +37,7 @@ GOAL.md「メタデータの取得元」の方針(国立国会図書館サーチ
 - 巻次は文字列(`1` `上` `1-2`)。数字だけのとき `volume` に数値を入れ、元の表記は `volume_label` に残す
 - 作品名は `作品名 : 副題`。主題と副題を分けて持つ(題名の比較は主題で行う)
 - **ローマ字の検索語でも日本語の項目が当たる**(読みで引いているらしい)。項目の読み(カタカナ)をローマ字にして題名と比べるため、確からしさは出せる(`spinebox/metadata/kana.py:40 to_romaji`)
+- **内容紹介(あらすじ)は無い。** `dc:description` は「奥付のタイトル: …」「出版」「展覧会カタログ」のような書誌の注記と年で、あらすじではない(記録済みの 4 検索で確認、#74)。日本語のあらすじの取得元にはならない
 - `dc:date` / `dcterms:issued` は発行の年月。RSS の `pubDate` は書誌レコードの更新日で、発売日ではない(使わない)
 
 ## AniList(`anilist`)— 作品単位のタグ・あらすじ・ローマ字名
@@ -55,7 +56,7 @@ GOAL.md「メタデータの取得元」の方針(国立国会図書館サーチ
 - 漫画版と小説版が別の項目になる(同じ作品でも `format` で分かれる)。`total_volumes` は連載中は null
 - **GraphQL のエラーは HTTP 200 で `errors` に入って返る**ことがある。`data` が空なら ParseError として失敗にする(取得失敗の結果になる)
 - 利用条件のため、保存した応答は**有効期限つきの使い回し**(既定 30 日)にとどめ、永続的な写しにしない。テスト用の記録(`tests/fixtures/metadata/anilist/`)は検索 3 件分だけ
-- タグは `rank`(0〜100)つき。スポイラー(`isMediaSpoiler` / `isGeneralSpoiler`)と rank 40 未満は取り込まない。言語は英語
+- タグは `rank`(0〜100)つき。スポイラー(`isMediaSpoiler` / `isGeneralSpoiler`)と rank 40 未満は取り込まない。言語は英語(ジャンル・タグ・あらすじとも。日本語にするのは反映側: [[metadata-linking]] の「日本語での表示」)
 
 ## MangaUpdates(`mangaupdates`)— ジャンル・タグ・別名(日本語名を含む)・原版元
 
@@ -76,6 +77,7 @@ GOAL.md「メタデータの取得元」の方針(国立国会図書館サーチ
   (英語名の作品もあるので、日本語名が無いときは正式名をそのまま作品名にし、ローマ字名は None)
 - `status` は `5 Volumes (Complete)` のような自由記述。先頭が `N Volumes` のときだけ巻数を取る(`0 Volumes` は不明として None)
 - `genres` は少年・青年・ジョセイなど英語の区分を含む(`Shounen` `Josei`)。楽天ブックスを入れるまで、日本語のジャンル区分はここが代わりになる。`categories` は得票つきのタグで、得票 3 未満は捨てる(荒らし・誤りが混ざる)
+- 原版元(`publishers` の `type = "Original"`)は**ローマ字名**(`Shueisha` `Overlap` `Kadokawa Shoten`)。あらすじ(`description`)も英語
 - `year` は年だけ(文字列)。`type` は `Manga` `Manhwa` `Novel` `Doujinshi` など
 
 ## 使わない・後回しの取得元

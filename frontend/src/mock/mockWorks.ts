@@ -44,9 +44,12 @@ const emptyLink = (source: SourceName): WorkLink => ({
 });
 
 const ANILIST = cand("anilist:101", {
-  title: "サンプル漫画", romaji: "Sample Manga", publisher: null, released: null, total_volumes: 4, genres: ["Action", "Comedy"],
+  title: "サンプル漫画", romaji: "Sample Manga", publisher: null, released: null, total_volumes: 4, genres: ["アクション", "コメディ"],
   url: "https://anilist.co/manga/101", score: 0.95,
 });
+
+/** AniList のあらすじは英語(日本語のあらすじが無いときは、作品ページで折りたたむ。#74) */
+const ANILIST_SYNOPSIS = "A sample story about a girl (サンプル) who wants to become a manga artist.";
 
 type Res = { status: number; body: unknown };
 
@@ -260,8 +263,12 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
         const c = other.candidates[0];
         Object.assign(other, { status: "linked", manual: false, source_id: c.source_id, linked: c, confidence: c.score, hold: null, decision: "auto" });
         setAuto("genres", c.genres, [other.source]);
+        if (other.source === "anilist") setAuto("synopsis", ANILIST_SYNOPSIS, ["anilist"]);
       }
-    } else if (picked.genres.length) setAuto("genres", picked.genres, [link.source]);
+    } else {
+      if (picked.genres.length) setAuto("genres", picked.genres, [link.source]);
+      if (link.source === "anilist") setAuto("synopsis", ANILIST_SYNOPSIS, ["anilist"]);
+    }
     return res(200, detail(w));
   }
 
