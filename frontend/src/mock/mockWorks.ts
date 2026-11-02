@@ -153,6 +153,14 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
 
   const val = (w: MockWork, name: string) => w.extra[name]?.value;
 
+  /** 表紙の巻: 小説・オフライン以外で、番号が最小のもの(番号の無い巻は後ろ) */
+  const coverOf = (vols: WorkVolume[]): number | null => {
+    const fmt = (id: number) => getVolumes().find((x) => x.id === id)?.format ?? "images";
+    const ok = vols.filter((v) => !v.offline && fmt(v.id) === "images" && v.page_count !== 0);
+    ok.sort((a, b) => (a.volume_number?.start ?? Infinity) - (b.volume_number?.start ?? Infinity) || a.title.localeCompare(b.title));
+    return ok[0]?.id ?? null;
+  };
+
   function summary(w: MockWork): WorkSummary {
     const vols = volumesOf(w);
     const m = missingOf(vols);
@@ -167,6 +175,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       reading_state: readingState(vols),
       kind: val(w, "kind") ?? null, publisher: val(w, "publisher") ?? null, genres: val(w, "genres") ?? [], tags: val(w, "tags") ?? [],
       link_pending: w.links.filter((l) => l.status === "pending").length,
+      cover_volume_id: coverOf(vols),
     };
   }
 

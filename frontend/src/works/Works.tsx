@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type MetadataStatus, type ReadingState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
+import { api, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
 import { duplicatesHref, workHref, workProposalsHref } from "../route";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
+import { WorkCover } from "./WorkCover";
 
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
 const SEARCH_DELAY_MS = 250;
@@ -21,6 +22,8 @@ export function Works() {
   const [query, setQuery] = useState<WorkQuery>({});
   const [showFilters, setShowFilters] = useState(false);
   const [meta, setMeta] = useState<MetadataStatus | null>(null);
+  const [thumbs, setThumbs] = useState<ThumbnailBuildState | null>(null);
+  const [coverRev, setCoverRev] = useState(0);
   const seq = useRef(0);
 
   const load = useCallback(async (q: WorkQuery) => {
@@ -64,6 +67,27 @@ export function Works() {
     }, 2000);
     return () => window.clearInterval(t);
   }, [running]);
+
+  // 表紙の作成(#75)。実行中は状態を見に行き、終わったら表紙を取り直す
+  const buildingCovers = thumbs?.running ?? false;
+  useEffect(() => {
+    if (!buildingCovers) return;
+    const t = window.setInterval(() => {
+      api.thumbnailStatus().then((st) => {
+        setThumbs(st);
+        if (!st.running) setCoverRev((r) => r + 1);
+      }, () => undefined);
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, [buildingCovers]);
+
+  const buildCovers = async () => {
+    try {
+      setThumbs(await api.buildThumbnails());
+    } catch {
+      setError("表紙を作れませんでした(スキャン中か、すでに作っています)。");
+    }
+  };
 
   const fetchAll = async () => {
     try {
@@ -114,6 +138,11 @@ export function Works() {
               {running ? `情報を取得中… ${meta.state.done} / ${meta.state.total}` : "情報を補完"}
             </button>
           )}
+          {data && data.total > 0 && (
+            <button type="button" onClick={() => void buildCovers()} disabled={buildingCovers} title="入れ子のアーカイブの巻も取り出して、まだ無い表紙を作ります(蔵書は変えません)">
+              {buildingCovers ? `表紙を作成中… ${thumbs!.done} / ${thumbs!.total}` : "表紙を作る"}
+            </button>
+          )}
           <button type="button" onClick={refresh} disabled={busy}>
             {busy ? "取り直し中…" : "名寄せを取り直す"}
           </button>
@@ -129,6 +158,11 @@ export function Works() {
         <div className="notice" role="status">
           <a href={workProposalsHref}>統合の提案が {pending} 件あります</a>
           (同じ作品かもしれない組。承認するまで統合しません)
+        </div>
+      )}
+      {thumbs?.error && (
+        <div className="notice warn" role="status">
+          表紙の作成は途中で止まりました: {thumbs.error}
         </div>
       )}
       {meta?.state.error && (
@@ -194,24 +228,27 @@ export function Works() {
           return (
             <li key={w.id} className="work-card">
               <a className="work-link" href={workHref(w.id)}>
-                <span className="volume-title">{w.title}</span>
-                {w.author && <span className="volume-meta">{w.author}</span>}
-                {(w.kind || w.publisher) && (
-                  <span className="volume-meta">{[w.kind ? KIND_TEXT[w.kind] : "", w.publisher ?? ""].filter(Boolean).join(" / ")}</span>
-                )}
-                {w.genres.length > 0 && <span className="volume-meta">{w.genres.slice(0, 4).join(" / ")}</span>}
-                <span className="volume-meta">
-                  {w.volume_count} 巻{w.max_volume ? `(〜${w.max_volume} 巻)` : ""}
-                </span>
-                {w.aliases.length > 0 && <span className="volume-meta work-aliases">別名: {w.aliases.map((a) => a.alias).join(" / ")}</span>}
-                <span className="work-badges">
-                  {missing && <span className="badge">欠け {missing}</span>}
-                  {w.duplicate_slots > 0 && <span className="badge dup-badge">重複 {w.duplicate_slots}</span>}
-                  {w.merged && <span className="badge dup-badge">統合済み</span>}
-                  {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
-                  {w.link_pending > 0 && <span className="badge">候補の確認待ち</span>}
-                  {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
-                  {w.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[w.reading_state]}</span>}
+                {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} rev={coverRev} />}
+                <span className="work-text">
+                  <span className="volume-title">{w.title}</span>
+                  {w.author && <span className="volume-meta">{w.author}</span>}
+                  {(w.kind || w.publisher) && (
+                    <span className="volume-meta">{[w.kind ? KIND_TEXT[w.kind] : "", w.publisher ?? ""].filter(Boolean).join(" / ")}</span>
+                  )}
+                  {w.genres.length > 0 && <span className="volume-meta">{w.genres.slice(0, 4).join(" / ")}</span>}
+                  <span className="volume-meta">
+                    {w.volume_count} 巻{w.max_volume ? `(〜${w.max_volume} 巻)` : ""}
+                  </span>
+                  {w.aliases.length > 0 && <span className="volume-meta work-aliases">別名: {w.aliases.map((a) => a.alias).join(" / ")}</span>}
+                  <span className="work-badges">
+                    {missing && <span className="badge">欠け {missing}</span>}
+                    {w.duplicate_slots > 0 && <span className="badge dup-badge">重複 {w.duplicate_slots}</span>}
+                    {w.merged && <span className="badge dup-badge">統合済み</span>}
+                    {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
+                    {w.link_pending > 0 && <span className="badge">候補の確認待ち</span>}
+                    {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
+                    {w.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[w.reading_state]}</span>}
+                  </span>
                 </span>
               </a>
             </li>

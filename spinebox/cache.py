@@ -30,6 +30,10 @@ class CacheTooLarge(Exception):
     """1 つで上限を超えるのでキャッシュに置けない。"""
 
 
+class NotCached(Exception):
+    """そのキーはまだキャッシュに無い(作らずに使う `use_existing()` で)。"""
+
+
 def cache_key(*parts: object) -> str:
     h = hashlib.sha256()
     for p in parts:
@@ -119,6 +123,32 @@ class ExtractionCache:
                 if not self._pins[key]:
                     del self._pins[key]
                 self._evict()
+
+    @contextmanager
+    def use_existing(self, key: str) -> Iterator[Path]:
+        """key のファイルがあれば `use()` と同じく消されない状態で渡す。無ければ作らずに NotCached。"""
+        path = self._path(key)
+        with self._lock:
+            if key not in self._sizes or not path.is_file():
+                raise NotCached(key)
+            self._touch(key)
+            self._pins[key] = self._pins.get(key, 0) + 1
+        try:
+            yield path
+        finally:
+            with self._lock:
+                self._pins[key] -= 1
+                if not self._pins[key]:
+                    del self._pins[key]
+                self._evict()
+
+    def read(self, key: str) -> bytes | None:
+        """key のファイルの中身(小さいもの用。表紙のサムネイル)。無ければ None。"""
+        try:
+            with self.use_existing(key) as path:
+                return path.read_bytes()
+        except (NotCached, OSError):
+            return None
 
     def _pin_or_create(self, key: str, path: Path, produce: Callable[[BinaryIO], None]) -> None:
         """同じキーの作成は key ごとのロックで直列化される(Windows で置き換え先が開かれていると失敗するため)。"""

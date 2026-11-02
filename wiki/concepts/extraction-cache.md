@@ -2,13 +2,13 @@
 type: concept
 summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ(ディスク)と、7z / rar のページと目次を置く RAM 層。どちらも容量上限つき LRU、スキャンでは使わない。RAM 層を 7z / rar に絞った計測結果と、実データでの計測
 updated: 2026-11-02
-related: [overview, backend, archive-reading, volume-split, duplicate-detection, server-setup]
+related: [overview, backend, archive-reading, volume-split, duplicate-detection, server-setup, cover-thumbnails]
 ---
 
 # 展開キャッシュと RAM 層
 
 内側アーカイブ(アーカイブの中のアーカイブ)の巻を開いたときだけ、内側アーカイブを丸ごと `data_dir/cache/` に取り出す。
-入口は `spinebox/cache.py:38 ExtractionCache`、使う側は `spinebox/library.py:325 _expand`(入れ子の各段を再帰で開く)。
+入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:349 _expand`(入れ子の各段を再帰で開く)。
 
 ## 内容
 
@@ -21,6 +21,9 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
 - **使用中(pin)のファイルは消さない。** 巻を開いている間に別の巻を開いても、読んでいる最中のファイルは残る
 - **スキャンでは使わない。** スキャンは目次だけ読む(GOAL.md フェーズ 1 の完了条件)。取り出すのは `GET /api/volumes/{id}` などで巻を開いたときと、重複候補のための指紋を作る明示操作(`POST /api/duplicates/scan`。[[duplicate-detection]])だけ
 - 消えてもよいもの。消えていたら次に開くとき作り直す。書きかけ(`.tmp-*`)は起動時に消す
+- **作らずに使う入口 `ExtractionCache.use_existing()`(#75)。** 取り出し済みなら `use()` と同じく使用中にして渡し、無ければ `NotCached`。
+  `Library.open(extract=False)` がこれを使い、一覧の表紙が「取り出し済みの内側 zip の巻」だけを読む([[cover-thumbnails]])。
+  表紙の置き場(`data_dir/thumbs/`)も同じ `ExtractionCache` を別の上限で使っている
 - **RAM 層(`spinebox/cache.py MemoryCache`、上限 `memory_cache_limit_bytes`、既定 256 MiB、0 で無効)には 7z / rar のページと目次だけを置く。**
   使う側は `spinebox/library.py Library._read_page()` / `Library._list()`。ページのキーは「そのページを持つ書庫のキー(外側なら上の
   外側のキー、内側なら展開キャッシュのキー)+ エントリ番号 + 名前」、目次のキーも書庫のキーから作るので、元が変われば別キーになる。

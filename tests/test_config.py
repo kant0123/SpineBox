@@ -15,6 +15,7 @@ def test_defaults_without_config(tmp_path, monkeypatch):
     assert s.data_dir == tmp_path / "data"
     assert s.cache_limit_bytes == 2 * GIB
     assert s.memory_cache_limit_bytes == 256 * 1024 ** 2
+    assert s.thumb_cache_limit_bytes == 256 * 1024 ** 2 and s.thumbs_dir == tmp_path / "data" / "thumbs"
     assert (s.host, s.port, s.sevenzip_path) == ("127.0.0.1", 8000, "7z")
     assert s.limits.max_depth == 3
 
@@ -27,7 +28,7 @@ def test_env_var_and_relative_paths(tmp_path, monkeypatch):
     conf.write_text(
         f'library_roots = ["books", "{abs_root.as_posix()}"]\n'
         'data_dir = "state"\ncache_limit_bytes = 1024\nhost = "0.0.0.0"\nport = 9000\n'
-        'memory_cache_limit_bytes = 0\n'
+        'memory_cache_limit_bytes = 0\nthumb_cache_limit_bytes = 2048\n'
         '[limits]\nmax_entries = 5\nmax_depth = 0\n', encoding="utf-8")
     monkeypatch.setenv(CONFIG_ENV, str(conf))
     monkeypatch.chdir(tmp_path)
@@ -38,6 +39,7 @@ def test_env_var_and_relative_paths(tmp_path, monkeypatch):
     assert s.data_dir == conf_dir / "state"
     assert (s.cache_limit_bytes, s.host, s.port) == (1024, "0.0.0.0", 9000)
     assert s.memory_cache_limit_bytes == 0  # 0 は「RAM 層を使わない」
+    assert s.thumb_cache_limit_bytes == 2048
     assert (s.limits.max_entries, s.limits.max_depth) == (5, 0)
 
 

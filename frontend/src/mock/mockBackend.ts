@@ -9,6 +9,7 @@ import type {
   OrganizeItem,
   OrganizeOp,
   ScanIssue,
+  ThumbnailBuildState,
   VolumeDetail,
   VolumeSummary,
 } from "../api";
@@ -169,6 +170,11 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const idleScan: DuplicateScanState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
   let scanState: DuplicateScanState = { ...idleScan };
   let scanPolls = 0;
+  // 表紙(#75): 入れ子の巻(page_count 未確定)は、開くか「表紙を作る」までは 404 pending
+  const idleThumbs: ThumbnailBuildState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
+  let thumbState: ThumbnailBuildState = { ...idleThumbs };
+  let thumbPolls = 0;
+  let thumbsBuilt = false;
   // ページ数未確定の巻は、開いた時点で数が決まる(入れ子の内側を開いたとき)想定
   const pagesOf = (v: MockVolume) => v.page_count ?? 6;
   // 整理(CBZ 化)の操作。ページ数未確定の巻(入れ子)は読めない内側があるものとして実行不可にする
@@ -320,7 +326,22 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       }
       return json(200, { id: c.id, dismissed: c.dismissed });
     }
-    const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|pages\/(\d+)|sections\/(\d+)|resources\/(\d+)))?$/);
+    if (path === "/api/thumbnails" && method === "GET") {
+      if (thumbState.running && ++thumbPolls >= 3) {
+        thumbsBuilt = true;
+        thumbState = { ...thumbState, running: false, finished_at: "now", done: 2, total: 2, summary: { total: 2, made: 1, existing: 1, skipped: 0 } };
+      } else if (thumbState.running) {
+        thumbState = { ...thumbState, done: 1, total: 2 };
+      }
+      return json(200, thumbState);
+    }
+    if (path === "/api/thumbnails/build" && method === "POST") {
+      if (thumbState.running) return json(409, { detail: "表紙を作っています" });
+      thumbPolls = 0;
+      thumbState = { ...idleThumbs, running: true, started_at: "now" };
+      return json(202, thumbState);
+    }
+    const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|thumbnail|pages\/(\d+)|sections\/(\d+)|resources\/(\d+)))?$/);
     const failure = m && !m[2] && method === "GET" ? options.failures?.[decodeURIComponent(m[1])] : undefined;
     if (failure) return json(failure.status, { detail: failure.detail });
     const v = m ? volumes.find((x) => String(x.id) === decodeURIComponent(m[1])) : undefined;
@@ -379,6 +400,12 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       v.progress = { page: parsed.page, finished: parsed.finished };
       if (v.format && v.format !== "images" && typeof parsed.position === "number") v.progress.position = parsed.position;
       return json(200, v.progress);
+    }
+    if (m[2] === "thumbnail" && method === "GET") {
+      if (v.offline) return json(409, { detail: "蔵書フォルダがオフラインです", offline: true });
+      if (v.format && v.format !== "images") return json(404, { detail: "小説の巻には表紙のページがありません", pending: false });
+      if (v.page_count === null && !opened.has(v.id) && !thumbsBuilt) return json(404, { detail: "表紙はまだ作っていません", pending: true });
+      return { status: 200, contentType: "image/svg+xml", body: pageSvg(v.title, 0, pagesOf(v)) };
     }
     if (m[3] !== undefined && method === "GET") {
       const i = Number(m[3]);

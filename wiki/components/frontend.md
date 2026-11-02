@@ -2,7 +2,7 @@
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 updated: 2026-11-02
-related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search]
+related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails]
 ---
 
 # フロントエンド(`frontend/`)
@@ -28,8 +28,9 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:136 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。「情報を補完」で全作品の取得を起動し、実行中は 2 秒ごとに状態を見る)。作品ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグ・あらすじの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。「表紙を作る」と進み具合は `Works()` |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
-| `frontend/src/api.ts:598 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:612 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:164 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 
@@ -64,8 +65,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
   サーバーの `issues` は最大 200 件なので、切った分は「ほか N 件は省略しました」と知らせる。スキャンが失敗したら、サーバーの `detail`
   (型とメッセージ)をそのままエラー表示に出す。固定の文言だけだと、サーバー機で何が起きたか画面から分からなかった
-- **一覧に表紙画像を出していない。** 表紙は 1 ページ目から作る方針(GOAL.md)だが、一覧で全巻の 1 ページ目を取ると
-  入れ子のアーカイブを巻の数だけ展開させることになる。サムネイルの仕組み(キャッシュ)ができてから足す
+- **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** `cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
+  読み込めたら見せ、404(入れ子の巻でまだ作っていない・小説・1 ページ目が画像でない)なら要素ごと消して文字だけのカードのまま。
+  読み込み中は枠だけ(透明)で、消えたときだけカードの高さが変わる。入れ子の巻の表紙は「表紙を作る」(明示操作)で作り、終わったら `?rev=` を変えて取り直す。
+  巻の一覧のカードには出していない(要望は作品の一覧。同じ `api.thumbnailUrl()` で足せる)
 - **読み込み待ちは 2 段で見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
   取り出す間(実測 3〜8 秒)何も出ず、黒い画面のままで読み込み中と分からなかった。巻情報の取得中はリーダーの黒い枠の中央に
   スピナーと「一覧へ戻る」を出し、1.5 秒(`SLOW_HINT_MS`)を超えたら「初めて開く巻は展開に数秒かかる」と補足する。
@@ -126,6 +129,9 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #75 で作品カードに表紙と「表紙を作る」を足した([[cover-thumbnails]])。モック API は入れ子の巻(`page_count` 未確定)の表紙を、開くか作るまで 404 pending にする。
+  `npm run dev:mock` を 375px と 1000px のヘッドレス Chromium で開き、作成前は入れ子の作品が文字だけのカード・作成後に表紙が出ること、横スクロールとコンソールのエラーが無いことを確認した。
+  375px ではヘッダーのボタンが 3 段に折り返す。実バックエンド・実データでの確認はローカルで引き取る
 - #66 で受け入れの画面(`#/inbox`。[[inbox]])を足した。モック API は `src/mock/mockInbox.ts`(整理案の再計算を真似る)。`_参考/サンプル本` のコピーと実バックエンドで、375px と横長の組み込みブラウザから、同期 → 作品・番号・取り込まないの選び直し → 一部だけ承認 → 履歴から元に戻す を通し、横スクロールが出ないこと・コンソールのエラーが無いことを確認した。選び直しは 250ms 待ってから 1 件ぶんだけ整理案を作り直す(何も動かさない)。承認・元に戻すの後も、未承認の本の選び直しと選択は残す
 - #57 で小説の縦書きリーダーを足した([[novel-reader]])。モック API に小説 2 巻(巻 7 は無害化をすり抜けた想定の危険な HTML を混ぜた EPUB)を足した
 - #56 で作品一覧に検索欄と絞り込みを足した。モック API(`npm run dev:mock`)を 375px のヘッドレス Chromium で開き、検索・読書状態の絞り込み・0 件の表示・横スクロールが出ないことを確認した。実バックエンドでの確認はローカルで引き取る
