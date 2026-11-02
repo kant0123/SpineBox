@@ -61,6 +61,65 @@ def test_volume_pages_in_order(client):
     assert [p["name"] for p in detail["pages"]] == ["1.jpg", "2.jpg", "10.jpg"]
 
 
+def test_next_volume_follows_work_order(make_client, tmp_path):
+    """最終ページから次へ進むための次の巻(#113)。同じ作品の番号順で、最後の巻は None。"""
+    lib = tmp_path / "lib"
+    for name in ("T v01.cbz", "T v02.cbz", "T v03.cbz"):
+        write_zip(lib / name, [("001.jpg", page_bytes(name))])
+    c, _ = make_client(lib)
+    c.post("/api/scan")
+    vols = by_title(c)
+    d1 = c.get(f"/api/volumes/{vols['T v01']['id']}").json()
+    assert d1["next_volume"] == {"id": vols["T v02"]["id"], "title": "T v02",
+                                 "volume_number": {"kind": "volume", "start": 2, "end": 2, "evidence": "v02"},
+                                 "offline": False}
+    assert c.get(f"/api/volumes/{vols['T v03']['id']}").json()["next_volume"] is None
+
+
+def test_next_volume_takes_first_duplicate_of_the_next_number(make_client, tmp_path):
+    """同じ番号の重複は次の巻に数えず、次の番号に重複があれば一覧の並びの 1 つ目を返す(#113)。"""
+    lib = tmp_path / "lib"
+    for name in ("T v01.cbz", "T v02.cbz", "T 第02巻.cbz", "T v03.cbz"):
+        write_zip(lib / name, [("001.jpg", page_bytes(name))])
+    c, _ = make_client(lib)
+    c.post("/api/scan")
+    vols = by_title(c)
+    (w,) = c.get("/api/works").json()["works"]
+    first_of_second = c.get(f"/api/works/{w['id']}").json()["slots"][1]["volumes"][0]["id"]
+    assert c.get(f"/api/volumes/{vols['T v01']['id']}").json()["next_volume"]["id"] == first_of_second
+    # 重複している側から進んでも、同じ番号の相方は飛ばして 3 巻へ
+    assert c.get(f"/api/volumes/{first_of_second}").json()["next_volume"]["title"] == "T v03"
+
+
+def test_next_volume_for_novel(make_client, tmp_path):
+    """小説も同じ作品の次の巻を返す(#113)。"""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "S v01.epub").write_bytes(epub_bytes(["<p>一巻</p>"]))
+    (lib / "S v02.epub").write_bytes(epub_bytes(["<p>二巻</p>"]))
+    c, _ = make_client(lib)
+    c.post("/api/scan")
+    vols = by_title(c)
+    d1 = c.get(f"/api/volumes/{vols['S v01']['id']}").json()
+    assert d1["format"] == "epub" and d1["pages"] == []
+    assert d1["next_volume"]["id"] == vols["S v02"]["id"]
+    assert c.get(f"/api/volumes/{vols['S v02']['id']}").json()["next_volume"] is None
+
+
+def test_next_volume_stays_when_the_next_volume_is_offline(make_client, tmp_path):
+    """次の巻がオフラインでも返す(リーダーが移動せず理由を出すため)。"""
+    online, offline = tmp_path / "online", tmp_path / "offline"
+    write_zip(online / "T v01.cbz", [("001.jpg", page_bytes("1"))])
+    write_zip(offline / "T v02.cbz", [("001.jpg", page_bytes("2"))])
+    c, _ = make_client(online, offline)
+    c.post("/api/scan")
+    vid = by_title(c)["T v01"]["id"]
+    offline.rename(tmp_path / "offline-unplugged")
+    c.post("/api/scan")
+    nxt = c.get(f"/api/volumes/{vid}").json()["next_volume"]
+    assert (nxt["title"], nxt["offline"]) == ("T v02", True)
+
+
 def test_page_bytes_and_cache_headers(client):
     vid = by_title(client)["Vol1"]["id"]
     r = client.get(f"/api/volumes/{vid}/pages/1")

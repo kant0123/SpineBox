@@ -199,6 +199,11 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const jobs = createMockJobs();
   const range = createMockRange(ops, () => `op-${++opSeq}`);
   const sections = mockSections();
+  /** 同じ作品の次の巻(#113)。リーダーの最終ページから進む先 */
+  const nextOf = (vol: MockVolume) => {
+    const n = mockWorks.nextVolume(vol.id);
+    return n ? { id: n.id, title: n.title, volume_number: n.volume_number, offline: n.offline } : null;
+  };
 
   // テンプレートどおりの改名・移動(作品 1 だけ)。巻 1 と 6 は同じ名前になる衝突、3 は 1 巻 = 1 CBZ でない対象外
   function renamePlan(workId: number, exclude: number[]): OrganizeOp {
@@ -468,6 +473,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         sections: novel.map((h, i) => ({ index: i, length: h.length })),
         encoding: v.format === "text" ? "cp932" : null,
         progress: v.progress, parent_id: null, volume_number: v.volume_number, findings: [],
+        next_volume: nextOf(v),
         bookmarked: marks.volume.has(v.id),
       };
       return json(200, detail);
@@ -490,6 +496,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         progress: v.progress,
         parent_id: v.parent_id,
         volume_number: v.volume_number,
+        next_volume: nextOf(v),
         findings: v.findings,
         bookmarked: marks.volume.has(v.id),
       };
