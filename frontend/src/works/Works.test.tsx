@@ -123,8 +123,15 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     expect(choices.map((a) => a.getAttribute("href"))).toEqual(["#/read/1", "#/read/6"]);
     expect(choices[0].textContent).toContain("サンプル漫画 第01巻");
     expect(choices[1].textContent).toContain("Sample manga v01");
+    // Tab はモーダルの中を回る(最後の「閉じる」から先頭の巻へ)
+    const close = within(dialog).getByRole("button", { name: "閉じる" });
+    close.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(choices[0]);
+    // Escape で閉じ、開いた行へフォーカスが戻る
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(dup);
   });
 
   it("オフラインの巻はタイトルだけ出し、リーダーへはリンクしない", async () => {

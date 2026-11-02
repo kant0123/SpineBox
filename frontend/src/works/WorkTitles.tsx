@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { api, ApiError, type WorkDetail } from "../api";
 import { readHref, workHref, worksHref } from "../route";
 import { KIND_TEXT } from "./labels";
@@ -19,6 +19,8 @@ export function WorkTitles({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [picking, setPicking] = useState<OwnedTitleRow | null>(null);
+  // モーダルを閉じたときに、開いた行へフォーカスを戻すため(#115)
+  const opener = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -91,7 +93,14 @@ export function WorkTitles({ id }: { id: string }) {
       // 重複は 1 行にまとめ、押したらどの巻を読むか選ぶ(#115)
       return (
         <li key={row.key}>
-          <button type="button" className={className} onClick={() => setPicking(row)}>
+          <button
+            type="button"
+            className={className}
+            onClick={(e) => {
+              opener.current = e.currentTarget;
+              setPicking(row);
+            }}
+          >
             {body}
           </button>
         </li>
@@ -193,28 +202,50 @@ export function WorkTitles({ id }: { id: string }) {
           </p>
         )}
       </section>
-      {picking && <DuplicatePicker row={picking} onClose={() => setPicking(null)} />}
+      {picking && <DuplicatePicker row={picking} opener={opener.current} onClose={() => setPicking(null)} />}
     </div>
   );
 }
 
 /** 重複した巻(同じ巻番号の別スキャン)から、読む巻を選ぶモーダル(#115) */
-function DuplicatePicker({ row, onClose }: { row: OwnedTitleRow; onClose: () => void }) {
+function DuplicatePicker({ row, opener, onClose }: { row: OwnedTitleRow; opener: HTMLElement | null; onClose: () => void }) {
+  const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // 閉じたら開いた行へフォーカスを戻す(キーボードで行き場を失わない)
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
+  }, [onClose, opener]);
+  // Tab でモーダルの外へ出さない(背後の行へフォーカスを移さない)
+  const trap = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !dialog.current) return;
+    const items = [...dialog.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")];
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
   return (
     <div className="title-modal-backdrop" onClick={onClose}>
       <div
+        ref={dialog}
         className="title-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="duplicate-heading"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={trap}
       >
         <h2 id="duplicate-heading">
           {row.label} の重複({row.volumes.length} 冊)
