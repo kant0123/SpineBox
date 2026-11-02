@@ -319,3 +319,7 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-03] ingest | PR #125 ツール共通の入口(AGENTS.md)と画面の DADS 準拠ルールを追加
 - 備考: #124。`AGENTS.md`(ツール共通の入口)・`GEMINI.md`・`.github/copilot-instructions.md`・`.agent/rules/ui-dads.md` を追加し、`CLAUDE.md` に「画面(UI)の作成・変更」節を足した。`frontend/` の画面は DADS v2.18.2 準拠を常時ルールとし、スキル機構が無いツールは `SKILL.md` と `references/` を直接読む。スキル本体の値・ルールは変えていない。
+
+## [2026-11-03] ingest | PR #122 タグ・著者・出版社の一覧で項目ごとにスター(⭐️)を付けられるように変更
+- 更新: [[backend]], [[frontend]], [[work-search]]、[[inbox]] / [[cover-thumbnails]] / [[data-jobs]] / [[follow]] / [[server-setup]](コード参照の行番号のずれのみ)
+- 備考: #117。マイグレーション 15 で `facet_stars` 表を追加し、`GET /api/works/facets/{name}` の各値に `starred` を返し、`PUT /api/works/facets/{name}/star` でスターを付け外しできるようにした。画面(`FacetList.tsx`)では各項目の右端に ★/☆ のトグルボタン(DADS v2.18.2 準拠、44×44px、二重フォーカスリング)を置き、スター付き項目を一覧の上部に優先表示する。モック API を 375px・768px・1280px(ライト・ダーク)のヘッドレス Chrome で開き、横スクロール無し・ターゲット寸法・スター切り替えによる並び替えを確認した。
