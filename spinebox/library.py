@@ -10,12 +10,17 @@
   entry_prefix のフォルダ直下の画像を読む。取り出しは親と同じキャッシュキーなので、親を開いた後なら取り出し直さない
 
 どの経路も蔵書には読み取りしかしない。ページの並びは毎回目次から作り直す(DB にはページ数だけ持つ)。
+
+7z / rar のページと目次は RAM 層(`MemoryCache`、設定 `memory_cache_limit_bytes`)に置く。ページは、要求された
+ページから先の数ページを 1 回の 7-Zip 起動でまとめて取り出して置く(ソリッド 7z は 1 ページごとに塊の先頭から
+展開し直すため)。zip のページは置かない(毎回読んでも速く、置いても差が出なかった。計測は scripts/bench_reading.py)。
 """
 from __future__ import annotations
 
 import json
 import logging
 import sqlite3
+import threading
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +32,7 @@ from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archiv
                       open_archive)
 from .archive.base import reader_available
 from .archive.safety import Skip, depth_problem, entry_limit_problem
-from .cache import CacheTooLarge, ExtractionCache, cache_key
+from .cache import CacheTooLarge, ExtractionCache, MemoryCache, cache_key
 from .config import Settings
 from .pages import is_image, natural_key, page_sort_key, sort_pages
 from .scanner import record_issues, resolve_source_path, root_is_accessible
@@ -46,6 +51,15 @@ class VolumeUnreadable(Exception):
 
 
 log = logging.getLogger(__name__)
+
+# 7z / rar の先読み: 要求されたページから先を、まとめて取り出す。枚数は前回の取り出しの続きを読むたびに 1 → 2 → 4 … と
+# 倍にして READAHEAD_PAGES まで増やし、続きでない(開き直した・飛んだ)ら 1 に戻す
+# (最初から多く取ると、開いて最初のページが出るまでが遅くなる)。
+# バイト数は READAHEAD_BYTES と RAM 層の上限の 1/4 の小さい方まで
+READAHEAD_PAGES = 64
+READAHEAD_BYTES = 128 * 1024 ** 2
+# 書庫ごとの状態(先読みの枚数・直列化のロック)を持つ数。超えたら使用中でないものを捨てる(捨てても 1 枚から始まるだけ)
+MAX_ARCHIVE_STATES = 1024
 
 
 @dataclass
@@ -93,9 +107,14 @@ def is_offline(row: sqlite3.Row) -> bool:
 
 
 class Library:
-    def __init__(self, settings: Settings, cache: ExtractionCache):
+    def __init__(self, settings: Settings, cache: ExtractionCache, memory: MemoryCache | None = None):
         self.settings = settings
         self.cache = cache
+        self.memory = memory if memory is not None else MemoryCache(settings.memory_cache_limit_bytes)
+        # 書庫(キー)ごとの取り出しの直列化。フロントは前後のページを並行で先読みするので、同じ書庫の
+        # まとめ取り出しを重ねて起動しない(後の要求は先の取り出しが RAM に置いたものを使う)
+        self._archives: dict[str, _ArchiveState] = {}
+        self._archives_guard = threading.Lock()
 
     @contextmanager
     def open(self, conn: sqlite3.Connection, volume_id: int) -> Iterator[OpenVolume]:
@@ -137,36 +156,113 @@ class Library:
         sevenzip = self.settings.sevenzip_path
         units = page_units = None
         try:
+            root_key = self._root_key(path)
             outer = stack.enter_context(open_archive(path, sevenzip_path=sevenzip))
-            listing = list_entries(outer, limits)
+            listing = self._list(outer, root_key)
             container = row["container_path"]
             if container is None:
                 prefix = row["entry_prefix"]
                 entries = sorted((e for e in listing.entries if e.parent == prefix and is_image(e.name)),
                                  key=lambda e: page_sort_key(e.name))
-                pages = [(outer, e) for e in entries]
+                pages = [(outer, e, root_key) for e in entries]
             elif row["inner_path"] is not None:
-                pages = self._open_unit(stack, row, path, outer, listing)
+                pages = self._open_unit(stack, row, root_key, outer, listing)
             else:
-                found = self._open_inner(conn, stack, row, path, outer, listing)
-                pages = [(r, e) for r, e, _ in found]
-                page_units = [(chain, e.parent) for _, e, chain in found]
+                found = self._open_inner(conn, stack, row, root_key, outer, listing)
+                pages = [(r, e, k) for r, e, _, k in found]
+                page_units = [(chain, e.parent) for _, e, chain, _ in found]
                 units = _units(found, container)
         except (UnsupportedArchive, LimitExceeded, ArchiveError) as e:
             raise VolumeUnreadable(str(e)) from e
 
         def read(i: int) -> bytes:
-            reader, entry = pages[i]
             try:
-                return reader.read_entry(entry, limits)
+                return self._read_page(pages, i)
             except (LimitExceeded, ArchiveError) as e:
                 raise VolumeUnreadable(str(e)) from e
 
-        return OpenVolume(row["id"], [e.name for _, e in pages], version, read, units, page_units)
+        return OpenVolume(row["id"], [e.name for _, e, _ in pages], version, read, units, page_units)
 
     def _root_key(self, path: Path) -> str:
         st = path.stat()
         return cache_key("inner", str(path), st.st_size, st.st_mtime_ns)
+
+    # --- RAM 層 -------------------------------------------------------------
+
+    def _list(self, reader, key: str):
+        """目次を読む。7z / rar は `7z l` の結果を RAM 層に持ち越す(key は中身が変われば変わるキー)。"""
+        memory = self.memory
+        keep = memory.enabled and hasattr(reader, "restore_listing")
+        listing_key = cache_key("listing", key)
+        hit = False
+        if keep:
+            state = memory.get(listing_key)
+            if state is not None:
+                reader.restore_listing(state)
+                hit = True
+        listing = list_entries(reader, self.settings.limits)
+        if keep and not hit:
+            state = reader.listing_state()
+            memory.put(listing_key, state, _listing_size(state[0]))
+        return listing
+
+    def _archive(self, key: str) -> _ArchiveState:
+        with self._archives_guard:
+            state = self._archives.get(key)
+            if state is None:
+                if len(self._archives) >= MAX_ARCHIVE_STATES:
+                    for k in [k for k, v in self._archives.items() if not v.lock.locked()]:
+                        del self._archives[k]
+                state = self._archives[key] = _ArchiveState()
+            return state
+
+    def _read_page(self, pages, i: int) -> bytes:
+        """i ページ目のバイト列。7z / rar は RAM 層にあればそれを返し、無ければ先の数ページもまとめて取り出して置く。"""
+        limits = self.settings.limits
+        memory = self.memory
+        reader, entry, key = pages[i]
+        if not memory.enabled or not reader.batch_reads:
+            return reader.read_entry(entry, limits)
+        page_key = _page_key(key, entry)
+        data = memory.get(page_key)
+        if data is not None:
+            return data
+        archive = self._archive(key)
+        with archive.lock:
+            data = memory.get(page_key)
+            if data is not None:
+                return data  # 並行した要求の先読みで置かれた
+            window = archive.next_window(i)
+            batch = self._readahead(pages, i, window)
+            archive.advance(i + len(batch), window)
+            try:
+                got = reader.read_entries([e for e, _ in batch], limits)
+            except ArchiveError as e:
+                # 先読みの側(要求されていないページ)の失敗で、要求されたページまで読めなくしない
+                log.info("まとめ取り出しに失敗したので 1 ページだけ読みます: %s", e)
+                data = reader.read_entry(entry, limits)
+                memory.put(page_key, data)
+                return data
+            for e, k in batch:
+                memory.put(k, got[e.index])
+            return got[entry.index]
+
+    def _readahead(self, pages, i: int, window: int) -> list:
+        """i ページ目と、同じ書庫で RAM 層にまだ無い先のページ((エントリ, ページのキー) の列。window 枚まで)。"""
+        reader, entry, key = pages[i]
+        budget = min(READAHEAD_BYTES, self.memory.limit_bytes // 4)
+        batch = [(entry, _page_key(key, entry))]
+        total = entry.size
+        for j in range(i + 1, len(pages)):
+            r, e, k = pages[j]
+            if r is not reader or len(batch) >= window or total + e.size > budget:
+                break
+            pk = _page_key(k, e)
+            if pk in self.memory:
+                continue
+            batch.append((e, pk))
+            total += e.size
+        return batch
 
     def _container_entry(self, row, listing):
         matches = [e for e in listing.entries if e.name == row["container_path"]]
@@ -174,8 +270,8 @@ class Library:
             raise VolumeNotFound(row["id"])
         return matches[0]
 
-    def _open_inner(self, conn, stack, row, path, outer, listing):
-        """内側アーカイブを取り出して開き、(リーダー, エントリ, 入れ子の名前) のページ列を返す。
+    def _open_inner(self, conn, stack, row, root_key: str, outer, listing):
+        """内側アーカイブを取り出して開き、(リーダー, エントリ, 入れ子の名前, リーダーのキー) のページ列を返す。
 
         内側にさらにアーカイブがあり、深さの上限に収まるなら、それも開いて名前の自然順に続ける
         (7z の中の rar の中の rar の中の zip、という実データがある)。入れ子の名前は、内側アーカイブから
@@ -183,20 +279,18 @@ class Library:
         """
         container = row["container_path"]
         issues: list[Skip] = []
-        pages = self._expand(stack, outer, self._container_entry(row, listing), self._root_key(path), 1, (),
-                             issues)
+        pages = self._expand(stack, outer, self._container_entry(row, listing), root_key, 1, (), issues)
         with db.transaction(conn) as c:
             record_issues(c, row["source_id"], container, issues)
         return pages
 
-    def _open_unit(self, stack, row, path, outer, listing):
+    def _open_unit(self, stack, row, root_key: str, outer, listing):
         """子の巻: 親の内側アーカイブから inner_path の入れ子を順に取り出し、entry_prefix 直下の画像を返す。"""
         try:
             chain = json.loads(row["inner_path"])
         except ValueError as e:
             raise VolumeNotFound(row["id"]) from e
-        reader, inner_listing, key = self._extract(stack, outer, self._container_entry(row, listing),
-                                                   self._root_key(path), 1)
+        reader, inner_listing, key = self._extract(stack, outer, self._container_entry(row, listing), root_key, 1)
         for depth, name in enumerate(chain, start=2):
             matches = [e for e in inner_listing.entries if e.name == name and is_archive_name(e.name)]
             if not matches:
@@ -207,7 +301,7 @@ class Library:
                         key=lambda e: page_sort_key(e.name))
         if not images:
             raise VolumeNotFound(row["id"])
-        return [(reader, e) for e in images]
+        return [(reader, e, key) for e in images]
 
     def _extract(self, stack, parent, entry, parent_key: str, depth: int):
         """1 段の内側アーカイブをキャッシュへ取り出して開く。(リーダー, 目次, キー) を返す。
@@ -229,7 +323,7 @@ class Library:
         cached = stack.enter_context(
             self.cache.use(key, lambda f: parent.copy_entry(entry, f, limits.max_entry_bytes)))
         inner = stack.enter_context(open_archive(cached, entry.name, sevenzip_path=sevenzip))
-        return inner, list_entries(inner, limits), key
+        return inner, self._list(inner, key), key
 
     def _expand(self, stack, parent, entry, parent_key: str, depth: int, chain: tuple[str, ...],
                 issues: list[Skip]):
@@ -238,7 +332,7 @@ class Library:
         label = "" if depth == 1 else entry.name + "/"
         issues.extend(Skip(label + (s.entry_name or ""), s.reason) if label else s for s in listing.skipped)
         images = sorted((e for e in listing.entries if is_image(e.name)), key=lambda e: page_sort_key(e.name))
-        pages = [(inner, e, chain) for e in images]
+        pages = [(inner, e, chain, key) for e in images]
         for nested in sorted((e for e in listing.entries if is_archive_name(e.name)),
                              key=lambda e: natural_key(e.name)):
             problem = depth_problem(depth + 1, limits)
@@ -315,12 +409,12 @@ class Library:
 
 
 def _units(found, container: str) -> list[analysis.Unit]:
-    """(リーダー, エントリ, 入れ子の名前) のページ列から巻の単位を作る。
+    """(リーダー, エントリ, 入れ子の名前, キー) のページ列から巻の単位を作る。
 
     単位 = 画像を直接含むフォルダ(アーカイブの直下なら、そのアーカイブ自体)。並びは入れ子の名前・フォルダの自然順。
     """
     groups: dict[analysis.UnitKey, list[str]] = {}
-    for _, e, chain in found:
+    for _, e, chain, _ in found:
         groups.setdefault((chain, e.parent), []).append(e.name)
     units = []
     for (chain, prefix), names in groups.items():
@@ -331,3 +425,34 @@ def _units(found, container: str) -> list[analysis.Unit]:
         units.append(analysis.Unit(chain, prefix, title, sorted(names, key=page_sort_key)))
     units.sort(key=lambda u: (natural_key("/".join(u.chain)), natural_key(u.prefix)))
     return units
+
+
+class _ArchiveState:
+    """書庫ごとの取り出しの状態。lock: 同じ書庫のまとめ取り出しを直列化する。
+
+    前回の取り出しの続き(前回の末尾から READAHEAD_PAGES 以内。フロントは前後を並行で先読みするので少し先も続きとみなす)を
+    要求されたら枚数を倍にし、そうでなければ 1 枚から始める。
+    """
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self._end: int | None = None
+        self._window = 1
+
+    def next_window(self, index: int) -> int:
+        if self._end is not None and self._end <= index <= self._end + READAHEAD_PAGES:
+            return self._window
+        return 1
+
+    def advance(self, end: int, used: int) -> None:
+        self._end = end
+        self._window = min(used * 2, READAHEAD_PAGES)
+
+
+def _page_key(reader_key: str, entry) -> str:
+    return cache_key("page", reader_key, entry.index, entry.name)
+
+
+def _listing_size(entries) -> int:
+    """目次を RAM 層に置くときの大きさの見積もり(名前の長さ + 1 エントリあたりの固定分)。"""
+    return sum(len(e.name) * 2 + len(e.raw_name) + 256 for e in entries) + 1024

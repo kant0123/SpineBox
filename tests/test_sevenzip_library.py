@@ -122,7 +122,8 @@ def test_scan_lists_7z_and_rar_without_extracting_anything(sevenzip, make_client
 def test_inner_archive_is_extracted_once_and_reused(sevenzip, make_client, tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     make_7z(sevenzip, lib / "a.7z", {"in.rar": sample_rar("x"), "pad.bin": b"p" * 1000})
-    c, settings = make_client(lib, sevenzip_path=sevenzip)
+    # RAM 層を切る(ページが RAM から返ると、ページ画像の取り出しも起きなくなるため。RAM 層は test_memory_cache.py)
+    c, settings = make_client(lib, sevenzip_path=sevenzip, memory_cache_limit_bytes=0)
     c.post("/api/scan")
     vid = by_title(c)["in"]["id"]
     assert len(pages(c, vid)) == 3
