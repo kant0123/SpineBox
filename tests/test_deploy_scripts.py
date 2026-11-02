@@ -426,3 +426,42 @@ def test_update_does_nothing_more_when_stopping_fails(tmp_path):
     assert r.returncode == 1
     assert log.read_text(encoding="utf-8").split() == ["Stop"]  # 更新も起動もしない(何も変えていない)
 
+
+def health_server(tmp_path, body):
+    """/healthz に body を返す小さなサーバーを別プロセスで立てる。(プロセス, ポート)を返す。"""
+    port = free_port()
+    script = tmp_path / "health.py"
+    script.write_text(
+        "import http.server, json, sys\n"
+        f"BODY = json.dumps({body!r}).encode()\n"
+        "class H(http.server.BaseHTTPRequestHandler):\n"
+        "    def do_GET(self):\n"
+        "        self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()\n"
+        "        self.wfile.write(BODY)\n"
+        "    def log_message(self, *a): pass\n"
+        f"http.server.HTTPServer(('127.0.0.1', {port}), H).serve_forever()\n", encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, str(script)])
+    for _ in range(50):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    return proc, port
+
+
+@needs_windows_ps
+@pytest.mark.parametrize("commit", [None, "abc1234"])
+def test_restart_succeeds_when_healthz_answers_with_or_without_a_commit(tmp_path, commit):
+    # git が見えない環境ではアプリの /healthz が commit: null を返す。それでも正常に起動したと判定する
+    proc, port = health_server(tmp_path, {"ok": True, "commit": commit})
+    try:
+        repo = fake_bind_repo(tmp_path, f"127.0.0.1 {port}")
+        runner, log = fake_runner(tmp_path)
+        r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", "Restart", "-RepoPath", str(repo),
+                    "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskRunner", str(runner), "-TimeoutSeconds", "10"])
+        assert r.returncode == 0, r.stdout.decode("cp932", "replace")
+        assert log.read_text(encoding="utf-8").split() == ["Stop", "Start"]
+    finally:
+        proc.kill()
+

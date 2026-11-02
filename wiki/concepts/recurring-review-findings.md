@@ -64,7 +64,7 @@ push 前に確かめること:
 - PR #33 — `review/agy_review.py has_unverified_critical()` — 評価の理由文に「未確認」があるだけで判定語と取り違えていた
 - PR #33 — `review/agy_review.py has_unverified_critical()` — 過去の評価も見ていて、記録し直しても差し止めが解けなかった
 - PR #97 — `deploy/update_spinebox.ps1 Get-HealthUrl` — `--print-bind` の出力を `2>&1` で読み、設定の警告(使われなくなったキー)が stderr に出ると host を読み違えた。直したら今度は Windows PowerShell 5.1 が stderr を例外にして止まった(警告の出る偽の spinebox で再現・修正)
-- PR #97 — `deploy/update_spinebox.ps1` 起動前のコミット取得 — `git` が失敗すると同じく例外で止まり、「途中で失敗しても起動し直す」に届かなかった(git リポジトリでない場所で再現)。比べる短縮 SHA もアプリ(7 文字固定)と git の既定(環境で長くなる)で長さがずれていた
+- PR #97 — `deploy/update_spinebox.ps1` 起動前のコミット取得 — `git` が失敗すると同じく例外で止まり、「途中で失敗しても起動し直す」に届かなかった(git リポジトリでない場所で再現)。比べる短縮 SHA もアプリ(7 文字固定)と git の既定(環境で長くなる)で長さがずれていた。さらに `/healthz` が `commit: null`(git が見えない環境)を返すと照合の前に null のメソッドを呼んで例外になり、正常起動でもタイムアウトしていた(偽の /healthz で再現・修正)
 - 導入先 MeltKelp PR #16 — `.claude/hooks/command_match.mjs` ヒアドキュメントの終端行 — CRLF の入力だと終端行が `EOF\r` になって区切り語と一致せず、後ろのマージのコマンドまで本文として読み飛ばして素通ししていた(agy レビューで発覚。`\r` を除いて再現・修正)
 
 ### 新しく足した分岐・関数にテストが無い

@@ -110,11 +110,16 @@ function Wait-Healthy([string]$Url, [string]$ExpectCommit) {
             $r = Invoke-RestMethod -Uri $Url -TimeoutSec 5
             if ($r.ok) {
                 Write-Host "   応答あり: commit $($r.commit)" -ForegroundColor Green
-                # 短縮の長さが違っても同じコミットなら一致とみなす(アプリは 7 文字、git は環境で長くなりうる)
-                $same = $r.commit.StartsWith($ExpectCommit) -or $ExpectCommit.StartsWith($r.commit)
-                if ($ExpectCommit -and $r.commit -and -not $same) {
-                    Write-Host "   注意: 稼働中のコミット $($r.commit) が、リポジトリの $ExpectCommit と違います" -ForegroundColor Yellow
-                    return $false
+                # 短縮の長さが違っても同じコミットなら一致とみなす(アプリは 7 文字、git は環境で長くなりうる)。
+                # git が見えない環境ではアプリが commit: null を返すので、そのときは照合しない
+                if ($ExpectCommit -and $r.commit) {
+                    $running = "$($r.commit)"
+                    if (-not ($running.StartsWith($ExpectCommit) -or $ExpectCommit.StartsWith($running))) {
+                        Write-Host "   注意: 稼働中のコミット $running が、リポジトリの $ExpectCommit と違います" -ForegroundColor Yellow
+                        return $false
+                    }
+                } elseif ($ExpectCommit) {
+                    Write-Host "   注意: アプリが稼働中のコミットを返さないので、新しい版かどうかは確かめていません" -ForegroundColor Yellow
                 }
                 return $true
             }
