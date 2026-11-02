@@ -635,7 +635,7 @@ def apply_all(conn: sqlite3.Connection) -> int:
     return len(ids)
 
 
-# --- 取得の対象を選ぶ(明示操作の「情報を補完」と、裏の少しずつ取得) -----------------------------------
+# --- 取得の対象を選ぶ(データ管理の「作品情報のみ補完」と、裏の少しずつ取得) -----------------------------------
 
 
 def works_needing_fetch(conn: sqlite3.Connection, settings: MetadataSettings, enabled: tuple[str, ...],

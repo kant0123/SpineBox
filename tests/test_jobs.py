@@ -480,7 +480,7 @@ def test_metadata_jobs_with_a_fake_network(make_settings, tmp_path):
     assert job["params"] == {"all": True} and job["summary"]["works"] == 1
     job = wait_job(client, client.post("/api/jobs", json={"kind": "metadata_thumbs"}).json()["id"])
     assert job["status"] == "succeeded" and set(job["summary"]) == {"metadata", "thumbnails"}
-    # 作品ページの「情報を取得」と一覧の「情報を補完」も同じ履歴に残る
+    # 作品ページの「情報を取得」と、旧「情報を補完」API(データ管理の「作品情報のみ補完」と同じジョブ)も同じ履歴に残る
     wid = client.get("/api/works").json()["works"][0]["id"]
     assert client.post(f"/api/works/{wid}/metadata/fetch").status_code == 200
     assert client.post("/api/works/metadata/fetch?wait=true").json()["status"] == "succeeded"

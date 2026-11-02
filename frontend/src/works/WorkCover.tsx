@@ -3,16 +3,16 @@ import { api } from "../api";
 
 /**
  * 作品カードの表紙(#75)。表紙の巻の 1 ページ目の縮小を出し、無い・まだ作っていない(404)・読めないときは
- * 何も出さない(文字だけのカードのまま)。rev が変わったら取り直す(「表紙を作る」の後)。
+ * 何も出さない(文字だけのカードのまま)。表紙を作るのは管理のデータ管理タブ(#83)のジョブ。
  */
-export function WorkCover({ volumeId, rev }: { volumeId: number; rev: number }) {
+export function WorkCover({ volumeId }: { volumeId: number }) {
   const [state, setState] = useState<"loading" | "ok" | "none">("loading");
-  useEffect(() => setState("loading"), [volumeId, rev]);
+  useEffect(() => setState("loading"), [volumeId]);
   if (state === "none") return null;
   return (
     <img
       className={`work-cover${state === "ok" ? " loaded" : ""}`}
-      src={api.thumbnailUrl(volumeId, rev)}
+      src={api.thumbnailUrl(volumeId)}
       alt=""
       loading="lazy"
       decoding="async"
