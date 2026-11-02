@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 整理処理(1 ソース → 巻ごとの CBZ と、命名テンプレートどおりの改名・移動)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
+summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-02
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks]
 ---
@@ -12,6 +12,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 (`CLAUDE.md`「蔵書を扱う不変条件」の例外規定)。
 もう 1 つの種類として、既に 1 巻 = 1 CBZ の巻を作品単位で命名テンプレートの名前へ**改名・移動だけ**する整理がある
 (作品ページの「この作品をテンプレートどおりに整理」。下記「テンプレートどおりの改名・移動」)。
+3 つ目は、蔵書ルートの中の範囲をまとめて改名・移動する整理(「ファイル名・フォルダーの整理」画面。下記「範囲指定の整理」)。
 
 ## 責務
 
@@ -32,17 +33,21 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/organize/organizer.py:118 plan` | 計画。DB・stat・外側アーカイブの目次だけを読み、問題(実行不可)と注意を出す。整理の単位(読める巻)を選ぶのもここ |
-| `spinebox/organize/organizer.py:256 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出 |
-| `spinebox/organize/organizer.py:197 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
-| `spinebox/organize/template.py:73 NameTemplate` | テンプレートの検証(設定の読み込み時)と 1 巻ぶんの展開・無害化。`check_path_length` が全体の長さを見る |
-| `spinebox/organize/organizer.py:352 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
-| `spinebox/organize/organizer.py:499 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
-| `spinebox/organize/organizer.py:706 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
-| `spinebox/organize/organizer.py:619 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
+| `spinebox/organize/organizer.py:131 plan` | 計画。DB・stat・外側アーカイブの目次だけを読み、問題(実行不可)と注意を出す。整理の単位(読める巻)を選ぶのもここ |
+| `spinebox/organize/organizer.py:296 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出 |
+| `spinebox/organize/organizer.py:210 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
+| `spinebox/organize/template.py:207 NameTemplate` | テンプレートの検証(設定の読み込み時)と 1 巻ぶんの展開・無害化。`check_path_length` が全体の長さを見る |
+| `spinebox/organize/organizer.py:399 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
+| `spinebox/organize/organizer.py:539 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
+| `spinebox/organize/organizer.py:752 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
+| `spinebox/organize/organizer.py:659 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
+| `spinebox/organize/organizer.py:773 plan_range` | 範囲指定の整理の計画(#84)。範囲のパスは `range_path`、フォルダを選ぶ一覧は `range_folders`。振り分けは `plan_rename` と共有の `_classify_renames`、対象の判定は `_range_ineligible` |
+| `spinebox/organize/template.py:273 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
+| `spinebox/organize/cleanup.py:85 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定は `fix_mojibake` |
+| `frontend/src/organize/OrganizeFiles.tsx:178 OrganizeFilesSection` | 整理画面の中身。データ管理ページ(#83)へはこの部品を「整理」節として置く。単独のページは `OrganizeFilesPage`(`#/data/organize`) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:992 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークは写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
+| `spinebox/organize/organizer.py:1184 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークは写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
 置き場は `spinebox/config.py:134 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
@@ -99,6 +104,34 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 - 元に戻すは、改名した先のファイルが改名時のまま(サイズ・mtime)で、元の場所が空いているときだけ。空になった元のフォルダは消さない
   (実行前からあったもの)。実行で作ったフォルダは、中に利用者のファイルが増えていなければ消す
 
+## 範囲指定の整理(`kind="range"`。#84)
+
+Peach の「整理」画面の読み替え。蔵書ルートと、その中のパス(空ならルート全体。サブフォルダも対象)を選び、範囲の巻を
+1 回の操作としてプレビュー → 実行 → まとめて元に戻す。API は `POST /api/organize/range-plan`(計画)と `GET /api/organize/range/options`・
+`POST /api/organize/range/example`・`GET /api/organize/range/folders`(どれも読むだけ)。実行・元に戻すは他の整理と同じ
+`/api/organize/{op_id}/execute`・`undo` で、**ジョブの自動実行(#83)には入れない**(GOAL.md「ユーザーの操作なしに蔵書を動かさない」)。
+
+- **テンプレートは 2 本。** ファイル名(拡張子を含まない。拡張子は元のものを保つ)とフォルダー(範囲のパスが起点)。フォルダーが空なら元と同じフォルダで
+  名前だけ、ファイル名が空なら今の名前を整理した名前、両方空なら**ファイル名の整理だけ**。記法は Peach に合わせた `{title}`(`{作品名}`・`<作品名>`・`NN` も同じ)。
+  変数は作品名・著者・出版社(作品の `work_fields`)、レーベル・発売年(巻の `volume_fields` の label・released の先頭 4 桁)、種別(作品の kind を漫画 / 小説に。未決でも小説の巻は小説)、番号・単位
+- **`[...]` は中の値が 1 つでも空なら丸ごと省略。** 組の外の値が空なら対象外(従来どおり空文字で展開しない)。フォルダーの区切りが省略で空になったら区切りごと無くす
+  (`[{label}]/{title}`)。角括弧そのものは `[[` `]]`
+- **設定 `name_template` は #58 の書き方のまま読む**(`[` `]` はその文字。新しい変数は `<レーベル>` などで使える)。画面の「設定のテンプレート」は
+  `NameTemplate.range_templates()` で `{}` 記法へ読み替えたもの(同じ名前に展開されることをテストで確かめている)。角括弧の意味を設定でも変えると、
+  `[<著者>] <作品名>` のような既存の設定の出力が黙って変わるため
+- **ファイル名の整理**(`cleanup.py`): Windows で使えない文字は全角に(`_` にすると意味が消える)、制御文字は除く、全角英数字は半角・半角カナは全角、
+  全角の空白は半角にして続いた空白は 1 つ、前後の空白・ドット、NFD の濁点、予約名。全角の記号(!・()はそのまま。文字化けは UTF-8 を Shift_JIS として読んだもの・
+  Shift_JIS / UTF-8 を Latin-1 系として読んだものだけを、厳密に復号でき・かなか漢字が出て・(前者は)短くなるときだけ直す。本物の日本語の名前を化けさせないことを
+  優先し、判定に迷うものは直さない。何を直したかを巻ごとにプレビューへ出す。**フォルダ名は整理しない**(他の巻も入っているフォルダを 1 巻の操作で変えない)
+- **対象は 1 巻 = 1 ファイルの巻(CBZ・zip / rar / 7z・小説)。CBZ 化はこの画面ではしない。** 複数巻のまとめ・入れ子・画像フォルダは理由つきで対象外にし、
+  画像の巻は「テンプレートの名前で CBZ に整理」へ案内する。CBZ 化は中身を作り直す重い処理で、1 ソースの全巻を全部作って検証してから確定する単位なので、
+  範囲の何百巻を 1 操作に混ぜると 1 冊の失敗で全体が巻き戻り、時間も読めない。改名・移動は中身を変えないので範囲でまとめられる
+- 振り分け・実行・元に戻すは作品単位の改名・移動と同じ(巻 id のままパスを付け替える。読書位置・作品の割り当て・手動の項目・指紋・重複の却下はそのまま)。
+  衝突は連番にせず、衝突・改名する巻を「外す」と作り直す。**同じ操作の中で別の巻が空ける場所へ移る(入れ替え・玉突き)も衝突にする**(出力先が今埋まっているため。
+  順序を計算して許すより、利用者に外してもらう方が壊れない)
+- 出力先が画像フォルダの巻(`sources.kind = 'folder'`)の中になるものは衝突にする(作品単位の改名・移動にも効く)。次のスキャンで添え物・別の巻と取り違えうる
+- 範囲のパスは `..`・ドライブ文字・作業場を拒む。ルートの絶対パスで書いたものは相対に直す。大文字小文字はディスク上の綴りに直す(`_disk_case`。Windows で `manga` と打っても DB の `Manga/...` と合う)
+
 ## 受け入れ(`kind="intake"`)
 
 受け入れフォルダの本を書庫へ入れる操作([[inbox]])。同じ `execute` / `undo` を、元(受け入れフォルダ)と出力先(書庫)が別のルートの形で使う。
@@ -145,6 +178,10 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
   登録する。スキャナーの切り出し方を変えたら、ここも合わせないと次のスキャンで巻 id が変わる
 
 ## 経緯
+
+- #84 で範囲指定の整理を足した。プレビューの前後で蔵書が変わらないこと(ルート全体・サブフォルダ)、複数作品をまとめて実行 → まとめて元に戻すでパス・バイト列・mtime・フォルダまで一致すること、
+  手動の作品名・手動の割り当て・読書位置が残ることを `tests/test_organize_range.py` で確かめている。データ管理ページ(#83)はこの時点で main に無かったので、画面は単独のルート
+  `#/data/organize` で出し、一覧のヘッダーに「ファイル名の整理」を置いた。#83 が入ったら `OrganizeFilesSection` を「整理」節として置く
 
 - #66 で受け入れ(`kind="intake"`。[[inbox]])を足した。元と出力先を別ルートにし、`mode="move"`(`move_in`)を足した。往復後に受け入れフォルダと書庫がパス・バイト列・mtime まで一致することを `tests/test_inbox.py` で確かめている
 
