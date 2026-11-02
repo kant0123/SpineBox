@@ -12,7 +12,7 @@ slug は公式サイト `https://design.digital.go.jp/dads/components/<slug>/` �
 | --- | --- | --- |
 | 見出し | `heading` | レベルを飛ばさない。サイズは 64〜16 の段から選ぶ。`h1` は 1 ページ 1 つ |
 | 本文 | (`typography`) | 16px / 1.7 / `letter-spacing: 0.02em` |
-| リンク | (`link-text`) | 下線。訪問済みはマゼンタ。外部・新規タブはアイコン + 「新しいタブで開きます」等の代替テキスト |
+| リンク | (`link-text`) | 下線。訪問済みはマゼンタ。ターゲットは 24×24px 以上。外部・新規タブはアイコン + 「新しいタブで開きます」等の代替テキスト |
 | 箇条書き | `list` | `<ul>` を使う(項番が要るときだけ `<ol>`)。入れ子は `<ul>` の中に `<ul>` |
 | 説明リスト | `description-list` | `<dl>` / `<dt>` / `<dd>`。ラベルと値の対 |
 | 引用 | `blockquote` | 引用元を `<cite>` かリンクで示す |
@@ -22,7 +22,7 @@ slug は公式サイト `https://design.digital.go.jp/dads/components/<slug>/` �
 
 | 要素 | slug | 必須事項 |
 | --- | --- | --- |
-| ボタン | `button` | 塗り/アウトライン/テキストの 3 種。最小サイズは lg 56px・md 48px・sm 36px・xs 28px。sm/xs は `::after` で 44px のヒット領域。塗りは 1 画面 1 つ |
+| ボタン | `button` | 塗り/アウトライン/テキストの 3 種。最小サイズは lg 56px・md 48px・sm 36px・xs 28px。sm/xs は `::after` で 44px のヒット領域。塗りは原則 1 画面 1 つ |
 | タブ | `tab` | `role="tablist"` / `tab` / `tabpanel`、`aria-selected`、矢印キーで移動、パネルは `tabindex="0"`。**絞り込みには使わない** |
 | アコーディオン | `accordion` | ネイティブの `<details>` / `<summary>`。見出しは `<summary>` の中 |
 | ディスクロージャー | `disclosure` | 追加情報の折りたたみ。主要情報を隠さない |
@@ -36,9 +36,9 @@ slug は公式サイト `https://design.digital.go.jp/dads/components/<slug>/` �
 | 要素 | slug | 必須事項 |
 | --- | --- | --- |
 | ラベル一式 | `form-control-label` | ラベル(太字)+ 必須/任意 + サポートテキスト + エラー。必須は「※必須」を赤 |
-| 1 行入力 | `input-text` | 高さ sm 40 / md 48 / lg 56。枠 1px gray-600、角丸 8。`aria-describedby` にエラーとサポート |
+| 1 行入力 | `input-text` | 高さ sm 40 / md 48 / lg 56。枠 1px gray-600、角丸 8。`aria-describedby` にエラーとサポート。placeholder は原則使わない |
 | 複数行 | `textarea` | ラベル + サポート + エラー。高さは `rows` で確保 |
-| セレクト | `select` | ラベル。プレースホルダー選択肢は「選択してください」等 |
+| セレクト | `select` | ラベル。未選択の選択肢は「選択してください」等 |
 | チェックボックス | `checkbox` | 複数選択。`<fieldset>` + `<legend>` でグループ化 |
 | ラジオ | `radio` | 単一選択。`<fieldset>` + `<legend>` |
 | スイッチ | `switch` | 切り替えが即時反映される設定だけ。送信ボタンが要るものには使わない |
@@ -80,6 +80,6 @@ slug は公式サイト `https://design.digital.go.jp/dads/components/<slug>/` �
 ## DADS にないもの・使わないもの
 
 - **リーダーの紙面表示・見開き・縦書き**は DADS のコンポーネントにない。独自のままにする。
-- **カルーセル**は DADS でも「使用に注意が必要」とされている。一覧の代替にならない。
+- **カルーセル**は DADS でも「使用に注意が必要」とされている。原則使わない。一覧の代替にならない。
 - **タブをフィルタに使わない**(DADS の「注意が必要なケース」)。絞り込みはフォームコントロール。
 - 複数セクションを同時に見せたいなら `accordion`、1 つだけ表示するなら `tab`。
