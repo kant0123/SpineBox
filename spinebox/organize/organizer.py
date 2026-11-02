@@ -27,7 +27,7 @@ from typing import Callable
 
 from .. import db
 from ..archive import ArchiveError, list_entries, open_archive
-from ..archive.base import file_reader_available, reader_available
+from ..archive.base import file_reader_available, inner_reader_problem
 from ..cache import CacheTooLarge
 from ..config import Settings
 from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
@@ -309,12 +309,19 @@ class Organizer:
         if not file_reader_available(path, sevenzip):
             problems.append("この形式は今読めません(7-Zip が見つからない、または未対応)")
             return
-        for v in vols:
-            if v["container_path"] and not reader_available(v["container_path"], sevenzip):
-                problems.append(f"内側アーカイブを読めません(7-Zip が見つからない、または未対応): {v['container_path']}")
         try:
             with open_archive(path, sevenzip_path=sevenzip) as reader:
                 listing = list_entries(reader, self.settings.limits)
+                by_name = {}
+                for e in listing.entries:
+                    by_name.setdefault(e.name, e)  # 同名なら最初の 1 つ(スキャンが巻にしたもの)
+                # 内側アーカイブは取り出した後と同じく先頭の中身で判定する(#62)
+                for container in dict.fromkeys(v["container_path"] for v in vols if v["container_path"]):
+                    entry = by_name.get(container)
+                    problem = (inner_reader_problem(reader, entry, sevenzip) if entry is not None
+                               else "アーカイブの中に見つからない")
+                    if problem:
+                        problems.append(f"内側アーカイブを読めません: {container}: {problem}")
         except ArchiveError as e:
             problems.append(f"アーカイブを読めません: {e}")
             return

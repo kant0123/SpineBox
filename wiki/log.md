@@ -211,6 +211,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: なし(GOAL.md のチェックボックスのみ)
 - 備考: #77。利用者がサーバー機(DESKTOP-80AKMUB)で `config.local.toml` の `host` を LAN アドレスにし、`deploy\install_task.ps1 -Action Register` で常駐タスクを登録(Python はフルパス、`-UserName` 付き)。再起動後に自動起動し、LAN 内の別端末から閲覧できることを確認(#20)。開発機からも `http://192.168.11.50:8000/healthz` が `{"ok":true,"commit":"dd66b1a"}` を返し、サーバー機の `logs\supervisor.log` に Job Object の有効化と `python -m spinebox` の起動、`.err.log` に LAN 公開の注意と uvicorn の起動が残っていることを確認。手順で `.\deploy\` のパスと `-PythonPath` / `-HealthUrl` を省いていたため一度失敗した(稼働確認 URL の自動化は #76)。これで GOAL.md フェーズ 1〜4 の完了条件はすべて満たした。
 
+## [2026-11-02] ingest | PR #79 内側アーカイブの取り出す前の判定を中身(マジックバイト)に揃える
+- 更新: [[archive-reading]], [[organize]], [[work-grouping]](コード参照の行番号のずれのみ)
+- 備考: #62。#49 で取り出した後の判定はマジックバイトになったが、取り出す前の先行判定(`Library._extract()` / `Organizer._inspect_archive()`)が拡張子のままで、7-Zip が無いと名前が .rar / .7z で中身が zip の内側を未対応にしていた。親の zip からエントリの先頭 8 バイトだけを伸長して `open_archive` と同じ規則で判定する `inner_reader_problem()` に置き換えた(取り出してから判定する案は、読めない rar を数 GB 取り出しうるので採らなかった)。中身が rar / 7z なら理由に中身の形式が入る。
+
 ## [2026-11-02] ingest | PR #80 公開 DB のジャンル・タグ・出版社・あらすじを日本語で表示する
 - 更新: [[metadata-linking]], [[metadata-sources]], [[frontend]], [[backend]], [[inbox]], [[organize]], 他に `config.example.toml`(`untranslated_terms` / `english_synopsis`)。inbox / organize はコード参照の行番号のずれだけ直した
 - 備考: #74。英語の語彙は対応表 `spinebox/ja_terms.py` で反映のときに日本語にし、取得した元の値(`work_links.item`・生の応答)は英語のまま残す。起動時の反映で、入っている英語の値も日本語になる(手動の値は変えない)。

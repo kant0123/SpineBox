@@ -90,6 +90,13 @@ class ArchiveReader(abc.ABC):
         """複数エントリをメモリに読む(index → 中身)。既定は 1 つずつ。"""
         return {e.index: self.read_entry(e, limits) for e in entries}
 
+    def read_head(self, entry: ArchiveEntry, size: int) -> bytes | None:
+        """エントリの先頭 size バイト(取り出さずに中身の形式を見るため)。安く読めない・読めないなら None。
+
+        既定は None(7-Zip CLI は先頭だけを読むにも子プロセスを起動するため)。
+        """
+        return None
+
 
 @dataclass
 class Listing:
@@ -159,6 +166,14 @@ _FORMAT_EXT = {"zip": ".zip", "rar": ".rar", "7z": ".7z"}
 _EXT_FORMAT = {".zip": "zip", ".cbz": "zip", ".rar": "rar", ".cbr": "rar", ".7z": "7z", ".cb7": "7z"}
 
 
+def detect_format_bytes(head: bytes) -> str | None:
+    """先頭のバイト列から形式を返す(`detect_format()` と同じ規則)。"""
+    for magic, fmt in _MAGIC:
+        if head.startswith(magic):
+            return fmt
+    return None
+
+
 def detect_format(path: Path) -> str | None:
     """先頭のマジックバイトから形式("zip" / "rar" / "7z")を返す。判定できない・読めないなら None。
 
@@ -170,16 +185,40 @@ def detect_format(path: Path) -> str | None:
             head = f.read(MAGIC_BYTES)
     except OSError:
         return None
-    for magic, fmt in _MAGIC:
-        if head.startswith(magic):
-            return fmt
-    return None
+    return detect_format_bytes(head)
 
 
 def file_reader_available(path: Path, sevenzip_path: str = DEFAULT_SEVENZIP) -> bool:
     """ディスク上の path を今読めるか。中身の形式が分かればそれで、分からなければ拡張子で判定する。"""
     fmt = detect_format(path)
     return reader_available("x" + _FORMAT_EXT[fmt] if fmt else path.name, sevenzip_path)
+
+
+def inner_reader_problem(parent: ArchiveReader, entry: ArchiveEntry,
+                         sevenzip_path: str = DEFAULT_SEVENZIP) -> str | None:
+    """内側アーカイブ entry を取り出しても今は読めないなら、その理由(読めそうなら None)。
+
+    取り出した後の `open_archive()` と同じく、先頭のマジックバイトが分かれば中身で、分からなければ名前の拡張子で
+    判定する(#62)。先頭は親のリーダーが安く読めるとき(zip)だけ読む。7-Zip が無いときの親は必ず zip なので、
+    7-Zip の有無で結果が変わる判定はすべて中身で行われる。
+    """
+    ext = _ext(entry.name)
+    head = parent.read_head(entry, MAGIC_BYTES)
+    fmt = detect_format_bytes(head) if head else None
+    if fmt is not None:
+        if _READERS[_FORMAT_EXT[fmt]][1](sevenzip_path):
+            return None
+        return _sevenzip_missing(fmt, ext, sevenzip_path)
+    if reader_available(entry.name, sevenzip_path):
+        return None
+    if ext in _READERS:
+        return f"未対応(拡張子は {ext}): 7-Zip が見つからない(sevenzip_path = {sevenzip_path!r})"
+    return f"未対応の形式({ext or '拡張子なし'})"
+
+
+def _sevenzip_missing(fmt: str, ext: str, sevenzip_path: str) -> str:
+    return (f"未対応(中身は {fmt}。拡張子は {ext or 'なし'}): "
+            f"7-Zip が見つからない(sevenzip_path = {sevenzip_path!r})")
 
 
 def open_archive(path: Path, name: str | None = None, *, sevenzip_path: str = DEFAULT_SEVENZIP) -> ArchiveReader:
@@ -199,9 +238,8 @@ def open_archive(path: Path, name: str | None = None, *, sevenzip_path: str = DE
             return _open_zip_or_other(path, entry[0], sevenzip_path)
         return entry[0](path, sevenzip_path)
     factory, available = _READERS[_FORMAT_EXT[fmt]]
-    if fmt != _EXT_FORMAT.get(ext) and not available(sevenzip_path):
-        raise UnsupportedArchive(f"未対応(中身は {fmt}。拡張子は {ext or 'なし'}): "
-                                 f"7-Zip が見つからない(sevenzip_path = {sevenzip_path!r})")
+    if not available(sevenzip_path):
+        raise UnsupportedArchive(_sevenzip_missing(fmt, ext, sevenzip_path))
     return factory(path, sevenzip_path)
 
 
