@@ -31,7 +31,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/data/DataJobs.tsx:130 DataJobs()` | データ管理の画面(`#/data`。[[data-jobs]])。作品・巻の一覧のタブ `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` から辿る。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。「表紙を作る」と進み具合は `Works()` |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
-| `frontend/src/api.ts:612 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:667 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:164 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 

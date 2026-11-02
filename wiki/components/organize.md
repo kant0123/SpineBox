@@ -46,7 +46,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 置き場は `spinebox/config.py:121 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:263 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:287 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 

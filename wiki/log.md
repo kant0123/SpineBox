@@ -231,7 +231,7 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-02] ingest | データ管理のジョブ(スキャン・補完・表紙などを 1 本ずつ動かす待ち行列と履歴)
 - 新規: [[data-jobs]]
-- 更新: [[backend]], [[frontend]], [[overview]], [[duplicate-detection]], [[cover-thumbnails]], [[metadata-linking]], [[volume-split]], [[inbox]], [[organize]]
+- 更新: [[backend]], [[frontend]], [[overview]], [[duplicate-detection]], [[cover-thumbnails]], [[metadata-linking]], [[volume-split]], [[inbox]], [[organize]]、[[novel-reader]] と [[server-setup]](行番号のずれ)
 - 備考: #83。個別のロックと状態を `spinebox/jobs.py JobRunner` にまとめ、マイグレーション 11(`jobs`)で履歴を残す。依頼は待ち行列、その場で結果を返す API はほかのジョブの実行中に 409、
   中止は区切りで止める(スキャンは止めたルートを missing にしない)。整理処理はジョブに入れない。合成データ・一時 DB のテスト `tests/test_jobs.py` と、
   375px・1100px のヘッドレス Chromium(実バックエンド + 合成の蔵書)で確認。実データ・実ブラウザの確認はローカルで引き取る

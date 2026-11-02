@@ -22,20 +22,20 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:188 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:196 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:391 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:273 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
-| `spinebox/scanner.py:245 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:518 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:423 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:297 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:269 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:557 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:120 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:368 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:95 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
 | `spinebox/linking.py:319 fetch_work()` / `spinebox/linking.py:624 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
 | `spinebox/works.py:394 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
-| `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
+| `spinebox/scanner.py:51 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
 | `spinebox/config.py:327 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/jobs.py:138 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:82 DataJobs`([[data-jobs]]) |
@@ -111,7 +111,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **スキャンは目次しか読まない。** `ZipFile.open` も 7z の取り出しも展開キャッシュも呼ばない(テスト `test_scan_never_extracts_inner_archives`、
   `test_scan_lists_7z_and_rar_without_extracting_anything`)。
   内側アーカイブのページ数を出したくなっても、スキャンで開いてはいけない(GOAL.md フェーズ 1 の完了条件)
-- **開き直さない判定はサイズ・mtime・`SCAN_VERSION`。** 巻の切り出し方を変えたら `spinebox/scanner.py:38 SCAN_VERSION` を上げる。
+- **開き直さない判定はサイズ・mtime・`SCAN_VERSION`。** 巻の切り出し方を変えたら `spinebox/scanner.py:44 SCAN_VERSION` を上げる。
   上げ忘れると既存 DB の巻は古い切り出し方のまま残る
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
