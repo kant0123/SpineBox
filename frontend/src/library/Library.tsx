@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, isNovel, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { duplicatesHref, inboxHref, organizeHistoryHref, organizeHref, readHref } from "../route";
 import { ViewTabs } from "../works/ViewTabs";
+import { BookmarkButton } from "../bookmarks/BookmarkButton";
 
 /** 一覧のカードに出す読書状態の文言 */
 export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress" | "format">): string {
@@ -205,11 +206,14 @@ export function Library() {
                   </button>
                 </div>
               )}
-              {!v.offline && !isNovel(v.format) && (
-                <a className="organize-link" href={organizeHref(v.id)}>
-                  CBZ に整理
-                </a>
-              )}
+              <div className="volume-actions">
+                <BookmarkButton target="volume" id={v.id} initial={v.bookmarked ?? false} label={v.title} />
+                {!v.offline && !isNovel(v.format) && (
+                  <a className="organize-link" href={organizeHref(v.id)}>
+                    CBZ に整理
+                  </a>
+                )}
+              </div>
             </li>
           );
         })}

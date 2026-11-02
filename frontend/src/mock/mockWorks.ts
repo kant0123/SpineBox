@@ -53,7 +53,11 @@ type Res = { status: number; body: unknown };
 /** 画面確認用の巻番号(モックの巻の番号とは別に、作品ページの欠け表示を見せるため) */
 const NUMBERS: Record<number, number> = { 1: 1, 6: 1, 2: 2, 3: 4 };
 
-export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: boolean })[]) {
+export function createMockWorks(
+  getVolumes: () => (VolumeSummary & { hidden?: boolean })[],
+  /** ブックマーク(#86)の状態。mockBackend が持つ */
+  marked: (kind: "work" | "volume", id: number) => boolean = () => false,
+) {
   let aliasSeq = 10;
   let workSeq = 10;
   const works: MockWork[] = [
@@ -123,6 +127,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       volume_number: number(id), duplicate_count: v.duplicate_count,
       assignment: { source: "filename", manual: false, confidence: 0.9, evidence: { level: "volume" } },
       metadata: volMeta[id] ?? {},
+      bookmarked: marked("volume", Number(v.id)),
     };
   };
   const volumesOf = (w: MockWork) => w.volumeIds.map(volJson).filter((v): v is WorkVolume => v !== null);
@@ -226,6 +231,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       numbers: { volume: { max: m.max, missing: m.missing, limited: false }, episode: { max: null, missing: [], limited: false } },
       proposals: proposals.filter((p) => p.status === "open" && !p.dismissed && (p.a.id === w.id || p.b.id === w.id)),
       merges: w.merges,
+      bookmarked: marked("work", w.id),
       aliases: w.aliases.map((a) => ({ id: a.id, alias: a.alias, source: a.source, manual: a.manual, confidence: a.confidence })),
     };
   }
@@ -421,5 +427,11 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     return res(405, { detail: "未対応" });
   }
 
-  return { handle, works, proposals };
+  /** 生きている作品の一覧用の形(ブックマークの一覧が使う)。無ければ null */
+  const summaryOf = (id: number): WorkSummary | null => {
+    const w = find(id);
+    return w ? summary(w) : null;
+  };
+
+  return { handle, works, proposals, summaryOf };
 }

@@ -57,6 +57,8 @@ export interface VolumeSummary {
   duplicate_count: number;
   /** 名前から割り当てられた作品(#43)。割り当てが無ければ null */
   work_id?: number | null;
+  /** ブックマークを付けている(#86) */
+  bookmarked?: boolean;
 }
 
 export interface PageInfo {
@@ -73,6 +75,8 @@ export interface SectionInfo {
 export interface VolumeDetail {
   id: VolumeId;
   title: string;
+  /** ブックマークを付けている(#86) */
+  bookmarked?: boolean;
   format?: VolumeFormat;
   page_count: number | null;
   pages: PageInfo[];
@@ -281,6 +285,8 @@ export interface WorkVolume {
   assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
   /** 巻の書誌(出版社・レーベル・発売日・ISBN など)。項目ごとに出所つき */
   metadata?: Partial<Record<VolumeMetaField, FieldInfo<string | null>>>;
+  /** ブックマークを付けている(#86) */
+  bookmarked?: boolean;
 }
 
 export type VolumeMetaField = "publisher" | "label" | "released" | "isbn" | "volume_label" | "subtitle";
@@ -425,6 +431,41 @@ export interface WorkDetail extends WorkSummary {
   numbers: { volume: { max: number | null; missing: number[]; limited: boolean }; episode: { max: number | null; missing: number[]; limited: boolean } };
   proposals: WorkProposal[];
   merges: WorkMerge[];
+  /** 作品にブックマークを付けている(#86) */
+  bookmarked?: boolean;
+}
+
+// ブックマーク(#86)。作品か巻に付ける印。オフラインの巻の印も消えない(offline つきで一覧に出る)
+export type BookmarkSort = "added" | "title";
+
+export interface BookmarkedVolume {
+  id: number;
+  title: string;
+  parent_title: string | null;
+  format: VolumeFormat;
+  page_count: number | null;
+  offline: boolean;
+  progress: Progress | null;
+  volume_number: VolumeNumber | null;
+  /** 巻の作品(割り当てが無ければ null) */
+  work_id: number | null;
+  work_title: string | null;
+}
+
+export type BookmarkItem =
+  | { kind: "work"; created_at: string; work: WorkSummary }
+  | { kind: "volume"; created_at: string; volume: BookmarkedVolume };
+
+export interface BookmarkList {
+  sort: BookmarkSort;
+  items: BookmarkItem[];
+}
+
+export interface BookmarkState {
+  bookmarked: boolean;
+  created_at: string | null;
+  work_id?: number;
+  volume_id?: number;
 }
 
 // 整理処理(CBZ 化・テンプレートでの改名と移動)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
@@ -690,6 +731,10 @@ export const api = {
   decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
     request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),
   organizeHistory: () => request<OrganizeOp[]>("/api/organize"),
+  listBookmarks: (sort: BookmarkSort = "added") => request<BookmarkList>(`/api/bookmarks?sort=${sort}`),
+  /** 印を付ける(on)・外す。統合された作品の id なら吸収先が対象になる */
+  setBookmark: (target: "work" | "volume", id: VolumeId, on: boolean) =>
+    request<BookmarkState>(`/api/bookmarks/${target === "work" ? "works" : "volumes"}/${vid(id)}`, { method: on ? "PUT" : "DELETE" }),
   /** 受け入れフォルダの設定と、いま記録されている受け入れ待ちの本(ファイルは開かない) */
   inbox: () => request<InboxState>("/api/inbox"),
   /** 受け入れフォルダを走査して新しいものを検出する(読み取りだけ) */
