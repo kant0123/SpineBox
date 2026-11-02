@@ -269,3 +269,22 @@ push 前に確かめること:
 実例:
 
 - PR #111 — `.agent/skills/dads-ui/SKILL.md`「このリポジトリの罠」 — `.page` を「リーダーの紙面用なので新しい画面のコンテナに使わない」と書いたが、実際は `frontend/src/styles.css` で `.page` が画面共通の枠(`max-width: 1100px`)で、`Admin.tsx` / `FacetList.tsx` が使っている。#99 / #100 の修正はリーダー側の `pointer-events: none` を `.stage .page` に限定したものだった(agy レビューの WARNING で発覚)
+
+### 既存のクラス名を確かめずに、同じ名前のスタイルを足す
+
+新しい画面・部品に、既にあるのと同じ名前の CSS クラスを付けて `styles.css` の後ろに定義を足す。
+後勝ちで既存の画面の余白・間隔・色が変わる。見た目の崩れは単体テストに出ないので、
+レビューでしか見つからない。
+
+push 前に確かめること:
+
+- 新しく足すクラス名を `frontend/src/styles.css` 全体で検索し、既に定義があるなら
+  スコープを付ける(`.title-modal .dup-list`)か別名にしたか
+- 既存の画面でそのクラスを使っている箇所を grep で見たか
+
+実例:
+
+- PR #120 — `frontend/src/styles.css` タイトル一覧のモーダル — モーダルの一覧に `.dup-list` を足し、
+  既存の重複候補画面(`frontend/src/duplicates/Duplicates.tsx`)の `.dup-list`(gap 14px・margin 12px 0 0)を
+  後勝ちで上書きした。`.title-modal .dup-list` にスコープして修正
+
