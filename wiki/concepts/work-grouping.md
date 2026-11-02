@@ -2,7 +2,7 @@
 type: concept
 summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
 updated: 2026-11-02
-related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, follow]
+related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
 
 # 作品の名寄せ(`spinebox/works.py`)
@@ -14,7 +14,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:394 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:409 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
@@ -38,7 +38,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 0.5 以上 0.9 未満、または手動が絡むものは提案(`open`)にして、利用者が「同じ作品として統合」/「別の作品」を選ぶ。0.5 未満は出さない。
 
 - 作品の著者を寄せるとき、手動の著者はファイル名由来の著者より優先する(吸収される側が手動ならその著者を移す)。別名の追加で自動統合が起きて操作した作品が吸収されたときは、API は吸収先の詳細を返し、画面もそちらのページへ移る
-- 統合は `merged_into` を張るだけで、巻・読書位置・別名は消えない(統合された側の名前は別名として残る)。
+- 統合は `merged_into` を張るだけで、巻・読書位置・別名は消えない(統合された側の名前は別名として残る)。作品のブックマークは吸収先へ移る([[bookmarks]])。
   統合後に別の作品の `merged_into` を辿る必要が無いよう、統合先は常に根へ付け替える(平坦化)
 - 提案は履歴を兼ねる(`open` / `auto` / `approved` / `dismissed`)。画面の「統合の根拠」はこの行を出している
 - **既にある行(open・dismissed)は再計算で自動適用も復活もしない。** 却下は戻せるだけ。根拠が消えた `open` は派生データなので消す
@@ -59,8 +59,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:955 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:975 build_slots()` は
+`spinebox/works.py:970 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:990 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果

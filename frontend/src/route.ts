@@ -13,7 +13,8 @@ export type Route =
   | { name: "work-proposals" }
   | { name: "inbox" }
   | { name: "follows" }
-  | { name: "follow-manage" };
+  | { name: "follow-manage" }
+  | { name: "bookmarks" };
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, "");
@@ -22,6 +23,7 @@ export function parseRoute(hash: string): Route {
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
   if (/^\/follows\/?$/.test(h)) return { name: "follows" };
   if (/^\/follows\/manage\/?$/.test(h)) return { name: "follow-manage" };
+  if (/^\/bookmarks\/?$/.test(h)) return { name: "bookmarks" };
   if (/^\/works\/?$/.test(h)) return { name: "works" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
@@ -52,6 +54,8 @@ export const worksHref = "#/works";
 export const followsHref = "#/follows";
 /** フォロー管理: フォロー中の作品・解除・続刊を調べる(#85 の管理のタブに載せる入口) */
 export const followManageHref = "#/follows/manage";
+/** ブックマーク(#86)。サイドバー(#85)の「ブックマーク」の行き先 */
+export const bookmarksHref = "#/bookmarks";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
 /** 作品の全巻をテンプレートどおりに整理(改名・移動)するプレビュー */

@@ -1,4 +1,4 @@
-import { libraryHref, worksHref } from "../route";
+import { bookmarksHref, libraryHref, worksHref } from "../route";
 
 /** 一覧の表示の切り替え(作品 / 巻)。 */
 export function ViewTabs({ current }: { current: "works" | "volumes" }) {
@@ -9,6 +9,10 @@ export function ViewTabs({ current }: { current: "works" | "volumes" }) {
       </a>
       <a href={libraryHref} aria-current={current === "volumes" ? "page" : undefined}>
         巻
+      </a>
+      {/* サイドバー(#85)が入ったら、そちらの「ブックマーク」へ移す */}
+      <a className="view-tabs-extra" href={bookmarksHref}>
+        ☆ ブックマーク
       </a>
     </nav>
   );

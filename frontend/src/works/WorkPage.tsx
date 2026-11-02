@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type SourceName, type WorkDetail, type WorkEditBody, type WorkFieldName, type WorkKind, type WorkSummary, type WorkVolume } from "../api";
 import { progressLabel } from "../library/Library";
 import { readHref, workHref, workOrganizeHref, worksHref } from "../route";
+import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
 import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from "./labels";
 import { VolumeMeta } from "./VolumeMeta";
@@ -40,6 +41,7 @@ function VolumeRow({ v, selected, onToggle, busy, run, onChanged }: { v: WorkVol
           {v.offline && " / オフライン"}
         </span>
         <span className="volume-meta">{assignmentText(v)}</span>
+        <BookmarkButton target="volume" id={v.id} initial={v.bookmarked ?? false} label={v.title} />
         <VolumeMeta v={v} busy={busy} run={run} onChanged={onChanged} />
       </div>
     </li>
@@ -188,6 +190,9 @@ export function WorkPage({ id }: { id: string }) {
           作品へ戻る
         </a>
       </header>
+      <div className="work-actions">
+        <BookmarkButton key={work.id} target="work" id={work.id} initial={work.bookmarked ?? false} label={work.title} />
+      </div>
       {error && (
         <div className="notice error" role="alert">
           {error}

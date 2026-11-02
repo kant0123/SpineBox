@@ -3,7 +3,7 @@
 スキーマは `PRAGMA user_version` を版数にして、MIGRATIONS を先頭から順に適用する。
 既存のマイグレーションは書き換えず、変更は末尾に足す。
 
-蔵書レコード・読書位置は**消さない**のが前提(CLAUDE.md「蔵書を扱う不変条件」)。
+蔵書レコード・読書位置・ブックマークは**消さない**のが前提(CLAUDE.md「蔵書を扱う不変条件」)。
 見えなくなったルート・ソースは offline / missing の印を付けるだけで、DELETE は scan_issues
 (再導出できる記録)にしか使わない。整理処理(CBZ 化)した元の巻も消さず、organized_op_id を立てて一覧から外す。
 """
@@ -355,7 +355,23 @@ MIGRATIONS: list[list[str]] = [
         "INSERT OR IGNORE INTO work_search_dirty (work_id) SELECT DISTINCT work_id FROM work_fields "
         "WHERE field = 'synopsis'",
     ],
-    # 12: フォロー(#87)。follows: フォロー中の作品と、最後に続刊を調べた結果(status・failure)。
+    # 12: ブックマーク(#86)。作品か巻のどちらか一方に付ける印(1 つにつき 1 行)と付けた日時。
+    #     巻が整理(CBZ 化・受け入れ)で置き換わると新しい巻へ移し、元に戻すと戻す(spinebox/bookmarks.py transfer_volume)。
+    #     作品の統合では吸収先へ移す。オフライン・missing の巻でも行は消さない(一覧に出すかどうかは参照側で決める)
+    [
+        """
+        CREATE TABLE bookmarks (
+            id INTEGER PRIMARY KEY,
+            work_id INTEGER REFERENCES works(id),
+            volume_id INTEGER REFERENCES volumes(id),
+            created_at TEXT NOT NULL,
+            CHECK ((work_id IS NULL) != (volume_id IS NULL))
+        )
+        """,
+        "CREATE UNIQUE INDEX bookmarks_work ON bookmarks (work_id) WHERE work_id IS NOT NULL",
+        "CREATE UNIQUE INDEX bookmarks_volume ON bookmarks (volume_id) WHERE volume_id IS NOT NULL",
+    ],
+    # 13: フォロー(#87)。follows: フォロー中の作品と、最後に続刊を調べた結果(status・failure)。
     #     follow_releases: 公開 DB(国立国会図書館サーチ)の巻ごとの書誌のうち、調べた時点で蔵書に無かった巻番号。
     #     seen_at は利用者が「確認済み」にした時刻で、再確認でも消さない(同じ巻を何度も出さない)。
     #     蔵書に入った巻は表示のときに除く(続刊か欠けかも表示のときに手元の巻番号で決める)。
