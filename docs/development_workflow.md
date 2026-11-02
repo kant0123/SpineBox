@@ -60,6 +60,7 @@ flowchart TD
 
 エージェント向けの**逐次手順はスキルに分けて置いてある**
 (`.agent/skills/<name>/SKILL.md`。Claude Code なら `.claude/skills/` に置く)。
+ツール共通の入口は `AGENTS.md`(Claude Code 以外は `CLAUDE.md` を自動で読まないため)。
 本節は人間が全体像を掴むための要約で、細かい罠は各スキルに書いてある。
 
 | 局面 | スキル | 主な内容 |
