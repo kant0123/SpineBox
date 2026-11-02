@@ -109,3 +109,13 @@ mangaupdates = 1.0
 # キーはこの設定ファイル(リポジトリ外)にだけ書く。ログ・保存した応答・Issue には出さない
 [metadata.keys]
 # rakuten_application_id = ""
+
+# フォロー(#87)。フォローした作品の続刊(持っていない新しい巻)と欠けた巻を、国立国会図書館サーチの巻ごとの書誌で調べて知らせる
+# (知らせるだけで、本の入手はしない)。「フォロー管理」の「続刊を調べる」は常に使える。
+[follow]
+# true にすると、サーバーが裏で 1 作品ずつ(見回りの間隔ごとに)、interval_hours 以上調べていない作品を調べる。既定は無効
+background = false
+interval_hours = 24
+background_interval_seconds = 300
+# 続刊の確認で保存済みの応答を使い回す期間(日)。[metadata] cache_ttl_days より短くして新刊を拾う
+response_ttl_days = 1

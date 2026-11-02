@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
-import { duplicatesHref, workHref, workProposalsHref } from "../route";
+import { duplicatesHref, followsHref, workHref, workProposalsHref } from "../route";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
@@ -130,6 +130,9 @@ export function Works() {
       <header className="library-header">
         <h1>SpineBox</h1>
         <div className="header-actions">
+          <a className="header-link" href={followsHref}>
+            フォロー
+          </a>
           <a className="header-link" href={duplicatesHref}>
             重複の候補
           </a>

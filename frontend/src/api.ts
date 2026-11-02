@@ -422,8 +422,80 @@ export interface MetadataStatus {
   background: boolean;
 }
 
+// フォロー(#87)。フォローした作品の続刊(持っていない新しい巻)と欠けた巻を、公開データベースで調べて知らせる(入手はしない)
+/** 最後に調べた結果。ok: 数えた / unlinked: 国立国会図書館サーチの連携が無い / no_numbers: 巻番号が読めない /
+ * kind_mismatch: 連携の種別が作品と違う / disabled: 取得元が無効 / failed: 取得に失敗し、前回の結果も無い */
+export type FollowStatus = "ok" | "unlinked" | "no_numbers" | "kind_mismatch" | "disabled" | "failed";
+
+export interface FollowRelease {
+  volume: number;
+  /** new: 手元の最大の巻より後(続刊)/ gap: 手元の巻の間の欠け */
+  kind: "new" | "gap";
+  title: string | null;
+  volume_label: string | null;
+  released: string | null;
+  isbn: string | null;
+  url: string | null;
+  source: string;
+  found_at: string;
+  seen: boolean;
+  seen_at: string | null;
+}
+
+export interface WorkFollow {
+  followed: boolean;
+  followed_at?: string;
+  checked_at?: string | null;
+  status?: FollowStatus | null;
+  failure?: LinkFailure | null;
+  releases?: FollowRelease[];
+}
+
+export interface FollowEntry {
+  work_id: number;
+  title: string;
+  followed_at: string;
+  checked_at: string | null;
+  status: FollowStatus | null;
+  failure: LinkFailure | null;
+  unseen: number;
+  found: number;
+}
+
+export interface FollowCheckState {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number;
+  total: number;
+  current: number | null;
+  summary: { works: number; statuses: Partial<Record<FollowStatus, number>> } | null;
+  error: string | null;
+}
+
+export interface FollowList {
+  follows: FollowEntry[];
+  state: FollowCheckState;
+  /** 国立国会図書館サーチが有効か(無効なら調べられない) */
+  available: boolean;
+  background: boolean;
+  interval_hours: number;
+}
+
+export interface FollowReleaseWork {
+  work_id: number;
+  title: string;
+  checked_at: string | null;
+  status: FollowStatus | null;
+  failure: LinkFailure | null;
+  latest_released: string | null;
+  owned_max: number | null;
+  releases: FollowRelease[];
+}
+
 export interface WorkDetail extends WorkSummary {
   title_confidence: number | null;
+  follow?: WorkFollow;
   fields: Partial<Record<WorkFieldName | "total_volumes", FieldInfo<any>>>;
   links: WorkLink[];
   slots: WorkSlot[];
@@ -790,6 +862,26 @@ export const api = {
   listProposals: (status: "open" | "dismissed" | "applied" = "open") => request<WorkProposal[]>(`/api/works/proposals?status=${status}`),
   decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
     request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),
+  /** フォロー管理: フォロー中の作品と、続刊の確認の進み具合 */
+  listFollows: () => request<FollowList>("/api/follows"),
+  /** 続刊・欠けのある作品(新しい発売日順)。seen なら確認済みの巻も含める */
+  listFollowReleases: (seen = false) => request<{ works: FollowReleaseWork[] }>(`/api/follows/releases${seen ? "?seen=true" : ""}`),
+  /** 見つけた巻を「確認済み」にする(volumes を省くと、その作品のまだ確認していない巻すべて) */
+  markFollowSeen: (workId: number, volumes?: number[]) =>
+    request<{ marked: number }>("/api/follows/releases/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(volumes ? { work_id: workId, volumes } : { work_id: workId }),
+    }),
+  /** 続刊を調べる(裏で動く。workIds を省くとフォロー中の全作品) */
+  checkFollows: (workIds?: number[]) =>
+    request<FollowCheckState>("/api/follows/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(workIds ? { work_ids: workIds } : {}),
+    }),
+  followWork: (id: number | string) => request<WorkFollow>(`/api/works/${vid(id)}/follow`, { method: "PUT" }),
+  unfollowWork: (id: number | string) => request<WorkFollow>(`/api/works/${vid(id)}/follow`, { method: "DELETE" }),
   organizeHistory: () => request<OrganizeOp[]>("/api/organize"),
   listBookmarks: (sort: BookmarkSort = "added") => request<BookmarkList>(`/api/bookmarks?sort=${sort}`),
   /** 印を付ける(on)・外す。統合された作品の id なら吸収先が対象になる */

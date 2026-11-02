@@ -371,6 +371,39 @@ MIGRATIONS: list[list[str]] = [
         "CREATE UNIQUE INDEX bookmarks_work ON bookmarks (work_id) WHERE work_id IS NOT NULL",
         "CREATE UNIQUE INDEX bookmarks_volume ON bookmarks (volume_id) WHERE volume_id IS NOT NULL",
     ],
+    # 13: フォロー(#87)。follows: フォロー中の作品と、最後に続刊を調べた結果(status・failure)。
+    #     follow_releases: 公開 DB(国立国会図書館サーチ)の巻ごとの書誌のうち、調べた時点で蔵書に無かった巻番号。
+    #     seen_at は利用者が「確認済み」にした時刻で、再確認でも消さない(同じ巻を何度も出さない)。
+    #     蔵書に入った巻は表示のときに除く(続刊か欠けかも表示のときに手元の巻番号で決める)。
+    #     フォローを外しても follow_releases は残す(フォローし直したときに確認済みの巻が再び出ないように)
+    [
+        """
+        CREATE TABLE follows (
+            work_id INTEGER PRIMARY KEY REFERENCES works(id),
+            followed_at TEXT NOT NULL,
+            checked_at TEXT,
+            status TEXT,
+            failure TEXT
+        )
+        """,
+        """
+        CREATE TABLE follow_releases (
+            work_id INTEGER NOT NULL REFERENCES works(id),
+            volume INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            record_id TEXT,
+            title TEXT,
+            volume_label TEXT,
+            released TEXT,
+            isbn TEXT,
+            url TEXT,
+            found_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            seen_at TEXT,
+            PRIMARY KEY (work_id, volume)
+        )
+        """,
+    ],
 ]
 
 
