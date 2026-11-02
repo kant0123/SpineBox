@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalUrl, organizeHistoryHref, organizeHref, parseRoute, readHref } from "./route";
+import { canonicalUrl, organizeHistoryHref, organizeHref, organizeTemplateHref, parseRoute, readHref, workHref, workOrganizeHref } from "./route";
 
 describe("parseRoute", () => {
   it("一覧とリーダーを見分ける", () => {
@@ -14,7 +14,11 @@ describe("parseRoute", () => {
     }
   });
   it("整理のプレビューと履歴", () => {
-    expect(parseRoute(organizeHref(7))).toEqual({ name: "organize-plan", id: "7" });
+    expect(parseRoute(organizeHref(7))).toEqual({ name: "organize-plan", id: "7", naming: "title" });
+    expect(parseRoute(organizeTemplateHref(7))).toEqual({ name: "organize-plan", id: "7", naming: "template" });
+    expect(parseRoute(workOrganizeHref(4))).toEqual({ name: "work-organize", id: "4" });
+    expect(parseRoute(workHref(4))).toEqual({ name: "work", id: "4" });
+    expect(parseRoute("#/read/7/template")).toEqual({ name: "library" });
     expect(parseRoute(organizeHistoryHref)).toEqual({ name: "organize-history" });
     expect(parseRoute("#/organize/")).toEqual({ name: "organize-history" });
   });

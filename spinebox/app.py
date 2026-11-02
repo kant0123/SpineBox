@@ -12,7 +12,7 @@ import threading
 from dataclasses import asdict
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
@@ -49,9 +49,17 @@ RESOURCE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X
 
 
 class OrganizePlanIn(BaseModel):
-    """どちらか一方を指定する。volume_id ならその巻を含むソース(元ファイル/フォルダ)全体が対象。"""
+    """どちらか一方を指定する。volume_id ならその巻を含むソース(元ファイル/フォルダ)全体が対象。
+    naming: 出力名を巻の表示名(title)にするか、命名テンプレート(template)にするか。"""
     volume_id: StrictInt | None = None
     source_id: StrictInt | None = None
+    naming: Literal["title", "template"] = "title"
+
+
+class RenamePlanIn(BaseModel):
+    """作品の全巻をテンプレートの名前へ改名・移動する計画。exclude_volume_ids は衝突などで外す巻。"""
+    work_id: StrictInt
+    exclude_volume_ids: list[StrictInt] = Field(default_factory=list)
 
 
 class ProgressIn(BaseModel):
@@ -726,7 +734,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                       (volume_id, body.page, int(body.finished), position, db.now()))
         return _get_progress(conn, volume_id)
 
-    # --- 整理処理(CBZ 化)。蔵書に書き込む唯一の経路。実行と元に戻すはスキャンと同じロックで直列化する ---
+    # --- 整理処理(CBZ 化・テンプレートでの改名)。蔵書に書き込む唯一の経路。実行と元に戻すはスキャンと同じロックで直列化する ---
 
     def organizer(conn) -> Organizer:
         return Organizer(conn, settings, library)
@@ -735,7 +743,11 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def organize_plan(body: OrganizePlanIn, conn: sqlite3.Connection = Depends(get_conn)):
         if (body.volume_id is None) == (body.source_id is None):
             raise HTTPException(422, "volume_id か source_id のどちらか一方を指定してください")
-        return organizer(conn).plan(volume_id=body.volume_id, source_id=body.source_id)
+        return organizer(conn).plan(volume_id=body.volume_id, source_id=body.source_id, naming=body.naming)
+
+    @app.post("/api/organize/rename-plan")
+    def organize_rename_plan(body: RenamePlanIn, conn: sqlite3.Connection = Depends(get_conn)):
+        return organizer(conn).plan_rename(body.work_id, exclude_volume_ids=body.exclude_volume_ids)
 
     @app.get("/api/organize")
     def organize_history(conn: sqlite3.Connection = Depends(get_conn)):

@@ -6,7 +6,7 @@ import { Duplicates } from "./duplicates/Duplicates";
 import { WorkPage } from "./works/WorkPage";
 import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
-import { OrganizeHistory, OrganizePlan } from "./organize/Organize";
+import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
@@ -21,7 +21,9 @@ export function App() {
     case "read":
       return <Reader key={route.id} id={route.id} />;
     case "organize-plan":
-      return <OrganizePlan key={route.id} volumeId={route.id} />;
+      return <OrganizePlan key={`${route.id}/${route.naming}`} volumeId={route.id} naming={route.naming} />;
+    case "work-organize":
+      return <WorkOrganize key={route.id} workId={route.id} />;
     case "organize-history":
       return <OrganizeHistory />;
     case "duplicates":

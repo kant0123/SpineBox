@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createMockBackend } from "./mock/mockBackend";
-import { organizeHistoryHref, organizeHref, readHref } from "./route";
+import { organizeHistoryHref, organizeHref, organizeTemplateHref, readHref, workHref, workOrganizeHref } from "./route";
 
 let backend: ReturnType<typeof createMockBackend>;
 
@@ -245,6 +245,44 @@ describe("整理(CBZ 化)", () => {
     expect(await screen.findByText("元に戻しました")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "元に戻す" })).toBeNull();
     expect(posts().at(-1)).toBe("/api/organize/op-1/undo");
+  });
+
+  it("出力名をテンプレートに切り替えてプレビューできる", async () => {
+    window.location.hash = organizeHref(2);
+    render(<App />);
+    expect(await screen.findByText("サンプル漫画 第02巻.cbz")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "テンプレートの名前にする" }).getAttribute("href")).toBe(organizeTemplateHref(2));
+    await navigate(organizeTemplateHref(2));
+    expect(await screen.findByText("サンプル漫画/サンプル漫画 第02巻.cbz")).toBeTruthy();
+    expect(screen.getByText("<作品名>/<作品名> 第NN巻.cbz")).toBeTruthy();
+    expect(backend.log.filter((l) => l.method === "POST").map((l) => l.body)).toEqual([
+      { volume_id: 2, naming: "title" }, { volume_id: 2, naming: "template" }]);
+  });
+
+  it("作品ページ → テンプレートどおりに整理: 衝突を外して実行 → 履歴から元に戻す", async () => {
+    window.location.hash = workHref(1);
+    render(<App />);
+    const link = await screen.findByRole("link", { name: "この作品をテンプレートどおりに整理" });
+    expect(link.getAttribute("href")).toBe(workOrganizeHref(1));
+    await navigate(workOrganizeHref(1));
+    // 変更前 → 変更後・衝突・対象外を理由つきで出す
+    expect(await screen.findByText("sample_v02.cbz")).toBeTruthy();
+    expect(screen.getAllByText("衝突")).toHaveLength(2);
+    expect(screen.getByText(/1 巻 = 1 CBZ ではありません/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "テンプレートの名前で CBZ に整理" }).getAttribute("href")).toBe(organizeTemplateHref(3));
+    expect(posts()).toEqual(["/api/organize/rename-plan"]); // プレビューだけでは実行しない
+
+    fireEvent.click(screen.getAllByRole("button", { name: "この巻を外す" })[1]);
+    await waitFor(() => expect(screen.queryAllByText("衝突")).toHaveLength(0));
+    expect(screen.getByText("外した")).toBeTruthy();
+    expect(backend.log.filter((l) => l.path === "/api/organize/rename-plan").at(-1)?.body).toEqual({ work_id: 1, exclude_volume_ids: [6] });
+
+    fireEvent.click(screen.getByRole("button", { name: "実行" }));
+    expect(await screen.findByText("整理済み")).toBeTruthy();
+    await navigate(organizeHistoryHref);
+    fireEvent.click(await screen.findByRole("button", { name: "元に戻す" }));
+    expect(await screen.findByText("元に戻しました")).toBeTruthy();
+    expect(posts().at(-1)).toMatch(/^\/api\/organize\/op-\d+\/undo$/);
   });
 
   it("中の巻を調べていない内側アーカイブは、理由を出して調べるボタンだけを出す", async () => {
