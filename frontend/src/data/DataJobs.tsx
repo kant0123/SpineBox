@@ -131,9 +131,7 @@ function errorText(e: unknown, fallback: string): string {
 /** focus="organize" は単独の入口 #/data/organize(一覧の「ファイル名の整理」)。ページの下の「整理」節へ移す */
 export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?: "organize" }) {
   const organizeRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (focus === "organize") organizeRef.current?.scrollIntoView?.();
-  }, [focus]);
+  const scrolled = useRef(false);
   const [snap, setSnap] = useState<JobsSnapshot | null>(null);
   const [kinds, setKinds] = useState<JobKind[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +189,15 @@ export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?:
       setError(errorText(e, "中止できませんでした。"));
     }
   };
+
+  // ジョブの一覧が並んで「整理」節の位置が決まってから、一度だけそこへ移す
+  const settled = kinds !== null && snap !== null;
+  useEffect(() => {
+    if (focus === "organize" && settled && !scrolled.current) {
+      scrolled.current = true;
+      organizeRef.current?.scrollIntoView?.();
+    }
+  }, [focus, settled]);
 
   const activeKinds = new Set([...(snap?.current ? [snap.current] : []), ...(snap?.queue ?? [])].map((j) => j.kind));
   const groups = [...new Set((kinds ?? []).map((k) => k.group))];
