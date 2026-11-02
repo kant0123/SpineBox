@@ -16,6 +16,7 @@ import {
   type Action,
 } from "./layout";
 import { volumeErrorMessage } from "./loadError";
+import { nextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
 import { useViewport } from "./useViewport";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
@@ -158,13 +159,19 @@ export function Reader({ id }: { id: string }) {
       }
       const next = stepPage(spreads, page, a === "next" ? 1 : -1);
       if (next === null) {
-        setNotice(a === "next" ? "最後のページです" : "最初のページです");
+        // 最終ページからさらに進もうとしたら、同じ作品の次の巻へ移る(#113)
+        const step = a === "next" ? nextVolumeStep(detail) : null;
+        if (step && "href" in step) {
+          window.location.hash = step.href;
+          return;
+        }
+        setNotice(step && "notice" in step ? step.notice : a === "next" ? "最後のページです" : "最初のページです");
         return;
       }
       setMenu(false);
       setPage(next);
     },
-    [spreads, page],
+    [spreads, page, detail],
   );
 
   useEffect(() => {
