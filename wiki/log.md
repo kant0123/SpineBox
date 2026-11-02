@@ -309,6 +309,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[recurring-review-findings]]
 - 備考: #108。`.agent/skills/dads-ui/`(と `.claude/skills/` の写し)を追加した。DADS の公式 Markdown 一式(2026-10-21 版 = v2.18.2)・HTML 版スニペット・`@digital-go-jp/design-tokens` 2.1.0 を一次情報として参照する手順、トークン値(色・タイポ・余白・角丸・影・768px)、コンポーネント対応、検証チェックリストを置いた。[[frontend]] は更新していない(構造と振る舞いのページのため)。agy レビューの WARNING で、`.page` を「リーダーの紙面用なので画面コンテナに使わない」と書いたのが実装と逆(実際は画面共通の枠)と分かり、スキルを直して台帳に「既存のクラス・関数の役割を、コードを確かめずに文書に書く」を足した。
 
-## [2026-11-03] ingest | PR #118 タグ・著者・出版社の一覧で項目ごとにスター(⭐️)を付けられるように変更
+## [2026-11-03] ingest | PR #122 タグ・著者・出版社の一覧で項目ごとにスター(⭐️)を付けられるように変更
 - 更新: [[backend]], [[frontend]], [[work-search]]、[[inbox]] / [[cover-thumbnails]] / [[data-jobs]] / [[follow]] / [[server-setup]](コード参照の行番号のずれのみ)
 - 備考: #117。マイグレーション 15 で `facet_stars` 表を追加し、`GET /api/works/facets/{name}` の各値に `starred` を返し、`PUT /api/works/facets/{name}/star` でスターを付け外しできるようにした。画面(`FacetList.tsx`)では各項目の右端に ★/☆ のトグルボタン(DADS v2.18.2 準拠、44×44px、二重フォーカスリング)を置き、スター付き項目を一覧の上部に優先表示する。モック API を 375px・768px・1280px(ライト・ダーク)のヘッドレス Chrome で開き、横スクロール無し・ターゲット寸法・スター切り替えによる並び替えを確認した。
