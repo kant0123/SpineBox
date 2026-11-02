@@ -4,6 +4,7 @@ rar / 7z を .zip / .cbz に改名したもの・壊れたもの・先頭が短�
 `sevenzip` fixture が見つからなければ skip する(CI の ubuntu など)。
 """
 import re
+import zlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -192,3 +193,196 @@ def test_scan_without_7zip_records_the_real_format(make_settings, tmp_path):
     Scanner(conn, make_settings(lib)).scan()
     (reason,) = [r["reason"] for r in conn.execute("SELECT reason FROM scan_issues")]
     assert "中身は rar" in reason and "7-Zip が見つからない" in reason
+
+
+# --- 内側アーカイブの取り出す前の判定(#62。7z 不要) ------------------------------
+
+
+def inner_pages(prefix: str) -> dict[str, bytes]:
+    return {f"{prefix}/1.jpg": page_bytes(f"{prefix}1"), f"{prefix}/2.jpg": page_bytes(f"{prefix}2")}
+
+
+@pytest.fixture
+def renamed_inner_lib(tmp_path):
+    """7-Zip なしで: 名前は rar / 7z で中身が zip の内側と、名前は cbz / rar で中身が rar の内側。"""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    write_zip(lib / "outer.zip", [
+        ("zip_as.rar", zip_bytes(list(inner_pages("A").items()))),
+        ("zip_as.7z", zip_bytes(list(inner_pages("B").items()))),
+        ("rar_as.cbz", rar_pages()),
+        ("rar_as.rar", rar_pages()),
+    ])
+    return lib
+
+
+def test_zip_inner_named_rar_is_read_without_7zip(make_settings, renamed_inner_lib):
+    settings = make_settings(renamed_inner_lib)
+    before = snapshot(renamed_inner_lib)
+    c = TestClient(create_app(settings, frontend_dist=None))
+    c.post("/api/scan")
+    readable = [v for v in c.get("/api/volumes").json() if v["title"] == "zip_as"]
+    assert len(readable) == 2
+    got = []
+    for v in readable:
+        detail = c.get(f"/api/volumes/{v['id']}")
+        assert detail.status_code == 200, detail.text
+        got.append([c.get(f"/api/volumes/{v['id']}/pages/{p['index']}").content for p in detail.json()["pages"]])
+    assert sorted(got) == sorted([list(inner_pages("A").values()), list(inner_pages("B").values())])
+    assert snapshot(renamed_inner_lib) == before  # 元ファイルに書き込まない
+
+
+def test_rar_inner_without_7zip_names_the_real_format_before_extracting(make_settings, renamed_inner_lib):
+    settings = make_settings(renamed_inner_lib)
+    c = TestClient(create_app(settings, frontend_dist=None))
+    c.post("/api/scan")
+    rar_vols = [v for v in c.get("/api/volumes").json() if v["title"] == "rar_as"]
+    assert len(rar_vols) == 2
+    for v in rar_vols:
+        r = c.get(f"/api/volumes/{v['id']}")
+        assert r.status_code == 422
+        assert "中身は rar" in r.json()["detail"] and "7-Zip が見つからない" in r.json()["detail"]
+    assert list(settings.cache_dir.iterdir()) == []  # 中身が読めないものは取り出さない
+
+
+def test_analysis_records_the_real_format_of_inner_archives(make_settings, renamed_inner_lib):
+    from spinebox.cache import ExtractionCache
+    from spinebox.library import Library
+
+    settings = make_settings(renamed_inner_lib)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    lib = Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    while lib.analyze_next(conn) is not None:
+        pass
+    rows = conn.execute("SELECT container_path, analyzed_version, analysis_error FROM volumes "
+                        "WHERE parent_id IS NULL ORDER BY container_path").fetchall()
+    by_name = {r["container_path"]: r for r in rows}
+    for name in ("zip_as.rar", "zip_as.7z"):
+        assert by_name[name]["analysis_error"] is None and by_name[name]["analyzed_version"] != "error"
+    for name in ("rar_as.cbz", "rar_as.rar"):
+        assert by_name[name]["analyzed_version"] == "error"
+        assert "中身は rar" in by_name[name]["analysis_error"]
+    conn.close()
+
+
+def test_organize_plan_judges_inner_archives_by_content(make_settings, renamed_inner_lib):
+    from spinebox.cache import ExtractionCache
+    from spinebox.library import Library
+    from spinebox.organize.organizer import Organizer
+
+    settings = make_settings(renamed_inner_lib)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    lib = Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    while lib.analyze_next(conn) is not None:  # 整理の前提(中の巻を調べる)
+        pass
+    vid = conn.execute("SELECT id FROM volumes WHERE container_path = 'zip_as.rar'").fetchone()["id"]
+    plan = Organizer(conn, settings, lib).plan(volume_id=vid)
+    # 同じソースの rar_as.* は読めないので計画は止まるが、zip_as.* は問題に挙がらない
+    assert plan["state"] == "blocked"
+    assert not any("zip_as" in p for p in plan["problems"]), plan["problems"]
+    for name in ("rar_as.cbz", "rar_as.rar"):
+        assert f"内側アーカイブを読めません: {name}: 未対応(中身は rar" in "\n".join(plan["problems"])
+    conn.close()
+
+
+def test_organize_inspect_reports_a_missing_inner_archive(make_settings, renamed_inner_lib):
+    from spinebox.cache import ExtractionCache
+    from spinebox.library import Library
+    from spinebox.organize.organizer import Organizer
+
+    settings = make_settings(renamed_inner_lib)
+    conn = db.open_db(settings.db_path)
+    o = Organizer(conn, settings, Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)))
+    problems, warnings = [], []
+    vols = [{"container_path": "zip_as.rar", "entry_prefix": ""}, {"container_path": "gone.zip", "entry_prefix": ""}]
+    o._inspect_archive(renamed_inner_lib / "outer.zip", vols, problems, warnings)
+    assert problems == ["内側アーカイブを読めません: gone.zip: アーカイブの中に見つからない"]
+    conn.close()
+
+
+def test_organize_plan_of_renamed_zip_inner_is_not_blocked(make_settings, tmp_path):
+    from spinebox.cache import ExtractionCache
+    from spinebox.library import Library
+    from spinebox.organize.organizer import Organizer
+
+    lib_root = tmp_path / "lib"
+    lib_root.mkdir()
+    write_zip(lib_root / "outer.zip", [("zip_as.rar", zip_bytes(list(inner_pages("A").items())))])
+    settings = make_settings(lib_root)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    lib = Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    while lib.analyze_next(conn) is not None:  # 整理の前提(中の巻を調べる)
+        pass
+    vid = conn.execute("SELECT id FROM volumes WHERE container_path = 'zip_as.rar'").fetchone()["id"]
+    plan = Organizer(conn, settings, lib).plan(volume_id=vid)
+    assert plan["state"] == "planned" and plan["problems"] == [], plan["problems"]
+    conn.close()
+
+
+class _NoHeadReader(base.ArchiveReader):
+    """先頭を安く読めない親(7-Zip CLI 相当)。"""
+
+    def raw_entries(self):
+        return []
+
+    def copy_entry(self, entry, dest, max_bytes):
+        raise AssertionError("判定で取り出さない")
+
+    def close(self):
+        pass
+
+
+def _entry(name: str) -> base.ArchiveEntry:
+    return base.ArchiveEntry(0, name, name.encode(), "ascii", 10, False)
+
+
+@pytest.mark.parametrize("name, ok", [("a.zip", True), ("a.cbz", True), ("a.rar", False), ("a.7z", False),
+                                      ("a.txt", False)])
+def test_inner_reader_problem_falls_back_to_the_name_when_head_is_unknown(name, ok):
+    problem = base.inner_reader_problem(_NoHeadReader(), _entry(name), NO_SEVENZIP)
+    assert (problem is None) == ok
+    if name.endswith((".rar", ".7z")):
+        assert "7-Zip が見つからない" in problem
+
+
+def test_inner_reader_problem_reads_only_the_head_of_a_zip_entry(tmp_path, monkeypatch):
+    path = tmp_path / "outer.zip"
+    write_zip(path, [("zip_as.rar", zip_bytes([("1.jpg", page_bytes("z"))])),
+                     ("rar_as.cbz", rar_pages()), ("unknown.rar", b"x" * 100)])
+    monkeypatch.setattr(ZipReader, "copy_entry", lambda *a: pytest.fail("判定で取り出さない"))
+    with open_archive(path, sevenzip_path=NO_SEVENZIP) as r:
+        entries = {e.name: e for e in list_entries(r, LIMITS).entries}
+        assert base.inner_reader_problem(r, entries["zip_as.rar"], NO_SEVENZIP) is None
+        assert "中身は rar。拡張子は .cbz" in base.inner_reader_problem(r, entries["rar_as.cbz"], NO_SEVENZIP)
+        # 先頭で分からなければ名前で(取り出した後の open_archive と同じ)
+        assert "拡張子は .rar" in base.inner_reader_problem(r, entries["unknown.rar"], NO_SEVENZIP)
+
+
+def test_inner_reader_problem_allows_rar_content_when_7zip_is_found(tmp_path, monkeypatch):
+    monkeypatch.setattr("spinebox.archive.sevenzip.find_sevenzip", lambda configured: "7z")
+    path = tmp_path / "outer.zip"
+    write_zip(path, [("rar_as.cbz", rar_pages())])
+    with open_archive(path, sevenzip_path="7z") as r:
+        (entry,) = list_entries(r, LIMITS).entries
+        assert base.inner_reader_problem(r, entry, "7z") is None
+
+
+@pytest.mark.parametrize("exc", [RuntimeError("password required"), NotImplementedError("compression type 99"),
+                                 zlib.error("bad data")])
+def test_zip_read_head_that_cannot_decode_falls_back_to_the_name(tmp_path, monkeypatch, exc):
+    # 暗号化・未対応の圧縮方式などで先頭を読めない内側は、名前で判定する(取り出し時に具体的な理由が出る)
+    path = tmp_path / "outer.zip"
+    write_zip(path, [("a.rar", zip_bytes([("1.jpg", page_bytes("z"))])), ("b.cbz", b"x" * 20)])
+    with open_archive(path, sevenzip_path=NO_SEVENZIP) as r:
+        entries = {e.name: e for e in list_entries(r, LIMITS).entries}
+
+        def boom(*a, **kw):
+            raise exc
+
+        monkeypatch.setattr(r._zip, "open", boom)
+        assert r.read_head(entries["a.rar"], base.MAGIC_BYTES) is None
+        assert "拡張子は .rar" in base.inner_reader_problem(r, entries["a.rar"], NO_SEVENZIP)  # 名前が rar なら未対応
+        assert base.inner_reader_problem(r, entries["b.cbz"], NO_SEVENZIP) is None

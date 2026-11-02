@@ -30,7 +30,7 @@ from typing import Callable, Iterator
 from . import analysis, db
 from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
                       open_archive)
-from .archive.base import reader_available
+from .archive.base import inner_reader_problem
 from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, cache_key
 from .config import Settings
@@ -313,12 +313,13 @@ class Library:
         problem = depth_problem(depth, limits)
         if problem:
             raise LimitExceeded(problem)
-        if not reader_available(entry.name, sevenzip):
-            # 取り出してから未対応と分かるのは無駄なので先に判定する
-            raise UnsupportedArchive(f"内側アーカイブは未対応の形式(または 7-Zip が見つからない): {entry.name}")
         problem = entry_limit_problem(entry.size, limits)
         if problem:
             raise LimitExceeded(problem)
+        # 取り出してから未対応と分かるのは無駄なので先に判定する。名前ではなく先頭の中身で見る(#62)
+        problem = inner_reader_problem(parent, entry, sevenzip)
+        if problem:
+            raise UnsupportedArchive(f"内側アーカイブを読めない: {entry.name}: {problem}")
         key = cache_key("inner", parent_key, entry.name, entry.index)
         cached = stack.enter_context(
             self.cache.use(key, lambda f: parent.copy_entry(entry, f, limits.max_entry_bytes)))
