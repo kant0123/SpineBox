@@ -8,8 +8,8 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 # 表紙のサムネイル
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
-入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:704 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:725 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
+入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:734 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
+`spinebox/app.py:755 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
 
 ## 内容
 
