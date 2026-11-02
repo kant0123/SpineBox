@@ -238,7 +238,7 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-02] ingest | フォロー: フォローした作品の続刊・欠けを公開 DB で調べて知らせる
 - 新規: [[follow]]
-- 更新: [[backend]], [[frontend]], [[overview]], [[metadata-linking]], [[metadata-clients]], [[metadata-sources]], [[work-grouping]](related のみ)、他に `config.example.toml`(`[follow]`)
+- 更新: [[backend]], [[frontend]], [[overview]], [[metadata-linking]], [[metadata-clients]], [[metadata-sources]], [[work-grouping]](related のみ)、[[inbox]] [[novel-reader]] [[organize]] [[cover-thumbnails]] [[server-setup]](コード参照の行番号のずれのみ)、他に `config.example.toml`(`[follow]`)
 - 備考: #87。Peach のフォローを「持っていない新しい巻を知らせる」に読み替え、入手はしない。数えるのは国立国会図書館サーチの連携した組の巻ごとの書誌だけで、
   確認は `linking.fetch_work` を NDL だけ・短い有効期限(既定 1 日)で取り直して #50 の規則に乗せる。記録済みの応答で、かくかくしかじか(手元 1〜4 巻)は 5 巻(2015-03)が続刊、
   お気楽領主(漫画 1〜3 巻)は漫画の候補を選ぶまで数えず、選ぶと漫画の 4 巻だけが出る(小説の 4〜6 巻は数えない)ことをテストで確かめた。マイグレーションは #82 の 11 の後ろの 12。

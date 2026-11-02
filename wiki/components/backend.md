@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:188 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:201 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:391 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
@@ -37,7 +37,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/works.py:394 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
-| `spinebox/config.py:327 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
+| `spinebox/config.py:354 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/thumbs.py:63 Thumbnails` | 表紙のサムネイル。一覧からは `Library.open(extract=False)` で開ける巻だけ作る([[cover-thumbnails]]) |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
@@ -82,7 +82,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない)。各操作に `kind`(cbz / rename / intake)・`naming`・`template` |
 | `GET /api/inbox` / `POST /api/inbox/sync` / `POST /api/inbox/preview` / `POST /api/inbox/approve` | 受け入れ([[inbox]])。`{"inboxes": [{path, library, problems, synced_at}], "items": [...]}`(sync は `volumes`・`offline_roots` も)。preview・approve の body は `{"items": [{"source_id", "work_id"?, "new_title"?, "numbers"?, "skip_volume_ids"?, "expect_outputs"?}]}`。approve は `{"results": [{source_id, ok, item, op?, error?, warning?}]}`(HTTP 200 でも項目ごとに失敗がありうる)。sync・approve はスキャンと同じロックで、実行中は 409。preview と一覧は何も書かない |
 
-すべての応答に `Content-Security-Policy`(`spinebox/app.py:41 APP_CSP`。インラインのスクリプトと外部の読み込みを止める)と `X-Content-Type-Options: nosniff` を付ける。
+すべての応答に `Content-Security-Policy`(`spinebox/app.py:47 APP_CSP`。インラインのスクリプトと外部の読み込みを止める)と `X-Content-Type-Options: nosniff` を付ける。
 画面に外部のスクリプト・画像・フォントを足すときは、この CSP を同じ PR で直す([[novel-reader]] の安全方針の 3 段目)。
 
 `GET /healthz`(`/api` の外、フロントは使わない)は稼働確認用で、`{"ok": true, "commit": 短い SHA か null}`。
