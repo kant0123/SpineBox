@@ -185,7 +185,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const idleScan: DuplicateScanState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
   let scanState: DuplicateScanState = { ...idleScan };
   let scanPolls = 0;
-  // 表紙(#75): 入れ子の巻(page_count 未確定)は、開くか「表紙を作る」までは 404 pending
+  // 表紙(#75): 入れ子の巻(page_count 未確定)は、開くか表紙を作るジョブ(管理のデータ管理タブ)までは 404 pending
   const idleThumbs: ThumbnailBuildState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
   let thumbState: ThumbnailBuildState = { ...idleThumbs };
   let thumbPolls = 0;

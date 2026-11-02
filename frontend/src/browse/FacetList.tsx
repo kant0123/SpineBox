@@ -8,8 +8,8 @@ import { normalizeSearch } from "../util/normalize";
 export const FACET_TITLES: Record<FacetField, string> = { author: "著者", tag: "タグ", publisher: "出版社" };
 const EMPTY_TEXT: Record<FacetField, string> = {
   author: "著者の分かる作品がありません。",
-  tag: "タグの付いた作品がありません。公開データベースの情報を補完するか、作品ページで手で付けてください。",
-  publisher: "出版社の分かる作品がありません。公開データベースの情報を補完するか、作品ページで手で付けてください。",
+  tag: "タグの付いた作品がありません。管理のデータ管理タブで公開データベースの情報を補完するか、作品ページで手で付けてください。",
+  publisher: "出版社の分かる作品がありません。管理のデータ管理タブで公開データベースの情報を補完するか、作品ページで手で付けてください。",
 };
 
 type Order = "name" | "count";

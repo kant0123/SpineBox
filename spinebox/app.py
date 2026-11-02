@@ -670,7 +670,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.get("/api/works/metadata")
     def metadata_status():
-        """「情報を補完」(公開 DB の情報を全作品について取りに行く明示操作)の進み具合と、有効な取得元。"""
+        """データ管理の「作品情報のみ補完」(公開 DB の情報を取りに行く明示操作。旧「情報を補完」)の進み具合と、有効な取得元。"""
         return {"state": job_state("metadata"), "sources": list(enabled_sources),
                 "background": settings.metadata.background}
 
