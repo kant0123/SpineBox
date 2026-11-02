@@ -26,6 +26,8 @@ param(
     [string]$PythonArguments = "-3.12",
     # 起動後に /healthz の応答を待つ秒数
     [int]$TimeoutSeconds = 90,
+    # テスト用: 止める・起動するを、このスクリプトに `-Action Stop / Start` で任せる(管理者・タスクの確認もしない)
+    [string]$TaskRunner = "",
     [switch]$DryRun
 )
 
@@ -57,15 +59,24 @@ $installTask = Join-Path $PSScriptRoot "install_task.ps1"
 
 # 設定の host / port から /healthz の URL を決める(0.0.0.0 / :: はこの機械の 127.0.0.1 / ::1 で確かめる)
 function Get-HealthUrl {
+    # 標準出力だけを読む。標準エラーには設定の警告(使われなくなったキーなど)が出ることがあり、混ぜると host を読み違える
+    # Windows PowerShell 5.1 は、Stop のまま外部コマンドの stderr を受けると 1 行でも例外にする。成否は終了コードで見る
+    $ErrorActionPreference = "Continue"
+    $errFile = [System.IO.Path]::GetTempFileName()
     Push-Location $RepoPath
     try {
-        $out = & $PythonPath @(Get-PythonArgs @("-m", "spinebox", "--print-bind")) 2>&1
+        $out = @(& $PythonPath @(Get-PythonArgs @("-m", "spinebox", "--print-bind")) 2>$errFile)
         $code = $LASTEXITCODE
-    } finally { Pop-Location }
-    if ($code -ne 0) { throw "設定を読めません(python -m spinebox --print-bind の終了コード $code): $out" }
-    $parts = ("$out".Trim() -split "\s+")
-    if ($parts.Count -lt 2) { throw "--print-bind の出力を解釈できません: $out" }
-    $h = $parts[0]; $p = $parts[1]
+        $err = (Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)
+    } finally {
+        Pop-Location
+        Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+    }
+    if ($code -ne 0) { throw "設定を読めません(python -m spinebox --print-bind の終了コード $code): $out $err" }
+    $line = @($out | Where-Object { "$_" -match '^\s*(\S+)\s+(\d+)\s*$' })
+    if ($line.Count -eq 0) { throw "--print-bind の出力を解釈できません: $out" }
+    [void]("$($line[-1])" -match '^\s*(\S+)\s+(\d+)\s*$')
+    $h = $Matches[1]; $p = $Matches[2]
     if ($h -eq "0.0.0.0") { $h = "127.0.0.1" }
     elseif ($h -eq "::") { $h = "::1" }
     if ($h -like "*:*") { $h = "[$h]" }
@@ -75,6 +86,9 @@ function Get-HealthUrl {
 function Invoke-Step([string]$Title, [scriptblock]$Body) {
     Write-Host "== $Title"
     if ($DryRun) { Write-Host "   (DryRun: 実行しない)"; return $true }
+    # git・npm は進み具合や警告を stderr に出す。Stop のままだと Windows PowerShell 5.1 はそれを失敗扱いにするので、
+    # 手順の成否は終了コードで判定する
+    $ErrorActionPreference = "Continue"
     try {
         # 手順の出力は画面へ流す(関数の戻り値に混ぜると、成否の判定が出力で真になってしまう)
         $global:LASTEXITCODE = 0
@@ -96,7 +110,9 @@ function Wait-Healthy([string]$Url, [string]$ExpectCommit) {
             $r = Invoke-RestMethod -Uri $Url -TimeoutSec 5
             if ($r.ok) {
                 Write-Host "   応答あり: commit $($r.commit)" -ForegroundColor Green
-                if ($ExpectCommit -and $r.commit -and $r.commit -ne $ExpectCommit) {
+                # 短縮の長さが違っても同じコミットなら一致とみなす(アプリは 7 文字、git は環境で長くなりうる)
+                $same = $r.commit.StartsWith($ExpectCommit) -or $ExpectCommit.StartsWith($r.commit)
+                if ($ExpectCommit -and $r.commit -and -not $same) {
                     Write-Host "   注意: 稼働中のコミット $($r.commit) が、リポジトリの $ExpectCommit と違います" -ForegroundColor Yellow
                     return $false
                 }
@@ -110,17 +126,27 @@ function Wait-Healthy([string]$Url, [string]$ExpectCommit) {
 }
 
 Write-Host "SpineBox: $Mode(リポジトリ $RepoPath、タスク $TaskName)$(if ($DryRun) { ' [DryRun]' })"
-if (-not $DryRun -and -not (Test-Administrator)) {
+if ($TaskRunner -and -not (Test-Path -LiteralPath $TaskRunner)) { Stop-Invalid "-TaskRunner が見つかりません: $TaskRunner" }
+if (-not $DryRun -and -not $TaskRunner -and -not (Test-Administrator)) {
     Stop-Invalid "管理者権限の PowerShell で実行してください(バッチから起動すると自動で昇格を求めます)"
 }
-if (-not $DryRun -and -not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+if (-not $DryRun -and -not $TaskRunner -and -not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
     Stop-Invalid "タスク $TaskName が登録されていません。先に deploy\install_task.ps1 -Action Register で登録してください"
 }
 
 try { $healthUrl = Get-HealthUrl } catch { Stop-Invalid "$_" }
 
+$stopTask = {
+    if ($TaskRunner) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $TaskRunner -Action Stop }
+    else { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installTask -Action Stop -TaskName $TaskName }
+}
+$startTask = {
+    if ($TaskRunner) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $TaskRunner -Action Start }
+    else { Start-ScheduledTask -TaskName $TaskName }
+}
+
 $ok = $true
-$ok = (Invoke-Step "止める" { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installTask -Action Stop -TaskName $TaskName }) -and $ok
+$ok = (Invoke-Step "止める" $stopTask) -and $ok
 if (-not $ok) {
     Write-Host "止められなかったので、ここで中断します(何も更新していません)" -ForegroundColor Red
     exit 1
@@ -142,9 +168,13 @@ if ($Mode -eq "Update") {
 
 $expect = ""
 if ($Mode -eq "Update" -and -not $DryRun) {
-    $expect = (& git -C $RepoPath rev-parse --short HEAD).Trim()
+    # アプリ(spinebox/buildinfo.py)と同じ 7 文字にそろえる。取れなければ照合しない
+    $ErrorActionPreference = "Continue"   # git が無い・リポジトリでないときも起動まで進める
+    $expect = "$(& git -C $RepoPath rev-parse --short=7 HEAD 2>$null)".Trim()
+    if ($LASTEXITCODE -ne 0) { $expect = "" }
+    $ErrorActionPreference = "Stop"
 }
-$started = Invoke-Step "起動する" { Start-ScheduledTask -TaskName $TaskName }
+$started = Invoke-Step "起動する" $startTask
 $healthy = $started -and (Wait-Healthy $healthUrl $expect)
 $ok = $ok -and $healthy
 

@@ -371,3 +371,58 @@ def test_update_rejects_a_missing_repo_and_unreadable_config(tmp_path):
                 "-PythonPath", sys.executable, "-PythonArguments", "-B"])
     assert r.returncode == 2
 
+
+def fake_noisy_repo(tmp_path, bind):
+    """--print-bind の前に stderr へ警告を出す偽の spinebox(古い設定のキーを無視したときの警告など)。"""
+    repo = tmp_path / "repo"
+    (repo / "spinebox").mkdir(parents=True)
+    (repo / "spinebox" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "spinebox" / "__main__.py").write_text(
+        "import sys\n"
+        "print('WARNING:spinebox.config:old key ignored', file=sys.stderr)\n"
+        f"print({bind!r})\n", encoding="utf-8")
+    return repo
+
+
+@needs_windows_ps
+def test_update_reads_the_bind_line_even_with_warnings_on_stderr(tmp_path):
+    repo = fake_noisy_repo(tmp_path, "192.168.0.5 8123")
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-DryRun", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B"])
+    out = r.stdout.decode("utf-8", "replace") + r.stdout.decode("cp932", "replace")
+    assert r.returncode == 0, out
+    assert "http://192.168.0.5:8123/healthz" in out
+
+
+def fake_runner(tmp_path, stop_exit=0):
+    """止める・起動するの代わりに呼ばれる偽の実行役。呼ばれた順を calls.txt に残す。"""
+    log = tmp_path / "calls.txt"
+    runner = tmp_path / "runner.ps1"
+    runner.write_bytes(b"\xef\xbb\xbf" + (
+        "param([string]$Action)\r\n"
+        f"Add-Content -LiteralPath '{log}' -Value $Action\r\n"
+        f"if ($Action -eq 'Stop') {{ exit {stop_exit} }}\r\n"
+        "exit 0\r\n").encode("utf-8"))
+    return runner, log
+
+
+@needs_windows_ps
+def test_update_starts_again_even_when_a_step_fails(tmp_path):
+    # git リポジトリではないので git pull が失敗する。それでも最後に起動し直し、止めたままにしない
+    repo = fake_bind_repo(tmp_path, f"127.0.0.1 {free_port()}")
+    runner, log = fake_runner(tmp_path)
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", "Update", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskRunner", str(runner), "-TimeoutSeconds", "1"])
+    assert r.returncode == 1
+    assert log.read_text(encoding="utf-8").split() == ["Stop", "Start"]
+
+
+@needs_windows_ps
+def test_update_does_nothing_more_when_stopping_fails(tmp_path):
+    repo = fake_bind_repo(tmp_path, f"127.0.0.1 {free_port()}")
+    runner, log = fake_runner(tmp_path, stop_exit=1)
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", "Update", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskRunner", str(runner), "-TimeoutSeconds", "1"])
+    assert r.returncode == 1
+    assert log.read_text(encoding="utf-8").split() == ["Stop"]  # 更新も起動もしない(何も変えていない)
+
