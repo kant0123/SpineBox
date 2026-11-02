@@ -13,20 +13,6 @@ const SOURCE_TEXT: Record<WorkSource, string> = {
 
 export const sourceText = (s: WorkSource | null | undefined): string => (s ? SOURCE_TEXT[s] ?? s : "");
 
-const JA_CHAR = /[\u3040-\u30ff\u3400-\u9fff々〆ヵヶ]/u;
-const PARENS = /[(（][^()（）]*[)）]/gu;
-
-/**
- * 日本語の文か(spinebox/ja_terms.py is_japanese() と同じ判定)。括弧の中を除いて、かな・漢字が文字の 3 割以上。
- * 英語のあらすじには日本語の題名が括弧で混ざるので、1 文字でもあれば日本語、とはしない。
- */
-export function isJapanese(text: string | null | undefined): boolean {
-  if (!text) return false;
-  const letters = [...text.replace(PARENS, "")].filter((ch) => /[\p{L}\p{N}]/u.test(ch));
-  if (!letters.length) return false;
-  return letters.filter((ch) => JA_CHAR.test(ch)).length / letters.length >= 0.3;
-}
-
 /** 確信度(0〜1)を百分率で */
 export const confidenceText = (c: number | null | undefined): string => (c == null ? "" : `${Math.round(c * 100)}%`);
 

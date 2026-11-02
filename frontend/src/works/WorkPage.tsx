@@ -4,13 +4,13 @@ import { progressLabel } from "../library/Library";
 import { readHref, workHref, workOrganizeHref, worksHref } from "../route";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
-import { KIND_TEXT, confidenceText, dbName, evidenceLines, fieldNote, isJapanese, sourceText } from "./labels";
+import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from "./labels";
 import { VolumeMeta } from "./VolumeMeta";
 import { WorkLinks } from "./WorkLinks";
 import { ProposalCard } from "./WorkProposals";
 
 const FIELD_NAMES: Record<WorkFieldName, string> = {
-  title: "作品名", author: "著者", kind: "種別", publisher: "出版社", genres: "ジャンル", tags: "タグ", synopsis: "あらすじ",
+  title: "作品名", author: "著者", kind: "種別", publisher: "出版社", genres: "ジャンル", tags: "タグ",
 };
 const splitList = (text: string): string[] => text.split(/[、,，\n]/).map((x) => x.trim()).filter(Boolean);
 
@@ -59,7 +59,6 @@ export function WorkPage({ id }: { id: string }) {
   const [publisher, setPublisher] = useState("");
   const [genres, setGenres] = useState("");
   const [tags, setTags] = useState("");
-  const [synopsis, setSynopsis] = useState("");
   const [alias, setAlias] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [moveTarget, setMoveTarget] = useState("");
@@ -79,7 +78,6 @@ export function WorkPage({ id }: { id: string }) {
     setPublisher(w.publisher ?? "");
     setGenres(w.genres.join("、"));
     setTags(w.tags.join("、"));
-    setSynopsis((w.fields.synopsis?.value as string | undefined) ?? "");
     setSelected(new Set());
   }, [id]);
 
@@ -159,7 +157,6 @@ export function WorkPage({ id }: { id: string }) {
     if (publisher !== (work.publisher ?? "")) body.publisher = publisher;
     if (genres !== work.genres.join("、")) body.genres = splitList(genres);
     if (tags !== work.tags.join("、")) body.tags = splitList(tags);
-    if (synopsis !== ((work.fields.synopsis?.value as string | undefined) ?? "")) body.synopsis = synopsis;
     if (Object.keys(body).length) void run(async () => apply(await api.editWork(work.id, body)));
   };
 
@@ -183,15 +180,6 @@ export function WorkPage({ id }: { id: string }) {
     );
   };
   const enabledSources = work.links.map((l) => l.source) as SourceName[];
-  const synopsisInfo = work.fields.synopsis;
-  const foldSynopsis = !!synopsisInfo && !synopsisInfo.manual && !isJapanese(String(synopsisInfo.value ?? ""));
-  const synopsisSources = (synopsisInfo?.sources ?? []).map(dbName).join("・");
-  const synopsisField = (
-    <label>
-      あらすじ
-      <textarea rows={4} value={synopsis} onChange={(e) => setSynopsis(e.target.value)} />
-    </label>
-  );
 
   return (
     <div className="library work-page">
@@ -252,16 +240,6 @@ export function WorkPage({ id }: { id: string }) {
             <input value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
           {note("tags")}
-          {foldSynopsis ? (
-            // 日本語のあらすじが無く、公開データベースの英語のあらすじだけのときは折りたたむ(#74)
-            <details className="synopsis-fold">
-              <summary>あらすじ: 英語のみ{synopsisSources ? `(${synopsisSources})` : ""}。開くと表示します</summary>
-              {synopsisField}
-            </details>
-          ) : (
-            synopsisField
-          )}
-          {note("synopsis")}
           <button type="submit" className="small" disabled={busy || !title.trim()}>
             保存
           </button>

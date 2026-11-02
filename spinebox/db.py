@@ -293,7 +293,7 @@ MIGRATIONS: list[list[str]] = [
     #    attempted_at: 最後に取得を試みた日時、checked_at: 最後に取得できた日時。
     #    volume_fields: 巻単位の書誌(publisher / label / released / isbn / volume_label / subtitle)。
     #    work_fields と同じく項目ごとに source・manual・confidence・evidence を持ち、manual は再取得で上書きしない。
-    #    作品単位の新しい項目(kind / publisher / genres / tags / synopsis / total_volumes)は work_fields に行を足す
+    #    作品単位の新しい項目(kind / publisher / genres / tags / synopsis / total_volumes。synopsis は版 11 で廃止)は work_fields に行を足す
     [
         """
         CREATE TABLE work_links (
@@ -349,7 +349,13 @@ MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE library_roots ADD COLUMN inbox INTEGER NOT NULL DEFAULT 0",
     ],
-    # 11: ブックマーク(#86)。作品か巻のどちらか一方に付ける印(1 つにつき 1 行)と付けた日時。
+    # 11: あらすじの廃止(#82)。work_fields の synopsis の行は消さない(元に戻せない削除をしない)。索引からは
+    #     外すので、あらすじの行を持つ作品にだけ「索引が古い」印を立て、次の検索の前に索引し直させる
+    [
+        "INSERT OR IGNORE INTO work_search_dirty (work_id) SELECT DISTINCT work_id FROM work_fields "
+        "WHERE field = 'synopsis'",
+    ],
+    # 12: ブックマーク(#86)。作品か巻のどちらか一方に付ける印(1 つにつき 1 行)と付けた日時。
     #     巻が整理(CBZ 化・受け入れ)で置き換わると新しい巻へ移し、元に戻すと戻す(spinebox/bookmarks.py transfer_volume)。
     #     作品の統合では吸収先へ移す。オフライン・missing の巻でも行は消さない(一覧に出すかどうかは参照側で決める)
     [

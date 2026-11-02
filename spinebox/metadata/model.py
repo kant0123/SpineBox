@@ -45,7 +45,7 @@ class MetadataItem:
     """取得元の 1 件を正規化した項目。取れなかった項目は None / 空のタプル。
 
     scope が volume のものは巻ごとの書誌(volume・isbn・released が巻の値)、
-    work のものは作品全体の情報(total_volumes・タグ・あらすじ・別名)。
+    work のものは作品全体の情報(total_volumes・タグ・別名)。あらすじは読み取らない(#82 で廃止)。
     genres / tags は取得元の言語のまま(AniList・MangaUpdates は英語)。
     """
     source: str
@@ -68,7 +68,6 @@ class MetadataItem:
     kind: str | None = None             # KIND_MANGA / KIND_NOVEL / None(判断できない)
     genres: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
-    synopsis: str | None = None
 
     def names(self) -> tuple[str, ...]:
         """この項目の作品名の候補すべて(確からしさの計算が名前を突き合わせる)。"""

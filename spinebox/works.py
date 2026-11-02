@@ -36,9 +36,10 @@ FIELD_KIND = "kind"                # manga / novel
 FIELD_PUBLISHER = "publisher"
 FIELD_GENRES = "genres"            # JSON の文字列配列
 FIELD_TAGS = "tags"                # JSON の文字列配列
-FIELD_SYNOPSIS = "synopsis"
 FIELD_TOTAL_VOLUMES = "total_volumes"  # 全何巻か(公開 DB だけが持つ。手で編集する項目ではない)
-EDITABLE_FIELDS = (FIELD_TITLE, FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD_GENRES, FIELD_TAGS, FIELD_SYNOPSIS)
+EDITABLE_FIELDS = (FIELD_TITLE, FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD_GENRES, FIELD_TAGS)
+# 廃止した項目(あらすじ。#82)。既にある行は消さずに残すが、API・検索・編集・統合・「手動が絡むか」の判定には使わない
+RETIRED_FIELDS = ("synopsis",)
 LIST_FIELDS = (FIELD_GENRES, FIELD_TAGS)
 KINDS = ("manga", "novel")
 
@@ -344,8 +345,7 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
         if a["norm"] != keep_norm:
             _insert_alias(c, keep, a["alias"], a["source"], manual=bool(a["manual"]), confidence=a["confidence"],
                           evidence=json.loads(a["evidence"]) if a["evidence"] else None, revive=True)
-    for name in (FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD_GENRES, FIELD_TAGS, FIELD_SYNOPSIS,
-                 FIELD_TOTAL_VOLUMES):
+    for name in (FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD_GENRES, FIELD_TAGS, FIELD_TOTAL_VOLUMES):
         kept = c.execute("SELECT value, manual FROM work_fields WHERE work_id = ? AND field = ?",
                          (keep, name)).fetchone()
         dropped = c.execute("SELECT * FROM work_fields WHERE work_id = ? AND field = ?", (drop, name)).fetchone()
@@ -391,8 +391,10 @@ def _merge_bookmarks(c, keep: int, drop: int) -> None:
 
 
 def _manual_involved(c, work_id: int) -> bool:
-    if c.execute("SELECT 1 FROM work_fields WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone():
-        return True  # 手で直した作品名・著者
+    retired = ",".join("?" * len(RETIRED_FIELDS))
+    if c.execute(f"SELECT 1 FROM work_fields WHERE work_id = ? AND manual = 1 AND field NOT IN ({retired}) LIMIT 1",
+                 (work_id, *RETIRED_FIELDS)).fetchone():
+        return True  # 手で直した作品名・著者などの項目(廃止した項目は画面から戻せないので数えない)
     if c.execute("SELECT 1 FROM work_volumes WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone():
         return True  # 手動の巻の割り当て
     # 利用者が選んだ公開 DB の連携(「どれでもない」も)。統合で片方が消えると、その決定が失われうる
@@ -1018,7 +1020,7 @@ def _work_rows(c) -> dict[int, dict]:
                           "aliases": [], "fields": {}}
     for r in c.execute("SELECT * FROM work_fields"):
         w = works.get(r["work_id"])
-        if w is None:
+        if w is None or r["field"] in RETIRED_FIELDS:
             continue
         ev = json.loads(r["evidence"]) if r["evidence"] else {}
         w["fields"][r["field"]] = {"value": decode_value(r["field"], r["value"]), "source": r["source"],
