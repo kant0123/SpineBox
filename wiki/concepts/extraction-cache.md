@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ(ディスク)と、7z / rar のページと目次を置く RAM 層。どちらも容量上限つき LRU、スキャンでは使わない。RAM 層を 7z / rar に絞った計測結果と、実データでの計測
-updated: 2026-11-02
+updated: 2026-11-03
 related: [overview, backend, archive-reading, volume-split, duplicate-detection, server-setup, cover-thumbnails]
 ---
 
