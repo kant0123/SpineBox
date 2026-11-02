@@ -104,7 +104,6 @@ class WorkEditIn(BaseModel):
     author: StrictStr | None = None
     kind: StrictStr | None = None  # manga / novel
     publisher: StrictStr | None = None
-    synopsis: StrictStr | None = None
     genres: list[StrictStr] | None = None
     tags: list[StrictStr] | None = None
 

@@ -6,6 +6,7 @@ TOML を環境変数 `SPINEBOX_CONFIG` のパスから、無ければカレン�
 """
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -13,6 +14,8 @@ from pathlib import Path
 
 from .organize.fs import is_within
 from .organize.template import DEFAULT_NAME_TEMPLATE, NameTemplate, TemplateError
+
+log = logging.getLogger(__name__)
 
 CONFIG_ENV = "SPINEBOX_CONFIG"
 DEFAULT_CONFIG_NAME = "config.local.toml"
@@ -39,7 +42,8 @@ DEFAULT_MIN_INTERVALS = {"ndl": 1.0, "anilist": 2.0, "mangaupdates": 1.0}
 
 
 UNTRANSLATED_TERMS = ("hide", "keep")
-ENGLISH_SYNOPSIS = ("fold", "hide")
+# 廃止した [metadata] の項目。古い設定ファイルに残っていても起動は止めず、無視してログで知らせる
+RETIRED_METADATA_KEYS = {"english_synopsis": "あらすじは廃止した(#82)"}
 
 
 @dataclass(frozen=True)
@@ -60,8 +64,6 @@ class MetadataSettings:
     min_interval_seconds: dict = field(default_factory=lambda: dict(DEFAULT_MIN_INTERVALS))
     # 日本語での表示(#74)。英語のジャンル・タグは対応表で日本語にする。対応が無い語を hide(出さない)か keep(英語のまま)か
     untranslated_terms: str = "hide"
-    # 日本語のあらすじが無いときの英語のあらすじ。fold(画面で折りたたむ)か hide(作品の項目に入れない)か
-    english_synopsis: str = "fold"
     # 将来の取得元(楽天ブックスなど)の API キー。設定ファイル(リポジトリ外)にだけ置く。ログ・保存物には出さない
     keys: dict = field(default_factory=dict, repr=False)
 
@@ -261,10 +263,10 @@ def _metadata(data: dict) -> MetadataSettings:
     if untranslated not in UNTRANSLATED_TERMS:
         raise ConfigError(f"metadata.untranslated_terms は {' / '.join(UNTRANSLATED_TERMS)} のどれかで指定してください: "
                           f"{untranslated!r}")
-    english_synopsis = table.get("english_synopsis", d.english_synopsis)
-    if english_synopsis not in ENGLISH_SYNOPSIS:
-        raise ConfigError(f"metadata.english_synopsis は {' / '.join(ENGLISH_SYNOPSIS)} のどれかで指定してください: "
-                          f"{english_synopsis!r}")
+    for key, reason in RETIRED_METADATA_KEYS.items():
+        if key in table:
+            log.warning("設定 metadata.%s は使われなくなったので無視します(%s)。設定ファイルから消してかまいません",
+                        key, reason)
     return MetadataSettings(
         sources=tuple(sources),
         cache_ttl_days=_float(table, "cache_ttl_days", d.cache_ttl_days, minimum=0.0),
@@ -280,7 +282,6 @@ def _metadata(data: dict) -> MetadataSettings:
         retry_hours=_float(table, "retry_hours", d.retry_hours, minimum=0.1),
         min_interval_seconds=merged,
         untranslated_terms=untranslated,
-        english_synopsis=english_synopsis,
         keys=dict(keys),
     )
 

@@ -293,7 +293,7 @@ MIGRATIONS: list[list[str]] = [
     #    attempted_at: 最後に取得を試みた日時、checked_at: 最後に取得できた日時。
     #    volume_fields: 巻単位の書誌(publisher / label / released / isbn / volume_label / subtitle)。
     #    work_fields と同じく項目ごとに source・manual・confidence・evidence を持ち、manual は再取得で上書きしない。
-    #    作品単位の新しい項目(kind / publisher / genres / tags / synopsis / total_volumes)は work_fields に行を足す
+    #    作品単位の新しい項目(kind / publisher / genres / tags / synopsis / total_volumes。synopsis は版 11 で廃止)は work_fields に行を足す
     [
         """
         CREATE TABLE work_links (
@@ -349,7 +349,13 @@ MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE library_roots ADD COLUMN inbox INTEGER NOT NULL DEFAULT 0",
     ],
-    # 11: フォロー(#87)。follows: フォロー中の作品と、最後に続刊を調べた結果(status・failure)。
+    # 11: あらすじの廃止(#82)。work_fields の synopsis の行は消さない(元に戻せない削除をしない)。索引からは
+    #     外すので、あらすじの行を持つ作品にだけ「索引が古い」印を立て、次の検索の前に索引し直させる
+    [
+        "INSERT OR IGNORE INTO work_search_dirty (work_id) SELECT DISTINCT work_id FROM work_fields "
+        "WHERE field = 'synopsis'",
+    ],
+    # 12: フォロー(#87)。follows: フォロー中の作品と、最後に続刊を調べた結果(status・failure)。
     #     follow_releases: 公開 DB(国立国会図書館サーチ)の巻ごとの書誌のうち、調べた時点で蔵書に無かった巻番号。
     #     seen_at は利用者が「確認済み」にした時刻で、再確認でも消さない(同じ巻を何度も出さない)。
     #     蔵書に入った巻は表示のときに除く(続刊か欠けかも表示のときに手元の巻番号で決める)。
