@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, isNovel, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
-import { duplicatesHref, inboxHref, organizeHistoryHref, organizeHref, readHref } from "../route";
+import { duplicatesHref, inboxHref, organizeFilesHref, organizeHistoryHref, organizeHref, readHref } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { ViewTabs } from "../works/ViewTabs";
+import { BookmarkButton } from "../bookmarks/BookmarkButton";
 
 /** 一覧のカードに出す読書状態の文言 */
 export function progressLabel(v: Pick<VolumeSummary, "page_count" | "progress" | "format">): string {
@@ -135,6 +136,7 @@ export function Library() {
             重複の候補
           </a>
           <a href={inboxHref}>受け入れ</a>
+          <a href={organizeFilesHref}>ファイル名の整理</a>
           <a href={organizeHistoryHref}>整理の履歴</a>
           <button type="button" onClick={scan} disabled={scanning}>
             {scanning ? "スキャン中…" : "スキャン"}
@@ -207,11 +209,14 @@ export function Library() {
                   </button>
                 </div>
               )}
-              {!v.offline && !isNovel(v.format) && (
-                <a className="organize-link" href={organizeHref(v.id)}>
-                  CBZ に整理
-                </a>
-              )}
+              <div className="volume-actions">
+                <BookmarkButton target="volume" id={v.id} initial={v.bookmarked ?? false} label={v.title} />
+                {!v.offline && !isNovel(v.format) && (
+                  <a className="organize-link" href={organizeHref(v.id)}>
+                    CBZ に整理
+                  </a>
+                )}
+              </div>
             </li>
           );
         })}

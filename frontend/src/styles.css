@@ -103,6 +103,23 @@ button:disabled { opacity: 0.6; cursor: default; }
 .organize-badge.conflict { border-color: #c0392b; color: #c0392b; }
 .organize-badge.excluded, .organize-badge.skipped, .organize-badge.unchanged { opacity: 0.75; }
 .notice.warn { border-color: var(--warn); }
+/* 範囲指定の整理(#84) */
+.organize-field { margin: 10px 0; display: grid; gap: 4px; }
+.organize-field label, .organize-label { font-size: 0.9rem; font-weight: 600; }
+.organize-field input, .organize-field select { font: inherit; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); min-width: 0; width: 100%; }
+.organize-inline { display: flex; gap: 8px; }
+.organize-inline input { flex: 1; }
+.organize-inline button { flex: none; }
+.organize-hint { font-size: 0.8rem; margin: 0; }
+.organize-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+button.chip { background: var(--card); color: var(--fg); border-color: var(--border); border-radius: 999px; }
+.organize-examples ul { margin: 4px 0; padding-left: 1.2em; font-size: 0.85rem; }
+.organize-picker { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.organize-picker-list { list-style: none; padding: 0; margin: 4px 0; max-height: 40vh; overflow-y: auto; }
+.organize-picker-list li { padding: 4px 0; }
+.organize-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.organize-subhead { font-size: 0.95rem; margin: 12px 0 4px; }
+.organize-changes { font-size: 0.8rem; }
 .scan-issues { margin-top: 6px; }
 .scan-issues summary { cursor: pointer; color: var(--warn); }
 .scan-issues ul { margin: 6px 0 0; padding-left: 1.1em; max-height: 40vh; overflow-y: auto; }
@@ -407,6 +424,8 @@ button.secondary { background: transparent; color: var(--accent); }
 .admin-tabs a { flex: none; padding: 8px 16px; border: 1px solid var(--border); border-radius: 999px; color: var(--fg); text-decoration: none; background: var(--card); white-space: nowrap; }
 .admin-tabs a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .admin-panel h2 { font-size: 1.05rem; margin: 16px 0 8px; }
+/* タブの中に置いた既存の画面は、管理のページの余白に任せる(二重の余白・幅の上限を外す) */
+.admin-panel .library, .admin-panel .organize { padding: 0; max-width: none; margin: 0; }
 .admin-links { padding-left: 1.2em; }
 .admin-links li { margin: 6px 0; }
 .admin-links a { color: var(--accent); }
@@ -436,3 +455,34 @@ a.stat-body .stat-label { color: var(--accent); }
   .prefs-server { grid-template-columns: auto 1fr; gap: 6px 16px; }
   .prefs-server dt { margin-top: 0; }
 }
+/* フォロー(#87) */
+.follow-card-head, .follow-entry { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.follow-releases { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.follow-release { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.follow-release.seen { opacity: 0.6; }
+.follow-kind { font-size: 0.75rem; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--border); }
+.follow-kind.new { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.follow-volume { font-weight: 600; overflow-wrap: anywhere; }
+.follow-panel { margin: 8px 0; }
+/* ブックマーク(#86) */
+button.bookmark-button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 0.85rem; background: transparent; color: var(--accent); border-color: var(--border); white-space: nowrap; }
+button.bookmark-button.on { color: var(--warn); border-color: var(--warn); }
+button.bookmark-button.dark { color: #ececf0; border-color: rgba(255, 255, 255, 0.35); }
+button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
+/* 狭い画面のリーダーの帯では題名に場所を譲り、印だけにする */
+@media (max-width: 480px) { button.bookmark-button.dark .bookmark-text { display: none; } }
+.bookmark-toggle { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; align-self: flex-start; }
+.bookmark-error { font-size: 0.8rem; color: var(--warn); }
+.volume-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px 10px; }
+.volume-actions .organize-link { padding: 0; }
+.sort-switch { display: flex; gap: 6px; margin: 4px 0 8px; }
+.sort-switch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.bookmark-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.bookmark-row { display: flex; gap: 8px; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.bookmark-row.offline { opacity: 0.6; }
+.bookmark-main { display: flex; gap: 10px; flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.bookmark-main .volume-title { overflow-wrap: anywhere; }
+.bookmark-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.badge.kind-badge { border-color: var(--border); color: var(--muted); }
+@media (max-width: 480px) { .bookmark-row .bookmark-text { display: none; } }
+.work-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }

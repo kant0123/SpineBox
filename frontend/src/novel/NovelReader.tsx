@@ -21,6 +21,7 @@ import {
   type Interval,
 } from "./pagination";
 import { sanitizeFragment } from "./sanitize";
+import { BookmarkButton } from "../bookmarks/BookmarkButton";
 
 /** 画面の端からの余白(px) */
 const MARGIN_X = 16;
@@ -302,6 +303,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
           <div className="reader-bar top">
             <a href={libraryHref}>‹ 一覧へ</a>
             <span className="reader-title">{detail.title}</span>
+            <BookmarkButton target="volume" id={id} initial={detail.bookmarked ?? false} label={detail.title} dark />
             <span className="reader-page" data-testid="page-label">
               {section + 1} / {count}・{percent}%
             </span>

@@ -230,10 +230,11 @@ describe("管理", () => {
     await navigate("#/admin/data");
     expect(screen.getByRole("link", { name: "重複の候補" }).getAttribute("href")).toBe("#/duplicates");
     expect(screen.getByRole("link", { name: "受け入れ" }).getAttribute("href")).toBe("#/inbox");
+    expect(await screen.findByRole("heading", { name: "ファイル名・フォルダーの整理" })).toBeTruthy(); // #84 の整理
     await navigate("#/admin/tasks");
     expect(screen.getByText(/準備中です.#83./)).toBeTruthy();
     await navigate("#/admin/follows");
-    expect(screen.getByText(/準備中です.#87./)).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "続刊を調べる" })).toBeTruthy(); // #87 のフォロー管理
   });
 
   it("統計は API の数を出し、蔵書の切り替えに従う", async () => {

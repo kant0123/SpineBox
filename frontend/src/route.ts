@@ -25,6 +25,7 @@ export type Route =
   | { name: "work"; id: string }
   | { name: "work-proposals" }
   | { name: "inbox" }
+  | { name: "organize-files" }
   | { name: "facets"; field: FacetField }
   | { name: "follows" }
   | { name: "bookmarks" }
@@ -42,6 +43,7 @@ export function parseRoute(hash: string): Route {
   if (/^\/manga\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "manga" } };
   if (/^\/novels\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "novel" } };
   if (/^\/follows\/?$/.test(h)) return { name: "follows" };
+  if (/^\/follows\/manage\/?$/.test(h)) return { name: "admin", tab: "follows" };
   if (/^\/bookmarks\/?$/.test(h)) return { name: "bookmarks" };
   const admin = h.match(/^\/admin(?:\/([a-z]+))?\/?$/);
   if (admin) {
@@ -61,6 +63,7 @@ export function parseRoute(hash: string): Route {
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
+  if (/^\/data\/organize\/?$/.test(h)) return { name: "organize-files" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
   if (w) return w[2] ? { name: "work-organize", id: w[1] } : { name: "work", id: w[1] };
@@ -89,15 +92,21 @@ export const volumesHref = "#/volumes";
 export const duplicatesHref = "#/duplicates";
 /** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
 export const inboxHref = "#/inbox";
+/** 範囲指定の整理(ファイル名・フォルダーのテンプレート、ファイル名の整理)。データ管理ページ(#83)の「整理」節の単独版 */
+export const organizeFilesHref = "#/data/organize";
 export const worksHref = "#/works";
+/** フォロー: 続刊・欠けのある作品(#87。#85 のサイドバーに載せる入口) */
+export const followsHref = "#/follows";
+/** フォロー管理: フォロー中の作品・解除・続刊を調べる(管理の「フォロー管理」タブ。旧 `#/follows/manage` も同じタブを開く) */
+export const followManageHref = "#/admin/follows";
+/** ブックマーク(#86)。サイドバー(#85)の「ブックマーク」の行き先 */
+export const bookmarksHref = "#/bookmarks";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
 /** 作品の全巻をテンプレートどおりに整理(改名・移動)するプレビュー */
 export const workOrganizeHref = (id: string | number) => `${workHref(id)}/organize`;
 export const mangaHref = "#/manga";
 export const novelsHref = "#/novels";
-export const followsHref = "#/follows";
-export const bookmarksHref = "#/bookmarks";
 export const facetListHref = (field: FacetField) => `#/${FACET_PATH_OF[field]}`;
 export const facetWorksHref = (field: FacetField, value: string) => `${facetListHref(field)}/${encodeURIComponent(value)}`;
 export const adminHref = (tab: AdminTab = "stats") => (tab === "stats" ? "#/admin" : `#/admin/${tab}`);

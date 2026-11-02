@@ -48,6 +48,7 @@ export function activeNav(route: Route): NavKey | null {
     case "bookmarks":
       return "bookmark";
     case "admin":
+    case "organize-files":
     case "duplicates":
     case "inbox":
     case "organize-history":

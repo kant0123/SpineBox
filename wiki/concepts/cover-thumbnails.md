@@ -1,19 +1,19 @@
 ---
 type: concept
 summary: 作品カードの表紙(#75)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作「表紙を作る」で作る理由と、却下した代替案
-updated: 2026-11-02
+updated: 2026-11-03
 related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection]
 ---
 
 # 表紙のサムネイル
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
-入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:791 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:832 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
+入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:961 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
+`spinebox/app.py:1002 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
 
 ## 内容
 
-- **表紙にする巻は `spinebox/works.py:1064 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
+- **表紙にする巻は `spinebox/works.py:1081 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
   巻番号が最小のもの。番号の無い巻は後ろ、同じ番号(重複)は巻の名前の自然順。`GET /api/works` の各作品に `cover_volume_id` で載る
 - **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。Pillow で 240x360 に収めた JPEG
   (`spinebox/thumbs.py:38 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`)

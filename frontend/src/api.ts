@@ -57,6 +57,8 @@ export interface VolumeSummary {
   duplicate_count: number;
   /** 名前から割り当てられた作品(#43)。割り当てが無ければ null */
   work_id?: number | null;
+  /** ブックマークを付けている(#86) */
+  bookmarked?: boolean;
 }
 
 export interface PageInfo {
@@ -73,6 +75,8 @@ export interface SectionInfo {
 export interface VolumeDetail {
   id: VolumeId;
   title: string;
+  /** ブックマークを付けている(#86) */
+  bookmarked?: boolean;
   format?: VolumeFormat;
   page_count: number | null;
   pages: PageInfo[];
@@ -284,6 +288,8 @@ export interface WorkVolume {
   assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
   /** 巻の書誌(出版社・レーベル・発売日・ISBN など)。項目ごとに出所つき */
   metadata?: Partial<Record<VolumeMetaField, FieldInfo<string | null>>>;
+  /** ブックマークを付けている(#86) */
+  bookmarked?: boolean;
 }
 
 export type VolumeMetaField = "publisher" | "label" | "released" | "isbn" | "volume_label" | "subtitle";
@@ -419,8 +425,80 @@ export interface MetadataStatus {
   background: boolean;
 }
 
+// フォロー(#87)。フォローした作品の続刊(持っていない新しい巻)と欠けた巻を、公開データベースで調べて知らせる(入手はしない)
+/** 最後に調べた結果。ok: 数えた / unlinked: 国立国会図書館サーチの連携が無い / no_numbers: 巻番号が読めない /
+ * kind_mismatch: 連携の種別が作品と違う / disabled: 取得元が無効 / failed: 取得に失敗し、前回の結果も無い */
+export type FollowStatus = "ok" | "unlinked" | "no_numbers" | "kind_mismatch" | "disabled" | "failed";
+
+export interface FollowRelease {
+  volume: number;
+  /** new: 手元の最大の巻より後(続刊)/ gap: 手元の巻の間の欠け */
+  kind: "new" | "gap";
+  title: string | null;
+  volume_label: string | null;
+  released: string | null;
+  isbn: string | null;
+  url: string | null;
+  source: string;
+  found_at: string;
+  seen: boolean;
+  seen_at: string | null;
+}
+
+export interface WorkFollow {
+  followed: boolean;
+  followed_at?: string;
+  checked_at?: string | null;
+  status?: FollowStatus | null;
+  failure?: LinkFailure | null;
+  releases?: FollowRelease[];
+}
+
+export interface FollowEntry {
+  work_id: number;
+  title: string;
+  followed_at: string;
+  checked_at: string | null;
+  status: FollowStatus | null;
+  failure: LinkFailure | null;
+  unseen: number;
+  found: number;
+}
+
+export interface FollowCheckState {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number;
+  total: number;
+  current: number | null;
+  summary: { works: number; statuses: Partial<Record<FollowStatus, number>> } | null;
+  error: string | null;
+}
+
+export interface FollowList {
+  follows: FollowEntry[];
+  state: FollowCheckState;
+  /** 国立国会図書館サーチが有効か(無効なら調べられない) */
+  available: boolean;
+  background: boolean;
+  interval_hours: number;
+}
+
+export interface FollowReleaseWork {
+  work_id: number;
+  title: string;
+  checked_at: string | null;
+  status: FollowStatus | null;
+  failure: LinkFailure | null;
+  latest_released: string | null;
+  owned_max: number | null;
+  releases: FollowRelease[];
+}
+
 export interface WorkDetail extends WorkSummary {
   title_confidence: number | null;
+  follow?: WorkFollow;
   fields: Partial<Record<WorkFieldName | "total_volumes", FieldInfo<any>>>;
   links: WorkLink[];
   slots: WorkSlot[];
@@ -428,6 +506,41 @@ export interface WorkDetail extends WorkSummary {
   numbers: { volume: { max: number | null; missing: number[]; limited: boolean }; episode: { max: number | null; missing: number[]; limited: boolean } };
   proposals: WorkProposal[];
   merges: WorkMerge[];
+  /** 作品にブックマークを付けている(#86) */
+  bookmarked?: boolean;
+}
+
+// ブックマーク(#86)。作品か巻に付ける印。オフラインの巻の印も消えない(offline つきで一覧に出る)
+export type BookmarkSort = "added" | "title";
+
+export interface BookmarkedVolume {
+  id: number;
+  title: string;
+  parent_title: string | null;
+  format: VolumeFormat;
+  page_count: number | null;
+  offline: boolean;
+  progress: Progress | null;
+  volume_number: VolumeNumber | null;
+  /** 巻の作品(割り当てが無ければ null) */
+  work_id: number | null;
+  work_title: string | null;
+}
+
+export type BookmarkItem =
+  | { kind: "work"; created_at: string; work: WorkSummary }
+  | { kind: "volume"; created_at: string; volume: BookmarkedVolume };
+
+export interface BookmarkList {
+  sort: BookmarkSort;
+  items: BookmarkItem[];
+}
+
+export interface BookmarkState {
+  bookmarked: boolean;
+  created_at: string | null;
+  work_id?: number;
+  volume_id?: number;
 }
 
 // 整理処理(CBZ 化・テンプレートでの改名と移動)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
@@ -463,11 +576,14 @@ export interface OrganizeItem {
   reason: string | null;
   /** 1 巻 = 1 CBZ でない巻。この巻から「CBZ に整理」(テンプレートの名前)を始められる */
   cbz_volume_id: number | null;
+  /** ファイル名の整理で何を直したか(範囲指定の整理でテンプレートを空にしたとき) */
+  changes?: string[];
 }
 
 /** cbz: 1 ソース → 巻ごとの CBZ / rename: 1 巻 = 1 CBZ の巻をテンプレートの名前へ改名・移動するだけ /
+ *  range: 範囲(蔵書ルートの中のパス)の巻を整理画面のテンプレート・ファイル名の整理で改名・移動するだけ(#84) /
  *  intake: 受け入れフォルダの本を書庫へ入れる(#66。mode が cbz なら CBZ にして、move なら中身を変えずに移す) */
-export type OrganizeKind = "cbz" | "rename" | "intake";
+export type OrganizeKind = "cbz" | "rename" | "range" | "intake";
 /** 出力名: 巻の表示名(title)か命名テンプレート(template) */
 export type OrganizeNaming = "title" | "template";
 
@@ -476,8 +592,10 @@ export interface OrganizeOp {
   kind?: OrganizeKind;
   naming?: OrganizeNaming;
   template?: string | null;
-  work_id?: number;
+  work_id?: number | null;
   items?: OrganizeItem[];
+  /** 範囲指定の整理(kind が range)のとき */
+  scope?: OrganizeScope;
   /** 受け入れ(kind が intake)のとき */
   mode?: "cbz" | "move" | null;
   work?: { kind: string; work_id: number | null; title: string; decided: boolean } | null;
@@ -497,6 +615,46 @@ export interface OrganizeOp {
   problems: string[];
   /** 中の巻をまだ調べていない内側アーカイブの巻 id(先に api.analyze が要る) */
   needs_analysis?: number[];
+}
+
+export interface OrganizeScope {
+  root_id: number;
+  root_path: string;
+  /** 蔵書ルートからの相対パス(空ならルート全体) */
+  path: string;
+  file_template: string;
+  folder_template: string;
+}
+
+// 範囲指定の整理(#84。データ管理の「整理」節)の選択肢・パスの例・フォルダ一覧
+export interface RangeOptions {
+  roots: { id: number; path: string; online: boolean }[];
+  /** 設定 name_template を整理画面の書き方にしたもの */
+  defaults: { file_template: string; folder_template: string };
+  presets: { label: string; file_template: string; folder_template: string }[];
+  parameters: { token: string; label: string }[];
+}
+
+export interface RangeExample {
+  label: string;
+  path: string | null;
+  reason: string | null;
+}
+
+export interface RangeFolders {
+  root_id: number;
+  path: string;
+  /** 1 つ上(ルートなら null) */
+  parent: string | null;
+  folders: string[];
+}
+
+export interface RangePlanRequest {
+  root_id: number;
+  path: string;
+  file_template: string;
+  folder_template: string;
+  exclude_volume_ids: number[];
 }
 
 // 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ。spinebox/organize/intake.py)
@@ -712,6 +870,21 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ work_id: Number(workId), exclude_volume_ids: excludeVolumeIds }),
     }),
+  rangeOptions: () => request<RangeOptions>("/api/organize/range/options"),
+  rangeExample: (fileTemplate: string, folderTemplate: string, path: string) =>
+    request<{ error: string | null; examples: RangeExample[] }>("/api/organize/range/example", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_template: fileTemplate, folder_template: folderTemplate, path }),
+    }),
+  rangeFolders: (rootId: number, path: string) =>
+    request<RangeFolders>(`/api/organize/range/folders?root_id=${rootId}&path=${encodeURIComponent(path)}`),
+  planRange: (body: RangePlanRequest) =>
+    request<OrganizeOp>("/api/organize/range-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   executeOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/execute`, { method: "POST" }),
   undoOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/undo`, { method: "POST" }),
   refreshWorks: () => request<unknown>("/api/works/refresh", { method: "POST" }),
@@ -754,7 +927,31 @@ export const api = {
   listProposals: (status: "open" | "dismissed" | "applied" = "open") => request<WorkProposal[]>(`/api/works/proposals?status=${status}`),
   decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
     request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),
+  /** フォロー管理: フォロー中の作品と、続刊の確認の進み具合 */
+  listFollows: () => request<FollowList>("/api/follows"),
+  /** 続刊・欠けのある作品(新しい発売日順)。seen なら確認済みの巻も含める */
+  listFollowReleases: (seen = false) => request<{ works: FollowReleaseWork[] }>(`/api/follows/releases${seen ? "?seen=true" : ""}`),
+  /** 見つけた巻を「確認済み」にする(volumes を省くと、その作品のまだ確認していない巻すべて) */
+  markFollowSeen: (workId: number, volumes?: number[]) =>
+    request<{ marked: number }>("/api/follows/releases/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(volumes ? { work_id: workId, volumes } : { work_id: workId }),
+    }),
+  /** 続刊を調べる(裏で動く。workIds を省くとフォロー中の全作品) */
+  checkFollows: (workIds?: number[]) =>
+    request<FollowCheckState>("/api/follows/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(workIds ? { work_ids: workIds } : {}),
+    }),
+  followWork: (id: number | string) => request<WorkFollow>(`/api/works/${vid(id)}/follow`, { method: "PUT" }),
+  unfollowWork: (id: number | string) => request<WorkFollow>(`/api/works/${vid(id)}/follow`, { method: "DELETE" }),
   organizeHistory: () => request<OrganizeOp[]>("/api/organize"),
+  listBookmarks: (sort: BookmarkSort = "added") => request<BookmarkList>(`/api/bookmarks?sort=${sort}`),
+  /** 印を付ける(on)・外す。統合された作品の id なら吸収先が対象になる */
+  setBookmark: (target: "work" | "volume", id: VolumeId, on: boolean) =>
+    request<BookmarkState>(`/api/bookmarks/${target === "work" ? "works" : "volumes"}/${vid(id)}`, { method: on ? "PUT" : "DELETE" }),
   /** 受け入れフォルダの設定と、いま記録されている受け入れ待ちの本(ファイルは開かない) */
   inbox: () => request<InboxState>("/api/inbox"),
   /** 受け入れフォルダを走査して新しいものを検出する(読み取りだけ) */

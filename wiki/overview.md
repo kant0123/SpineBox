@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: システム全体像と各ページへの入口
-updated: 2026-11-02
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources, novel-reader, work-search, inbox, cover-thumbnails]
+updated: 2026-11-03
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources, novel-reader, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
 
 # SpineBox 全体像
@@ -26,11 +26,13 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - [[organize]] — `spinebox/organize/`。整理処理(1 ソース → 巻ごとの CBZ と、命名テンプレートどおりの改名・移動)。蔵書に書き込む唯一の経路で、プレビュー → 実行 → 元に戻す
 - [[inbox]] — 受け入れ。受け入れフォルダ → 同期で検出 → 作品・番号・重複・対象外の理由つきでプレビュー → 利用者が選んだものだけ承認で書庫へ(元は受け入れフォルダの退避へ移すだけ・履歴から元に戻せる)。確信度が低い名寄せ・読めない番号・重複は自動で決めない
 - [[volume-split]] — 内側アーカイブを開いたときに中の巻へ分解し、名前の巻範囲と中身の食い違いを出す。名前から読む巻番号は候補
+- [[bookmarks]] — 作品・巻に付ける印と一覧。整理・作品の統合で引き継ぎ、オフラインでも消さない
 - [[cover-thumbnails]] — 作品カードの表紙。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。一覧からは取り出しの要らない巻だけ作り、入れ子の巻は開いた後か明示操作で作る
 - [[duplicate-detection]] — 別スキャンの重複候補。全ページの見た目の指紋(dHash)と巻番号の候補で判定し、利用者が却下できる。計算は明示操作だけ、蔵書は変えない
 - [[metadata-clients]] — `spinebox/metadata/`。公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)のクライアントと生応答の保存。結果は候補 + 確からしさ。取得元の癖・制限は [[metadata-sources]]。作品・巻への結線は [[metadata-linking]]
 - [[work-grouping]] — 作品の名寄せ(`spinebox/works.py`)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。確信度の高い統合だけ自動、残りは確認待ち、欠け巻と重複を作品ページで見せる
 - [[metadata-linking]] — `spinebox/linking.py`。公開 DB の情報を作品・巻へ結線する規則。連携の自動/確認待ちの基準、空欄だけを埋める・手動は不変、取得失敗の扱い、全文検索・絞り込みの保存場所
+- [[follow]] — フォロー。フォローした作品の続刊・欠け(蔵書に無い巻番号)を国立国会図書館サーチの連携した組の書誌で調べて知らせる。入手はしない。確認済みは再確認でも消さない
 - [[work-search]] — 作品の全文検索(FTS5 trigram、`spinebox/search.py`)と、著者・種別・ジャンル・タグ・読書状態の絞り込み。索引はトリガーの印で次の一覧の前に追いつく
 - [[frontend]] — `frontend/`。サイドバーと管理のタブ(Peach と同じ画面構成)、作品・巻の一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 - [[novel-reader]] — 小説(EPUB・テキスト)の巻と縦書きリーダー。EPUB の HTML は信用せず、サーバーの許可リスト・ブラウザでの作り直し・CSP の 3 段で止める。読書位置は区切り+割合

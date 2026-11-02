@@ -2,7 +2,7 @@
 type: concept
 summary: 公開 DB 3 つ(国立国会図書館サーチ・AniList・MangaUpdates)の癖・制限・利用条件・採否の理由と、実通信で確かめた応答の違い、既定のレート制限の根拠
 updated: 2026-11-02
-related: [metadata-clients, metadata-linking, overview, backend]
+related: [metadata-clients, metadata-linking, overview, backend, follow]
 ---
 
 # メタデータの取得元(公開 DB)の癖と制限

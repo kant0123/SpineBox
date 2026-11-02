@@ -322,7 +322,7 @@ def choose_survivor(c, a: int, b: int) -> tuple[int, int]:
 
 
 def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual: bool) -> None:
-    """drop を keep に統合する(巻・別名・空欄の著者を移す)。drop の行は消さず merged_into を立てる。
+    """drop を keep に統合する(巻・別名・空欄の著者・ブックマークを移す)。drop の行は消さず merged_into を立てる。
 
     手動の統合・承認(manual)で動かした巻は手動の割り当てにする。drop の作品名は keep の別名に残す
     (その名前の巻がまた見つかっても、keep に入る)。
@@ -355,6 +355,7 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
             _set_field(c, keep, name, dropped["value"], dropped["source"], bool(dropped["manual"]),
                        dropped["confidence"], json.loads(dropped["evidence"]) if dropped["evidence"] else None)
     _merge_links(c, keep, drop)
+    _merge_bookmarks(c, keep, drop)
     now = db.now()
     c.execute("UPDATE works SET merged_into = ?, updated_at = ? WHERE id = ?", (keep, now, drop))
     c.execute("UPDATE works SET merged_into = ?, updated_at = ? WHERE merged_into = ?", (keep, now, drop))
@@ -373,6 +374,20 @@ def _merge_links(c, keep: int, drop: int) -> None:
                 continue
             c.execute("DELETE FROM work_links WHERE work_id = ? AND source = ?", (keep, dl["source"]))
         c.execute("UPDATE work_links SET work_id = ? WHERE work_id = ? AND source = ?", (keep, drop, dl["source"]))
+
+
+def _merge_bookmarks(c, keep: int, drop: int) -> None:
+    """吸収される作品のブックマーク(#86)を残る作品へ移す。両方にあれば早い方の日時で 1 つにする。"""
+    dropped = c.execute("SELECT id, created_at FROM bookmarks WHERE work_id = ?", (drop,)).fetchone()
+    if dropped is None:
+        return
+    kept = c.execute("SELECT id, created_at FROM bookmarks WHERE work_id = ?", (keep,)).fetchone()
+    if kept is None:
+        c.execute("UPDATE bookmarks SET work_id = ? WHERE id = ?", (keep, dropped["id"]))
+        return
+    c.execute("DELETE FROM bookmarks WHERE id = ?", (dropped["id"],))
+    if dropped["created_at"] < kept["created_at"]:
+        c.execute("UPDATE bookmarks SET created_at = ? WHERE id = ?", (dropped["created_at"], kept["id"]))
 
 
 def _manual_involved(c, work_id: int) -> bool:
@@ -1240,6 +1255,9 @@ def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = 
     w = works[work_id]
     all_vols = _listed_volumes(conn, with_meta=True)
     vols = all_vols.get(work_id, [])
+    marked = {r[0] for r in conn.execute("SELECT volume_id FROM bookmarks WHERE volume_id IS NOT NULL")}
+    for v in vols:
+        v["bookmarked"] = v["id"] in marked
     slots, unnumbered = build_slots(vols)
     roots = _roots(conn)
     proposals, merges = [], []
@@ -1263,6 +1281,7 @@ def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = 
         "slots": slots, "unnumbered": unnumbered,
         "numbers": number_summary(vols),
         "proposals": proposals, "merges": merges, "merged": bool(merges),
+        "bookmarked": conn.execute("SELECT 1 FROM bookmarks WHERE work_id = ?", (work_id,)).fetchone() is not None,
     }
 
 

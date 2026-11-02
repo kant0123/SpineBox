@@ -1,6 +1,6 @@
 // 作品(#43)のモック API。mockBackend.ts から使う。アプリ本体からは import しない。
 
-import type { FieldInfo, LinkCandidate, ReadingState, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkLink, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
+import type { FieldInfo, FollowRelease, FollowStatus, WorkFollow, LinkCandidate, ReadingState, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkLink, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
 import { normalizeSearch } from "../util/normalize";
 
 export { normalizeSearch };
@@ -48,8 +48,13 @@ type Res = { status: number; body: unknown };
 /** 画面確認用の巻番号(モックの巻の番号とは別に、作品ページの欠け表示を見せるため) */
 const NUMBERS: Record<number, number> = { 1: 1, 6: 1, 2: 2, 3: 4 };
 
-/** rootOf は巻 id → 蔵書ルートの id(蔵書の切り替え #85。省略すると全部 1) */
-export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: boolean })[], rootOf: (volumeId: number) => number = () => 1) {
+export function createMockWorks(
+  getVolumes: () => (VolumeSummary & { hidden?: boolean })[],
+  /** 巻 id → 蔵書ルートの id(蔵書の切り替え #85。省略すると全部 1) */
+  rootOf: (volumeId: number) => number = () => 1,
+  /** ブックマーク(#86)の状態。mockBackend が持つ */
+  marked: (kind: "work" | "volume", id: number) => boolean = () => false,
+) {
   let aliasSeq = 10;
   let workSeq = 10;
   const works: MockWork[] = [
@@ -119,6 +124,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       volume_number: number(id), duplicate_count: v.duplicate_count,
       assignment: { source: "filename", manual: false, confidence: 0.9, evidence: { level: "volume" } },
       metadata: volMeta[id] ?? {},
+      bookmarked: marked("volume", Number(v.id)),
     };
   };
   /** root を渡すと、その蔵書ルートの巻だけ */
@@ -244,6 +250,8 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
       numbers: { volume: { max: m.max, missing: m.missing, limited: false }, episode: { max: null, missing: [], limited: false } },
       proposals: proposals.filter((p) => p.status === "open" && !p.dismissed && (p.a.id === w.id || p.b.id === w.id)),
       merges: w.merges,
+      follow: workFollow(w.id),
+      bookmarked: marked("work", w.id),
       aliases: w.aliases.map((a) => ({ id: a.id, alias: a.alias, source: a.source, manual: a.manual, confidence: a.confidence })),
     };
   }
@@ -254,6 +262,74 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
   });
 
   const res = (status: number, body: unknown): Res => ({ status, body });
+
+  // フォロー(#87)。作品 1 をフォロー中で、続刊 5 巻(未確認)と欠け 3 巻(未確認)が見つかっている
+  const follows = new Map<number, { followed_at: string; checked_at: string | null; status: FollowStatus | null }>([
+    [1, { followed_at: "2026-11-02T01:00:00+00:00", checked_at: "2026-11-02T01:10:00+00:00", status: "ok" }],
+  ]);
+  const releases: { work_id: number; volume: number; released: string | null; seen_at: string | null }[] = [
+    { work_id: 1, volume: 5, released: "2015-03", seen_at: null },
+    { work_id: 1, volume: 3, released: "2014-01", seen_at: null },
+  ];
+  let followState = { running: false, started_at: null as string | null, finished_at: null as string | null, done: 0, total: 0, current: null, summary: null as unknown, error: null };
+  const releaseJson = (r: (typeof releases)[number]): FollowRelease => ({
+    volume: r.volume, kind: r.volume > 4 ? "new" : "gap", title: "サンプル漫画", volume_label: null, released: r.released, isbn: null,
+    url: `https://ndlsearch.ndl.go.jp/books/v${r.volume}`, source: "ndl", found_at: "2026-11-02T01:10:00+00:00", seen: r.seen_at !== null, seen_at: r.seen_at,
+  });
+  function workFollow(id: number): WorkFollow {
+    const f = follows.get(id);
+    if (!f) return { followed: false };
+    return { followed: true, ...f, failure: null, releases: releases.filter((r) => r.work_id === id).map(releaseJson) };
+  }
+  function handleFollows(method: string, path: string, query: string, body: any): Res | null {
+    if (method === "GET" && path === "/api/follows") {
+      return res(200, {
+        follows: [...follows.entries()].filter(([id]) => find(id)).map(([id, f]) => {
+          const rels = releases.filter((r) => r.work_id === id);
+          return { work_id: id, title: find(id)!.title, ...f, failure: null, unseen: rels.filter((r) => !r.seen_at).length, found: rels.length };
+        }),
+        state: followState, available: true, background: false, interval_hours: 24,
+      });
+    }
+    if (method === "GET" && path === "/api/follows/releases") {
+      const seen = new URLSearchParams(query).get("seen") === "true";
+      const out = [...follows.keys()].filter((id) => find(id)).map((id) => {
+        const rels = releases.filter((r) => r.work_id === id && (seen || !r.seen_at)).sort((a, b) => (b.released ?? "").localeCompare(a.released ?? ""));
+        return { work_id: id, title: find(id)!.title, checked_at: follows.get(id)!.checked_at, status: follows.get(id)!.status, failure: null,
+          latest_released: rels[0]?.released ?? null, owned_max: 4, releases: rels.map(releaseJson) };
+      }).filter((w) => w.releases.length > 0);
+      return res(200, { works: out });
+    }
+    if (method === "POST" && path === "/api/follows/releases/seen") {
+      if (!find(body?.work_id)) return res(404, { detail: "作品が見つかりません" });
+      let marked = 0;
+      for (const r of releases) {
+        if (r.work_id === body.work_id && !r.seen_at && (!body.volumes || body.volumes.includes(r.volume))) {
+          r.seen_at = "2026-11-02T02:00:00+00:00";
+          marked++;
+        }
+      }
+      return res(200, { marked });
+    }
+    if (method === "POST" && path === "/api/follows/check") {
+      const ids: number[] = body?.work_ids ?? [...follows.keys()];
+      for (const id of ids) {
+        const f = follows.get(id);
+        if (f) f.checked_at = "2026-11-02T03:00:00+00:00";
+      }
+      followState = { ...followState, started_at: "2026-11-02T03:00:00+00:00", finished_at: "2026-11-02T03:00:01+00:00", done: ids.length, total: ids.length, summary: { works: ids.length, statuses: { ok: ids.length } } };
+      return res(202, followState);
+    }
+    const fw = path.match(/^\/api\/works\/(\d+)\/follow$/);
+    if (fw) {
+      const id = Number(fw[1]);
+      if (!find(id)) return res(404, { detail: "作品が見つかりません" });
+      if (method === "PUT" && !follows.has(id)) follows.set(id, { followed_at: "2026-11-02T02:00:00+00:00", checked_at: null, status: null });
+      if (method === "DELETE") follows.delete(id);
+      return res(200, workFollow(id));
+    }
+    return null;
+  }
 
   let fetchState = { running: false, started_at: "2026-11-02T01:04:00+00:00", finished_at: null as string | null, done: 0, total: 0, current: null, summary: null as unknown, error: null };
 
@@ -323,6 +399,8 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
 
   /** 作品の API を処理する。対象外のパスは null */
   function handle(method: string, path: string, query: string, body: any): Res | null {
+    const fol = handleFollows(method, path, query, body);
+    if (fol) return fol;
     if (!path.startsWith("/api/works") && !/^\/api\/volumes\/\d+\/metadata/.test(path)) return null;
     if (method === "GET" && path === "/api/works") return listWorks(query);
     const facet = path.match(/^\/api\/works\/facets\/([a-z]+)$/);
@@ -441,5 +519,11 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
     return res(405, { detail: "未対応" });
   }
 
-  return { handle, works, proposals, summary, listed };
+  /** 生きている作品の一覧用の形(ブックマークの一覧が使う)。無ければ null */
+  const summaryOf = (id: number): WorkSummary | null => {
+    const w = find(id);
+    return w ? summary(w) : null;
+  };
+
+  return { handle, works, proposals, summary, listed, summaryOf };
 }

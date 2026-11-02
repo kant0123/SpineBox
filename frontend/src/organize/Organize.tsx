@@ -40,6 +40,7 @@ function ItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeI
           </>
         )}
       </div>
+      {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
       {item.reason && item.status !== "move" && <div className="muted">{item.reason}</div>}
       {/* 操作はプレビュー中だけ(履歴では出さない) */}
       {onExclude && (item.status === "conflict" || item.cbz_volume_id !== null) && (
@@ -59,9 +60,22 @@ function ItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeI
 function OpBody({ op, onExclude }: { op: OrganizeOp; onExclude?: (volumeId: number) => void }) {
   return (
     <>
-      {op.kind === "rename" ? (
+      {op.kind === "range" && op.scope ? (
+        <>
+          <p>
+            範囲 <code>{op.scope.root_path}{op.scope.path ? `/${op.scope.path}` : ""}</code> の巻を
+            {op.scope.file_template || op.scope.folder_template ? "テンプレートの名前へ改名・移動" : "ファイル名の整理で改名"}
+          </p>
+          {(op.scope.file_template || op.scope.folder_template) && (
+            <p className="muted">
+              ファイル名: <code>{op.scope.file_template || "(今の名前を整理)"}</code> / フォルダー:{" "}
+              <code>{op.scope.folder_template || "(元のフォルダ)"}</code>
+            </p>
+          )}
+        </>
+      ) : op.kind === "rename" ? (
         <p>
-          作品の巻をテンプレートの名前へ改名・移動{op.work_id !== undefined && <> (<a href={workHref(op.work_id)}>作品へ</a>)</>}
+          作品の巻をテンプレートの名前へ改名・移動{op.work_id != null && <> (<a href={workHref(op.work_id)}>作品へ</a>)</>}
         </p>
       ) : (
         <p>
@@ -311,7 +325,7 @@ export function OrganizeHistory() {
         </div>
       )}
       {ops === null && !error && <p className="muted">読み込み中…</p>}
-      {ops?.length === 0 && <p className="muted">まだ整理していません。一覧の「CBZ に整理」か、作品ページの「テンプレートどおりに整理」から始めます。</p>}
+      {ops?.length === 0 && <p className="muted">まだ整理していません。一覧の「CBZ に整理」、作品ページの「テンプレートどおりに整理」、「ファイル名・フォルダーの整理」から始めます。</p>}
       <ul className="organize-op-list">
         {ops?.map((op) => (
           <li key={op.op_id} className="organize-op">
