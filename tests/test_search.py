@@ -268,6 +268,26 @@ def test_kind_genre_tag_filters_use_the_public_db_fields(env):
     assert facets["tag"] == ["宮崎", "美大"]
 
 
+def test_fields_edited_through_the_work_api_are_searchable_and_filterable(env):
+    """#50 の書き込み経路(PATCH /api/works/{id}。公開 DB の取得 apply_work も同じ work_fields に書く)で足した
+    種別・ジャンル・タグ・出版社・あらすじが、手を加えずに検索と絞り込みへ追従する。"""
+    settings, client = env
+    wid = work_id(client, KAKU)
+    assert titles(client, genre="コメディ") == []
+    r = client.patch(f"/api/works/{wid}", json={"kind": "manga", "genres": ["エッセイ", "コメディ"], "tags": ["美大"],
+                                                 "publisher": "集英社", "synopsis": "宮崎の少女が漫画家になるまで"})
+    assert r.status_code == 200, r.text
+    assert titles(client, genre="コメディ") == [KAKU]
+    assert titles(client, tag="美大", kind="漫画", author="東村アキコ") == [KAKU]
+    assert titles(client, q="集英社 少女") == [KAKU]
+    assert titles(client, q="エッセイ", tag="なし") == []
+    facets = client.get("/api/works").json()["facets"]
+    assert facets["kind"] == ["manga"] and facets["genre"] == ["エッセイ", "コメディ"] and facets["tag"] == ["美大"]
+    # 手で空にすると索引からも絞り込みからも消える
+    assert client.patch(f"/api/works/{wid}", json={"genres": []}).status_code == 200
+    assert titles(client, genre="コメディ") == [] and titles(client, q="コメディ") == []
+
+
 def test_split_values_reads_json_arrays_and_separated_strings():
     assert search.split_values('["a", " b ", "", 3]') == ["a", "b"]
     assert search.split_values("a、b, c") == ["a", "b", "c"]
@@ -287,15 +307,17 @@ def test_list_works_function_without_api(env):
 
 # --- 移行 ------------------------------------------------------------------------------------
 
-def test_migration_7_from_a_works_db_builds_the_index_on_first_use(tmp_path):
-    """#56 の移行: 版 6(作品まで)の DB に検索の印とトリガーを足し、最初の一覧で索引を作る。作品・巻は変わらない。"""
-    path = tmp_path / "v6.db"
+@pytest.mark.parametrize("base", [6, 7])
+def test_migration_8_from_a_works_db_builds_the_index_on_first_use(tmp_path, base):
+    """#56 の移行(版 8): 作品まで(版 6)・公開 DB の結線まで(版 7)の DB に検索の印とトリガーを足し、
+    最初の一覧で索引を作る。作品・巻は変わらない。"""
+    path = tmp_path / f"v{base}.db"
     conn = db.connect(path)
     with db.transaction(conn) as c:
-        for migration in db.MIGRATIONS[:6]:
+        for migration in db.MIGRATIONS[:base]:
             for statement in migration:
                 c.execute(statement)
-        c.execute("PRAGMA user_version = 6")
+        c.execute(f"PRAGMA user_version = {base}")
         c.execute("INSERT INTO library_roots (id, path, online) VALUES (1, 'E:/Books', 1)")
         c.execute("INSERT INTO sources (id, root_id, rel_path, kind) VALUES (1, 1, 'a.cbz', 'archive')")
         c.execute("INSERT INTO volumes (id, source_id, container_path, entry_prefix, title, created_at, updated_at) "
@@ -309,7 +331,7 @@ def test_migration_7_from_a_works_db_builds_the_index_on_first_use(tmp_path):
 
     conn = db.open_db(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) == 8
         assert conn.execute("SELECT COUNT(*) FROM work_search_dirty").fetchone()[0] == 0
         res = works.list_works(conn, "お気楽")
         assert [w["id"] for w in res["works"]] == [3]

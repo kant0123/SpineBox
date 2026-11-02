@@ -76,6 +76,8 @@ push 前に確かめること:
 
 - PR #8 — `review/agy_review.py` — `cmd_review` / `cmd_triage` / `cmd_check` / `call_agy` / `ci_state` にテストが無かった
 - PR #23 — `review/agy_review.py call_agy()` — 再試行時の `--conversation` 付与にテストが無かった
+- PR #61 — `spinebox/app.py background_metadata()` — 設定で有効にしたときに常駐する裏のスレッドにテストが無かった(既存の裏の解析は `tests/test_analysis.py` に有る。足したら同じ形で足す)
+- PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 
@@ -97,6 +99,9 @@ push 前に確かめること:
 - PR #35 — `wiki/concepts/recurring-review-findings.md` — 「未確認は台帳に載せない」を足したが、同じページの送り先の説明に未確認の行き先が無かった
 - PR #40 — `spinebox/duplicates.py candidate_counts()` — 画面の API は「一覧に見えている巻どうしの組」だけを出すのに、一覧の印の数は見える条件を掛けず、片方が missing になった候補を数えて「開いても何も出ない印」が残った(missing にして再現)
 - PR #47 — `.agent/rules/git-workflow.md` / `knowledge-wiki.md` — `CLAUDE.md` の写しとして足したが、agy レビュー・両論併記・lint はコミット後の不変条件が抜けていた(外部レビューで発覚)
+- PR #61 — `spinebox/app.py decide_work_proposal()` — 手動の統合には連携の反映(`_sync_works`)を足したのに、同じ統合を行う提案の承認には足さず、統合で増えた巻に書誌が入らなかった
+- PR #61 — `spinebox/linking.py choose()` / `reset_link()` — API 契約と mock は未知の取得元を 404 としたが、実装は 409 を返した(契約・mock・実装の突き合わせ漏れ)
+- PR #61 — `spinebox/linking.py reset_link()` / `_store()` — 連携を決める通常の経路(`fetch_work`)には「種別が未決なら保留」「作品の種別と食い違う候補は除く」があるのに、手動の選択を解除する経路と、自動連携を保つ近道は通らず、規則を飛ばして連携した(同じ判定を `decide()` へ集める。近道は判定の前提を満たすときだけ)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
@@ -145,9 +150,26 @@ push 前に確かめること:
 
 実例:
 
-- PR #47 — `spinebox/works.py _manual_involved()` / `_Work.manual_involved` — 手動の著者を「手動が絡む」に数えず、確信度の高い自動統合の対象にしていた(手動の著者だけを入れた作品が重複証拠で自動統合されることを再現)
+- PR #47 — `spinebox/works.py _manual_involved()`(旧 `_Work.manual_involved`) — 手動の著者を「手動が絡む」に数えず、確信度の高い自動統合の対象にしていた(手動の著者だけを入れた作品が重複証拠で自動統合されることを再現)
 - PR #47 — `spinebox/works.py merge_works()` — 吸収される作品の手動の著者を、残る作品のファイル名由来の著者が隠していた(手動統合で再現)
 - PR #47 — `spinebox/app.py add_work_alias()` — 別名の一致で自動統合され操作した作品が吸収されると、吸収された id で詳細を引いて 404 を返していた(ローマ字の作品へ日本語名の別名を足して再現)
+- PR #61 — `spinebox/works.py _manual_involved()` — 利用者が選んだ公開 DB の連携(`work_links.manual`)を「手動が絡む」に数えず、強い証拠があれば自動統合で吸収されうる状態だった(新しい手動の列を足したのに判定を足していなかった)
+- PR #61 — `spinebox/app.py reset_work_field()` / `frontend/src/works/WorkPage.tsx apply()` — 手動の項目を自動に戻すと止まっていた自動統合が成り立って操作した作品が吸収されうるのに、吸収された id で詳細を引いて 404 にした。画面も、吸収先の詳細が返ってもページの URL を旧 id のままにしていた(別名の追加では対処済みだった。作品を返すエンドポイントと画面の更新口を全部見る)
+
+### 導出した行を、元(連携・設定)が消えても残す
+
+「元から導出して入れる」処理が、入れる側だけを書いて、元が外れたとき(連携の解除・候補の変更・再取得で消えた候補)に入れた行を消す側を書いていない。
+項目や巻の書誌では戻すのに、同じ導出で入れた別の表(別名)だけ残り、誤った手がかりが名寄せや統合に使われ続ける。
+
+push 前に確かめること:
+
+- 導出で書く表を全部列挙し、元が無くなったときにそれぞれが消える(または元の値へ戻る)か。表ごとに「入れる」と「外す」が対になっているか
+- 外す処理は手動の行と、利用者が外した行(`dismissed_at`)を巻き込んでいないか
+- 「連携を外した後」の状態を確かめるテストがあるか(入れる方のテストだけだと漏れる)
+
+実例:
+
+- PR #61 — `spinebox/linking.py _apply_aliases()` — 連携を外しても公開 DB 由来の別名が残り、誤った別名が後の名寄せの手がかりになりえた(項目と巻の書誌は外せていたが別名だけ漏れた)
 
 ### 再試行・再実行で前回の成果物を上書きする
 

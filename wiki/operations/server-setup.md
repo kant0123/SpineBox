@@ -2,7 +2,7 @@
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
 updated: 2026-11-02
-related: [overview, backend, frontend, archive-reading]
+related: [overview, backend, frontend, archive-reading, extraction-cache]
 ---
 
 # サーバー機のセットアップと常駐運用
@@ -31,12 +31,20 @@ py -3.12 -m spinebox                                          # 手動で起動�
   7z が無いことが多いので、名前だけにせずパスで指定する。見つからないと 7z / rar は「未対応」として一覧から外れる([[archive-reading]])
 - `host` の既定は `127.0.0.1`(自機だけ)。LAN で使うときはサーバー機の LAN アドレスか `0.0.0.0` を**明示して**設定する。
   127.0.0.1 以外のときは起動時に注意を stderr へ出す(`spinebox/__main__.py:15 main`)
-- `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:110 create_app` の `healthz`)。DB を開けなければ 503。
+- `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:135 create_app` の `healthz`)。DB を開けなければ 503。
   `commit` は**プロセスが起動時に読んだ**コミット(`spinebox/buildinfo.py:14 current_commit`)で、git が使えず `.git` も読めなければ null。
   古いプロセスが生き残っていると 200 のまま古い `commit` を返すので、更新後は `commit` で反映を見分ける
 - `/read/<id>` を直接開いてもよい。バックエンドは未知のパスに `index.html` を返し(SPA fallback)、
   フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:48 canonicalUrl`)。ルート自体はハッシュで決まるため、
   この直しが無いと一覧が開く
+
+### メモリ(RAM 層)の設定
+
+サーバー機では `memory_cache_limit_bytes = 8589934592`(8 GiB)まで上げてよい(利用者の判断、#54)。既定は 256 MiB。
+RAM 層に置くのは 7z / rar のページと目次だけで、合計はこの値を超えない([[extraction-cache]])。大きくすると、ソリッド 7z の巻を
+読み返したり巻を行き来したりしたときに、塊の先頭から展開し直す待ちが減る。zip / cbz だけの蔵書なら上げても速くならない。
+Python 自体・展開途中のバッファ(1 回のまとめ取り出しは最大 128 MiB)は別に使うので、サーバー機の空きメモリと相談して決める。
+ディスクの展開キャッシュ(`cache_limit_bytes`、既定 2 GiB)とは別の設定。
 
 ## ファイアウォール(LAN 公開)
 

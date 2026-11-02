@@ -83,6 +83,13 @@ class ArchiveReader(abc.ABC):
         self.copy_entry(entry, buf, limits.max_entry_bytes)
         return buf.getvalue()
 
+    # 複数エントリをまとめて読むと速くなる形式か(7-Zip CLI は 1 回の起動で複数を取り出せる)
+    batch_reads = False
+
+    def read_entries(self, entries: list[ArchiveEntry], limits: ExtractionLimits) -> dict[int, bytes]:
+        """複数エントリをメモリに読む(index → 中身)。既定は 1 つずつ。"""
+        return {e.index: self.read_entry(e, limits) for e in entries}
+
 
 @dataclass
 class Listing:

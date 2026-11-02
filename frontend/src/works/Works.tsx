@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ReadingState, type WorkFilterName, type WorkList, type WorkQuery } from "../api";
+import { api, type MetadataStatus, type ReadingState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
 import { duplicatesHref, workHref, workProposalsHref } from "../route";
+import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
 
@@ -19,6 +20,7 @@ export function Works() {
   const [text, setText] = useState("");
   const [query, setQuery] = useState<WorkQuery>({});
   const [showFilters, setShowFilters] = useState(false);
+  const [meta, setMeta] = useState<MetadataStatus | null>(null);
   const seq = useRef(0);
 
   const load = useCallback(async (q: WorkQuery) => {
@@ -47,7 +49,30 @@ export function Works() {
 
   useEffect(() => {
     void loadProposals();
+    api.metadataStatus().then(setMeta, () => setMeta(null));
   }, [loadProposals]);
+
+  // 裏で情報を取っている間は、状態を見に行く(終わったら一覧を取り直す)
+  const running = meta?.state.running ?? false;
+  useEffect(() => {
+    if (!running) return;
+    const t = window.setInterval(() => {
+      api.metadataStatus().then((m) => {
+        setMeta(m);
+        if (!m.state.running) setQuery((cur) => ({ ...cur })); // 同じ条件でもう一度引く
+      }, () => undefined);
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, [running]);
+
+  const fetchAll = async () => {
+    try {
+      const state = await api.fetchAllMetadata();
+      setMeta((m) => (m ? { ...m, state } : m));
+    } catch {
+      setError("公開データベースの情報を取得できませんでした(取得元が無効か、すでに実行中です)。");
+    }
+  };
 
   // 検索語は少し待ってからクエリに入れる
   useEffect(() => {
@@ -84,6 +109,11 @@ export function Works() {
           <a className="header-link" href={duplicatesHref}>
             重複の候補
           </a>
+          {meta && meta.sources.length > 0 && (
+            <button type="button" onClick={() => void fetchAll()} disabled={running}>
+              {running ? `情報を取得中… ${meta.state.done} / ${meta.state.total}` : "情報を補完"}
+            </button>
+          )}
           <button type="button" onClick={refresh} disabled={busy}>
             {busy ? "取り直し中…" : "名寄せを取り直す"}
           </button>
@@ -99,6 +129,11 @@ export function Works() {
         <div className="notice" role="status">
           <a href={workProposalsHref}>統合の提案が {pending} 件あります</a>
           (同じ作品かもしれない組。承認するまで統合しません)
+        </div>
+      )}
+      {meta?.state.error && (
+        <div className="notice warn" role="status">
+          前回の取得は途中で止まりました: {meta.state.error}
         </div>
       )}
       <form className="work-search" role="search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
@@ -132,7 +167,7 @@ export function Works() {
                 <select value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
                   <option value="">すべて</option>
                   {[...new Set([...(data?.facets[n] ?? []), ...(query[n] ? [query[n]!] : [])])].map((v) => (
-                    <option key={v} value={v}>{n === "kind" ? KIND_TEXT[v] ?? v : v}</option>
+                    <option key={v} value={v}>{n === "kind" ? KIND_TEXT[v as WorkKind] ?? v : v}</option>
                   ))}
                 </select>
               </label>
@@ -161,6 +196,10 @@ export function Works() {
               <a className="work-link" href={workHref(w.id)}>
                 <span className="volume-title">{w.title}</span>
                 {w.author && <span className="volume-meta">{w.author}</span>}
+                {(w.kind || w.publisher) && (
+                  <span className="volume-meta">{[w.kind ? KIND_TEXT[w.kind] : "", w.publisher ?? ""].filter(Boolean).join(" / ")}</span>
+                )}
+                {w.genres.length > 0 && <span className="volume-meta">{w.genres.slice(0, 4).join(" / ")}</span>}
                 <span className="volume-meta">
                   {w.volume_count} 巻{w.max_volume ? `(〜${w.max_volume} 巻)` : ""}
                 </span>
@@ -170,6 +209,7 @@ export function Works() {
                   {w.duplicate_slots > 0 && <span className="badge dup-badge">重複 {w.duplicate_slots}</span>}
                   {w.merged && <span className="badge dup-badge">統合済み</span>}
                   {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
+                  {w.link_pending > 0 && <span className="badge">候補の確認待ち</span>}
                   {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
                   {w.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[w.reading_state]}</span>}
                 </span>
@@ -178,6 +218,7 @@ export function Works() {
           );
         })}
       </ul>
+      <Credits sources={meta?.sources ?? []} />
     </div>
   );
 }

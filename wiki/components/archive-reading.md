@@ -19,9 +19,9 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/archive/base.py:94 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
-| `spinebox/archive/base.py:178 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
-| `spinebox/archive/sevenzip.py:200 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
+| `spinebox/archive/base.py:102 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
+| `spinebox/archive/base.py:185 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
+| `spinebox/archive/sevenzip.py:251 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
 | `spinebox/pages.py:48 page_sort_key` | ページの並び(表紙 → 自然順) |
@@ -79,8 +79,12 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 - フォルダ名は 7z だと末尾に区切りが付かないので、zip と同じく末尾 `/` を付けて返す(スキャナーが巻のフォルダ名の生バイト列を引くため)
 - シンボリックリンクは目次から落とす(画像として読まない)。暗号化はパスワードを聞かれて失敗するので `ArchiveError`
 - **ソリッド圧縮は 1 ページずつ取り出すと毎回先頭から展開する。** そのため外側の 7z からは内側アーカイブだけを取り出して
-  [[extraction-cache]] に置き、ページはそこから読む。内側の rar がソリッドだとページごとに展開し直すが、実データ(非ソリッド)では
-  1 ページ数十 ms だった
+  [[extraction-cache]] に置き、ページはそこから読む。7z / rar の巻のページは、1 回の `7z e -so` に複数の名前を渡してまとめて取り出す
+  (`spinebox/archive/sevenzip.py SevenZipReader.read_entries()`)。7z は**引数の順ではなく書庫内の順**に連結して出すので、目次の順
+  (= エントリ番号の順)とサイズで切り分け、目次に CRC があれば照合する。合計・CRC が合わなければ `ArchiveError`(別の中身を返さない)。
+  同じ名前のエントリが複数ある名前は 1 回の指定で両方出てくるので、まとめずに 1 つずつ読む(サイズ不一致で読めない、が従来どおり)。
+  `-spd` 下では名前の指定はその階層の 1 件にだけ当たる(`a.jpg` は `sub/a.jpg` に当たらない。7-Zip 23.01 で確認)。
+  何枚まとめるか・結果をどこに置くかは呼び出し側([[extraction-cache]] の RAM 層)
 - 実データ(`_参考/サンプル本`)の形: 7z の中に rar があり、その中に rar と zip があり、さらに zip がある(深さ 3)。
   内側にさらにアーカイブがあれば、深さの上限(`max_depth` 既定 3)まで開いて、各段の画像 → 入れ子の順で続ける。
   開いたときに中の巻の単位を集めて子の巻に分ける([[volume-split]])。`max_depth` を変えると見える単位が変わるので、解析し直す

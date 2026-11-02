@@ -15,6 +15,7 @@ from .model import KIND_MANGA, KIND_NOVEL, SCOPE_VOLUME, MetadataItem, SearchQue
 
 NAME = "ndl"
 ENDPOINT = "https://ndlsearch.ndl.go.jp/api/opensearch"
+MAX_COUNT = 500  # cnt の上限(501 件目以降は取れない)
 
 _NS = {
     "dc": "http://purl.org/dc/elements/1.1/",
@@ -32,7 +33,7 @@ class NdlSource(MetadataSource):
     name = NAME
 
     def _search(self, query: SearchQuery, run: _Run):
-        limit = str(self.settings.candidate_limit)
+        limit = str(min(max(query.limit or self.settings.candidate_limit, 1), MAX_COUNT))
         if query.isbn:
             request = self._request([("isbn", _digits(query.isbn))], limit)
             return [(item, request) for item in run.fetch(request, parse_opensearch)]

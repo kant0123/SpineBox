@@ -13,6 +13,7 @@ from pathlib import Path
 
 CONFIG_ENV = "SPINEBOX_CONFIG"
 DEFAULT_CONFIG_NAME = "config.local.toml"
+MIB = 1024 ** 2
 GIB = 1024 ** 3
 DEFAULT_ORGANIZE_DIR = ".spinebox"
 
@@ -44,6 +45,11 @@ class MetadataSettings:
     candidate_limit: int = 20          # 1 回の検索で取る候補の上限
     detail_limit: int = 3              # MangaUpdates で詳細を引き直す候補の数
     contact: str = ""                  # User-Agent に付ける連絡先(任意)
+    # 作品への結線(#50)。background: 設定で有効にしたときだけ、裏で 1 作品ずつ公開 DB の情報を取りに行く
+    background: bool = False
+    background_interval_seconds: int = 120  # 裏の取得の間隔(1 回に 1 作品)
+    recheck_days: float = 30.0         # 取得済みの作品を取り直す間隔
+    retry_hours: float = 6.0           # 取得に失敗した作品を取り直すまでの間隔
     min_interval_seconds: dict = field(default_factory=lambda: dict(DEFAULT_MIN_INTERVALS))
     # 将来の取得元(楽天ブックスなど)の API キー。設定ファイル(リポジトリ外)にだけ置く。ログ・保存物には出さない
     keys: dict = field(default_factory=dict, repr=False)
@@ -57,6 +63,8 @@ class Settings:
     library_roots: tuple[Path, ...] = ()
     data_dir: Path = Path("data")
     cache_limit_bytes: int = 2 * GIB
+    # RAM 層(ページのバイト列と 7z / rar の目次)の上限。0 なら RAM 層を使わない。サーバー機では 8 GiB まで上げてよい
+    memory_cache_limit_bytes: int = 256 * MIB
     host: str = "127.0.0.1"
     port: int = 8000
     sevenzip_path: str = "7z"
@@ -153,6 +161,11 @@ def _metadata(data: dict) -> MetadataSettings:
         candidate_limit=_int(table, "candidate_limit", d.candidate_limit, minimum=1),
         detail_limit=_int(table, "detail_limit", d.detail_limit, minimum=0),
         contact=contact.strip(),
+        background=_bool(table, "background", d.background),
+        background_interval_seconds=_int(table, "background_interval_seconds", d.background_interval_seconds,
+                                         minimum=10),
+        recheck_days=_float(table, "recheck_days", d.recheck_days, minimum=1.0),
+        retry_hours=_float(table, "retry_hours", d.retry_hours, minimum=0.1),
         min_interval_seconds=merged,
         keys=dict(keys),
     )
@@ -182,6 +195,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         library_roots=tuple(_resolve(base_dir, r) for r in roots),
         data_dir=_resolve(base_dir, _str(data, "data_dir", str(defaults.data_dir))),
         cache_limit_bytes=_int(data, "cache_limit_bytes", defaults.cache_limit_bytes, minimum=1),
+        memory_cache_limit_bytes=_int(data, "memory_cache_limit_bytes", defaults.memory_cache_limit_bytes, minimum=0),
         host=_str(data, "host", defaults.host),
         port=_int(data, "port", defaults.port, minimum=1),
         sevenzip_path=_str(data, "sevenzip_path", defaults.sevenzip_path),

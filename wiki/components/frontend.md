@@ -2,7 +2,7 @@
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
 updated: 2026-11-02
-related: [overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, work-search]
+related: [metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, work-search]
 ---
 
 # フロントエンド(`frontend/`)
@@ -26,8 +26,8 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:59 OrganizePlan()` | 整理のプレビュー → 実行(`#/organize/<巻 id>`)。履歴と元に戻すは同じファイルの `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/works/Works.tsx:14 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・読書状態)。上に検索欄と「絞り込み」([[work-search]])。作品ページ `frontend/src/works/WorkPage.tsx:39 WorkPage()`(`#/works/<id>`: 作品名・著者の手動編集、別名、統合の根拠、巻の枠・欠け、巻の付け替え・手動統合)、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
-| `frontend/src/api.ts:355 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/works/Works.tsx:9 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。「情報を補完」で全作品の取得を起動し、実行中は 2 秒ごとに状態を見る)。作品ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグ・あらすじの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/api.ts:432 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:72 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:139 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 
@@ -81,6 +81,8 @@ related: [overview, local-ci, server-setup, volume-split, organize, duplicate-de
 - **作品ページの「手で直した項目」は出所を明示する。** 作品名・著者・別名・巻の割り当てごとに「手動で編集 / ファイル名から(確信度 90%)/ 重複候補の証拠で統合」を出す。名寄せは名前の推測なので、利用者が根拠を見て直せるようにするため。
   提案は確信度と根拠(一致ページ数)を見せ、承認するまで統合しない。巻の付け替えは巻のチェックボックスで選んで「新しい作品に分ける」/「この作品へ移す」(手動の決定になり再計算で戻らない)
 - **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(公開 DB の情報がまだ無い作品だけのときの種別・ジャンル・タグ)は選択欄ごと出さない。種別の候補は `manga` / `novel` で届くので `KIND_TEXT` で漫画・小説と表示する。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/mock/mockWorks.ts:19 normalizeSearch()` でバックエンドと同じ正規化を真似ている
+- **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
+  取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
 - **作品の一覧と巻の一覧は別画面で、既定は巻の一覧のまま。** 作品の画面は `#/works`。巻の一覧のカード・リーダーは変えていない
 
 ## 落とし穴

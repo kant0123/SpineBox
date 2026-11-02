@@ -151,6 +151,18 @@ grep "^## \[" wiki/log.md | tail -5
   合成データで修正前に 500 になる原因を 2 つ確認(同名の内側アーカイブを持つ zip → `IntegrityError`、孤立サロゲート・不正バイトの名前 → `UnicodeEncodeError`)。ほかに祖先を指す Windows ジャンクションの循環を止め、読めない画像・読めないフォルダ・巻にならないアーカイブを記録するようにした。
   375px と横長の組み込みブラウザで、問題を含む合成蔵書のスキャン結果表示を確認。`_参考/サンプル本` は 10 巻・問題 0 件・原本不変。
 
+## [2026-11-02] ingest | PR #61 公開 DB の情報を作品・巻へ結線する(空欄だけ埋める・手動は不変・低確信度は確認・クレジット表示)
+- 更新: [[backend]], [[frontend]], [[metadata-clients]], [[metadata-sources]], [[work-grouping]], [[overview]], [[recurring-review-findings]], [[server-setup]](コード参照の行番号のみ)
+- 新規: [[metadata-linking]]
+- 備考: #50、クレジット表示は #45。マイグレーション 7(`work_links` / `volume_fields`)。連携は取得元ごとに自動(≥0.75 かつ 2 位と 0.15 差)/ 確認待ち / 該当なし、NDL は 1 冊ずつでなく組を単位にする。
+  実通信(`_参考/サンプル本` を読み取りのみで蔵書にし、データは別の場所): かくかくしかじかは 3 取得元とも自動で連携し作品名がローマ字から日本語になった。お気楽領主は NDL が漫画/小説で同点のため 3 取得元とも確認待ちで、
+  漫画を選ぶと AniList / MangaUpdates が保存済みの応答で自動連携し、手で入れた出版社は変わらず、巻 1〜3 に出版社・レーベル・発売日・ISBN が入った。実通信は 2 作品で約 35 秒(1 回だけ)、2 回目は全件保存済みで 0.04 秒。原本 2 ファイルのサイズ・更新時刻は不変。
+  375px と 1280px の組み込みブラウザで作品ページ(項目の出所・手動編集と自動に戻す・候補の採用・失敗表示・クレジット)を確認。
+
+## [2026-11-02] ingest | 展開の RAM 層(7z / rar のページのまとめ取り出しと目次の持ち越し)
+- 更新: [[extraction-cache]], [[archive-reading]], [[server-setup]], [[overview]], [[backend]](コード参照の行番号のみ), [[volume-split]](コード参照の行番号のみ)
+- 備考: #54、PR #63。利用者の提案(サーバー機では RAM を 8 GiB まで使ってよい)。先に `scripts/bench_reading.py` で RAM 層の有無を API 越しに測れるようにし、合成データ(cbz・zip 入り zip・ソリッド 7z・7z 入り rar・zip 入り 7z)で比べた。効いたのは 7z / rar だけ(ソリッド 7z の 1 巻 60 ページ通読でページ送りの平均 892 → 60 ms、7z 入り rar 23 → 7 ms、同じページの再表示 42 → 4 ms。まとめ取り出しが走るページの最大の待ちは変わらない)。zip のページ・内側 zip の本体を RAM に置く案は差が出なかったので入れていない。実データ(`_参考/サンプル本`)でも測った(`--children` で分解後の子の巻も測れるようにした): 効いたのは目次の持ち越しで(7z → rar → zip の子の巻でページ送り 約 100 → 10 ms)、サンプルの `v01-03.rar` は中身が zip なのでページの RAM 層には出番が無かった。画像を直接持つソリッド 7z は実 JPEG から作って測り、ページ送りの平均 573 → 39 ms。上限は合成データで超えないことを確認。組み込みブラウザ(375px)で子の巻・まとめを数十ページ送って確認。
+
 ## [2026-11-02] ingest | 拡張子ではなく先頭のマジックバイトでアーカイブの形式を判定する(#49)
 - 更新: [[archive-reading]]
 - 備考: #49、PR #60。本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。
@@ -158,6 +170,6 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-02] ingest | 作品の全文検索と絞り込み
 - 新規: [[work-search]]
 - 更新: [[backend]], [[frontend]], [[work-grouping]], [[metadata-clients]], [[overview]], [[volume-split]], [[server-setup]](後 2 つは `MIGRATIONS` の行番号の参照だけ)
-- 備考: #56、PR #59。マイグレーション 7(`work_search_dirty` と印を付けるトリガー)。索引 `work_search` は作品 1 件 1 行の FTS5 trigram(無い SQLite では普通の表と LIKE)、正規化は名寄せの `normalize_title` と共用、2 文字以下は LIKE。
+- 備考: #56、PR #59。マイグレーション 8(`work_search_dirty` と印を付けるトリガー)。索引 `work_search` は作品 1 件 1 行の FTS5 trigram(無い SQLite では普通の表と LIKE)、正規化は名寄せの `normalize_title` と共用、2 文字以下は LIKE。
   種別・ジャンル・タグの絞り込みは #50 の項目名(`kind` / `genres` / `tags`。配列は JSON)に結線した(クエリ名は `kind` / `genre` / `tag`)。種別は `manga` でも `漫画` でも絞れ、全巻数 `total_volumes` は索引に入れない。
   トリガー内の `INSERT OR IGNORE` が外側の UPSERT の衝突方針で上書きされて一意制約違反になったので、`WHERE NOT EXISTS` にした。画面はモック API・375px で確認し、ローカルで実バックエンドと `_参考/サンプル本` でも 375px・横長を確認した。

@@ -108,10 +108,10 @@ def library(tmp_path) -> Path:
 @pytest.fixture
 def make_settings(tmp_path):
     def make(*roots: Path, cache_limit_bytes: int = 2 * 1024 ** 3, sevenzip_path: str = NO_SEVENZIP,
-             **limits) -> Settings:
+             memory_cache_limit_bytes: int = Settings.memory_cache_limit_bytes, **limits) -> Settings:
         return Settings(library_roots=tuple(roots), data_dir=tmp_path / "data",
                         cache_limit_bytes=cache_limit_bytes, sevenzip_path=sevenzip_path,
-                        limits=ExtractionLimits(**limits))
+                        memory_cache_limit_bytes=memory_cache_limit_bytes, limits=ExtractionLimits(**limits))
     return make
 
 

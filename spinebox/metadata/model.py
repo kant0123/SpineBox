@@ -33,6 +33,7 @@ class SearchQuery:
     volume: int | None = None
     kind: str | None = None   # KIND_MANGA / KIND_NOVEL
     isbn: str | None = None   # 国立国会図書館サーチだけが使う(巻の書誌を直接引く)
+    limit: int | None = None  # 国立国会図書館サーチだけが使う、取る件数の上限(巻が多い作品で全巻を揃えたいとき)。省略は設定の candidate_limit
 
     def __post_init__(self) -> None:
         if not self.title or not self.title.strip():

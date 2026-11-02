@@ -17,13 +17,15 @@ related: [work-grouping, backend, frontend, metadata-clients, overview]
   割り当てた巻の名前を、1 つずつ正規化して改行でつないだもの。ジャンル・タグの JSON 配列は要素ごとに別の行にする(要素をまたいで語が当たらないように)。入口: `spinebox/search.py:109 _index_work()`
 - 正規化した文字列には英数字・かな・漢字しか残らないので、改行をまたぐ 3 文字(別の項目の末尾と先頭)には検索語が当たらない
 - 統合された作品(`merged_into`)は索引から消す。統合先の作品が、吸収した作品名を別名として・巻の名前ごと持つ([[work-grouping]])
+- 公開 DB の結線(#50。[[metadata-linking]])が足す別名(`work_aliases` の `source = 'public_db'`)も、外されていなければ入る。巻の書誌(`volume_fields` の出版社・レーベル・副題など)は
+  索引に入れない(作品単位の出版社・あらすじ・ジャンル・タグで足りる。巻の書誌を引きたくなったら、`volume_fields` の変更にもトリガーが要る)
 - 巻の名前は**見えなくなった巻も含めて**割り当てがあれば入れる(missing の巻の名前で当たっても、一覧は見えている巻を持つ作品しか出さない)
 - 巻の名前には `[東村アキコ] …` のような著者の括弧も入っているので、著者を手で直しても前の著者名の検索では当たり続ける。
   「その著者の作品だけ」は著者の絞り込み(項目の値で比べる)で見る
 
 ## 索引を古くしない仕組み
 
-- `spinebox/db.py:24 _dirty_triggers()`(マイグレーション 7)が、`work_fields` / `work_aliases` / `work_volumes` の挿入・更新・削除、
+- `spinebox/db.py:24 _dirty_triggers()`(マイグレーション 8)が、`work_fields` / `work_aliases` / `work_volumes` の挿入・更新・削除、
   `works` の追加・統合、`volumes.title` の更新で、その作品 id を `work_search_dirty` に入れる
 - `spinebox/search.py:130 prepare()` が一覧の前に、印のある作品だけ索引し直して印を消す。印が無ければ書き込みのトランザクションを取らない。
   索引が無い(移行直後・SQLite を替えた後)ときは作り直す。起動時(`create_app`)にも一度呼ぶ
@@ -53,7 +55,7 @@ trigram は 3 文字未満の語を索引から引けない(MATCH が何も返�
 trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Python 3.12 は 3.34 以上を同梱する(開発機のコンテナでは 3.53)。
 `spinebox/search.py:62 trigram_available()` が一時表を作れるかで確かめ、無ければ同じ名前・同じ列の**普通の表**を作って全部 LIKE で引く。結果は同じで遅いだけ。
 どちらの形かは表の定義(`sqlite_master.sql` に `fts5` があるか)で見分けるので、SQLite を上げたら `--rebuild-search` で FTS5 に作り直せる。
-索引の表をマイグレーションで作らないのはこのため(実行時の SQLite で形が変わる派生データ)。マイグレーション 7 は印の表とトリガーだけ。
+索引の表をマイグレーションで作らないのはこのため(実行時の SQLite で形が変わる派生データ)。マイグレーション 8 は印の表とトリガーだけ。
 
 ## 絞り込み
 
