@@ -259,7 +259,7 @@ grep "^## \[" wiki/log.md | tail -5
 - agy レビュー(1 回目): 範囲のパスの大文字小文字(Windows で `manga` と打つと `Manga/...` に前方一致せず計画が空)を再現して直した(`_disk_case`)。`_JAPANESE` の正規表現が平仮名・片仮名に合わないという指摘は、先頭の U+3040 が表示で落ちただけで誤検知(`ひらがな` に合うことを確認)
 - agy レビュー(2 回目): `name_values()` が巻ごとに SQL を発行していた指摘は、20000 巻で 1.1 秒と測って成立を確かめ、`IN` でまとめて引くようにした(文の数のテストあり)。API 契約表に範囲指定のエンドポイントが無い指摘も妥当で、表に足した
 
-## [2026-11-03] ingest | PR #(未記入) Peach と同じ画面構成(サイドバー・管理のタブ)
+## [2026-11-03] ingest | PR #94 Peach と同じ画面構成(サイドバー・管理のタブ)
 - 更新: [[frontend]], [[backend]], [[work-search]], [[overview]], [[bookmarks]], [[follow]]、[[inbox]] / [[cover-thumbnails]] / [[metadata-linking]] / [[server-setup]](コード参照の行番号のずれのみ)
 - 備考: #85。常に表示するサイドバー(蔵書の切り替え・ナビ・ライト/ダーク・設定)と、管理の 5 タブ(統計・好み・データ管理・フォロー管理・タスクセンター)。ホームを作品一覧にし、巻の一覧は `#/volumes` へ。
   API は `GET /api/libraries`・`root` の絞り込み(作品・巻・統計・項目の一覧)・`GET /api/works/facets/{name}`・`GET /api/stats`・`GET /api/settings`・出版社の絞り込みを足した(スキーマ変更なし。マイグレーションの最終版数は 13 のまま)。
