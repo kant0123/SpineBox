@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminHref, canonicalUrl, facetListHref, facetWorksHref, organizeHistoryHref, organizeHref, organizeTemplateHref, parseRoute, readHref, workHref, workOrganizeHref } from "./route";
+import { adminHref, canonicalUrl, facetListHref, facetWorksHref, organizeHistoryHref, organizeHref, organizeTemplateHref, parseRoute, readHref, workHref, workOrganizeHref, workTitlesHref } from "./route";
 
 const HOME = { name: "works", scope: { by: "all" } };
 
@@ -21,6 +21,9 @@ describe("parseRoute", () => {
     expect(parseRoute(organizeTemplateHref(7))).toEqual({ name: "organize-plan", id: "7", naming: "template" });
     expect(parseRoute(workOrganizeHref(4))).toEqual({ name: "work-organize", id: "4" });
     expect(parseRoute(workHref(4))).toEqual({ name: "work", id: "4" });
+    expect(parseRoute(workTitlesHref(4))).toEqual({ name: "work-titles", id: "4" });
+    expect(parseRoute("#/works/4/titles/")).toEqual({ name: "work-titles", id: "4" });
+    expect(workTitlesHref(4)).toBe("#/works/4/titles");
     expect(parseRoute("#/read/7/template")).toEqual(HOME);
     expect(parseRoute(organizeHistoryHref)).toEqual({ name: "organize-history" });
     expect(parseRoute("#/organize/")).toEqual({ name: "organize-history" });

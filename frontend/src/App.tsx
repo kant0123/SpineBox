@@ -8,6 +8,7 @@ import { Duplicates } from "./duplicates/Duplicates";
 import { AppShell } from "./shell/AppShell";
 import { LibraryScopeProvider } from "./shell/libraryScope";
 import { WorkPage } from "./works/WorkPage";
+import { WorkTitles } from "./works/WorkTitles";
 import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
@@ -36,6 +37,8 @@ function Page({ route }: { route: Route }) {
       return <Admin tab="data" focus="organize" />;
     case "work":
       return <WorkPage key={route.id} id={route.id} />;
+    case "work-titles":
+      return <WorkTitles key={route.id} id={route.id} />;
     case "work-proposals":
       return <WorkProposals />;
     case "facets":

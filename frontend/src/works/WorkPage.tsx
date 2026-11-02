@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type SourceName, type WorkDetail, type WorkEditBody, type WorkFieldName, type WorkKind, type WorkSummary, type WorkVolume } from "../api";
 import { progressLabel } from "../library/Library";
-import { readHref, workHref, workOrganizeHref, worksHref } from "../route";
+import { readHref, workHref, workOrganizeHref, workTitlesHref, worksHref } from "../route";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
 import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from "./labels";
@@ -186,8 +186,8 @@ export function WorkPage({ id }: { id: string }) {
     <div className="library work-page">
       <header className="library-header">
         <h1>{work.title}</h1>
-        <a className="back-link" href={worksHref}>
-          作品へ戻る
+        <a className="back-link" href={workTitlesHref(work.id)}>
+          タイトル一覧へ
         </a>
       </header>
       <div className="work-actions">

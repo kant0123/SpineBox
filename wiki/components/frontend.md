@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
+summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
 updated: 2026-11-03
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
@@ -32,7 +32,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:150 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。作品ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:12 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
+| `frontend/src/works/WorkTitles.tsx:12 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開き、巻のタイトルを巻番号の枠の順に並べる(読める巻はリーダーへ、オフラインの巻は文字だけ、重複は印)。「作品を管理」で今まで作品カードから開いていた `#/works/<id>` へ(#105)。作品ページの「タイトル一覧へ」はここへ戻る |
 | `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
@@ -62,7 +63,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:119 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:132 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
@@ -111,6 +112,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
   取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
 - **ホーム(`#/`)は作品の一覧。** 巻の一覧は `#/volumes`(作品一覧の「巻」タブ)。#85 までは `#/` が巻の一覧だったので、リーダー・整理の画面の「一覧へ」(`libraryHref`)はホームへ戻る。`#/works` もホームと同じ画面
+- **作品カードは「タイトル一覧」(`#/works/<id>/titles`)へ、管理はそこから(#105)。** カードの行き先を作品ページから分け、まずその作品の巻のタイトルを番号順に並べる。読める巻はリーダーへ、オフラインの巻は文字だけでリンクしない(重複する巻には印)。「作品を管理」ボタンで今までカードから開いていた `#/works/<id>`(作品名・著者・巻の割り当て・統合)へ移る。
+  管理ページの URL を変えないのは、ブックマーク・フォロー・統合の提案・整理の履歴からの既存のリンクをそのまま使うため。作品ページの戻り先は「タイトル一覧へ」にした
 
 ## 画面構成(#85。Peach との対応)
 
@@ -181,6 +184,8 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #105 で作品カードの行き先をタイトル一覧(`#/works/<id>/titles`)にし、そこから「作品を管理」で今までの作品ページ(`#/works/<id>`)へ移るようにした。利用者の「カードを押したらまず作品のタイトル一覧を見たい。管理ページはその中のボタンから」という要望。
+  モック API を `npm run dev:mock` で起動し、ヘッドレス Chromium の 375px と 1280px で、ホーム → カードのクリック → タイトル一覧(4 件・重複の印・リーダーへのリンク)→「作品を管理」→ 作品ページ(戻り先が「タイトル一覧へ」)を通した。横スクロールは無く、コンソールのエラーは表紙の 404 pending(既存の挙動)だけ
 - #102 で作品一覧(ホーム・漫画・小説・著者・タグ・出版社)のヘッダーから「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」を外し、管理のデータ管理タブへ集約した。同じ操作は #83 のジョブ(「作品情報のみ補完」「表紙のみ補完」「作品の名寄せを計算し直す」「重複を調べる」)と「ほかの画面」の「重複の候補」に揃っている。使わなくなった進み具合のポーリング・`thumbs`・`coverRev` と、表紙の `?rev=` のキャッシュ避けを削除した。モック API を 375px と 1280px のヘッドレス Chrome で開き、作品一覧のヘッダーに 4 つの操作が無いこと、データ管理タブにジョブと「重複の候補」への入口があること、横スクロールが無いことを確認した(コンソールのエラーは表紙の 404 pending だけ)。
 - #85 でサイドバーと管理のタブ(Peach と同じ画面構成)、ライト/ダーク、蔵書の切り替え、著者・タグ・出版社の一覧、統計・好みタブを足した。ホームを作品一覧にし、巻の一覧を `#/volumes` へ移した。
   `npm run dev:mock` を 375px と 1280px のヘッドレス Chromium(ライト・ダークの両方)で開き、ホーム・著者・管理(統計・好み・データ管理)・巻の一覧・作品ページ・受け入れ・リーダーで横スクロールが出ないこと、
