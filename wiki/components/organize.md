@@ -46,7 +46,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 置き場は `spinebox/config.py:88 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:233 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:239 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
@@ -89,7 +89,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 ## テンプレートどおりの改名・移動(`kind="rename"`)
 
-- 対象は 1 巻 = 1 CBZ の巻だけ(`.cbz` のソースに見えている巻が 1 つ)。それ以外(zip・画像フォルダ・複数巻のまとめ・内側アーカイブ)は
+- 対象は 1 巻 = 1 CBZ の巻だけ(`.cbz` のソースに見えている巻が 1 つ)。**小説(`.epub` / `.txt`。`volumes.format` あり。[[novel-reader]])は対象外** — CBZ 化もしない(`plan` が問題にする)し、テンプレートは `.cbz` で終わるので拡張子を保った改名もしない。理由つきで「対象外」に出し、同じ作品の CBZ は動かせる。それ以外(zip・画像フォルダ・複数巻のまとめ・内側アーカイブ)は
   「対象外」にして、その巻から「テンプレートの名前で CBZ に整理」へ進める(中身を作り直すのは CBZ 化の役目)
 - **巻 id を変えずに `sources.rel_path` を付け替える。** 読書位置・作品の割り当て(手動の決定も)・見た目の指紋・重複の却下はすべて巻 id に
   付いているので、何も写さずにそのまま残る。改名では中身・サイズ・mtime が変わらないので、次のスキャンも読み直さず同じ巻のまま。

@@ -457,3 +457,31 @@ def test_cbz_with_template_execute_rechecks_drive(env):
     with pytest.raises(OrganizeError, match="別のドライブ"):
         o.execute(plan["op_id"])
     assert full_snapshot(env.root) == before
+
+
+def test_novels_are_excluded_from_template_organize(make_settings, tmp_path):
+    """小説(.epub / .txt)は CBZ 化も改名・移動もしない。理由つきで対象外にし、同じ作品の CBZ は動かせる。"""
+    root = tmp_path / "lib"
+    cbz(root / f"{TITLE} 1巻.cbz", "v1")
+    (root / f"{TITLE} 2巻.txt").write_bytes("本文です。\n".encode("utf-8"))
+    settings = make_settings(root)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    works.sync(conn)
+    env = SimpleNamespace(conn=conn, settings=settings, root=root,
+                          library=Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)))
+    novel = vid_of(env, f"{TITLE} 2巻.txt")
+    before = full_snapshot(root)
+    o = organizer(env)
+    plan = o.plan_rename(work_of(env, novel))
+    items = items_by_title(plan)
+    assert items[f"{TITLE} 2巻"]["status"] == "excluded" and "小説" in items[f"{TITLE} 2巻"]["reason"]
+    assert items[f"{TITLE} 1巻"]["status"] == "move"
+    assert full_snapshot(root) == before  # プレビューでは何も変わらない
+    done = o.execute(plan["op_id"])
+    assert done["state"] == "done"
+    assert (root / TITLE / f"{TITLE} 第01巻.cbz").is_file() and (root / f"{TITLE} 2巻.txt").is_file()
+    assert o.undo(plan["op_id"])["state"] == "undone"
+    assert full_snapshot(root) == before
+    cbz_plan = o.plan(volume_id=novel, naming="template")  # CBZ 化(テンプレート)も拒否される
+    assert cbz_plan["state"] == "blocked" and any("小説" in p for p in cbz_plan["problems"])

@@ -2,7 +2,7 @@
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
 updated: 2026-11-02
-related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection]
+related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection, novel-reader]
 ---
 
 # アーカイブの読み取り
@@ -19,7 +19,7 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/archive/base.py:102 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す |
+| `spinebox/archive/base.py:102 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
 | `spinebox/archive/base.py:185 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
 | `spinebox/archive/sevenzip.py:251 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
@@ -111,6 +111,7 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 
 ## 経緯
 
+- #57 で `.epub` を zip のリーダーに登録した(`open_archive` で開ける)。`ARCHIVE_EXTS` には入れていない(漫画の巻の候補にはしない)
 - #14 で zip / cbz を実装
 - #16 で 7z / rar を 7-Zip CLI で実装。実データで入れ子が深さ 3 あったため `max_depth` の既定を 1 から 3 に上げた。テストの rar は
   無圧縮の RAR5 を `tests/archives7z.py:rar5_bytes` で手組みしている(rar の圧縮器が無くても 7-Zip 側の読み取りを試せる)

@@ -160,6 +160,9 @@ class Organizer:
         if not source_path.exists():
             problems.append("元のファイル・フォルダが見つかりません(再スキャンしてください)")
             return self._finish_plan(plan, vols)
+        if any(v["format"] for v in vols):
+            problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
+            return self._finish_plan(plan, vols)
         if not vols:
             problems.append("整理できる巻がありません")
         plan["needs_analysis"] = self._unanalyzed(all_rows, problems)
@@ -712,6 +715,8 @@ class Organizer:
         """改名・移動の対象外の理由(1 巻 = 1 CBZ でない・オフラインなど)。対象なら None。"""
         if r["source_offline"] or not root_is_accessible(root):
             return "蔵書フォルダが今オフラインです"
+        if r["format"]:  # 小説(.epub / .txt)。CBZ ではなく、テンプレートの .cbz とも合わない
+            return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
         single = (r["source_kind"] == "archive" and r["container_path"] is None and r["parent_id"] is None
                   and r["inner_path"] is None and r["source_volumes"] == 1)
         if not single or not r["rel_path"].lower().endswith(".cbz"):

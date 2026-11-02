@@ -73,7 +73,30 @@ export function defaultVolumes(): MockVolume[] {
     // id 1 の別スキャン(ページ数が違う)。重複候補の相手
     { ...base, id: 6, title: "Sample manga v01", source_name: "sample_manga_v01s.zip", page_count: 11, offline: false, progress: null,
       volume_number: { kind: "volume", start: 1, end: 1, evidence: "v01" }, duplicate_count: 1 },
+    // 小説(#57)。区切りの本文は mockSections
+    { ...base, id: 7, title: "縦書きの小説 第1巻", source_name: "novel_v01.epub", format: "epub", page_count: null, offline: false, progress: null,
+      volume_number: { kind: "volume", start: 1, end: 1, evidence: "第1巻" } },
+    { ...base, id: 8, title: "青空文庫のテキスト", source_name: "aozora.txt", format: "text", page_count: 2, offline: false,
+      progress: { page: 1, finished: false, position: 0.5 } },
   ];
+}
+
+/**
+ * 小説の区切りの本文(サーバーが無害化した後の形)。巻 7 の 2 つ目は、無害化をすり抜けた想定の危険な HTML を混ぜて、
+ * ブラウザ側の 2 段目の無害化を試す(本物のサーバーはこれを返さない)
+ */
+export function mockSections(): Record<number, string[]> {
+  const para = (n: number, text: string) => Array.from({ length: n }, (_, i) => `<p>${text}(${i + 1})</p>`).join("");
+  return {
+    7: [
+      `<h1>第一章</h1>${para(30, "吾輩は<ruby>猫<rt>ねこ</rt></ruby>である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。")}`,
+      `<h1>第二章</h1><p>危険<script>window.__novelPwned = 1</script>な<img src="x" onerror="window.__novelPwned = 2">本文</p>` +
+        `<img src="/api/volumes/7/resources/0" alt="挿絵" onload="window.__novelPwned = 3"><p onclick="window.__novelPwned = 4">${para(20, "第二章の本文。")}</p>` +
+        `<iframe src="http://evil.example/"></iframe><a href="javascript:alert(1)">リンク</a>`,
+      `<h1>第三章</h1>${para(10, "最後の章。")}<p>おしまい</p>`,
+    ],
+    8: [para(150, "テキストの本文。"), `${para(150, "後半の本文。")}<p>テキストの終わり</p>`],
+  };
 }
 
 const dupSide = (v: MockVolume): DuplicateVolume => ({
@@ -150,6 +173,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   // 整理(CBZ 化)の操作。ページ数未確定の巻(入れ子)は読めない内側があるものとして実行不可にする
   const ops: OrganizeOp[] = [];
   let opSeq = 0;
+  const sections = mockSections();
 
   // テンプレートどおりの改名・移動(作品 1 だけ)。巻 1 と 6 は同じ名前になる衝突、3 は 1 巻 = 1 CBZ でない対象外
   function renamePlan(workId: number, exclude: number[]): OrganizeOp {
@@ -288,12 +312,30 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       }
       return json(200, { id: c.id, dismissed: c.dismissed });
     }
-    const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|pages\/(\d+)))?$/);
+    const m = path.match(/^\/api\/volumes\/([^/]+)(?:\/(progress|analyze|pages\/(\d+)|sections\/(\d+)|resources\/(\d+)))?$/);
     const failure = m && !m[2] && method === "GET" ? options.failures?.[decodeURIComponent(m[1])] : undefined;
     if (failure) return json(failure.status, { detail: failure.detail });
     const v = m ? volumes.find((x) => String(x.id) === decodeURIComponent(m[1])) : undefined;
     if (!m || !v) return json(404, { detail: "見つかりません" });
 
+    const novel = sections[v.id];
+    if (novel && !m[2] && method === "GET") {
+      v.page_count = novel.length;
+      const detail: VolumeDetail = {
+        id: v.id, title: v.title, format: v.format, page_count: novel.length, pages: [],
+        sections: novel.map((h, i) => ({ index: i, length: h.length })),
+        encoding: v.format === "text" ? "cp932" : null,
+        progress: v.progress, parent_id: null, volume_number: v.volume_number, findings: [],
+      };
+      return json(200, detail);
+    }
+    if (novel && m[4] !== undefined && method === "GET") {
+      const i = Number(m[4]);
+      return i < novel.length ? json(200, { index: i, html: novel[i] }) : json(404, { detail: "区切りがありません" });
+    }
+    if (novel && m[5] !== undefined && method === "GET") {
+      return { status: 200, contentType: "image/svg+xml", body: pageSvg("挿絵", 0, 1) };
+    }
     if (!m[2] && method === "GET") {
       if (v.offline) return json(409, { detail: "蔵書フォルダがオフラインです" });
       const n = pagesOf(v);
@@ -327,6 +369,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (m[2] === "progress" && method === "PUT") {
       if (typeof parsed?.page !== "number" || typeof parsed?.finished !== "boolean") return json(422, { detail: "形式が不正" });
       v.progress = { page: parsed.page, finished: parsed.finished };
+      if (v.format && v.format !== "images" && typeof parsed.position === "number") v.progress.position = parsed.position;
       return json(200, v.progress);
     }
     if (m[3] !== undefined && method === "GET") {

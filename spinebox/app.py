@@ -26,6 +26,7 @@ from .cache import CacheTooLarge, ExtractionCache, MemoryCache
 from .config import Settings
 from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_analyzable,
                       is_offline)
+from .novel.books import Books
 from .metadata import MetadataService
 from .metadata.http import HttpFetcher
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
@@ -37,6 +38,14 @@ log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 PAGE_CACHE_CONTROL = "private, max-age=3600"
+# 画面(index.html と静的ファイル)の CSP。EPUB の本文は無害化してから画面に差し込むが、万一すり抜けても
+# インラインのスクリプト・イベントハンドラ・外部の読み込みが動かないようにする(wiki/components/novel-reader.md)
+APP_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+           "font-src 'self' data:; connect-src 'self'; media-src 'none'; object-src 'none'; frame-src 'none'; "
+           "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+# EPUB の画像の資源。直接開かれても何も動かさない
+RESOURCE_HEADERS = {"Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff",
+                    "Cache-Control": PAGE_CACHE_CONTROL}
 
 
 class OrganizePlanIn(BaseModel):
@@ -54,8 +63,10 @@ class RenamePlanIn(BaseModel):
 
 
 class ProgressIn(BaseModel):
+    """page は画像の巻ならページ番号、小説なら区切りの番号。position は小説だけ(区切りの中の割合 0〜1)。"""
     page: StrictInt = Field(ge=0)
     finished: StrictBool
+    position: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
 class WorkEditIn(BaseModel):
@@ -100,7 +111,15 @@ class AssignIn(BaseModel):
 def _progress(row) -> dict | None:
     if row is None or row["page"] is None:
         return None
-    return {"page": row["page"], "finished": bool(row["finished"])}
+    out = {"page": row["page"], "finished": bool(row["finished"])}
+    if "position" in row.keys() and row["position"] is not None:
+        out["position"] = row["position"]
+    return out
+
+
+def _format(row) -> str:
+    """巻の形式。images = ページ画像の巻(漫画など)、epub / text = 小説。"""
+    return row["format"] or "images"
 
 
 def _number(row) -> dict | None:
@@ -149,6 +168,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     cache = ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)
     memory = MemoryCache(settings.memory_cache_limit_bytes)
     library = Library(settings, cache, memory)
+    books = Books(settings)
     scan_lock = threading.Lock()
     duplicate_lock = threading.Lock()
     duplicate_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
@@ -207,6 +227,13 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             stop.set()
 
     app = FastAPI(title="SpineBox", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("Content-Security-Policy", APP_CSP)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        return response
     app.state.settings = settings
     app.state.cache = cache
     app.state.memory = memory
@@ -279,8 +306,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         rows = conn.execute(
             """SELECT v.id, v.title, v.page_count, v.container_path, v.entry_prefix, v.inner_path, v.parent_id,
                       v.number_kind, v.number_start, v.number_end, v.number_evidence, v.analyzed_version,
-                      pv.title AS parent_title, pv.entry_prefix AS parent_prefix, s.rel_path,
-                      s.offline AS source_offline, r.online AS root_online, p.page, p.finished"""
+                      v.format, pv.title AS parent_title, pv.entry_prefix AS parent_prefix, s.rel_path,
+                      s.offline AS source_offline, r.online AS root_online, p.page, p.finished, p.position"""
             + LISTED_VOLUMES_JOIN + " LEFT JOIN reading_progress p ON p.volume_id = v.id " + LISTED_VOLUMES_WHERE
         ).fetchall()
         rows.sort(key=_list_sort_key)
@@ -291,6 +318,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "id": r["id"],
             "title": r["title"],
             "source_name": Path(r["rel_path"]).name if r["rel_path"] else r["title"],
+            "format": _format(r),
             "page_count": r["page_count"],
             "offline": is_offline(r),
             "progress": _progress(r),
@@ -304,11 +332,30 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         } for r in rows]
 
     def _get_progress(conn, volume_id: int):
-        return _progress(conn.execute("SELECT page, finished FROM reading_progress WHERE volume_id = ?",
+        return _progress(conn.execute("SELECT page, finished, position FROM reading_progress WHERE volume_id = ?",
                                       (volume_id,)).fetchone())
+
+    def _get_novel(conn, volume_id: int) -> dict:
+        with books.open(conn, volume_id) as book:
+            row = get_volume_row(conn, volume_id)
+            return {
+                "id": volume_id,
+                "title": row["title"],
+                "format": book.format,
+                "page_count": len(book.lengths),
+                "pages": [],
+                "sections": [{"index": i, "length": n} for i, n in enumerate(book.lengths)],
+                "encoding": book.encoding,
+                "progress": _get_progress(conn, volume_id),
+                "parent_id": row["parent_id"],
+                "volume_number": _number(row),
+                "findings": [],
+            }
 
     @app.get("/api/volumes/{volume_id}")
     def get_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        if get_volume_row(conn, volume_id)["format"] is not None:
+            return _get_novel(conn, volume_id)
         with library.open(conn, volume_id) as vol:
             # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)
             if library.register_analysis(conn, vol):
@@ -317,6 +364,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             return {
                 "id": volume_id,
                 "title": row["title"],
+                "format": "images",
                 "page_count": len(vol.page_names),
                 "pages": [{"index": i, "name": n.rsplit("/", 1)[-1]} for i, n in enumerate(vol.page_names)],
                 "progress": _get_progress(conn, volume_id),
@@ -650,6 +698,25 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             data = vol.read_page(index)
         return Response(data, media_type=media_type(name), headers=headers)
 
+    @app.get("/api/volumes/{volume_id}/sections/{index}")
+    def get_section(volume_id: int, index: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """小説の区切り 1 つの表示用 HTML(EPUB は無害化済み、テキストはエスケープして組み立てたもの)。"""
+        with books.open(conn, volume_id) as book:
+            if not 0 <= index < len(book.lengths):
+                raise HTTPException(404, "区切りがありません")
+            return JSONResponse({"index": index, "html": book.section_html(index)},
+                                headers={"Cache-Control": "private, no-cache"})
+
+    @app.get("/api/volumes/{volume_id}/resources/{index}")
+    def get_resource(volume_id: int, index: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """EPUB の中の画像(manifest の画像だけ。SVG は返さない)。"""
+        with books.open(conn, volume_id) as book:
+            try:
+                data, media = book.resource(index)
+            except IndexError:
+                raise HTTPException(404, "資源がありません") from None
+        return Response(data, media_type=media, headers=RESOURCE_HEADERS)
+
     @app.put("/api/volumes/{volume_id}/progress")
     def put_progress(volume_id: int, body: ProgressIn, conn: sqlite3.Connection = Depends(get_conn)):
         row = get_volume_row(conn, volume_id)
@@ -657,11 +724,14 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             raise VolumeOffline(volume_id)
         if row["page_count"] is not None and body.page >= max(row["page_count"], 1):
             raise HTTPException(422, f"page は 0〜{max(row['page_count'] - 1, 0)} で指定してください")
+        # 割合は小説だけが持つ(画像の巻はページで位置が決まるので捨てる)
+        position = body.position if row["format"] is not None else None
         with db.transaction(conn) as c:
-            c.execute("""INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, ?, ?, ?)
+            c.execute("""INSERT INTO reading_progress (volume_id, page, finished, position, updated_at)
+                         VALUES (?, ?, ?, ?, ?)
                          ON CONFLICT (volume_id) DO UPDATE SET page = excluded.page, finished = excluded.finished,
-                         updated_at = excluded.updated_at""",
-                      (volume_id, body.page, int(body.finished), db.now()))
+                         position = excluded.position, updated_at = excluded.updated_at""",
+                      (volume_id, body.page, int(body.finished), position, db.now()))
         return _get_progress(conn, volume_id)
 
     # --- 整理処理(CBZ 化・テンプレートでの改名)。蔵書に書き込む唯一の経路。実行と元に戻すはスキャンと同じロックで直列化する ---

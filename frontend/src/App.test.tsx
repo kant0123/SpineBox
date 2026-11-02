@@ -53,7 +53,7 @@ describe("一覧", () => {
     expect(offline.querySelector("a")).toBeNull(); // 開けない巻はリンクにしない
 
     fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
-    expect(await screen.findByText(/6 巻を検出しました/)).toBeTruthy();
+    expect(await screen.findByText(/8 巻を検出しました/)).toBeTruthy();
     expect(screen.getByText(/E:\/漫画/)).toBeTruthy();
     // 読めなかったものは件数と理由の一覧を出す
     const issues = screen.getByText("読めなかったもの 2 件").closest("details")!;
@@ -98,7 +98,7 @@ describe("一覧", () => {
     render(<App />);
     await screen.findByText("サンプル漫画 第02巻");
     fireEvent.click(screen.getByRole("button", { name: "スキャン" }));
-    expect(await screen.findByText(/6 巻を検出しました/)).toBeTruthy();
+    expect(await screen.findByText(/8 巻を検出しました/)).toBeTruthy();
     expect(screen.queryByText(/読めなかったもの/)).toBeNull();
     cleanup();
 

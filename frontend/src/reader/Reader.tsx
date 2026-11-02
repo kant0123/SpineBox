@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { api, type VolumeDetail } from "../api";
+import { api, isNovel, type VolumeDetail } from "../api";
+import { NovelReader } from "../novel/NovelReader";
 import { libraryHref } from "../route";
 import { loadSettings, saveSettings, type ReaderSettings } from "../settings";
 import {
@@ -16,21 +17,12 @@ import {
 } from "./layout";
 import { volumeErrorMessage } from "./loadError";
 import { createProgressSaver } from "./progressSaver";
-
-function useViewport() {
-  const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
-  useEffect(() => {
-    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return size;
-}
+import { useViewport } from "./useViewport";
 
 /** 初めて開く入れ子のアーカイブは、内側を取り出すまで数秒かかる。その間に出す補足までの待ち時間 */
 export const SLOW_HINT_MS = 1500;
 
-function LoadingMessage({ hint }: { hint: boolean }) {
+export function LoadingMessage({ hint }: { hint: boolean }) {
   return (
     <div className="reader">
       <div className="reader-message" role="status">
@@ -43,7 +35,7 @@ function LoadingMessage({ hint }: { hint: boolean }) {
   );
 }
 
-function ErrorMessage({ text }: { text: string }) {
+export function ErrorMessage({ text }: { text: string }) {
   return (
     <div className="reader">
       <div className="reader-message">
@@ -93,7 +85,9 @@ export function Reader({ id }: { id: string }) {
 
   const markLoaded = useCallback((i: number) => setLoaded((s) => (s.has(i) ? s : new Set(s).add(i))), []);
 
-  const pageCount = detail?.pages.length ?? 0;
+  // 小説は NovelReader が表示・位置の保存をする。ここ(漫画)の保存・先読み・キー操作は動かさない
+  const novel = isNovel(detail?.format);
+  const pageCount = novel ? 0 : (detail?.pages.length ?? 0);
   const spreads = useMemo(
     () =>
       buildSpreads(pageCount, {
@@ -173,6 +167,7 @@ export function Reader({ id }: { id: string }) {
   );
 
   useEffect(() => {
+    if (novel) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return; // スライダー操作の矢印キーは奪わない
       const a = keyAction(e.key);
@@ -182,7 +177,7 @@ export function Reader({ id }: { id: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [act]);
+  }, [act, novel]);
 
   const onPointerDown = (e: ReactPointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -209,6 +204,7 @@ export function Reader({ id }: { id: string }) {
 
   if (error) return <ErrorMessage text={error} />;
   if (!detail) return <LoadingMessage hint={slow} />;
+  if (novel) return <NovelReader id={id} detail={detail} />;
   if (pageCount === 0) return <ErrorMessage text="この巻にはページがありません。" />;
 
   const pageLabel = current.map((i) => i + 1).join("-");
