@@ -164,10 +164,14 @@ describe("リーダー(スマホ縦 375px)", () => {
     expect(shownPages()).toEqual(["4 ページ"]);
     for (let i = 0; i < 4; i++) press("ArrowLeft");
     expect(shownPages()).toEqual(["8 ページ"]);
-    press("ArrowLeft");
-    expect(await screen.findByText("最後のページです")).toBeTruthy();
+    press("ArrowLeft"); // 最終ページからさらに進むと次巻(読了済みの巻)へ
+    await waitFor(() => expect(window.location.hash).toBe(readHref(3)));
+    await waitFor(() => expect(shownPages()).toEqual(["5 ページ"])); // 次巻は保存位置(最終ページ)から開く
 
-    // 待たずに一覧へ戻っても最後の位置が送られる
+    // 移る前に、今の巻の最後の位置が既読で送られている
+    await waitFor(() =>
+      expect(puts()).toContainEqual({ path: "/api/volumes/2/progress", body: { page: 7, finished: true } }),
+    );
     await navigate(volumesHref);
     expect(puts().at(-1)).toEqual({ path: "/api/volumes/2/progress", body: { page: 7, finished: true } });
     const card = (await screen.findByText("サンプル漫画 第02巻")).closest("li")!;

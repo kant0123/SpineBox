@@ -144,6 +144,30 @@ export function createMockWorks(
     return { slots: out, unnumbered };
   }
 
+  /**
+   * 同じ作品の次の巻(#113)。同じ番号の重複は飛ばし、次の番号の並びの 1 つ目を返す。
+   * バックエンドの works.next_volume() と同じ規則(番号順 → 番号なしは名前順)。
+   */
+  function nextVolume(id: number): WorkVolume | null {
+    const w = works.find((x) => x.volumeIds.includes(id));
+    if (!w) return null;
+    const vols = volumesOf(w);
+    const numbered = vols.filter((v) => v.volume_number)
+      .sort((a, b) => a.volume_number!.start - b.volume_number!.start || a.title.localeCompare(b.title));
+    const unnumbered = vols.filter((v) => !v.volume_number).sort((a, b) => a.title.localeCompare(b.title));
+    const ordered = [...numbered, ...unnumbered];
+    const i = ordered.findIndex((v) => v.id === id);
+    if (i < 0) return null;
+    const cur = ordered[i];
+    for (let j = i + 1; j < ordered.length; j++) {
+      const n = ordered[j];
+      if (cur.volume_number && n.volume_number
+          && cur.volume_number.start === n.volume_number.start && cur.volume_number.end === n.volume_number.end) continue;
+      return n;
+    }
+    return null;
+  }
+
   const missingOf = (vols: WorkVolume[]) => {
     const have = new Set(vols.map((v) => v.volume_number?.start).filter((n): n is number => !!n));
     const max = Math.max(0, ...have);
@@ -545,5 +569,5 @@ export function createMockWorks(
     return w ? summary(w) : null;
   };
 
-  return { handle, works, proposals, summary, listed, summaryOf };
+  return { handle, works, proposals, summary, listed, summaryOf, nextVolume };
 }

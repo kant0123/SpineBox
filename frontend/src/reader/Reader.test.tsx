@@ -2,14 +2,14 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api";
-import { createMockBackend, type MockOptions } from "../mock/mockBackend";
+import { createMockBackend, defaultVolumes, type MockOptions } from "../mock/mockBackend";
 import { volumeErrorMessage } from "./loadError";
 import { Reader, SLOW_HINT_MS } from "./Reader";
 
 let backend: ReturnType<typeof createMockBackend>;
 
-function useBackend(options: MockOptions = {}) {
-  backend = createMockBackend(undefined, options);
+function useBackend(options: MockOptions = {}, volumes?: ReturnType<typeof defaultVolumes>) {
+  backend = createMockBackend(volumes, options);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
     if (r.delayMs) await new Promise((ok) => setTimeout(ok, r.delayMs));
@@ -22,6 +22,7 @@ const backLink = () => screen.getByRole("link", { name: "一覧へ戻る" }).get
 beforeEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: 812 });
+  window.location.hash = "";
   localStorage.clear();
 });
 
@@ -117,6 +118,41 @@ describe("volumeErrorMessage", () => {
     const err = await api.getVolume(1).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.detail).toBeUndefined();
+  });
+});
+
+describe("最終ページから次巻へ(#113)", () => {
+  const toLastPage = () => {
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByRole("img").getAttribute("alt")).toBe("8 ページ");
+  };
+
+  it("最終ページからさらに進むと、同じ作品の次の巻のリーダーへ移る", async () => {
+    useBackend();
+    render(<Reader id="2" />); // 8 ページ・4 ページ目から再開
+    await screen.findByRole("img");
+    toLastPage();
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(window.location.hash).toBe("#/read/3");
+  });
+
+  it("次巻が無い巻では従来どおり「最後のページです」", async () => {
+    useBackend();
+    render(<Reader id="3" />); // 読了済み(最終ページ)・次巻なし
+    await screen.findByRole("img");
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByText("最後のページです")).toBeTruthy();
+    expect(window.location.hash).toBe("");
+  });
+
+  it("次巻がオフラインなら移動せず、オフラインであることを出す", async () => {
+    useBackend({}, defaultVolumes().map((v) => (v.id === 3 ? { ...v, offline: true } : v)));
+    render(<Reader id="2" />);
+    await screen.findByRole("img");
+    toLastPage();
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByText("次の巻「読了済みの巻」はオフラインです")).toBeTruthy();
+    expect(window.location.hash).toBe("");
   });
 });
 

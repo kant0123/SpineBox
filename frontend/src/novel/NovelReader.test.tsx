@@ -3,8 +3,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
-import { createMockBackend } from "../mock/mockBackend";
+import type { VolumeDetail } from "../api";
+import { createMockBackend, defaultVolumes, mockSections } from "../mock/mockBackend";
 import { readHref } from "../route";
+import { NovelReader } from "./NovelReader";
 
 declare global {
   interface Window {
@@ -153,5 +155,32 @@ describe("縦書きリーダー", () => {
     await waitFor(() => expect(at().section).toBe(0));
     await ready();
     expect(at().page).toBe(at().pages - 1);
+  });
+
+  it("最終ページからさらに進むと、同じ作品の次の巻へ移る(#113)", async () => {
+    window.location.hash = "";
+    const v = defaultVolumes().find((x) => x.id === 7)!;
+    const html = mockSections()[7];
+    const detail: VolumeDetail = {
+      id: 7, title: v.title, format: "epub", page_count: html.length, pages: [],
+      sections: html.map((h, i) => ({ index: i, length: h.length })),
+      progress: { page: 2, finished: false, position: 0 }, // 最後の区切りから
+      next_volume: { id: 8, title: "青空文庫のテキスト", volume_number: null, offline: false },
+    };
+    render(<NovelReader id="7" detail={detail} />);
+    await ready();
+
+    for (let i = 0; i < 100; i++) {
+      if (at().section === 2 && at().page === at().pages - 1) break;
+      const before = at();
+      press("ArrowLeft");
+      await waitFor(() => expect(at()).not.toEqual(before));
+      await ready();
+    }
+    expect(at().section).toBe(2);
+    expect(at().page).toBe(at().pages - 1);
+
+    press("ArrowLeft");
+    expect(window.location.hash).toBe("#/read/8");
   });
 });
