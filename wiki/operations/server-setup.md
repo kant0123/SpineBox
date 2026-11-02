@@ -35,7 +35,7 @@ py -3.12 -m spinebox                                          # 手動で起動�
   `commit` は**プロセスが起動時に読んだ**コミット(`spinebox/buildinfo.py:14 current_commit`)で、git が使えず `.git` も読めなければ null。
   古いプロセスが生き残っていると 200 のまま古い `commit` を返すので、更新後は `commit` で反映を見分ける
 - `/read/<id>` を直接開いてもよい。バックエンドは未知のパスに `index.html` を返し(SPA fallback)、
-  フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:119 canonicalUrl`)。ルート自体はハッシュで決まるため、
+  フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:132 canonicalUrl`)。ルート自体はハッシュで決まるため、
   この直しが無いと一覧が開く
 
 ### メモリ(RAM 層)の設定
