@@ -2,7 +2,7 @@
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
 updated: 2026-11-02
-related: [overview, backend, frontend, archive-reading]
+related: [overview, backend, frontend, archive-reading, extraction-cache]
 ---
 
 # サーバー機のセットアップと常駐運用
@@ -37,6 +37,14 @@ py -3.12 -m spinebox                                          # 手動で起動�
 - `/read/<id>` を直接開いてもよい。バックエンドは未知のパスに `index.html` を返し(SPA fallback)、
   フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:48 canonicalUrl`)。ルート自体はハッシュで決まるため、
   この直しが無いと一覧が開く
+
+### メモリ(RAM 層)の設定
+
+サーバー機では `memory_cache_limit_bytes = 8589934592`(8 GiB)まで上げてよい(利用者の判断、#54)。既定は 256 MiB。
+RAM 層に置くのは 7z / rar のページと目次だけで、合計はこの値を超えない([[extraction-cache]])。大きくすると、ソリッド 7z の巻を
+読み返したり巻を行き来したりしたときに、塊の先頭から展開し直す待ちが減る。zip / cbz だけの蔵書なら上げても速くならない。
+Python 自体・展開途中のバッファ(1 回のまとめ取り出しは最大 128 MiB)は別に使うので、サーバー機の空きメモリと相談して決める。
+ディスクの展開キャッシュ(`cache_limit_bytes`、既定 2 GiB)とは別の設定。
 
 ## ファイアウォール(LAN 公開)
 

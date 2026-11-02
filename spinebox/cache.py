@@ -7,6 +7,8 @@
 
 最終使用の順はプロセス内のカウンタで持ち、起動時はファイルの mtime から復元する
 (使うたびに mtime も触るので再起動後もおおむね順序が保たれる)。使用中(pin)のファイルは消さない。
+
+`MemoryCache` は RAM 側の LRU(7z / rar のページと目次。使う側は spinebox/library.py)。再起動で消える。
 """
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ import itertools
 import os
 import threading
 import uuid
+from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, Callable, Iterator
@@ -146,3 +149,61 @@ class ExtractionCache:
                 self._touch(key)
                 self._pins[key] = self._pins.get(key, 0) + 1
                 self._evict()
+
+
+class MemoryCache:
+    """RAM の LRU(ページのバイト列と 7z / rar の目次)。合計が上限を超えたら最後に使ったのが古いものから消す。
+
+    展開キャッシュ(ディスク)と同じく消えてもよいもの。上限 0 なら何も持たない。1 つで上限を超えるものは置かない。
+    大きさは値ごとに呼び出し側が渡す(bytes なら len。目次は見積もり)。
+    """
+
+    def __init__(self, limit_bytes: int):
+        self.limit_bytes = limit_bytes
+        self._lock = threading.Lock()
+        self._items: OrderedDict[str, tuple[object, int]] = OrderedDict()
+        self._total = 0
+
+    @property
+    def enabled(self) -> bool:
+        return self.limit_bytes > 0
+
+    @property
+    def total_bytes(self) -> int:
+        with self._lock:
+            return self._total
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._items
+
+    def get(self, key: str):
+        with self._lock:
+            item = self._items.get(key)
+            if item is None:
+                return None
+            self._items.move_to_end(key)
+            return item[0]
+
+    def put(self, key: str, value: object, size: int | None = None) -> bool:
+        """置けたかを返す。size を省くと len(value)。"""
+        size = len(value) if size is None else size  # type: ignore[arg-type]
+        if size > self.limit_bytes:
+            return False
+        with self._lock:
+            old = self._items.pop(key, None)
+            if old is not None:
+                self._total -= old[1]
+            self._items[key] = (value, size)
+            self._total += size
+            while self._total > self.limit_bytes:
+                _, (_, evicted) = self._items.popitem(last=False)
+                self._total -= evicted
+        return True
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+            self._total = 0

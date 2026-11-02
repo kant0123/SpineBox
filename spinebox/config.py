@@ -13,6 +13,7 @@ from pathlib import Path
 
 CONFIG_ENV = "SPINEBOX_CONFIG"
 DEFAULT_CONFIG_NAME = "config.local.toml"
+MIB = 1024 ** 2
 GIB = 1024 ** 3
 DEFAULT_ORGANIZE_DIR = ".spinebox"
 
@@ -62,6 +63,8 @@ class Settings:
     library_roots: tuple[Path, ...] = ()
     data_dir: Path = Path("data")
     cache_limit_bytes: int = 2 * GIB
+    # RAM 層(ページのバイト列と 7z / rar の目次)の上限。0 なら RAM 層を使わない。サーバー機では 8 GiB まで上げてよい
+    memory_cache_limit_bytes: int = 256 * MIB
     host: str = "127.0.0.1"
     port: int = 8000
     sevenzip_path: str = "7z"
@@ -192,6 +195,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         library_roots=tuple(_resolve(base_dir, r) for r in roots),
         data_dir=_resolve(base_dir, _str(data, "data_dir", str(defaults.data_dir))),
         cache_limit_bytes=_int(data, "cache_limit_bytes", defaults.cache_limit_bytes, minimum=1),
+        memory_cache_limit_bytes=_int(data, "memory_cache_limit_bytes", defaults.memory_cache_limit_bytes, minimum=0),
         host=_str(data, "host", defaults.host),
         port=_int(data, "port", defaults.port, minimum=1),
         sevenzip_path=_str(data, "sevenzip_path", defaults.sevenzip_path),
