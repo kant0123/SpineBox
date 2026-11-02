@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, type WorkDetail, type WorkSummary, type WorkVolume } from "../api";
+import { api, ApiError, type SourceName, type WorkDetail, type WorkEditBody, type WorkFieldName, type WorkKind, type WorkSummary, type WorkVolume } from "../api";
 import { progressLabel } from "../library/Library";
 import { readHref, workHref, worksHref } from "../route";
-import { confidenceText, evidenceLines, sourceText } from "./labels";
+import { Credits } from "./Credits";
+import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from "./labels";
+import { VolumeMeta } from "./VolumeMeta";
+import { WorkLinks } from "./WorkLinks";
 import { ProposalCard } from "./WorkProposals";
+
+const FIELD_NAMES: Record<WorkFieldName, string> = {
+  title: "作品名", author: "著者", kind: "種別", publisher: "出版社", genres: "ジャンル", tags: "タグ", synopsis: "あらすじ",
+};
+const splitList = (text: string): string[] => text.split(/[、,，\n]/).map((x) => x.trim()).filter(Boolean);
 
 function assignmentText(v: WorkVolume): string {
   const a = v.assignment;
@@ -12,7 +20,7 @@ function assignmentText(v: WorkVolume): string {
   return `${how}(確信度 ${confidenceText(a.confidence)})`;
 }
 
-function VolumeRow({ v, selected, onToggle }: { v: WorkVolume; selected: boolean; onToggle: () => void }) {
+function VolumeRow({ v, selected, onToggle, busy, run, onChanged }: { v: WorkVolume; selected: boolean; onToggle: () => void; busy: boolean; run: (fn: () => Promise<unknown>) => Promise<void>; onChanged: () => Promise<void> }) {
   return (
     <li className={`work-volume${v.offline ? " offline" : ""}`}>
       <label className="work-volume-check">
@@ -31,6 +39,7 @@ function VolumeRow({ v, selected, onToggle }: { v: WorkVolume; selected: boolean
           {v.offline && " / オフライン"}
         </span>
         <span className="volume-meta">{assignmentText(v)}</span>
+        <VolumeMeta v={v} busy={busy} run={run} onChanged={onChanged} />
       </div>
     </li>
   );
@@ -44,6 +53,11 @@ export function WorkPage({ id }: { id: string }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [kind, setKind] = useState("");
+  const [publisher, setPublisher] = useState("");
+  const [genres, setGenres] = useState("");
+  const [tags, setTags] = useState("");
+  const [synopsis, setSynopsis] = useState("");
   const [alias, setAlias] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [moveTarget, setMoveTarget] = useState("");
@@ -51,11 +65,21 @@ export function WorkPage({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
 
   const apply = useCallback((w: WorkDetail) => {
+    // 取得・自動に戻すなどで別の作品に自動統合され、吸収先の詳細が返ったときは、吸収先のページへ移る
+    if (String(w.id) !== id) {
+      window.location.hash = workHref(w.id);
+      return;
+    }
     setWork(w);
     setTitle(w.title);
     setAuthor(w.author ?? "");
+    setKind(w.kind ?? "");
+    setPublisher(w.publisher ?? "");
+    setGenres(w.genres.join("、"));
+    setTags(w.tags.join("、"));
+    setSynopsis((w.fields.synopsis?.value as string | undefined) ?? "");
     setSelected(new Set());
-  }, []);
+  }, [id]);
 
   const load = useCallback(async () => {
     try {
@@ -126,11 +150,37 @@ export function WorkPage({ id }: { id: string }) {
   const ids = [...selected];
 
   const save = () => {
-    const body: { title?: string; author?: string } = {};
+    const body: WorkEditBody = {};
     if (title !== work.title) body.title = title;
     if (author !== (work.author ?? "")) body.author = author;
+    if (kind !== (work.kind ?? "")) body.kind = (kind || null) as WorkKind | null;
+    if (publisher !== (work.publisher ?? "")) body.publisher = publisher;
+    if (genres !== work.genres.join("、")) body.genres = splitList(genres);
+    if (tags !== work.tags.join("、")) body.tags = splitList(tags);
+    if (synopsis !== ((work.fields.synopsis?.value as string | undefined) ?? "")) body.synopsis = synopsis;
     if (Object.keys(body).length) void run(async () => apply(await api.editWork(work.id, body)));
   };
+
+  const note = (name: WorkFieldName, unset?: string) => {
+    const info = work.fields[name];
+    return (
+      <span className="volume-meta">
+        {fieldNote(info, unset)}
+        {info?.manual && (
+          <button
+            type="button"
+            className="small secondary"
+            disabled={busy}
+            onClick={() => void run(async () => apply(await api.resetWorkField(work.id, name)))}
+            aria-label={`${FIELD_NAMES[name]}を自動に戻す`}
+          >
+            自動に戻す
+          </button>
+        )}
+      </span>
+    );
+  };
+  const enabledSources = work.links.map((l) => l.source) as SourceName[];
 
   return (
     <div className="library work-page">
@@ -158,16 +208,41 @@ export function WorkPage({ id }: { id: string }) {
             作品名
             <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
-          <span className="volume-meta">
-            {work.title_manual ? "手動で編集" : `${sourceText(work.title_source)}(確信度 ${confidenceText(work.title_confidence)})`}
-          </span>
+          {note("title")}
           <label>
             著者
             <input value={author} onChange={(e) => setAuthor(e.target.value)} />
           </label>
-          <span className="volume-meta">
-            {work.author_manual ? "手動で編集" : work.author ? sourceText(work.author_source) : "名前からは読み取れていません"}
-          </span>
+          {note("author", "名前からは読み取れていません")}
+          <label>
+            種別
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="">未設定</option>
+              <option value="manga">{KIND_TEXT.manga}</option>
+              <option value="novel">{KIND_TEXT.novel}</option>
+            </select>
+          </label>
+          {note("kind")}
+          <label>
+            出版社
+            <input value={publisher} onChange={(e) => setPublisher(e.target.value)} />
+          </label>
+          {note("publisher")}
+          <label>
+            ジャンル(「、」区切り)
+            <input value={genres} onChange={(e) => setGenres(e.target.value)} />
+          </label>
+          {note("genres")}
+          <label>
+            タグ(「、」区切り)
+            <input value={tags} onChange={(e) => setTags(e.target.value)} />
+          </label>
+          {note("tags")}
+          <label>
+            あらすじ
+            <textarea rows={4} value={synopsis} onChange={(e) => setSynopsis(e.target.value)} />
+          </label>
+          {note("synopsis")}
           <button type="submit" className="small" disabled={busy || !title.trim()}>
             保存
           </button>
@@ -211,6 +286,21 @@ export function WorkPage({ id }: { id: string }) {
             足す
           </button>
         </form>
+      </section>
+
+      <section className="work-section" aria-label="公開データベース">
+        <div className="section-head">
+          <h2>公開データベース</h2>
+          <button
+            type="button"
+            className="small"
+            disabled={busy || enabledSources.length === 0}
+            onClick={() => void run(async () => apply(await api.fetchWorkMetadata(work.id)))}
+          >
+            {busy ? "取得中…" : "情報を取得"}
+          </button>
+        </div>
+        <WorkLinks work={work} busy={busy} run={run} onWork={apply} />
       </section>
 
       {work.merges.length > 0 && (
@@ -265,7 +355,7 @@ export function WorkPage({ id }: { id: string }) {
               </div>
               <ul className="work-volumes">
                 {s.volumes.map((v) => (
-                  <VolumeRow key={v.id} v={v} selected={selected.has(v.id)} onToggle={() => toggle(v.id)} />
+                  <VolumeRow key={v.id} v={v} selected={selected.has(v.id)} onToggle={() => toggle(v.id)} busy={busy} run={run} onChanged={load} />
                 ))}
               </ul>
             </li>
@@ -277,7 +367,7 @@ export function WorkPage({ id }: { id: string }) {
               </div>
               <ul className="work-volumes">
                 {work.unnumbered.map((v) => (
-                  <VolumeRow key={v.id} v={v} selected={selected.has(v.id)} onToggle={() => toggle(v.id)} />
+                  <VolumeRow key={v.id} v={v} selected={selected.has(v.id)} onToggle={() => toggle(v.id)} busy={busy} run={run} onChanged={load} />
                 ))}
               </ul>
             </li>
@@ -357,6 +447,7 @@ export function WorkPage({ id }: { id: string }) {
           </button>
         </div>
       </section>
+      <Credits sources={enabledSources} />
     </div>
   );
 }

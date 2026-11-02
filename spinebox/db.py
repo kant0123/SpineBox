@@ -261,7 +261,48 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX work_merge_proposals_status ON work_merge_proposals (status)",
     ],
-    # 7: 小説(EPUB・テキスト)の巻(#57)。volumes.format: NULL = 画像の巻(漫画など)、'epub' / 'text' = 小説。
+    # 7: 公開 DB の情報の結線(#50)。work_links: 作品 × 取得元(ndl / anilist / mangaupdates)ごとに 1 行。
+    #    status: linked(連携済み)/ pending(候補が拮抗・確信度が低く、利用者の確認待ち)/ none(見つからない・
+    #    利用者が「該当なし」にした)/ NULL(取得できたことがまだ無い)。manual: 利用者が候補を選んだ(再取得で変えない)。
+    #    item: 連携した候補の中身(JSON。項目の反映に使う)、candidates: 利用者に見せる候補(JSON。概要と中身)、
+    #    evidence: 確信度の根拠と使った生応答の鍵(JSON)、failure: 直近の取得の失敗(JSON。成功すると NULL)。
+    #    attempted_at: 最後に取得を試みた日時、checked_at: 最後に取得できた日時。
+    #    volume_fields: 巻単位の書誌(publisher / label / released / isbn / volume_label / subtitle)。
+    #    work_fields と同じく項目ごとに source・manual・confidence・evidence を持ち、manual は再取得で上書きしない。
+    #    作品単位の新しい項目(kind / publisher / genres / tags / synopsis / total_volumes)は work_fields に行を足す
+    [
+        """
+        CREATE TABLE work_links (
+            work_id INTEGER NOT NULL REFERENCES works(id),
+            source TEXT NOT NULL,
+            status TEXT CHECK (status IN ('linked', 'pending', 'none')),
+            source_id TEXT,
+            manual INTEGER NOT NULL DEFAULT 0,
+            confidence REAL,
+            evidence TEXT,
+            item TEXT,
+            candidates TEXT,
+            failure TEXT,
+            attempted_at TEXT,
+            checked_at TEXT,
+            PRIMARY KEY (work_id, source)
+        )
+        """,
+        """
+        CREATE TABLE volume_fields (
+            volume_id INTEGER NOT NULL REFERENCES volumes(id),
+            field TEXT NOT NULL,
+            value TEXT,
+            source TEXT NOT NULL,
+            manual INTEGER NOT NULL DEFAULT 0,
+            confidence REAL,
+            evidence TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (volume_id, field)
+        )
+        """,
+    ],
+    # 8: 小説(EPUB・テキスト)の巻(#57)。volumes.format: NULL = 画像の巻(漫画など)、'epub' / 'text' = 小説。
     #    小説のソースは 1 ファイルなので sources.kind は 'archive'(CHECK を作り直さないため。読み分けは format で行う)。
     #    小説の page_count は区切り(EPUB の spine の本文 / テキストの一定文字数ごと)の数で、開いたときに決まる。
     #    reading_progress.position: 小説の区切りの中の割合(0〜1)。page は区切りの番号。画像の巻は NULL

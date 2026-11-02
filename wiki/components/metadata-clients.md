@@ -1,8 +1,8 @@
 ---
 type: component
-summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、後続の結線が使う入口。DB の作品・巻へは結線しない
+summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
 updated: 2026-11-02
-related: [metadata-sources, overview, backend]
+related: [metadata-sources, metadata-linking, overview, backend]
 ---
 
 # 公開 DB クライアント(`spinebox/metadata/`)
@@ -13,15 +13,15 @@ related: [metadata-sources, overview, backend]
 ## 責務
 
 - する: 検索、応答の正規化、候補ごとの確からしさ、生応答の保存と使い回し、レート制限、失敗を例外にせず結果で返す
-- **しない: DB の作品・巻への結線、取得元どうしの優先順位マージ、手動編集の保護、自動採用の判断、API のエンドポイント。** 後続の Issue で、この結果を見る側が行う。
+- **しない: DB の作品・巻への結線、取得元どうしの優先順位マージ、手動編集の保護、自動採用の判断、API のエンドポイント。** この結果を見る側が行う(#50 で実装: [[metadata-linking]])。
   結線するときの不変条件は CLAUDE.md のとおり(手で編集した項目を外部ソースで上書きしない・外部は空欄だけを埋める・取得失敗でスキャンと閲覧を止めない)
 - 取得はベストエフォート。このパッケージはスキャン・閲覧の経路から呼ばない(呼ぶ側が、失敗を `SearchOutcome` で受けて続行する)
 
-## 後続の結線が使う入口
+## 結線が使う入口
 
 ```python
 service = MetadataService(settings.metadata, conn)       # conn はリクエストごとの接続でよい。fetcher はプロセス共有
-outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kind=None, isbn=None))
+outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kind=None, isbn=None, limit=None))
 # → 有効な取得元ごとの SearchOutcome(例外は投げない)
 ```
 
@@ -81,7 +81,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - 著者: 日本語の著者名と MangaUpdates のローマ字名のように**表記体系が違うと比べない**(`author:not_comparable`。点数に入れず根拠に残す)
 - 巻: NDL(巻ごとの書誌)だけ。一致 1.0、食い違い 0.0、**巻が不明(映画ノベライズなど)は 0.5**。作品単位の項目は比べない
 - 種別: 項目が不明なら比べない
-- 自動採用の閾値は決めていない(結線側が決める)。NDL は同じ作品名でも漫画と小説が別の巻として並ぶので、種別と巻の根拠を必ず見る
+- 自動採用の閾値はこのパッケージでは決めない(結線側が決める: [[metadata-linking]])。NDL は同じ作品名でも漫画と小説が別の巻として並ぶので、種別と巻の根拠を必ず見る
 
 ## 秘匿情報
 
