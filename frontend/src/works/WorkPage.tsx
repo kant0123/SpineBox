@@ -3,7 +3,7 @@ import { api, ApiError, type SourceName, type WorkDetail, type WorkEditBody, typ
 import { progressLabel } from "../library/Library";
 import { readHref, workHref, workOrganizeHref, worksHref } from "../route";
 import { Credits } from "./Credits";
-import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from "./labels";
+import { KIND_TEXT, confidenceText, dbName, evidenceLines, fieldNote, isJapanese, sourceText } from "./labels";
 import { VolumeMeta } from "./VolumeMeta";
 import { WorkLinks } from "./WorkLinks";
 import { ProposalCard } from "./WorkProposals";
@@ -181,6 +181,15 @@ export function WorkPage({ id }: { id: string }) {
     );
   };
   const enabledSources = work.links.map((l) => l.source) as SourceName[];
+  const synopsisInfo = work.fields.synopsis;
+  const foldSynopsis = !!synopsisInfo && !synopsisInfo.manual && !isJapanese(String(synopsisInfo.value ?? ""));
+  const synopsisSources = (synopsisInfo?.sources ?? []).map(dbName).join("・");
+  const synopsisField = (
+    <label>
+      あらすじ
+      <textarea rows={4} value={synopsis} onChange={(e) => setSynopsis(e.target.value)} />
+    </label>
+  );
 
   return (
     <div className="library work-page">
@@ -238,10 +247,15 @@ export function WorkPage({ id }: { id: string }) {
             <input value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
           {note("tags")}
-          <label>
-            あらすじ
-            <textarea rows={4} value={synopsis} onChange={(e) => setSynopsis(e.target.value)} />
-          </label>
+          {foldSynopsis ? (
+            // 日本語のあらすじが無く、公開データベースの英語のあらすじだけのときは折りたたむ(#74)
+            <details className="synopsis-fold">
+              <summary>あらすじ: 英語のみ{synopsisSources ? `(${synopsisSources})` : ""}。開くと表示します</summary>
+              {synopsisField}
+            </details>
+          ) : (
+            synopsisField
+          )}
           {note("synopsis")}
           <button type="submit" className="small" disabled={busy || !title.trim()}>
             保存

@@ -81,6 +81,15 @@ def snapshot(root: Path) -> dict:
     return result
 
 
+@pytest.fixture(autouse=True)
+def _reset_linking_display():
+    """`create_app` が設定から決める日本語での表示の方針(モジュールの状態)を、テストごとに既定へ戻す。"""
+    yield
+    from spinebox import linking
+    from spinebox.config import MetadataSettings
+    linking.configure(MetadataSettings())
+
+
 @pytest.fixture
 def library(tmp_path) -> Path:
     """標準の蔵書: 画像フォルダ / 単巻 cbz / 複数巻フォルダの zip / 内側アーカイブ入りの zip / 壊れた zip / 7z。"""
