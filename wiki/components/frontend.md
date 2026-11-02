@@ -42,8 +42,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/api.ts:882 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
+| `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
 
 ## 決めたこと(コードからは理由が読めないもの)
+
+- **ファビコンは SVG・ICO・PNG の 3 種を `frontend/public/` に置く。** モダンブラウザ向けには高精細・ダーク/ライト対応のベクター `favicon.svg`、レガシー互換に 16/32/48px マルチサイズの `favicon.ico`、iOS Safari のホーム画面追加・PWA 向けに 180x180 の `apple-touch-icon.png` を用意する。Vite ビルド(`npm run build`)で `frontend/dist/` にそのままコピーされ、バックエンドの静的配信 `/` 経由でブラウザへ配信される
 
 - **ページ番号は 0 始まり。** `progress.page` も `pages[].index` と同じ番号で送る(画面の表示だけ +1)。
   #14 と同時に作ったため、契約の文面に始まりの番号が無かった。バックエンドと食い違ったら API 契約側を正にして合わせる
@@ -74,6 +77,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
   サーバーの `issues` は最大 200 件なので、切った分は「ほか N 件は省略しました」と知らせる。スキャンが失敗したら、サーバーの `detail`
   (型とメッセージ)をそのままエラー表示に出す。固定の文言だけだと、サーバー機で何が起きたか画面から分からなかった
+- **作品カードに別名は出さない(#103)。** 一覧のカードは作品名・著者・種別/出版社・ジャンル・巻数・バッジだけを出し、
+  別名は作品ページで見る(利用者の要望)。API(`GET /api/works` の `aliases`)・作品ページの別名の編集・統合の提案の表示はそのまま。
 - **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** `cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
   読み込めたら見せ、404(入れ子の巻でまだ作っていない・小説・1 ページ目が画像でない)なら要素ごと消して文字だけのカードのまま。
   読み込み中は枠だけ(透明)で、消えたときだけカードの高さが変わる。入れ子の巻の表紙は「表紙を作る」(明示操作)で作り、終わったら `?rev=` を変えて取り直す。

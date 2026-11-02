@@ -49,7 +49,8 @@ describe("作品の一覧", () => {
     expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
     expect(within(card).getByText("重複 1")).toBeTruthy();
     expect(within(card).getByText("統合済み")).toBeTruthy();
-    expect(within(card).getByText(/別名: Sample manga/)).toBeTruthy();
+    // 別名は作品ページで見る(一覧のカードには出さない)
+    expect(within(card).queryByText(/別名/)).toBeNull();
     expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1/titles");
     expect(screen.getByText(/統合の提案が 1 件/).closest("a")!.getAttribute("href")).toBe("#/works/proposals");
     // 巻の一覧と行き来できる

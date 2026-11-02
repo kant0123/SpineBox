@@ -288,6 +288,14 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]]
 - 備考: #99。リーダーの紙面画像用のスタイル `.page { pointer-events: none; }` がグローバルに定義されていたため、管理画面 `<div className="page admin">` やファセット一覧 `<div className="page facets">` の画面コンテナ枠と衝突し、画面全体でクリックイベントが無効化されていた。`.stage .page` にセレクタを絞り込むことで、リーダー画像のスタイルを保護しつつ管理画面のタブリンクやボタンが正常に操作できるようにした。`frontend/src/shell/AppShell.test.tsx` に各タブの href 検証および `.page` 単体への `pointer-events: none` 適用を防ぐリグレッションテストを追加した。
 
+## [2026-11-03] ingest | PR #104 ファビコン(SVG/ICO/PNG)の追加
+- 更新: [[frontend]]
+- 備考: #101。SpineBox の象徴である本の背表紙(Spine)と箱(Box)を組み合わせた案A「ブックボックス」のファビコンアセット一式(frontend/public/ 配下の favicon.svg, favicon.ico, apple-touch-icon.png)を追加し、frontend/index.html に link タグを配置した。Vite ビルド(npm run build)で frontend/dist/ へコピーされ、FastAPI の静的配信(/)経由で配信される。
+
+## [2026-11-03] ingest | PR #107 作品一覧のカードから別名の表示を削除
+- 更新: [[frontend]]
+- 備考: #103。`Works()` の作品カードから「別名: ...」の行を外した(利用者の要望。一覧では見ない)。別名は作品ページで見る。API(`GET /api/works` の `aliases`)・作品ページ・統合の提案の表示は変えていない。`.work-aliases` は使わなくなったので削除。モック API の 375px・1000px で、カードから別名が消え、ほかの項目・バッジの並びが崩れないことを確認(375px のヘッダーの横はみ出しは main でも同じ既存の状態)。
+
 ## [2026-11-03] ingest | PR #109 作品カードからタイトル一覧を開き、管理ページへはボタンで移る
 - 更新: [[frontend]]、[[bookmarks]] / [[server-setup]](コード参照の行番号のずれのみ)
 - 備考: #105。ホーム・漫画・小説・著者・タグ・出版社の作品カードの行き先を、作品の管理ページ(`#/works/<id>`)から新しいタイトル一覧(`#/works/<id>/titles`)へ変えた。タイトル一覧は巻のタイトルを巻番号の枠の順に並べ、読める巻はリーダーへ、オフラインの巻は文字だけ、重複する巻には印を出す。「作品を管理」ボタンで今までの作品ページへ移り、作品ページの戻り先は「タイトル一覧へ」にした。管理ページの URL は変えていない(ブックマーク・フォロー・提案・整理からの既存リンクをそのまま使うため)。
