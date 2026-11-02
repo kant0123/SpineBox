@@ -2,7 +2,7 @@
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
 updated: 2026-11-02
-related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection, novel-reader]
+related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection, novel-reader, organize]
 ---
 
 # アーカイブの読み取り
@@ -19,8 +19,9 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/archive/base.py:102 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
-| `spinebox/archive/base.py:185 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
+| `spinebox/archive/base.py:109 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
+| `spinebox/archive/base.py:224 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
+| `spinebox/archive/base.py:201 inner_reader_problem` | 内側アーカイブを取り出す前の判定。親のリーダーで先頭だけを読み(`read_head()`。zip だけが返す)、`open_archive` と同じ規則で読めるかを決める |
 | `spinebox/archive/sevenzip.py:251 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
@@ -40,9 +41,15 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 - 先頭で分からない zip / cbz(自己解凍形式・先頭に別物が付いた zip・短すぎる・壊れた)はまず zipfile で開き、駄目なら 7-Zip でも
   目次まで読んでみる。どちらでも開けなければ両方の理由を付けた `ArchiveError`(= 従来どおり「読めないアーカイブ」で飛ばす)。
   zipfile で開けたものに 7-Zip は呼ばない
-- 内側アーカイブは取り出す前は目次の名前しか無いので、**取り出した後のキャッシュのファイルで同じ判定をする**(`open_archive(cached, entry.name)`)。
-  ただし取り出す前の `reader_available(entry.name)` は名前で見るので、7-Zip が無いときは .rar という名前の中身 zip を取り出さずに未対応とする
-  (読めない形式を無駄に取り出さないための事前判定。7-Zip がある本番では起きない)
+- 内側アーカイブは取り出した後のキャッシュのファイルで同じ判定をする(`open_archive(cached, entry.name)`)。
+  **取り出す前にも、親のリーダーでエントリの先頭 8 バイトだけを伸長して同じ規則で判定する**(`inner_reader_problem()`。巻を開くときの
+  `spinebox/library.py Library._extract()` と整理の事前検査 `spinebox/organize/organizer.py Organizer._inspect_archive()`)。
+  読めない形式を無駄に(数 GB になりうる)取り出さないための判定で、#62 までは名前の拡張子で見ていたため、7-Zip が無いと
+  .rar / .7z という名前の中身 zip を取り出す前に未対応としていた。中身が rar / 7z なら「未対応(中身は rar。拡張子は .cbz): 7-Zip が見つからない」で、
+  巻を開くと 422、裏の解析では `analysis_error` に残る
+- 先頭を読むのは zip の親だけ(`ZipReader.read_head()`)。7-Zip CLI の親は先頭を読むにも子プロセスが要るので名前で判定するが、
+  7-Zip CLI の親を開けている時点で 7-Zip はあるので、名前と中身が食い違っても結果は変わらない。暗号化などで先頭を読めないときも名前で判定し、
+  取り出し時に具体的な理由が出る
 - 整理処理の事前検査は元ファイルがディスクにあるので中身で見る(`file_reader_available()`)
 
 ## 名前の復号
@@ -116,3 +123,4 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 - #16 で 7z / rar を 7-Zip CLI で実装。実データで入れ子が深さ 3 あったため `max_depth` の既定を 1 から 3 に上げた。テストの rar は
   無圧縮の RAR5 を `tests/archives7z.py:rar5_bytes` で手組みしている(rar の圧縮器が無くても 7-Zip 側の読み取りを試せる)
 - #49 で形式の判定を拡張子から先頭のマジックバイトに変えた。改名した rar / 7z の合成データは `tests/test_archive_magic.py`(7z が無ければ skip)
+- #62 で内側アーカイブの取り出す前の判定も中身(先頭のマジックバイト)に揃えた。7-Zip なしの合成データ(名前 rar / 7z で中身 zip、名前 cbz / rar で中身 rar)も同じファイル
