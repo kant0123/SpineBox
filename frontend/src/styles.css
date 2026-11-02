@@ -280,3 +280,24 @@ button.secondary { background: transparent; color: var(--accent); }
 .reader-options button { padding: 6px 10px; }
 .muted-dark { color: #aaa; font-size: 0.85rem; }
 .badge.novel-badge { background: #e7f0e3; color: #2f5a2a; }
+
+/* 受け入れ */
+.inbox-list, .inbox-results { padding: 0; list-style: none; }
+.inbox-item { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.inbox-item.blocked { opacity: 0.85; }
+.inbox-select { display: flex; gap: 8px; align-items: center; }
+.inbox-select input { width: 20px; height: 20px; }
+.inbox-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.organize-badge.inbox-ready { border-color: var(--accent); color: var(--accent); }
+.organize-badge.inbox-choose { border-color: #b7791f; color: #b7791f; }
+.organize-badge.inbox-blocked { border-color: #c0392b; color: #c0392b; }
+.inbox-work { margin: 8px 0; }
+.inbox-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0; font-size: 0.9rem; }
+.inbox-field select, .inbox-field input[type="text"] { flex: 1 1 12em; min-width: 0; max-width: 100%; padding: 6px; font-size: 1rem; }
+.inbox-field input[type="number"] { width: 6em; padding: 6px; font-size: 1rem; }
+.inbox-volumes { padding: 0; list-style: none; margin: 8px 0 0; }
+.inbox-volume { border-top: 1px solid var(--border); padding: 8px 0; }
+.inbox-volume.skipped { opacity: 0.6; }
+.inbox-info { font-size: 0.85rem; margin: 4px 0; }
+.link-button { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; font: inherit; font-size: 0.85rem; text-decoration: underline; }
+.inbox-approve { align-items: center; }

@@ -6,6 +6,7 @@ import { Duplicates } from "./duplicates/Duplicates";
 import { WorkPage } from "./works/WorkPage";
 import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
+import { Inbox } from "./organize/Inbox";
 import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
 
 export function App() {
@@ -28,6 +29,8 @@ export function App() {
       return <OrganizeHistory />;
     case "duplicates":
       return <Duplicates />;
+    case "inbox":
+      return <Inbox />;
     case "works":
       return <Works />;
     case "work":

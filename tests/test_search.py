@@ -348,7 +348,7 @@ def test_migration_9_from_a_works_db_builds_the_index_on_first_use(tmp_path, bas
 
     conn = db.open_db(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) >= 9
         assert conn.execute("SELECT COUNT(*) FROM work_search_dirty").fetchone()[0] == 0
         res = works.list_works(conn, "お気楽")
         assert [w["id"] for w in res["works"]] == [3]

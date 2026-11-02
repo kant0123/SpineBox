@@ -2,7 +2,7 @@
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ と、命名テンプレートどおりの改名・移動)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping]
+related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox]
 ---
 
 # 整理処理(CBZ 化・テンプレートどおりの改名)
@@ -32,21 +32,21 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/organize/organizer.py:115 plan` | 計画。DB・stat・外側アーカイブの目次だけを読み、問題(実行不可)と注意を出す。整理の単位(読める巻)を選ぶのもここ |
-| `spinebox/organize/organizer.py:250 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出 |
-| `spinebox/organize/organizer.py:191 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
+| `spinebox/organize/organizer.py:118 plan` | 計画。DB・stat・外側アーカイブの目次だけを読み、問題(実行不可)と注意を出す。整理の単位(読める巻)を選ぶのもここ |
+| `spinebox/organize/organizer.py:256 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出 |
+| `spinebox/organize/organizer.py:197 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
 | `spinebox/organize/template.py:73 NameTemplate` | テンプレートの検証(設定の読み込み時)と 1 巻ぶんの展開・無害化。`check_path_length` が全体の長さを見る |
-| `spinebox/organize/organizer.py:342 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
-| `spinebox/organize/organizer.py:452 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
-| `spinebox/organize/organizer.py:617 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
-| `spinebox/organize/organizer.py:530 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
+| `spinebox/organize/organizer.py:352 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
+| `spinebox/organize/organizer.py:492 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
+| `spinebox/organize/organizer.py:699 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
+| `spinebox/organize/organizer.py:612 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:898 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
+| `spinebox/organize/organizer.py:985 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
-置き場は `spinebox/config.py:88 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
+置き場は `spinebox/config.py:107 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:239 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:263 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
@@ -99,6 +99,16 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 - 元に戻すは、改名した先のファイルが改名時のまま(サイズ・mtime)で、元の場所が空いているときだけ。空になった元のフォルダは消さない
   (実行前からあったもの)。実行で作ったフォルダは、中に利用者のファイルが増えていなければ消す
 
+## 受け入れ(`kind="intake"`)
+
+受け入れフォルダの本を書庫へ入れる操作([[inbox]])。同じ `execute` / `undo` を、元(受け入れフォルダ)と出力先(書庫)が別のルートの形で使う。
+計画 JSON は `out_root_id` / `out_root_path` / `out_base`(出力先側の作業場・`created/` の置き場)を持ち、元の退避は受け入れフォルダ側の `organize_base` に置く。
+1 巻 = 1 CBZ と小説は `mode="move"`(中身を変えずに `move_in`)、それ以外は `mode="cbz"`(CBZ 化)。
+
+- **元が受け入れフォルダの本なので、元の巻レコードは「整理済み」にして受け入れ待ちから外し、元に戻すと印を外す**(蔵書の一覧には最初から出ない)。
+  元に戻すとき、書庫で付いた作品の割り当て・読書位置は写し戻さない(`_record_undone`。受け入れフォルダの巻が作品に入ってしまう)
+- 作業場・出力先・退避のドライブ検査は元・作業場・書庫の 3 つで見る(`_drive_problems`)。別ドライブなら実行させない
+
 ## 実行できないもの(計画の「問題」)
 
 - 読めない巻を含むソース(7-Zip が無いときの rar / 7z、内側アーカイブを含む)。全巻を CBZ にできないなら 1 巻も作らない
@@ -135,6 +145,8 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
   登録する。スキャナーの切り出し方を変えたら、ここも合わせないと次のスキャンで巻 id が変わる
 
 ## 経緯
+
+- #66 で受け入れ(`kind="intake"`。[[inbox]])を足した。元と出力先を別ルートにし、`mode="move"`(`move_in`)を足した。往復後に受け入れフォルダと書庫がパス・バイト列・mtime まで一致することを `tests/test_inbox.py` で確かめている
 
 - #58 で命名テンプレートを足した(CBZ 化の出力先と、作品単位の改名・移動)。プレビューの前後で蔵書が変わらないこと、両方の往復で
   ファイル・フォルダ・mtime まで実行前と一致すること、衝突・対象外の理由、読書位置・作品・重複の却下の引き継ぎを

@@ -10,12 +10,14 @@ export type Route =
   | { name: "duplicates" }
   | { name: "works" }
   | { name: "work"; id: string }
-  | { name: "work-proposals" };
+  | { name: "work-proposals" }
+  | { name: "inbox" };
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
+  if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
   if (/^\/works\/?$/.test(h)) return { name: "works" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
@@ -39,6 +41,8 @@ export const organizeTemplateHref = (volumeId: string | number) => `${organizeHr
 export const organizeHistoryHref = "#/organize";
 export const libraryHref = "#/";
 export const duplicatesHref = "#/duplicates";
+/** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
+export const inboxHref = "#/inbox";
 export const worksHref = "#/works";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
