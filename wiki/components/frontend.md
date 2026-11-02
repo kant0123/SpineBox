@@ -41,8 +41,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/api.ts:882 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
+| `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
 
 ## 決めたこと(コードからは理由が読めないもの)
+
+- **ファビコンは SVG・ICO・PNG の 3 種を `frontend/public/` に置く。** モダンブラウザ向けには高精細・ダーク/ライト対応のベクター `favicon.svg`、レガシー互換に 16/32/48px マルチサイズの `favicon.ico`、iOS Safari のホーム画面追加・PWA 向けに 180x180 の `apple-touch-icon.png` を用意する。Vite ビルド(`npm run build`)で `frontend/dist/` にそのままコピーされ、バックエンドの静的配信 `/` 経由でブラウザへ配信される
 
 - **ページ番号は 0 始まり。** `progress.page` も `pages[].index` と同じ番号で送る(画面の表示だけ +1)。
   #14 と同時に作ったため、契約の文面に始まりの番号が無かった。バックエンドと食い違ったら API 契約側を正にして合わせる
