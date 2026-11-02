@@ -452,7 +452,7 @@ def test_background_analysis_is_recorded_as_one_row(make_settings, tmp_path):
 
         def analyzed():
             rows = [j for j in c.get("/api/jobs").json()["history"] if j["kind"] == "background_analysis"]
-            return rows and rows[0]["summary"]["analyzed"] >= 4
+            return rows and (rows[0]["summary"] or {}).get("analyzed", 0) >= 4
         wait_until(analyzed, timeout=20, what="裏の解析")
         rows = [j for j in c.get("/api/jobs").json()["history"] if j["kind"] == "background_analysis"]
         assert len(rows) == 1 and rows[0]["origin"] == "background" and rows[0]["runs"] >= 4
