@@ -174,7 +174,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[archive-reading]]
 - 備考: #49、PR #60。本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。
 
-## [2026-11-02] ingest | PR #PENDING 命名テンプレートに沿った整理(CBZ 化の出力先・作品単位の改名と移動)
+## [2026-11-02] ingest | PR #65 命名テンプレートに沿った整理(CBZ 化の出力先・作品単位の改名と移動)
 - 更新: [[organize]], [[backend]], [[frontend]], [[work-grouping]], [[overview]], [[server-setup]](コード参照の行番号のみ)
 - 備考: #58。設定 `[organize] name_template`(既定 `<作品名>/<作品名> 第NN巻.cbz`。番号の直後の「巻」は話単位の巻で「話」)。
   CBZ 化に `naming="template"` を足し、既に 1 巻 = 1 CBZ の巻を作品単位で改名・移動する `kind="rename"` の操作を足した。
