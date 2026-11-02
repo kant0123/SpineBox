@@ -246,7 +246,6 @@ button.small { padding: 4px 10px; font-size: 0.8rem; }
 /* 表紙(#75)。読み込み中は枠だけ。404 なら要素ごと消えて文字だけのカードになる */
 .work-cover { flex: none; width: 64px; aspect-ratio: 2 / 3; height: auto; align-self: flex-start; object-fit: cover; border-radius: 4px; background: var(--border); opacity: 0; transition: opacity 0.2s; }
 .work-cover.loaded { opacity: 1; }
-.work-aliases { overflow-wrap: anywhere; }
 .work-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 button.secondary { background: transparent; color: var(--accent); }
 .work-page h2 { font-size: 1.05rem; margin: 16px 0 6px; }

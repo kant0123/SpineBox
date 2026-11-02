@@ -184,7 +184,6 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                   <span className="volume-meta">
                     {w.volume_count} 巻{w.max_volume ? `(〜${w.max_volume} 巻)` : ""}
                   </span>
-                  {w.aliases.length > 0 && <span className="volume-meta work-aliases">別名: {w.aliases.map((a) => a.alias).join(" / ")}</span>}
                   <span className="work-badges">
                     {missing && <span className="badge">欠け {missing}</span>}
                     {w.duplicate_slots > 0 && <span className="badge dup-badge">重複 {w.duplicate_slots}</span>}
