@@ -10,7 +10,6 @@ import json
 import re
 from dataclasses import dataclass
 
-from .anilist import clean_text
 from .base import MetadataSource, ParseError, _Run
 from .http import FetchError, SourceRequest
 from .match import score_item
@@ -123,7 +122,6 @@ def _item_from_record(record: dict, hit_title: str | None) -> MetadataItem | Non
         kind=_KINDS.get(str(record.get("type") or "").lower()),
         genres=tuple(g["genre"] for g in (record.get("genres") or []) if isinstance(g, dict) and g.get("genre")),
         tags=_categories(record.get("categories")),
-        synopsis=clean_text(record.get("description")),
         source_url=record.get("url"),
     )
 

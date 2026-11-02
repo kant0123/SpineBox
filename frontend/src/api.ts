@@ -445,12 +445,11 @@ export interface WorkEditBody {
   author?: string | null;
   kind?: WorkKind | null;
   publisher?: string | null;
-  synopsis?: string | null;
   genres?: string[];
   tags?: string[];
 }
 
-export type WorkFieldName = "title" | "author" | "kind" | "publisher" | "genres" | "tags" | "synopsis";
+export type WorkFieldName = "title" | "author" | "kind" | "publisher" | "genres" | "tags";
 
 export interface MetadataFetchState {
   running: boolean;

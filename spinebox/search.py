@@ -1,7 +1,7 @@
 """作品の全文検索と絞り込み(#56。GOAL.md「できるようになること」3)。
 
 - 索引 `work_search` は作品 1 件につき 1 行(rowid = 作品 id)。本文は作品名・別名(外したものを除く)・著者・
-  その他の項目(公開 DB の結線で足される種別・ジャンル・タグ・出版社・あらすじなど。`work_fields` の行を全部)・
+  その他の項目(公開 DB の結線で足される種別・ジャンル・タグ・出版社など。`work_fields` の行を、廃止したあらすじと数値の項目を除いて全部)・
   割り当てた巻の名前を、それぞれ `normalize_title` で正規化して改行でつないだもの。正規化は作品の名寄せと同じ
   (NFKC・大小文字・カタカナ → ひらがな・空白や記号を落とす)なので、検索語も同じ関数を通してから引く
 - 索引は派生データ。実行時の SQLite が FTS5 の trigram を持てば FTS5(`tokenize='trigram'`)、持たなければ
@@ -27,8 +27,8 @@ INDEX_TABLE = "work_search"
 # 値は 1 つずつ(JSON 配列か、区切り文字で分けたもの)に分け、正規化して一致で比べる。
 # 行が無い項目は絞り込みの候補も出ない
 FILTER_FIELDS = {"author": "author", "kind": "kind", "genre": "genres", "tag": "tags"}
-# 索引に入れない項目(検索語に当たってほしくない数値など)
-UNINDEXED_FIELDS = ("total_volumes",)
+# 索引に入れない項目(検索語に当たってほしくない数値と、廃止した項目。spinebox/works.py の RETIRED_FIELDS)
+UNINDEXED_FIELDS = ("total_volumes", "synopsis")
 # 種別(work_fields.kind の値)の日本語表記。検索語にも絞り込みの値にも使える
 KIND_LABELS = {"manga": "漫画", "novel": "小説"}
 _VALUE_SEPARATORS = re.compile(r"[、,，;；]")

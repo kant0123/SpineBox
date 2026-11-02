@@ -1,4 +1,4 @@
-"""AniList(GraphQL)クライアント。作品単位のタグ・あらすじ・ローマ字名・別名。
+"""AniList(GraphQL)クライアント。作品単位のタグ・ローマ字名・別名。
 
 キー不要。GraphQL のエンドポイントは 1 つで、検索は POST。レート制限は 90 回/分(障害時は 30 回/分に下がる)、
 超えると 429 と Retry-After。取得結果は有効期限つきで保存し、保存済みを使い回す(利用規約が
@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import html
 import json
 import re
 
@@ -36,6 +35,8 @@ query ($search: String, $perPage: Int) {
   }
 }
 """.strip()
+# description(あらすじ)はもう読まない(#82 で廃止)が、クエリから外すと要求の本文が変わって保存済みの生応答の鍵
+# (spinebox/metadata/http.py SourceRequest.key())が全部外れ、取り直しになるので残している
 
 # 作者として拾うスタッフの役割(`Story & Art` `Story` `Art` `Original Creator` `Illustration`)
 _AUTHOR_ROLE = re.compile(r"story|art\b|original creator|illustration", re.IGNORECASE)
@@ -96,7 +97,6 @@ def _parse_media(m: dict) -> MetadataItem | None:
         kind=KIND_NOVEL if m.get("format") == "NOVEL" else KIND_MANGA if m.get("format") else None,
         genres=tuple(g for g in (m.get("genres") or []) if isinstance(g, str)),
         tags=_tags(m.get("tags")),
-        synopsis=clean_text(m.get("description")),
         source_url=m.get("siteUrl"),
     )
 
@@ -132,13 +132,3 @@ def _date(d: dict) -> str | None:
         if isinstance(day, int):
             out += f"-{day:02d}"
     return out
-
-
-def clean_text(text: object) -> str | None:
-    """あらすじから HTML のタグ・実体参照を除く(改行の `<br>` は改行にする)。"""
-    if not isinstance(text, str):
-        return None
-    text = re.sub(r"<\s*br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = html.unescape(text).replace("\r\n", "\n").strip()
-    return text or None

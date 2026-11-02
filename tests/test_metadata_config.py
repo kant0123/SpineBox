@@ -38,14 +38,22 @@ def test_linking_settings_defaults_and_overrides():
 
 def test_japanese_display_settings_defaults_and_overrides():
     m = parse(None)
-    assert (m.untranslated_terms, m.english_synopsis) == ("hide", "fold")
-    m = parse({"untranslated_terms": "keep", "english_synopsis": "hide"})
-    assert (m.untranslated_terms, m.english_synopsis) == ("keep", "hide")
+    assert m.untranslated_terms == "hide"
+    m = parse({"untranslated_terms": "keep"})
+    assert m.untranslated_terms == "keep"
+
+
+@pytest.mark.parametrize("value", ["fold", "hide", "show", "", True])
+def test_retired_english_synopsis_is_ignored_with_a_warning(value, caplog):
+    """廃止した `english_synopsis`(#82)は、どんな値が残っていても起動を止めない。無視してログで知らせる。"""
+    with caplog.at_level("WARNING", logger="spinebox.config"):
+        m = parse({"english_synopsis": value, "untranslated_terms": "keep"})
+    assert m.untranslated_terms == "keep" and not hasattr(m, "english_synopsis")
+    assert len([r for r in caplog.records if "english_synopsis" in r.getMessage()]) == 1
 
 
 @pytest.mark.parametrize("table", [
-    {"untranslated_terms": "show"}, {"untranslated_terms": True}, {"english_synopsis": "show"},
-    {"english_synopsis": ""},
+    {"untranslated_terms": "show"}, {"untranslated_terms": True},
 ])
 def test_invalid_japanese_display_settings_are_rejected(table):
     with pytest.raises(ConfigError):
