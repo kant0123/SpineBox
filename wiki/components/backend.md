@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-02
-related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails]
+related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, follow]
 ---
 
 # バックエンド
@@ -33,6 +33,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/library.py:368 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:95 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
 | `spinebox/linking.py:319 fetch_work()` / `spinebox/linking.py:613 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
+| `spinebox/follows.py:115 check_work()` | フォロー([[follow]])。続刊・欠けを調べる。一覧は `list_follows()` / `list_releases()`(DB だけ)、ジョブ・定期実行の入口は `check_many()` |
 | `spinebox/works.py:394 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
@@ -58,6 +59,10 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `POST /api/works/{id}/fields/{field}/reset` | 手動の項目を自動に戻す(直す前の値、無ければ空にして公開 DB の値を入れ直す)。手動でない項目・直す前の名前が無い作品名は 409 |
 | `POST /api/works/{id}/metadata/fetch` | その作品の公開 DB を取得して連携を更新し、詳細を返す(同期。取得元の失敗は 200 で `links[].failure` に出る)。取得元が無効なら 409 |
 | `POST /api/works/{id}/links/{source}/choose` / `.../reset` | 確認待ちの候補を選ぶ `{"source_id"}`(null = 該当なし)/ 手動の選択を解除する。選んだ連携は手動で、再取得で変わらない。候補にない id は 422、取得元が違えば 404 |
+| `PUT` / `DELETE /api/works/{id}/follow` | 作品をフォローする / 外す。作品のフォローの状態 `{"followed", "followed_at", "checked_at", "status", "failure", "releases"}` を返す(作品の詳細の `follow` も同じ形)。統合で消えた id は 404([[follow]]) |
+| `GET /api/follows` | フォロー管理 `{"follows": [{"work_id", "title", "followed_at", "checked_at", "status", "failure", "unseen", "found"}], "state", "available", "background", "interval_hours"}`。`status` は `ok` / `unlinked` / `no_numbers` / `kind_mismatch` / `disabled` / `failed`。`available` は NDL が有効か |
+| `GET /api/follows/releases?seen` | 続刊・欠けのある作品 `{"works": [{"work_id", "title", "checked_at", "status", "failure", "latest_released", "owned_max", "releases": [{"volume", "kind" (`new` / `gap`), "title", "volume_label", "released", "isbn", "url", "source", "found_at", "seen", "seen_at"}]}]}`。新しい発売日順、蔵書に入った巻は出ない。`seen=true` で確認済みも含める |
+| `POST /api/follows/releases/seen` / `POST /api/follows/check?wait` | 見つけた巻を確認済みにする `{"work_id", "volumes"?}` → `{"marked"}` / 続刊を調べる `{"work_ids"?}`(省くと全作品。フォローしていない作品は飛ばす)。既定は裏で 202 + 状態(`summary: {works, statuses}`)、`wait` なら同期。補完の実行中・NDL が無効なら 409 |
 | `GET /api/works/metadata` / `POST /api/works/metadata/fetch?all&wait` | 全作品の取得の状態 `{"state", "sources", "background"}` / 取得が必要な作品(`all` で全作品)を裏で取得して 202(`wait` なら同期)。実行中・取得元なしは 409 |
 | `PATCH /api/volumes/{id}/metadata` / `POST .../metadata/{field}/reset` | 巻の書誌(`publisher` `label` `released` `isbn`)を手動で保存 / 自動に戻す。ISBN・発売日の形式違いは 422 |
 | `POST /api/works/{id}/aliases` / `DELETE .../aliases/{alias_id}` | 別名を足す(手動)/ 外す(再計算で戻らない)。詳細を返す |
@@ -137,6 +142,8 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 ## 経緯
 
+- #87 でフォロー([[follow]])を足した。マイグレーション 12(`follows` / `follow_releases`。#82 のマイグレーション 11 の後ろ)。設定 `[follow]`(`background` 既定は無効・`interval_hours`・`background_interval_seconds`・`response_ttl_days`)。
+  続刊の確認は補完と同じ `metadata_lock` で直列にする
 - #66 で受け入れ([[inbox]])を足した。マイグレーション 10(`library_roots.inbox`)。設定 `inbox_dirs`(受け入れフォルダと書庫の組)。
   受け入れフォルダは蔵書と同じスキャナーで走査するが `inbox = 1` の行として分け、一覧・作品・検索・重複・結線の対象外にする
 - #57 で小説(EPUB・テキスト)を足した([[novel-reader]])。マイグレーション 8(`volumes.format`・`reading_progress.position`)。
