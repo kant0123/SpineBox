@@ -42,7 +42,7 @@ describe("ルートと文言", () => {
 });
 
 describe("作品の一覧", () => {
-  it("作品カードに欠け・重複・統合済み・提案が出て、作品ページへのリンクになる", async () => {
+  it("作品カードに欠け・重複・統合済み・提案が出て、タイトル一覧へのリンクになる", async () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
@@ -50,10 +50,45 @@ describe("作品の一覧", () => {
     expect(within(card).getByText("重複 1")).toBeTruthy();
     expect(within(card).getByText("統合済み")).toBeTruthy();
     expect(within(card).getByText(/別名: Sample manga/)).toBeTruthy();
-    expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1");
+    expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1/titles");
     expect(screen.getByText(/統合の提案が 1 件/).closest("a")!.getAttribute("href")).toBe("#/works/proposals");
     // 巻の一覧と行き来できる
     expect(screen.getByRole("link", { name: "巻" }).getAttribute("href")).toBe("#/volumes");
+  });
+});
+
+describe("作品のタイトル一覧(#105)", () => {
+  it("作品カードから開くと、巻のタイトルが番号順に並び、管理ページへのボタンがある", async () => {
+    window.location.hash = "#/works/1/titles";
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "タイトル一覧(4)" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "サンプル漫画" })).toBeTruthy();
+    const items = [...document.querySelectorAll(".title-list .title-item")];
+    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "1巻", "2巻", "4巻"]);
+    expect(items.map((li) => li.querySelector(".volume-title")!.textContent)).toEqual([
+      "サンプル漫画 第01巻", "Sample manga v01", "サンプル漫画 第02巻", "読了済みの巻",
+    ]);
+    // 読める巻はリーダーへ、重複は印を出す
+    expect(items[0].querySelector("a")!.getAttribute("href")).toBe("#/read/1");
+    expect(items[0].querySelector(".dup-badge")!.textContent).toBe("重複");
+    // ボタンは今まで作品カードから開いていた作品の管理ページ(#/works/<id>)へ
+    expect(screen.getByRole("link", { name: "作品を管理" }).getAttribute("href")).toBe("#/works/1");
+    expect(screen.getByRole("link", { name: "‹ 作品の一覧へ" }).getAttribute("href")).toBe("#/works");
+  });
+
+  it("オフラインの巻はタイトルだけ出し、リーダーへはリンクしない", async () => {
+    window.location.hash = "#/works/2/titles";
+    render(<App />);
+    const item = (await screen.findByText("外付けドライブの巻")).closest("li")!;
+    expect(item.querySelector("a")).toBeNull();
+    expect(within(item).getByText(/オフライン/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "作品を管理" }).getAttribute("href")).toBe("#/works/2");
+  });
+
+  it("存在しない(統合された)作品は、見つからないと言う", async () => {
+    window.location.hash = "#/works/99/titles";
+    render(<App />);
+    expect(await screen.findByText(/この作品は見つかりません/)).toBeTruthy();
   });
 });
 

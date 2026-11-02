@@ -40,6 +40,7 @@ export function activeNav(route: Route): NavKey | null {
       return route.field;
     case "library":
     case "work":
+    case "work-titles":
     case "work-proposals":
     case "work-organize":
       return "home";

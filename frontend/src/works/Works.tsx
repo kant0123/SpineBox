@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
-import { duplicatesHref, facetListHref, workHref, workProposalsHref, type WorksScope } from "../route";
+import { duplicatesHref, facetListHref, workProposalsHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
@@ -258,7 +258,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           const missing = missingText(w);
           return (
             <li key={w.id} className="work-card">
-              <a className="work-link" href={workHref(w.id)}>
+              <a className="work-link" href={workTitlesHref(w.id)}>
                 {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} rev={coverRev} />}
                 <span className="work-text">
                   <span className="volume-title">{w.title}</span>
