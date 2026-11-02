@@ -1,7 +1,10 @@
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
 from conftest import page_bytes, snapshot, write_zip, zip_bytes
+from novels import PNG, epub_bytes
 from spinebox.app import create_app
 
 
@@ -37,7 +40,7 @@ def test_scan_and_list(make_client, library):
     vols = by_title(c)
     assert set(vols) == {"FolderBook", "single", "Vol1", "Vol2", "inner1", "inner2", "inner3"}
     v = vols["Vol1"]
-    assert v == {"id": v["id"], "title": "Vol1", "source_name": "multi.zip", "page_count": 2,
+    assert v == {"id": v["id"], "title": "Vol1", "source_name": "multi.zip", "format": "images", "page_count": 2,
                  "offline": False, "progress": None, "parent_id": None, "parent_title": None,
                  "volume_number": {"kind": "volume", "start": 1, "end": 1, "evidence": "Vol1"},
                  "findings": [], "duplicate_count": 0, "work_id": v["work_id"], "can_analyze": False}
@@ -139,10 +142,14 @@ def test_offline_volumes_are_409_and_progress_survives(make_client, library):
 
 
 def test_library_bytes_unchanged_by_scan_and_full_read(make_client, library):
+    # 小説(EPUB・テキスト。#57)も含める
+    (library / "novel.epub").write_bytes(epub_bytes(['<p>本文</p><img src="../images/pic.png"/>', "<p>終わり</p>"],
+                                                    images={"images/pic.png": PNG}))
+    (library / "novel.txt").write_bytes("｜縦書き《たてがき》の本文".encode("cp932"))
     before = snapshot(library)
     c, _ = make_client(library)
     c.post("/api/scan")
-    read = 0
+    read = sections = 0
     for v in c.get("/api/volumes").json():
         r = c.get(f"/api/volumes/{v['id']}")
         if r.status_code != 200:
@@ -152,9 +159,15 @@ def test_library_bytes_unchanged_by_scan_and_full_read(make_client, library):
             page = c.get(f"/api/volumes/{v['id']}/pages/{p['index']}")
             assert page.status_code == 200
             read += 1
+        for s in r.json().get("sections", []):
+            html = c.get(f"/api/volumes/{v['id']}/sections/{s['index']}").json()["html"]
+            for src in re.findall(r'src="([^"]+)"', html):
+                assert c.get(src).status_code == 200
+            sections += 1
         c.put(f"/api/volumes/{v['id']}/progress", json={"page": 0, "finished": True})
     c.post("/api/scan")
     assert read == 4 + 3 + 2 + 1 + 3 + 2
+    assert sections == 2 + 1
     assert snapshot(library) == before  # バイト列・サイズ・mtime が全ファイルで同じ、ファイルの増減も無い
 
 

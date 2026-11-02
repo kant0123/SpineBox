@@ -270,10 +270,10 @@ def test_unsupported_extensions_and_imageless_folders_are_ignored_quietly(conn, 
     lib = tmp_path / "lib"
     good(lib)
     (lib / "book.pdf").write_bytes(b"%PDF-1.4")
-    (lib / "novel.epub").write_bytes(b"PK")
-    (lib / "notes.txt").write_text("x")
-    (lib / "textfolder").mkdir()
-    (lib / "textfolder" / "a.txt").write_text("x")
+    (lib / "book.mobi").write_bytes(b"BOOKMOBI")  # .epub / .txt は小説の巻になる(#57。tests/test_novel.py)
+    (lib / "notes.md").write_text("x")
+    (lib / "docfolder").mkdir()
+    (lib / "docfolder" / "a.md").write_text("x")
     (lib / "empty folder").mkdir()
     result = scan(conn, make_settings(lib))
     assert titles(conn) == ["good"] and result.issues == []

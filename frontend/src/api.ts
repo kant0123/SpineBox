@@ -4,9 +4,17 @@
 export type VolumeId = number | string;
 
 export interface Progress {
+  /** 画像の巻はページ番号、小説は区切りの番号 */
   page: number;
   finished: boolean;
+  /** 小説だけ: 区切りの中の割合(0〜1)。文字サイズ・画面幅が変わっても近い位置で再開するため */
+  position?: number;
 }
+
+/** 巻の形式。images = ページ画像の巻(漫画など)、epub / text = 小説(縦書きリーダーで読む) */
+export type VolumeFormat = "images" | "epub" | "text";
+
+export const isNovel = (format: VolumeFormat | undefined) => format === "epub" || format === "text";
 
 /** 名前から読んだ巻・話の番号の候補(確定ではない)。evidence は名前の中で当たった部分 */
 export interface VolumeNumber {
@@ -33,6 +41,8 @@ export interface VolumeSummary {
   id: VolumeId;
   title: string;
   source_name: string;
+  /** 省略時は images。小説の page_count は区切りの数(開くまで null) */
+  format?: VolumeFormat;
   page_count: number | null;
   offline: boolean;
   progress: Progress | null;
@@ -54,11 +64,22 @@ export interface PageInfo {
   name: string;
 }
 
+/** 小説の区切り(EPUB の本文 1 つ / テキストの一定文字数)。length は全体の進み具合の重み */
+export interface SectionInfo {
+  index: number;
+  length: number;
+}
+
 export interface VolumeDetail {
   id: VolumeId;
   title: string;
+  format?: VolumeFormat;
   page_count: number | null;
   pages: PageInfo[];
+  /** 小説だけ */
+  sections?: SectionInfo[];
+  /** テキストの小説で判定した文字コード */
+  encoding?: string | null;
   progress: Progress | null;
   parent_id?: VolumeId | null;
   volume_number?: VolumeNumber | null;
@@ -438,7 +459,7 @@ export const api = {
     request<unknown>(`/api/volumes/${vid(id)}/progress`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: p.page, finished: p.finished }),
+      body: JSON.stringify(p.position === undefined ? { page: p.page, finished: p.finished } : { page: p.page, finished: p.finished, position: p.position }),
       // ページを閉じる直前の送信でも届くようにする
       keepalive,
     }),
@@ -448,6 +469,8 @@ export const api = {
   dismissDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/dismiss`, { method: "POST" }),
   restoreDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/restore`, { method: "POST" }),
   pageUrl: (id: VolumeId, index: number) => `/api/volumes/${vid(id)}/pages/${index}`,
+  /** 小説の区切り 1 つの HTML(サーバーで無害化済み。画面に入れる前にもう一度 sanitize する) */
+  getSection: (id: VolumeId, index: number) => request<{ index: number; html: string }>(`/api/volumes/${vid(id)}/sections/${index}`),
   planOrganize: (volumeId: VolumeId) =>
     request<OrganizeOp>("/api/organize/plan", {
       method: "POST",

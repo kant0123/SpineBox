@@ -302,6 +302,14 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 8: 小説(EPUB・テキスト)の巻(#57)。volumes.format: NULL = 画像の巻(漫画など)、'epub' / 'text' = 小説。
+    #    小説のソースは 1 ファイルなので sources.kind は 'archive'(CHECK を作り直さないため。読み分けは format で行う)。
+    #    小説の page_count は区切り(EPUB の spine の本文 / テキストの一定文字数ごと)の数で、開いたときに決まる。
+    #    reading_progress.position: 小説の区切りの中の割合(0〜1)。page は区切りの番号。画像の巻は NULL
+    [
+        "ALTER TABLE volumes ADD COLUMN format TEXT",
+        "ALTER TABLE reading_progress ADD COLUMN position REAL",
+    ],
 ]
 
 

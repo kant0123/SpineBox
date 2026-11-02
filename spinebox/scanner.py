@@ -6,6 +6,9 @@
 - (b) zip/cbz の中で画像を直接含むフォルダごと(1 アーカイブに複数巻フォルダがあればフォルダ単位)
 - (c) アーカイブの中の内側アーカイブ。**取り出さない・読まない**(目次に名前が出るだけ)。
   ページ数は開くまで NULL
+- (d) 小説: `.epub`(zip の目次だけ読んで危険な名前・上限超え・container.xml の有無を見る。本文は読まない)と
+  `.txt`(中身を読まない。文字コードは開いたときに判定する)。画像のあるフォルダの `.txt` は添え物として扱わない。
+  アーカイブの中の `.epub` / `.txt` は巻にしない(漫画のアーカイブに添えられた説明書きを小説と取り違えないため)
 
 蔵書には読み取りしかしない。サイズ・mtime・SCAN_VERSION が前回と同じアーカイブは開き直さない。
 ソース(ファイル・フォルダ)1 つで想定外の例外が出ても、そのソースの問題を scan_issues に記録して
@@ -29,6 +32,8 @@ from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archiv
 from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import parse_number
+from .novel import FORMAT_EPUB, novel_format
+from .novel.epub import scan_problems as epub_scan_problems
 from .pages import is_image
 
 log = logging.getLogger(__name__)
@@ -71,6 +76,7 @@ class VolumeSpec:
     name_raw: bytes
     name_encoding: str
     page_count: int | None
+    format: str | None = None  # 小説なら 'epub' / 'text'
 
 
 def _fs_name_bytes(name: str) -> bytes:
@@ -282,8 +288,12 @@ class Scanner:
                           lambda rel, dirpath=dirpath, images=images:
                           self._scan_folder(root_id, root, rel, Path(dirpath), images))
                 for name in sorted(filenames):
-                    if is_archive_name(name):
-                        full = os.path.join(dirpath, name)
+                    full = os.path.join(dirpath, name)
+                    fmt = novel_format(name)
+                    if fmt == FORMAT_EPUB or (fmt and not images):  # 画像のあるフォルダの .txt は添え物
+                        visit("archive", full,
+                              lambda rel, full=full, fmt=fmt: self._scan_novel(root_id, rel, Path(full), fmt))
+                    elif is_archive_name(name):
                         visit("archive", full, lambda rel, full=full: self._scan_archive(root_id, rel, Path(full)))
         except Exception as e:  # noqa: BLE001 (走査そのものの想定外。途中までの結果は残す)
             complete = False
@@ -393,6 +403,40 @@ class Scanner:
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
             # 読めなかったときはサイズ・mtime を更新しない(次のスキャンで再挑戦する。既存の巻はそのまま)
 
+    def _scan_novel(self, root_id: int, rel: str, path: Path, fmt: str) -> None:
+        """小説のファイルを 1 巻として登録する。EPUB は目次だけ読み、テキストは中身を読まない。"""
+        try:
+            st = path.stat()
+        except OSError as e:
+            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
+            return
+        with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "archive")
+        if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
+                and src["scan_version"] == SCAN_VERSION):
+            return
+        issues: list[Skip] = []
+        specs: list[VolumeSpec] | None = None
+        spec = VolumeSpec(None, "", path.stem, _fs_name_bytes(path.name), "filesystem", None, fmt)
+        if fmt == FORMAT_EPUB:
+            try:
+                with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
+                    listing = list_entries(reader, self.settings.limits)
+                issues = epub_scan_problems(listing.entries, listing.skipped)
+                specs = [] if issues else [spec]  # 危険な名前を含む・container.xml の無い EPUB は巻にしない
+            except LimitExceeded as e:
+                issues.append(Skip(None, safe_text(f"展開上限によりスキップ: {e}")))
+            except ArchiveError as e:
+                issues.append(Skip(None, safe_text(f"読めない EPUB: {e}")))
+        else:
+            specs = [spec]
+        with db.transaction(self.conn) as c:
+            record_issues(c, src["id"], None, issues)
+            if specs is not None:
+                self._replace_volumes(c, src["id"], specs)
+                c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                          (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+
     def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec]) -> None:
         """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。
 
@@ -413,15 +457,16 @@ class Scanner:
             if key in existing:
                 c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?, page_count = ?,
                              number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
-                             analyzed_version = NULL, analysis_error = NULL,
+                             analyzed_version = NULL, analysis_error = NULL, format = ?,
                              missing = 0, updated_at = ? WHERE id = ?""",
-                          (s.title, s.name_raw, s.name_encoding, s.page_count, *numbers, now, existing[key]))
+                          (s.title, s.name_raw, s.name_encoding, s.page_count, *numbers, s.format, now,
+                           existing[key]))
             else:
                 c.execute("""INSERT INTO volumes (source_id, container_path, entry_prefix, title, name_raw,
                              name_encoding, page_count, number_kind, number_start, number_end, number_evidence,
-                             created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                             format, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                           (source_id, s.container_path, s.entry_prefix, s.title, s.name_raw, s.name_encoding,
-                           s.page_count, *numbers, now, now))
+                           s.page_count, *numbers, s.format, now, now))
         for key, vid in existing.items():
             if key not in seen:
                 c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))

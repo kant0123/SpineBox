@@ -296,7 +296,7 @@ class DuplicateScanner:
         rows = self.conn.execute(
             """SELECT v.id, s.rel_path, r.path AS root_path, f.version AS fp_version, f.error AS fp_error
                """ + LISTED_VOLUMES_JOIN + " LEFT JOIN volume_fingerprints f ON f.volume_id = v.id "
-            + LISTED_VOLUMES_WHERE + " AND s.offline = 0 AND r.online = 1 ORDER BY v.id").fetchall()
+            + LISTED_VOLUMES_WHERE + " AND s.offline = 0 AND r.online = 1 AND v.format IS NULL ORDER BY v.id").fetchall()
         max_depth = self.library.settings.limits.max_depth
         out = []
         for r in rows:
