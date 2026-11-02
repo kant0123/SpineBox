@@ -72,7 +72,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 | 規則 | 理由 |
 | --- | --- |
 | **取得元クライアントはあらすじを読み取らない**(`MetadataItem` に項目が無い)。結線も入れない | 読み取って使わない値は、`work_links.item` / `candidates` に溜まり続け、また使う実装を誘う。英語のあらすじが要る用途が今は無い |
-| AniList の GraphQL のクエリからは `description` を外していない(`spinebox/metadata/anilist.py` `QUERY`) | クエリは要求の本文で、本文は保存済みの生応答の鍵(`spinebox/metadata/http.py:73 SourceRequest.key()`)に入る。外すと保存済みの AniList の応答が全部使えなくなり、取り直しになる |
+| AniList の GraphQL のクエリからは `description` を外していない(`spinebox/metadata/anilist.py` `QUERY`) | クエリは要求の本文で、本文は保存済みの生応答の鍵(`spinebox/metadata/http.py:73 key()`(`SourceRequest`))に入る。外すと保存済みの AniList の応答が全部使えなくなり、取り直しになる |
 | **既に DB にあるあらすじの行(`work_fields` の `synopsis`)は消さない。** API・作品の詳細・編集・自動に戻す・統合での引き継ぎ・全文検索には出さない(`spinebox/works.py` `RETIRED_FIELDS`) | 手で書いたあらすじもありうる。元に戻せない削除をしない。生の応答(`metadata_responses`)と、廃止前に保存した候補の中身(`work_links.item`)のあらすじもそのまま |
 | 廃止したあらすじの手動の行は「手動が絡む」(`spinebox/works.py` `_manual_involved()`)に数えない | 画面から見えず「自動に戻す」もできない行で、確信度の高い自動統合が止まり続けるのを避ける。統合されても行は吸収された作品に残る(消えない) |
 | 索引からはマイグレーション 11 で外す。あらすじの行を持つ作品にだけ `work_search_dirty` の印を立て、次の検索の前に索引し直す | 索引は派生データ([[work-search]])。全件の作り直しは要らない |
