@@ -87,6 +87,21 @@ describe("データ管理の画面", () => {
   });
 });
 
+describe("整理の節", () => {
+  it("データ管理の下に「整理」節があり、単独の入口 #/data/organize も同じページの整理へ移る", async () => {
+    window.location.hash = "#/data";
+    render(<App />);
+    const section = (await screen.findByRole("heading", { name: "整理" })).closest("section")!;
+    expect(within(section).getByLabelText("ファイル名テンプレート")).toBeTruthy();
+    expect(screen.getByText("補完待ちの作品を補完")).toBeTruthy(); // 同じページにジョブの一覧もある
+    cleanup();
+    window.location.hash = "#/data/organize";
+    render(<App />);
+    await screen.findByLabelText("ファイル名テンプレート");
+    expect(screen.getByRole("heading", { name: "実行中" })).toBeTruthy();
+  });
+});
+
 describe("summaryText", () => {
   it("知っている数だけを並べ、段ごとの要約は段の名前つきで出す", () => {
     expect(summaryText({ volumes: 12, offline_roots: ["E:/"], issues_total: 0 })).toBe("12 巻・オフライン 1 か所");

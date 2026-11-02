@@ -36,6 +36,8 @@ export function App() {
       return <Inbox />;
     case "data":
       return <DataJobs />;
+    case "organize-files":
+      return <DataJobs focus="organize" />;
     case "works":
       return <Works />;
     case "work":

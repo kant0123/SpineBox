@@ -16,6 +16,7 @@ import type {
 } from "../api";
 import { createMockInbox } from "./mockInbox";
 import { createMockJobs } from "./mockJobs";
+import { createMockRange } from "./mockRange";
 import { createMockWorks } from "./mockWorks";
 
 export interface MockResponse {
@@ -184,6 +185,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   let opSeq = 0;
   const inbox = createMockInbox(ops, () => `op-${++opSeq}`);
   const jobs = createMockJobs();
+  const range = createMockRange(ops, () => `op-${++opSeq}`);
   const sections = mockSections();
 
   // テンプレートどおりの改名・移動(作品 1 だけ)。巻 1 と 6 は同じ名前になる衝突、3 は 1 巻 = 1 CBZ でない対象外
@@ -334,6 +336,10 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     }
     if (path.startsWith("/api/inbox")) {
       const r = inbox.handle(method, path, parsed);
+      if (r) return json(r.status, r.body);
+    }
+    if (path.startsWith("/api/organize/range")) {
+      const r = range.handle(method, path, rawPath.split("?")[1] ?? "", parsed);
       if (r) return json(r.status, r.body);
     }
     if (path.startsWith("/api/organize")) {

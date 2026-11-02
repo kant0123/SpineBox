@@ -2,6 +2,7 @@
 // ジョブはどれも蔵書を読むだけ。整理(CBZ 化・改名)と受け入れの承認は、それぞれの画面でプレビューを見てから実行する。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type Job, type JobKind, type JobOrigin, type JobsSnapshot, type JobStatus } from "../api";
+import { OrganizeFilesSection } from "../organize/OrganizeFiles";
 import { ViewTabs } from "../works/ViewTabs";
 
 /** 実行中・待ちがあるあいだ状態を見に行く間隔 */
@@ -127,7 +128,12 @@ function errorText(e: unknown, fallback: string): string {
   return e instanceof ApiError && e.detail ? e.detail : fallback;
 }
 
-export function DataJobs({ pollMs = POLL_MS }: { pollMs?: number }) {
+/** focus="organize" は単独の入口 #/data/organize(一覧の「ファイル名の整理」)。ページの下の「整理」節へ移す */
+export function DataJobs({ pollMs = POLL_MS, focus }: { pollMs?: number; focus?: "organize" }) {
+  const organizeRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (focus === "organize") organizeRef.current?.scrollIntoView?.();
+  }, [focus]);
   const [snap, setSnap] = useState<JobsSnapshot | null>(null);
   const [kinds, setKinds] = useState<JobKind[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -197,7 +203,7 @@ export function DataJobs({ pollMs = POLL_MS }: { pollMs?: number }) {
       <ViewTabs current="data" />
       <p className="muted">
         スキャンや情報の補完をジョブとして 1 本ずつ動かします。実行中に依頼したものは待ち行列に入り、順に動きます。
-        ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません(整理と受け入れの承認は、それぞれの画面でプレビューを見てから実行します)。
+        ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません(蔵書を動かす整理は、下の「整理」節と受け入れの画面で、プレビューを見てから実行します)。
       </p>
       {error && (
         <div className="notice error" role="alert">
@@ -267,6 +273,12 @@ export function DataJobs({ pollMs = POLL_MS }: { pollMs?: number }) {
         <ul className="job-history">
           {snap?.history.map((j) => <HistoryRow key={j.id} job={j} />)}
         </ul>
+      </section>
+
+      <section className="job-section" id="data-organize" ref={organizeRef} aria-labelledby="job-organize-title">
+        <h2 id="job-organize-title">整理</h2>
+        <p className="muted">ファイル名・フォルダーの整理です。蔵書を動かすのでジョブには入れず、プレビューを見てから実行し、まとめて元に戻せます。</p>
+        <OrganizeFilesSection />
       </section>
     </div>
   );

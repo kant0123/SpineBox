@@ -82,6 +82,23 @@ button:disabled { opacity: 0.6; cursor: default; }
 .organize-badge.conflict { border-color: #c0392b; color: #c0392b; }
 .organize-badge.excluded, .organize-badge.skipped, .organize-badge.unchanged { opacity: 0.75; }
 .notice.warn { border-color: var(--warn); }
+/* 範囲指定の整理(#84) */
+.organize-field { margin: 10px 0; display: grid; gap: 4px; }
+.organize-field label, .organize-label { font-size: 0.9rem; font-weight: 600; }
+.organize-field input, .organize-field select { font: inherit; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); min-width: 0; width: 100%; }
+.organize-inline { display: flex; gap: 8px; }
+.organize-inline input { flex: 1; }
+.organize-inline button { flex: none; }
+.organize-hint { font-size: 0.8rem; margin: 0; }
+.organize-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+button.chip { background: var(--card); color: var(--fg); border-color: var(--border); border-radius: 999px; }
+.organize-examples ul { margin: 4px 0; padding-left: 1.2em; font-size: 0.85rem; }
+.organize-picker { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.organize-picker-list { list-style: none; padding: 0; margin: 4px 0; max-height: 40vh; overflow-y: auto; }
+.organize-picker-list li { padding: 4px 0; }
+.organize-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.organize-subhead { font-size: 0.95rem; margin: 12px 0 4px; }
+.organize-changes { font-size: 0.8rem; }
 .scan-issues { margin-top: 6px; }
 .scan-issues summary { cursor: pointer; color: var(--warn); }
 .scan-issues ul { margin: 6px 0 0; padding-left: 1.1em; max-height: 40vh; overflow-y: auto; }

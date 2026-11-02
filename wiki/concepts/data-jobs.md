@@ -17,7 +17,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | --- | --- |
 | `spinebox/jobs.py:138 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
 | `spinebox/datajobs.py:82 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
-| `spinebox/app.py:279 run_job_now()` / `spinebox/app.py:479 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/app.py:296 run_job_now()` / `spinebox/app.py:504 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:183 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:130 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 
@@ -36,7 +36,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る |
 | `background_analysis` / `background_metadata` / `background_follow` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
 
-**整理処理(CBZ 化・改名・受け入れの承認)はジョブに入れない。** 蔵書を動かすので、今どおりプレビューを見てから明示的に実行する
+**整理処理(CBZ 化・改名・受け入れの承認)はジョブに入れない**(画面には #84 の「整理」節として同じページの下に置き、`#/data/organize` から入れる。ジョブの待ち行列・履歴には載らない)。 蔵書を動かすので、今どおりプレビューを見てから明示的に実行する
 (GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ジョブはどれも蔵書を読むだけ。
 
 既存のボタン・API(一覧の「スキャン」・「表紙を作る」・重複の「重複を調べる」・「情報を補完」・作品ページの「情報を取得」・

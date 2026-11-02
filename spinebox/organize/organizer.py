@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
@@ -25,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from .. import db
+from .. import db, works
 from ..archive import ArchiveError, list_entries, open_archive
 from ..archive.base import file_reader_available, inner_reader_problem
 from ..cache import CacheTooLarge
@@ -38,9 +39,13 @@ from ..scanner import (LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, SCAN_VERSION, 
 from .. import bookmarks
 from ..works import WorkNotFound, root_of, transfer_assignment, transfer_volume_fields
 from . import cbz, fs
-from .template import NameTemplate, NameValues, ValueMissing, check_path_length
+from .cleanup import clean_stem, split_ext
+from .template import NameTemplate, NameValues, RangeTemplate, TemplateError, ValueMissing, check_path_length
 
 NAMINGS = ("title", "template")
+KIND_LABELS = {"manga": "漫画", "novel": "小説"}
+# 改名・移動だけの整理の種類。rename = 作品単位(name_template)、range = 範囲指定(整理画面のテンプレート・ファイル名の整理)
+RENAME_KINDS = ("rename", "range")
 # 改名・移動の計画の各巻の扱い
 ITEM_MOVE, ITEM_UNCHANGED, ITEM_EXCLUDED, ITEM_CONFLICT, ITEM_SKIPPED = (
     "move", "unchanged", "excluded", "conflict", "skipped")
@@ -56,6 +61,14 @@ class OrganizeError(Exception):
 
 class OperationNotFound(Exception):
     """その ID の操作が無い。"""
+
+
+class RangeError(ValueError):
+    """範囲の指定(蔵書フォルダの中のパス)が使えない。メッセージは利用者向け。"""
+
+
+class RangeNotFound(LookupError):
+    """範囲に指定した蔵書フォルダが無い(受け入れフォルダ・無効なものを含む)。"""
 
 
 @dataclass(frozen=True)
@@ -237,21 +250,47 @@ class Organizer:
         return None
 
     def name_values(self, volume_ids: list[int]) -> dict[int, NameValues]:
-        """巻ごとのテンプレートの値。作品の項目は統合されていれば吸収先のもの。番号は名前から読んだ候補。"""
+        """巻ごとのテンプレートの値。作品の項目は統合されていれば吸収先のもの。番号は名前から読んだ候補。
+
+        範囲指定の整理は蔵書ルート全体の巻をまとめて渡すので、巻ごとに SQL を発行しない(まとめて引く)。
+        """
         out: dict[int, NameValues] = {}
         fields_cache: dict[int, dict] = {}
-        for vid in volume_ids:
-            row = self.conn.execute(
-                """SELECT v.number_kind, v.number_start, v.number_end, wv.work_id FROM volumes v
-                   LEFT JOIN work_volumes wv ON wv.volume_id = v.id WHERE v.id = ?""", (vid,)).fetchone()
-            fields: dict = {}
-            work_id = root_of(self.conn, row["work_id"]) if row["work_id"] is not None else None
-            if work_id is not None:
-                if work_id not in fields_cache:
-                    fields_cache[work_id] = {r["field"]: r["value"] for r in self.conn.execute(
-                        "SELECT field, value FROM work_fields WHERE work_id = ?", (work_id,))}
-                fields = fields_cache[work_id]
-            out[vid] = NameValues(fields, row["number_kind"], row["number_start"], row["number_end"])
+        roots: dict[int, int | None] = {}  # 作品 id → 統合の吸収先(作品ごとに 1 回)
+        ids = list(dict.fromkeys(volume_ids))
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = self.conn.execute(
+                f"""SELECT v.id, v.number_kind, v.number_start, v.number_end, v.format, wv.work_id FROM volumes v
+                    LEFT JOIN work_volumes wv ON wv.volume_id = v.id WHERE v.id IN ({marks})""", chunk).fetchall()
+            # レーベル・発売年は巻の書誌(volume_fields)。発売日は「2020-05-01」「2020」などの先頭の 4 桁
+            vfields: dict[int, dict] = {}
+            for r in self.conn.execute(
+                    f"SELECT volume_id, field, value FROM volume_fields WHERE volume_id IN ({marks}) "
+                    "AND field IN ('label', 'released')", chunk):
+                vfields.setdefault(r["volume_id"], {})[r["field"]] = r["value"]
+            for row in rows:
+                vid = row["id"]
+                work_id = None
+                if row["work_id"] is not None:
+                    if row["work_id"] not in roots:
+                        roots[row["work_id"]] = root_of(self.conn, row["work_id"])
+                    work_id = roots[row["work_id"]]
+                fields: dict = {}
+                if work_id is not None:
+                    if work_id not in fields_cache:
+                        fields_cache[work_id] = {r["field"]: r["value"] for r in self.conn.execute(
+                            "SELECT field, value FROM work_fields WHERE work_id = ?", (work_id,))}
+                    fields = dict(fields_cache[work_id])
+                # 種別は作品の項目(manga / novel)を日本語にする。未決でも小説の巻(EPUB・テキスト)は小説と分かる
+                kind = fields.get(works.FIELD_KIND) or ("novel" if row["format"] else None)
+                fields["kind"] = KIND_LABELS.get(kind)
+                vf = vfields.get(vid, {})
+                fields["label"] = vf.get("label")
+                year = re.match(r"\s*(\d{4})", vf.get("released") or "")
+                fields["year"] = year.group(1) if year else None
+                out[vid] = NameValues(fields, row["number_kind"], row["number_start"], row["number_end"])
         return out
 
     def _unanalyzed(self, rows: list[dict], problems: list[str]) -> list[int]:
@@ -361,7 +400,7 @@ class Organizer:
         op, plan = self._load(op_id)
         if op["state"] != "planned":
             raise OrganizeError(f"この操作は実行できる状態ではありません({op['state']})", self.get(op_id))
-        if plan.get("kind") == "rename":
+        if plan.get("kind") in RENAME_KINDS:
             return self._execute_rename(op_id, plan)
         root, base, out_root, out_base = self._roots_of(plan)
         move_only = plan.get("mode") == "move"
@@ -501,7 +540,7 @@ class Organizer:
         op, plan = self._load(op_id)
         if op["state"] != "done":
             raise OrganizeError(f"この操作は元に戻せる状態ではありません({op['state']})", self.get(op_id))
-        if plan.get("kind") == "rename":
+        if plan.get("kind") in RENAME_KINDS:
             return self._undo_rename(op_id, plan)
         root, base, out_root, out_base = self._roots_of(plan)
         if plan.get("mode") == "move":
@@ -704,6 +743,12 @@ class Organizer:
 
     # --- 改名・移動だけの整理(作品単位) ------------------------------------------
 
+    _RENAME_SELECT = """SELECT v.*, s.rel_path, s.kind AS source_kind, s.offline AS source_offline, s.root_id,
+                      r.path AS root_path,
+                      (SELECT COUNT(*) FROM volumes o WHERE o.source_id = v.source_id AND o.missing = 0
+                         AND o.organized_op_id IS NULL AND o.parent_id IS NULL) AS source_volumes
+               """ + LISTED_VOLUMES_JOIN
+
     def plan_rename(self, work_id: int, *, exclude_volume_ids: tuple[int, ...] | list[int] = ()) -> dict:
         """作品の全巻をテンプレートの名前へ改名・移動する計画。蔵書には何も書かない。
 
@@ -715,40 +760,151 @@ class Organizer:
             raise WorkNotFound(work_id)
         template = NameTemplate(self.settings.name_template)
         rows = [dict(r) for r in self.conn.execute(
-            """SELECT v.*, s.rel_path, s.kind AS source_kind, s.offline AS source_offline, s.root_id,
-                      r.path AS root_path,
-                      (SELECT COUNT(*) FROM volumes o WHERE o.source_id = v.source_id AND o.missing = 0
-                         AND o.organized_op_id IS NULL AND o.parent_id IS NULL) AS source_volumes
-               """ + LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v.id "
+            self._RENAME_SELECT + " JOIN work_volumes wv ON wv.volume_id = v.id "
             + LISTED_VOLUMES_WHERE + " AND wv.work_id = ?", (root_work,))]
         rows.sort(key=lambda r: (r["number_start"] if r["number_start"] is not None else 10 ** 9,
                                  natural_key(r["title"])))
         values = self.name_values([r["id"] for r in rows])
-        excluded_ids = set(exclude_volume_ids)
+        items = self._classify_renames(rows, set(exclude_volume_ids), self._rename_ineligible,
+                                       lambda r: (template.render(values[r["id"]]), []))
+        plan = {"kind": "rename", "naming": "template", "template": self.settings.name_template, "work_id": root_work}
+        return self._save_rename_plan(plan, items, "この作品には一覧に出ている巻がありません")
+
+    def plan_range(self, root_id: int, path: str = "", *, file_template: str = "", folder_template: str = "",
+                   exclude_volume_ids: tuple[int, ...] | list[int] = ()) -> dict:
+        """蔵書ルートの中の範囲(path。空ならルート全体、サブフォルダも含む)の巻を、整理画面のテンプレートで
+        改名・移動する計画(#84)。蔵書には何も書かない。
+
+        ファイル名テンプレートが空なら今の名前を整理した名前(cleanup.py)、フォルダーテンプレートが空なら元と同じフォルダ。
+        フォルダーテンプレートは範囲のパスを起点にする。対象は 1 巻 = 1 ファイル(CBZ・zip などのアーカイブ・小説)だけで、
+        拡張子は元のものを保つ。CBZ 化はしない(複数巻のまとめ・入れ子・画像フォルダは対象外にして CBZ 化の画面へ案内する)。
+        振り分け・実行・元に戻すは作品単位の改名・移動(plan_rename)と同じ。
+        """
+        template = RangeTemplate(file_template, folder_template)
+        root_row = self.conn.execute(
+            "SELECT id, path, online, enabled, inbox FROM library_roots WHERE id = ?", (root_id,)).fetchone()
+        if root_row is None or not root_row["enabled"] or root_row["inbox"]:
+            raise RangeNotFound(f"蔵書フォルダが見つかりません: {root_id}")
+        root = Path(root_row["path"])
+        plan = {"kind": "range", "naming": "template", "template": None, "work_id": None,
+                "scope": {"root_id": root_id, "root_path": str(root), "path": "", "file_template": template.file_text,
+                          "folder_template": template.folder_text}}
+        if not root_row["online"] or not root_is_accessible(root):
+            return self._save_rename_plan(plan, [], "蔵書フォルダが今オフラインです")
+        sub = self.range_path(root, path)
+        plan["scope"]["path"] = sub
+        prefix = f"{sub}/" if sub else ""
+        rows = [dict(r) for r in self.conn.execute(
+            self._RENAME_SELECT + LISTED_VOLUMES_WHERE + " AND s.root_id = ?", (root_id,))
+            if r["rel_path"].startswith(prefix)]
+        rows.sort(key=lambda r: (natural_key(r["rel_path"]), natural_key(r["entry_prefix"] or "")))
+        values = self.name_values([r["id"] for r in rows])
+
+        def target(r: dict) -> tuple[str, list[str]]:
+            parent, _, name = r["rel_path"].rpartition("/")
+            stem, ext = split_ext(name)
+            changes: list[str] = []
+            file_stem = template.render_file(values[r["id"]])
+            if file_stem is None:
+                cleaned = clean_stem(stem)
+                file_stem, changes = cleaned.name, list(cleaned.changes)
+            folder = template.render_folder(values[r["id"]])
+            dirs = (parent.split("/") if parent else []) if folder is None else [*(sub.split("/") if sub else []),
+                                                                               *folder]
+            return "/".join([*dirs, file_stem + ext]), changes
+
+        items = self._classify_renames(rows, set(exclude_volume_ids), self._range_ineligible, target)
+        return self._save_rename_plan(plan, items, "範囲の中に一覧に出ている巻がありません")
+
+    def range_path(self, root: Path, path: str) -> str:
+        """範囲のパスを蔵書ルートからの相対(`/` 区切り。ルート全体は "")にする。ルートの絶対パスで書いてもよい。"""
+        norm = (path or "").strip().replace("\\", "/")
+        root_norm = str(root).replace("\\", "/").rstrip("/")
+        if norm.casefold() == root_norm.casefold() or norm.casefold().startswith(root_norm.casefold() + "/"):
+            norm = norm[len(root_norm):]
+        elif re.match(r"^[A-Za-z]:", norm):
+            raise RangeError("範囲のパスは選んだ蔵書フォルダの中を指してください")
+        norm = norm.strip("/")
+        if not norm:
+            return ""
+        if any(part.strip() in ("", ".", "..") for part in norm.split("/")):
+            raise RangeError("範囲のパスに空・「.」・「..」の区切りは使えません")
+        try:
+            full = resolve_source_path(root, norm)
+        except ValueError:
+            raise RangeError("範囲のパスは選んだ蔵書フォルダの中を指してください") from None
+        if fs.is_within(full, self.settings.organize_base(root)):
+            raise RangeError("作業場・退避フォルダは範囲にできません")
+        if not full.is_dir():
+            raise RangeError(f"範囲のフォルダが見つかりません: {norm}")
+        return self._disk_case(root, norm)
+
+    @staticmethod
+    def _disk_case(root: Path, norm: str) -> str:
+        """区切りごとにディスク上の綴り(大文字小文字)へ直す。Windows は綴りが違っても同じフォルダを指すが、
+        DB の相対パスとの前方一致や出力先のフォルダ名は綴りが合っている必要がある。ぴったり同じ名前があればそれを使う
+        (大文字小文字を区別するファイルシステムで別のフォルダを取り違えない)。"""
+        cur, parts = root, []
+        for part in norm.split("/"):
+            name = part
+            try:
+                names = [e.name for e in os.scandir(cur)]
+            except OSError:
+                names = []
+            if part not in names:
+                name = next((n for n in sorted(names) if n.casefold() == part.casefold()), part)
+            parts.append(name)
+            cur = cur / name
+        return "/".join(parts)
+
+    def range_folders(self, root_id: int, path: str = "") -> dict:
+        """範囲を選ぶための、フォルダの直下のフォルダ名(読むだけ)。作業場・退避フォルダと「.」で始まるものは出さない。"""
+        row = self.conn.execute("SELECT path, online, enabled, inbox FROM library_roots WHERE id = ?",
+                                (root_id,)).fetchone()
+        if row is None or not row["enabled"] or row["inbox"]:
+            raise RangeNotFound(f"蔵書フォルダが見つかりません: {root_id}")
+        root = Path(row["path"])
+        if not row["online"] or not root_is_accessible(root):
+            raise RangeError("蔵書フォルダが今オフラインです")
+        sub = self.range_path(root, path)
+        full = resolve_source_path(root, sub)
+        base = self.settings.organize_base(root)
+        try:
+            names = sorted((e.name for e in os.scandir(full)
+                            if e.is_dir(follow_symlinks=False) and not e.name.startswith(".")
+                            and not fs.is_within(Path(e.path), base)), key=natural_key)
+        except OSError as e:
+            raise RangeError(f"フォルダを読めません: {e}") from e
+        return {"root_id": root_id, "path": sub, "parent": sub.rpartition("/")[0] if sub else None, "folders": names}
+
+    def _classify_renames(self, rows: list[dict], excluded_ids: set[int], ineligible, target) -> list[dict]:
+        """各巻を move / unchanged / excluded / conflict / skipped に振り分ける。target(r) は (出力の相対パス, 整理の説明)。"""
         items: list[dict] = []
+        folder_sources: dict[int, set[str]] = {}
         for r in rows:
             root = Path(r["root_path"])
             item = {"volume_id": r["id"], "title": r["title"], "page_count": r["page_count"],
                     "from_rel_path": r["rel_path"], "output_rel_path": None, "status": ITEM_MOVE, "reason": None,
                     "cbz_volume_id": None, "source_id": r["source_id"], "root_id": r["root_id"],
-                    "root_path": str(root), "entry_prefix": r["entry_prefix"]}
+                    "root_path": str(root), "entry_prefix": r["entry_prefix"], "changes": []}
             items.append(item)
             if r["id"] in excluded_ids:
                 item.update(status=ITEM_SKIPPED, reason="外しました")
                 continue
-            reason = self._rename_ineligible(r, root)
+            reason = ineligible(r, root)
             if reason:
                 item.update(status=ITEM_EXCLUDED, reason=reason)
                 if "CBZ に整理" in reason:
                     item["cbz_volume_id"] = r["id"]
                 continue
             try:
-                rel = template.render(values[r["id"]])
+                rel, changes = target(r)
                 check_path_length(root, rel)
             except ValueMissing as e:
                 item.update(status=ITEM_EXCLUDED, reason=str(e))
                 continue
             item["output_rel_path"] = rel
+            item["changes"] = changes
             if rel == r["rel_path"]:
                 item.update(status=ITEM_UNCHANGED, reason="既にテンプレートどおりの名前です")
             elif rel.casefold() == r["rel_path"].casefold():
@@ -759,6 +915,17 @@ class Organizer:
                 if problem is None and self.conn.execute(
                         "SELECT 1 FROM sources WHERE root_id = ? AND rel_path = ?", (r["root_id"], rel)).fetchone():
                     problem = "この場所にあったファイルの記録が残っています(同じ名前のファイルを以前スキャンしました)"
+                if problem is None:
+                    if r["root_id"] not in folder_sources:
+                        folder_sources[r["root_id"]] = {f["rel_path"] for f in self.conn.execute(
+                            "SELECT rel_path FROM sources WHERE root_id = ? AND kind = 'folder' AND missing = 0",
+                            (r["root_id"],))}
+                    parts = rel.split("/")[:-1]
+                    inside = next((a for a in ("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+                                   if a in folder_sources[r["root_id"]]), None)
+                    if inside is not None:
+                        # 画像フォルダの巻の中へ入れると、次のスキャンでその巻の添え物・別の巻と取り違えうる
+                        problem = f"画像フォルダの巻「{inside}」の中になります"
                 if problem:
                     item.update(status=ITEM_CONFLICT, reason=problem)
                 else:
@@ -778,13 +945,16 @@ class Organizer:
                         continue  # 既にその名前の巻はそのまま。改名してくる側だけを衝突にする
                     others = "・".join(f"「{o['title']}」" for o in group if o is not it)
                     it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。どれかを外してください")
+        return items
+
+    def _save_rename_plan(self, head: dict, items: list[dict], empty_problem: str) -> dict:
         moving = [it for it in items if it["status"] == ITEM_MOVE]
         first = moving[0] if moving else (items[0] if items else None)
         problems = []
         if not moving:
-            problems.append("改名・移動する巻がありません" if items else "この作品には一覧に出ている巻がありません")
+            problems.append("改名・移動する巻がありません" if items else empty_problem)
         plan = {
-            "kind": "rename", "naming": "template", "template": self.settings.name_template, "work_id": root_work,
+            **head,
             "source_id": first["source_id"] if first else None, "root_id": first["root_id"] if first else None,
             "root_path": first["root_path"] if first else None, "source_rel_path": "", "source_kind": "archive",
             "organize_base": None, "fingerprint": None, "needs_analysis": [],
@@ -804,10 +974,28 @@ class Organizer:
             return "蔵書フォルダが今オフラインです"
         if r["format"]:  # 小説(.epub / .txt)。CBZ ではなく、テンプレートの .cbz とも合わない
             return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
-        single = (r["source_kind"] == "archive" and r["container_path"] is None and r["parent_id"] is None
-                  and r["inner_path"] is None and r["source_volumes"] == 1)
-        if not single or not r["rel_path"].lower().endswith(".cbz"):
+        if not self._single_file(r) or not r["rel_path"].lower().endswith(".cbz"):
             return "1 巻 = 1 CBZ ではありません(先に「CBZ に整理」をテンプレートの名前で実行してください)"
+        return self._missing_file(r, root)
+
+    def _range_ineligible(self, r: dict, root: Path) -> str | None:
+        """範囲の整理の対象外の理由。1 巻 = 1 ファイル(アーカイブ・小説)なら拡張子を保って動かせる。"""
+        if r["source_offline"] or not root_is_accessible(root):
+            return "蔵書フォルダが今オフラインです"
+        if not self._single_file(r):
+            if r["source_kind"] == "folder":
+                return "画像フォルダの巻です(この画面では動かしません。先に「CBZ に整理」してください)"
+            return ("1 つのファイルに複数の巻・入れ子の巻があります(この画面では動かしません。"
+                    "先に「CBZ に整理」してください)")
+        return self._missing_file(r, root)
+
+    @staticmethod
+    def _single_file(r: dict) -> bool:
+        return (r["source_kind"] == "archive" and r["container_path"] is None and r["parent_id"] is None
+                and r["inner_path"] is None and r["source_volumes"] == 1)
+
+    @staticmethod
+    def _missing_file(r: dict, root: Path) -> str | None:
         try:
             if not resolve_source_path(root, r["rel_path"]).is_file():
                 return "元のファイルが見つかりません(再スキャンしてください)"
@@ -964,10 +1152,13 @@ class Organizer:
         if plan.get("kind") == "intake":
             view.update(mode=plan.get("mode"), work=plan.get("work"), skipped=plan.get("skipped", []),
                         inbox_path=plan.get("root_path"), library_path=plan.get("out_root_path"))
-        if plan.get("kind") == "rename":
-            view["work_id"] = plan["work_id"]
-            view["items"] = [{k: it[k] for k in ("volume_id", "title", "from_rel_path", "output_rel_path", "status",
-                                                 "reason", "cbz_volume_id")} for it in plan["items"]]
+        if plan.get("kind") in RENAME_KINDS:
+            view["work_id"] = plan.get("work_id")
+            view["items"] = [{**{k: it[k] for k in ("volume_id", "title", "from_rel_path", "output_rel_path", "status",
+                                                    "reason", "cbz_volume_id")}, "changes": it.get("changes", [])}
+                             for it in plan["items"]]
+        if plan.get("kind") == "range":
+            view["scope"] = plan["scope"]
         return view
 
     def get(self, op_id: str) -> dict:
