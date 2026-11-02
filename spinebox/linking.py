@@ -47,14 +47,12 @@ NDL_LIMIT = 100           # 巻が多い作品でも巻を揃えるため、国�
 ALIAS_LIMIT = 6
 GENRES_LIMIT = 15
 TAGS_LIMIT = 30
-SYNOPSIS_LIMIT = 4000
 
 PRIORITY = {
     works.FIELD_TITLE: ("ndl", "mangaupdates", "anilist"),
     works.FIELD_AUTHOR: ("ndl", "anilist", "mangaupdates"),
     works.FIELD_KIND: ("ndl", "mangaupdates", "anilist"),
     works.FIELD_PUBLISHER: ("ndl", "mangaupdates"),
-    works.FIELD_SYNOPSIS: ("anilist", "mangaupdates"),
     works.FIELD_TOTAL_VOLUMES: ("anilist", "mangaupdates"),
 }
 UNION_PRIORITY = {
@@ -67,9 +65,8 @@ MANAGED_FIELDS = (*PRIORITY, *UNION_PRIORITY)
 
 @dataclass(frozen=True)
 class Display:
-    """日本語での表示の方針(#74。設定 `[metadata] untranslated_terms` / `english_synopsis`)。"""
+    """日本語での表示の方針(#74。設定 `[metadata] untranslated_terms`)。"""
     keep_untranslated_terms: bool = False  # 対応表に無い英語のジャンル・タグを英語のまま入れるか
-    hide_english_synopsis: bool = False    # 日本語のあらすじが無いとき、英語のあらすじを作品の項目に入れないか
 
 
 _display = Display()
@@ -78,8 +75,7 @@ _display = Display()
 def configure(settings: MetadataSettings) -> None:
     """設定の表示方針を反映に使う。アプリの起動時(最初の `apply_all` の前)に呼ぶ。"""
     global _display
-    _display = Display(keep_untranslated_terms=settings.untranslated_terms == "keep",
-                       hide_english_synopsis=settings.english_synopsis == "hide")
+    _display = Display(keep_untranslated_terms=settings.untranslated_terms == "keep")
 
 
 # --- 候補 ------------------------------------------------------------------------------------
@@ -444,9 +440,6 @@ def _extract(name: str, item: dict) -> str | None:
         return works.author_text(authors)
     if name in (works.FIELD_KIND, works.FIELD_PUBLISHER):
         return (item.get(name) or "").strip() or None
-    if name == works.FIELD_SYNOPSIS:
-        text = (item.get("synopsis") or "").strip()
-        return text[:SYNOPSIS_LIMIT] or None
     if name == works.FIELD_TOTAL_VOLUMES:
         n = item.get("total_volumes")
         return str(n) if isinstance(n, int) and n > 0 else None
@@ -463,10 +456,6 @@ def _desired_fields(links: dict[str, sqlite3.Row]) -> dict[str, _Desired]:
 
     for name, order in PRIORITY.items():
         found = [(s, v) for s in order if s in payload for v in [_extract(name, payload[s])] if v]
-        if name == works.FIELD_SYNOPSIS:
-            # 日本語のあらすじがあれば優先の順より先に採る。英語だけなら、設定で隠すときは入れない
-            found = ([x for x in found if ja_terms.is_japanese(x[1])]
-                     or ([] if _display.hide_english_synopsis else found))
         if found:
             source, value = found[0]
             if name == works.FIELD_PUBLISHER:

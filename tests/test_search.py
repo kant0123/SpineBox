@@ -261,7 +261,8 @@ def test_kind_genre_tag_filters_use_the_public_db_fields(env):
     assert titles(client, tag="美大", genre="ホラー") == []
     assert titles(client, q="集英社") == [KAKU]      # 項目は索引に入る
     assert titles(client, q="エッセイ") == [KAKU]
-    assert titles(client, q="漫画", tag="宮崎") == [KAKU]  # 種別の日本語表記でも引ける(synopsis の「漫画家」も当たる)
+    assert titles(client, q="漫画", tag="宮崎") == [KAKU]  # 種別の日本語表記でも引ける
+    assert titles(client, q="半生") == []            # 廃止したあらすじ(#82)の行は残っていても索引に入れない
     assert titles(client, q="大宮") == []            # 配列の要素をまたいで語が当たらない(「美大」「宮崎」)
     assert titles(client, q="5") == []               # 全巻数の数値は索引に入れない
     facets = client.get("/api/works").json()["facets"]
@@ -271,16 +272,16 @@ def test_kind_genre_tag_filters_use_the_public_db_fields(env):
 
 def test_fields_edited_through_the_work_api_are_searchable_and_filterable(env):
     """#50 の書き込み経路(PATCH /api/works/{id}。公開 DB の取得 apply_work も同じ work_fields に書く)で足した
-    種別・ジャンル・タグ・出版社・あらすじが、手を加えずに検索と絞り込みへ追従する。"""
+    種別・ジャンル・タグ・出版社が、手を加えずに検索と絞り込みへ追従する。"""
     settings, client = env
     wid = work_id(client, KAKU)
     assert titles(client, genre="コメディ") == []
     r = client.patch(f"/api/works/{wid}", json={"kind": "manga", "genres": ["エッセイ", "コメディ"], "tags": ["美大"],
-                                                 "publisher": "集英社", "synopsis": "宮崎の少女が漫画家になるまで"})
+                                                 "publisher": "集英社"})
     assert r.status_code == 200, r.text
     assert titles(client, genre="コメディ") == [KAKU]
     assert titles(client, tag="美大", kind="漫画", author="東村アキコ") == [KAKU]
-    assert titles(client, q="集英社 少女") == [KAKU]
+    assert titles(client, q="集英社 エッセイ") == [KAKU]
     assert titles(client, q="エッセイ", tag="なし") == []
     facets = client.get("/api/works").json()["facets"]
     assert facets["kind"] == ["manga"] and facets["genre"] == ["エッセイ", "コメディ"] and facets["tag"] == ["美大"]
@@ -359,6 +360,45 @@ def test_migration_9_from_a_works_db_builds_the_index_on_first_use(tmp_path, bas
             c.execute("UPDATE work_fields SET value = '別名の作品' WHERE work_id = 3")
         assert conn.execute("SELECT work_id FROM work_search_dirty").fetchall()[0][0] == 3
         assert [w["id"] for w in works.list_works(conn, "別名の作品")["works"]] == [3]
+    finally:
+        conn.close()
+
+
+def test_migration_11_drops_synopsis_from_the_index_but_keeps_the_rows(tmp_path):
+    """#82 の移行(版 11): 版 10 の索引に入っていたあらすじを、次の検索の前に索引から外す。あらすじの行は消さない。"""
+    path = tmp_path / "v10.db"
+    conn = db.connect(path)
+    with db.transaction(conn) as c:
+        for migration in db.MIGRATIONS[:10]:
+            for statement in migration:
+                c.execute(statement)
+        c.execute("PRAGMA user_version = 10")
+        for wid, title in ((3, "お気楽"), (4, "かくかく")):
+            c.execute("INSERT INTO works (id, created_at, updated_at) VALUES (?, 't', 't')", (wid,))
+            c.execute("INSERT INTO work_fields (work_id, field, value, source, manual, updated_at) "
+                      "VALUES (?, 'title', ?, 'filename', 0, 't')", (wid, title))
+        c.execute("INSERT INTO work_fields (work_id, field, value, source, manual, updated_at) "
+                  "VALUES (3, 'synopsis', '手で書いた領地のあらすじ', 'manual', 1, 't')")
+        # 版 10 のコードが作った索引(あらすじを含む)
+        search._create_index(c)
+        c.execute(f"INSERT INTO {search.INDEX_TABLE} (rowid, body) VALUES (3, ?)",
+                  ("\n".join(search.normalize(t) for t in ("お気楽", "手で書いた領地のあらすじ")),))
+        c.execute(f"INSERT INTO {search.INDEX_TABLE} (rowid, body) VALUES (4, ?)", (search.normalize("かくかく"),))
+        c.execute("DELETE FROM work_search_dirty")
+    assert [r[0] for r in conn.execute(f"SELECT rowid FROM {search.INDEX_TABLE} WHERE body LIKE '%領地%'")] == [3]
+    conn.close()
+
+    conn = db.open_db(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) >= 11
+        # あらすじの行を持つ作品だけ印が付く
+        assert [r[0] for r in conn.execute("SELECT work_id FROM work_search_dirty")] == [3]
+        search.prepare(conn)  # 一覧・検索の前に呼ばれる
+        assert conn.execute("SELECT COUNT(*) FROM work_search_dirty").fetchone()[0] == 0
+        assert search.match_ids(conn, "領地") == set()
+        assert search.match_ids(conn, "お気楽") == {3} and search.match_ids(conn, "かくかく") == {4}
+        row = conn.execute("SELECT value, source, manual FROM work_fields WHERE work_id = 3 AND field = 'synopsis'")
+        assert tuple(row.fetchone()) == ("手で書いた領地のあらすじ", "manual", 1)
     finally:
         conn.close()
 

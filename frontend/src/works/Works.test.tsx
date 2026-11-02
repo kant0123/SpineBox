@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { parseRoute } from "../route";
-import { confidenceText, evidenceLines, isJapanese, missingText } from "./labels";
+import { confidenceText, evidenceLines, missingText } from "./labels";
 import { workQueryString } from "../api";
 import { normalizeSearch } from "../mock/mockWorks";
 
@@ -30,15 +30,6 @@ describe("ルートと文言", () => {
     expect(parseRoute("#/works/12")).toEqual({ name: "work", id: "12" });
     expect(parseRoute("#/works/proposals")).toEqual({ name: "work-proposals" });
     expect(parseRoute("#/works/abc")).toEqual({ name: "works", scope: { by: "all" } });
-  });
-
-  it("日本語の文かの判定(サーバーの is_japanese と同じ)", () => {
-    expect(isJapanese("国立国会図書館の内容紹介です。")).toBe(true);
-    expect(isJapanese("2 歳で前世の記憶を取り戻した Van は…")).toBe(true);
-    expect(isJapanese("Van remembers his past life (前世の記憶).")).toBe(false);
-    expect(isJapanese("1. Sexaroid Girl (セクサロイドガール)\n2. Twin Steady! (ツインステディ)")).toBe(false);
-    expect(isJapanese("")).toBe(false);
-    expect(isJapanese("…")).toBe(false);
   });
 
   it("確信度・欠け・根拠の文面", () => {
@@ -275,23 +266,14 @@ describe("公開データベースの情報(#50)", () => {
     expect((screen.getByLabelText("ジャンル(「、」区切り)") as HTMLInputElement).value).toBe("アクション、コメディ");
   });
 
-  it("日本語のあらすじが無く英語のあらすじだけのときは折りたたみ、開けば読めて直せる(#74)", async () => {
+  it("あらすじは表示も編集もしない(#82。公開データベースと連携しても)", async () => {
     window.location.hash = "#/works/1";
     render(<App />);
     const ndl = (await screen.findByLabelText("国立国会図書館サーチとの連携")) as HTMLElement;
-    expect(screen.queryByText(/あらすじ: 英語のみ/)).toBeNull();
     fireEvent.click(within(ndl).getByRole("button", { name: "サンプル漫画(漫画・集英社) を採用" }));
-    const summary = await screen.findByText("あらすじ: 英語のみ(AniList)。開くと表示します");
-    const details = summary.closest("details")!;
-    expect(details.open).toBe(false);
-    expect((within(details).getByLabelText("あらすじ") as HTMLTextAreaElement).value).toContain("A sample story");
-    fireEvent.click(summary);
-    expect(details.open).toBe(true);
-    // 手で直した(日本語にした)あらすじは折りたたまない
-    fireEvent.change(screen.getByLabelText("あらすじ"), { target: { value: "手で書いたあらすじ" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "あらすじを自動に戻す" })).toBeTruthy());
-    expect(screen.queryByText(/あらすじ: 英語のみ/)).toBeNull();
+    await waitFor(() => expect(within(screen.getByLabelText("AniListとの連携")).getByText(/自動で連携/)).toBeTruthy());
+    expect(screen.queryByLabelText("あらすじ")).toBeNull();
+    expect(screen.queryByText(/あらすじ/)).toBeNull();
   });
 
   it("手で直した項目は手動と示され、自動に戻せる。どれでもないも選べる", async () => {

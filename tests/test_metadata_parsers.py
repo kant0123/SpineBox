@@ -102,7 +102,7 @@ def test_anilist_kaku():
     assert item.kind == KIND_MANGA
     assert "Drama" in item.genres
     assert "Autobiographical" in item.tags and "Drawing" in item.tags
-    assert item.synopsis and "<" not in item.synopsis
+    assert not hasattr(item, "synopsis")  # あらすじは読み取らない(#82 で廃止)
     assert item.source_url == "https://anilist.co/manga/74307"
 
 
@@ -132,11 +132,6 @@ def test_anilist_tags_drop_spoilers_and_low_rank():
             b'{"name":"Low","rank":5},{"name":"B","rank":60}]}]}}}')
     (item,) = anilist.parse_search(body)
     assert item.tags == ("A", "B")
-
-
-def test_anilist_clean_text():
-    assert anilist.clean_text("a<br>b<br/>c &amp; <i>d</i>") == "a\nb\nc & d"
-    assert anilist.clean_text(None) is None and anilist.clean_text("  ") is None
 
 
 # --- MangaUpdates ---
