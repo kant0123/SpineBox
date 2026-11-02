@@ -41,7 +41,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/api.ts:882 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
-| `frontend/index.html:6` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
+| `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
 
 ## 決めたこと(コードからは理由が読めないもの)
 
