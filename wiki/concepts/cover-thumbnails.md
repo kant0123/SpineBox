@@ -2,7 +2,7 @@
 type: concept
 summary: 作品カードの表紙(#75)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作「表紙を作る」で作る理由と、却下した代替案
 updated: 2026-11-02
-related: [frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection]
+related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection]
 ---
 
 # 表紙のサムネイル

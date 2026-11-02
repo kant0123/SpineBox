@@ -209,7 +209,7 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-02] ingest | 作品カードの表紙(1 ページ目のサムネイル)
 - 新規: [[cover-thumbnails]]
-- 更新: [[frontend]], [[backend]], [[extraction-cache]], [[overview]], [[work-grouping]], [[volume-split]], [[duplicate-detection]], [[organize]](行番号のずれ)、他に `config.example.toml`(`thumb_cache_limit_bytes`)
+- 更新: [[frontend]], [[backend]], [[extraction-cache]], [[overview]], [[work-grouping]], [[volume-split]], [[duplicate-detection]], [[organize]] と [[inbox]](行番号のずれ)、他に `config.example.toml`(`thumb_cache_limit_bytes`)
 - 備考: #75。表紙はネットから取らず、最小の巻番号の巻の 1 ページ目を縮小して `data_dir/thumbs/` にハッシュ名で置く。一覧の表示からは取り出し・7-Zip の起動が要らない巻だけその場で作り
   (`Library.open(extract=False)`)、入れ子・7z / rar の巻は巻を開いた後か明示操作「表紙を作る」で作る。スキャンで内側を取り出さない・蔵書に書かない、は既存のテストに加えて
   `tests/test_thumbs.py` で確かめた(一覧からの要求で展開キャッシュが空のまま・7-Zip が起動しない・明示操作の前後で蔵書が同じ)。実データ・実ブラウザの確認はローカルで引き取る
