@@ -207,10 +207,13 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: なし(GOAL.md のチェックボックスのみ)
 - 備考: #72。main 18852b8 で `py -3.12 scripts/ci_local.py --no-report` 成功(pytest 929 passed / vitest 105 passed / wiki-lint OK)。`_参考/サンプル本` を同じドライブの一時ディレクトリへコピーし、書庫(かくかくしかじかの 7z)と受け入れフォルダ(お気楽領主の zip)にして実起動: 同期で受け入れ側は「確認が要る」(巻の名前の作品名がローマ字と日本語で揃わない)・v01s / v02s は第01・02巻と同じ出力名になると理由つきで出た。作品名を指定し v01s / v02s を外して承認 → 書庫に `お気楽領主の楽しい領地防衛/お気楽領主の楽しい領地防衛 第NN巻.cbz` が 6 つでき、作品 6 巻・欠け無し・最終ページ取得可(プレビューでは何も書かれない)。かくかくしかじかは「中の巻を調べる」を求められ、解析後にテンプレートで CBZ 4 つ(`Kakukaku Shikajika/… 第NN巻.cbz`)。両方を元に戻すと書庫・受け入れフォルダの sha256 が実行前と一致し、作成物は退避フォルダに残り、受け入れ側は再び確認待ちとして出た。cp932 の青空文庫形式テキストを 375px で開き、縦書き(`vertical-rl`)・ルビ 400 か所の表示を確認。EPUB の安全性(スクリプト・外部読み込みの遮断)は #57(PR #64)の実ブラウザ確認による。原本 2 ファイルのサイズ・mtime・sha256 は検証前後で一致。
 
+## [2026-11-02] verify | PR #78 フェーズ 1 の常駐・LAN 閲覧をサーバー機で確認
+- 更新: なし(GOAL.md のチェックボックスのみ)
+- 備考: #77。利用者がサーバー機(DESKTOP-80AKMUB)で `config.local.toml` の `host` を LAN アドレスにし、`deploy\install_task.ps1 -Action Register` で常駐タスクを登録(Python はフルパス、`-UserName` 付き)。再起動後に自動起動し、LAN 内の別端末から閲覧できることを確認(#20)。開発機からも `http://192.168.11.50:8000/healthz` が `{"ok":true,"commit":"dd66b1a"}` を返し、サーバー機の `logs\supervisor.log` に Job Object の有効化と `python -m spinebox` の起動、`.err.log` に LAN 公開の注意と uvicorn の起動が残っていることを確認。手順で `.\deploy\` のパスと `-PythonPath` / `-HealthUrl` を省いていたため一度失敗した(稼働確認 URL の自動化は #76)。これで GOAL.md フェーズ 1〜4 の完了条件はすべて満たした。
+
 ## [2026-11-02] ingest | 作品カードの表紙(1 ページ目のサムネイル)
 - 新規: [[cover-thumbnails]]
 - 更新: [[frontend]], [[backend]], [[extraction-cache]], [[overview]], [[work-grouping]], [[volume-split]], [[duplicate-detection]], [[organize]] と [[inbox]](行番号のずれ)、他に `config.example.toml`(`thumb_cache_limit_bytes`)
 - 備考: #75。表紙はネットから取らず、最小の巻番号の巻の 1 ページ目を縮小して `data_dir/thumbs/` にハッシュ名で置く。一覧の表示からは取り出し・7-Zip の起動が要らない巻だけその場で作り
   (`Library.open(extract=False)`)、入れ子・7z / rar の巻は巻を開いた後か明示操作「表紙を作る」で作る。スキャンで内側を取り出さない・蔵書に書かない、は既存のテストに加えて
   `tests/test_thumbs.py` で確かめた(一覧からの要求で展開キャッシュが空のまま・7-Zip が起動しない・明示操作の前後で蔵書が同じ)。実データ・実ブラウザの確認はローカルで引き取る
-
