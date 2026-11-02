@@ -48,9 +48,6 @@ const ANILIST = cand("anilist:101", {
   url: "https://anilist.co/manga/101", score: 0.95,
 });
 
-/** AniList のあらすじは英語(日本語のあらすじが無いときは、作品ページで折りたたむ。#74) */
-const ANILIST_SYNOPSIS = "A sample story about a girl (サンプル) who wants to become a manga artist.";
-
 type Res = { status: number; body: unknown };
 
 /** 画面確認用の巻番号(モックの巻の番号とは別に、作品ページの欠け表示を見せるため) */
@@ -272,11 +269,9 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
         const c = other.candidates[0];
         Object.assign(other, { status: "linked", manual: false, source_id: c.source_id, linked: c, confidence: c.score, hold: null, decision: "auto" });
         setAuto("genres", c.genres, [other.source]);
-        if (other.source === "anilist") setAuto("synopsis", ANILIST_SYNOPSIS, ["anilist"]);
       }
     } else {
       if (picked.genres.length) setAuto("genres", picked.genres, [link.source]);
-      if (link.source === "anilist") setAuto("synopsis", ANILIST_SYNOPSIS, ["anilist"]);
     }
     return res(200, detail(w));
   }
@@ -388,7 +383,7 @@ export function createMockWorks(getVolumes: () => (VolumeSummary & { hidden?: bo
         w.author = body.author.trim() || null;
         w.author_manual = true;
       }
-      for (const name of ["kind", "publisher", "synopsis", "genres", "tags"]) {
+      for (const name of ["kind", "publisher", "genres", "tags"]) {
         if (!(name in body)) continue;
         if (name === "kind" && body.kind !== null && !["manga", "novel"].includes(body.kind)) return res(422, { detail: "種別は漫画か小説です" });
         if (!(name in w.previous)) w.previous[name] = w.extra[name]?.manual ? (w.previous[name] ?? null) : (w.extra[name] ?? null);

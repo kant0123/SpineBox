@@ -14,7 +14,7 @@ from conftest import page_bytes, write_zip
 from metadata_fakes import ANILIST, MU_SEARCH, NDL, FakeClock, FakeNetwork, fixture, recorded_network
 from spinebox import db, linking, works
 from spinebox.app import create_app
-from spinebox.config import MetadataSettings
+from spinebox.config import MetadataSettings, load_settings
 from spinebox.metadata.http import HttpFetcher
 
 KAKU = "かくかくしかじか"
@@ -113,7 +113,8 @@ def test_kakukaku_is_linked_automatically_and_fills_work_and_volume_fields(env_f
     # AniList + MangaUpdates の和。英語の語彙は日本語にして入る(#74)
     assert "日常" in f["genres"]["value"] and "女性向け" in f["genres"]["value"]
     assert "成長" in f["tags"]["value"] and f["tags"]["source"] == "public_db"
-    assert f["synopsis"]["value"] and f["total_volumes"]["value"] == 5
+    assert f["total_volumes"]["value"] == 5
+    assert "synopsis" not in f  # あらすじは廃止(#82)。取得元にあっても作品の項目に入れない
     assert w["kind"] == "manga" and w["genres"] and w["tags"]
     # ローマ字名・別名が別名に入る(出所つき)
     aliases = {a["alias"]: a for a in w["aliases"]}
@@ -173,7 +174,7 @@ def test_okiraku_manga_and_novel_are_not_adopted_automatically(env_factory):
 
 WORK_EDITS = {
     "title": "手で直した作品名", "author": "手で直した著者", "kind": "novel", "publisher": "手で直した出版社",
-    "genres": ["手動ジャンル"], "tags": ["手動タグ1", "手動タグ2"], "synopsis": "手で直したあらすじ",
+    "genres": ["手動ジャンル"], "tags": ["手動タグ1", "手動タグ2"],
 }
 VOLUME_EDITS = {"publisher": "手で直した巻の出版社", "label": "手動レーベル", "released": "1999-09", "isbn": "9784000000000"}
 
@@ -202,7 +203,7 @@ def test_manually_edited_work_field_never_changes(env_factory, field, edit_first
     assert (f["value"], f["manual"], f["source"]) == (WORK_EDITS[field], True, "manual")
 
 
-@pytest.mark.parametrize("field", ["author", "kind", "publisher", "genres", "tags", "synopsis"])
+@pytest.mark.parametrize("field", ["author", "kind", "publisher", "genres", "tags"])
 def test_field_emptied_by_hand_stays_empty(env_factory, field):
     env = env_factory("kaku", KAKU_FILES)
     wid = env.work_id()
@@ -445,7 +446,8 @@ def test_name_derived_values_are_replaced_only_when_confident_or_chosen(env_fact
     put_link(env, wid, "anilist", ANILIST_ITEM, confidence=confidence, manual=manual)
     f = env.work(wid)["fields"]
     # 空欄は、確信度が低くても埋める
-    assert f["kind"]["value"] == "manga" and f["genres"]["value"] == ["ドラマ"] and f["synopsis"]["value"] == "あらすじ"
+    assert f["kind"]["value"] == "manga" and f["genres"]["value"] == ["ドラマ"]
+    assert "synopsis" not in f  # 連携した候補の中身にあらすじがあっても入れない(#82)
     if replaced:
         assert (f["author"]["value"], f["author"]["source"]) == ("公開DBの著者", "public_db")
         assert f["title"]["value"] == "公開DBの作品名"
@@ -829,30 +831,89 @@ def test_untranslated_terms_are_hidden_unless_configured(env_factory, setting, e
     assert env.work(wid)["fields"]["tags"]["value"] == expected
 
 
-@pytest.mark.parametrize("setting", [None, "fold", "hide"])
-def test_english_synopsis_is_kept_for_folding_or_hidden_by_setting(env_factory, setting):
-    extra = {} if setting is None else {"english_synopsis": setting}
-    env = env_factory("kaku", ["作品名X 第01巻.cbz"], **extra)
-    wid = env.work_id()
-    english = "Van, the fourth son of a noble, remembers his past life (前世)."
-    put_link(env, wid, "anilist", {**ANILIST_ITEM, "synopsis": english}, confidence=0.8)
-    f = env.work(wid)["fields"]
-    if setting == "hide":
-        assert "synopsis" not in f
-    else:
-        assert f["synopsis"]["value"] == english
+# --- あらすじの廃止(#82) ------------------------------------------------------------------------
 
 
-def test_japanese_synopsis_wins_over_a_higher_priority_english_one(env_factory):
+@pytest.mark.parametrize("synopsis", ["Van, the fourth son of a noble, remembers his past life (前世).", "日本語のあらすじ。"])
+def test_synopsis_from_public_db_is_not_put_into_the_work(env_factory, synopsis):
     env = env_factory("kaku", ["作品名X 第01巻.cbz"])
     wid = env.work_id()
-    put_link(env, wid, "anilist", {**ANILIST_ITEM, "synopsis": "An English synopsis."}, confidence=0.8)
-    put_link(env, wid, "mangaupdates", {**ANILIST_ITEM, "synopsis": "日本語のあらすじ。"}, confidence=0.8)
-    f = env.work(wid)["fields"]["synopsis"]
-    assert f["value"] == "日本語のあらすじ。" and f["sources"] == ["mangaupdates"]
-    # 日本語のあらすじの連携が外れたら、英語のあらすじに戻る
-    put_link(env, wid, "mangaupdates", {}, confidence=0.0, status="none")
-    assert env.work(wid)["fields"]["synopsis"]["value"] == "An English synopsis."
+    put_link(env, wid, "anilist", {**ANILIST_ITEM, "synopsis": synopsis}, confidence=0.95)
+    put_link(env, wid, "mangaupdates", {**ANILIST_ITEM, "synopsis": synopsis}, confidence=0.95)
+    assert "synopsis" not in env.work(wid)["fields"]
+    assert env.work(wid)["fields"]["genres"]["value"] == ["ドラマ"]  # ほかの項目は入る
+    conn = db.connect(env.settings.db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM work_fields WHERE field = 'synopsis'").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def _put_synopsis(env, wid, value, *, manual):
+    conn = db.connect(env.settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("""INSERT INTO work_fields (work_id, field, value, source, manual, confidence, updated_at)
+                         VALUES (?, 'synopsis', ?, ?, ?, 1.0, ?)""",
+                      (wid, value, "manual" if manual else "public_db", int(manual), db.now()))
+    finally:
+        conn.close()
+
+
+def _synopsis_rows(env):
+    conn = db.connect(env.settings.db_path)
+    try:
+        return [tuple(r) for r in conn.execute(
+            "SELECT work_id, value, source, manual FROM work_fields WHERE field = 'synopsis' ORDER BY work_id")]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("manual", [True, False], ids=["manual", "public-db"])
+def test_existing_synopsis_rows_are_kept_but_hidden(env_factory, manual):
+    """廃止前に入ったあらすじの行(手で書いたもの・公開 DB から入ったもの)は消さない。API・検索・編集には出さない。"""
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    _put_synopsis(env, wid, "手で書いた宮崎のあらすじ", manual=manual)
+    churn(env, wid)  # 再取得・再スキャン・再計算・全体の補完
+    assert _synopsis_rows(env) == [(wid, "手で書いた宮崎のあらすじ", "manual" if manual else "public_db", int(manual))]
+    assert "synopsis" not in env.work(wid)["fields"]
+    assert env.client.get("/api/works", params={"q": "宮崎のあらすじ"}).json()["works"] == []
+    # 編集・自動に戻す、の対象でもない
+    assert env.client.patch(f"/api/works/{wid}", json={"synopsis": "x"}).status_code == 422
+    assert env.client.post(f"/api/works/{wid}/fields/synopsis/reset").status_code in (404, 422)
+    assert _synopsis_rows(env)[0][1] == "手で書いた宮崎のあらすじ"
+
+
+def test_hidden_manual_synopsis_does_not_count_as_a_manual_decision(env_factory):
+    """画面から見えず戻せない、廃止したあらすじの手動の行で、自動統合が止まり続けないようにする。"""
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    _put_synopsis(env, wid, "手で書いたあらすじ", manual=True)
+    conn = db.connect(env.settings.db_path)
+    try:
+        assert works._manual_involved(conn, wid) is False
+        conn.execute("UPDATE work_fields SET manual = 1 WHERE work_id = ? AND field = 'author'", (wid,))
+        assert works._manual_involved(conn, wid) is True
+    finally:
+        conn.close()
+
+
+def test_old_english_synopsis_setting_does_not_stop_the_app(tmp_path, caplog):
+    """廃止した設定 `[metadata] english_synopsis` が古い設定ファイルに残っていても、無視してログで知らせ、起動する。"""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    cbz(lib, KAKU_FILES[0])
+    path = tmp_path / "config.local.toml"
+    path.write_text('library_roots = ["lib"]\ndata_dir = "data"\nsevenzip_path = "spinebox-test-no-such-7z"\n\n'
+                    '[metadata]\nsources = []\nenglish_synopsis = "hide"\n', encoding="utf-8")
+    with caplog.at_level("WARNING", logger="spinebox.config"):
+        settings = load_settings(path)
+    assert [r.levelname for r in caplog.records if "english_synopsis" in r.getMessage()] == ["WARNING"]
+    assert not hasattr(settings.metadata, "english_synopsis")
+    with TestClient(create_app(settings, frontend_dist=None)) as client:
+        assert client.post("/api/scan").status_code == 200
+        assert [w["title"] for w in client.get("/api/works").json()["works"]] == [KAKU]
 
 
 @pytest.mark.parametrize("publisher, expected", [("Overlap", "オーバーラップ"), ("Kadokawa Shoten", "角川書店"),
