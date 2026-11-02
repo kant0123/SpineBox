@@ -142,6 +142,13 @@ class ExtractionCache:
                     del self._pins[key]
                 self._evict()
 
+    def contains(self, key: str) -> bool:
+        """key が置いてあるか。中身は読まず、最後に使った順も変えない(統計で全件を見る用)。"""
+        with self._lock:
+            if key not in self._sizes:
+                return False
+        return self._path(key).is_file()
+
     def read(self, key: str) -> bytes | None:
         """key のファイルの中身(小さいもの用。表紙のサムネイル)。無ければ None。"""
         try:

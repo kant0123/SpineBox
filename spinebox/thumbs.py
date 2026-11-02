@@ -103,6 +103,10 @@ class Thumbnails:
         """作成済みか(元が変わっていれば作成済みではない)。"""
         return self.store.read(self._key(get_volume_row(conn, volume_id))) is not None
 
+    def is_built(self, conn: sqlite3.Connection, volume_id: int) -> bool:
+        """has() と同じ判定を、表紙を読まずに行う(管理の統計で全作品を見る用。最後に使った順も変えない)。"""
+        return self.store.contains(self._key(get_volume_row(conn, volume_id)))
+
     def build(self, conn: sqlite3.Connection, volume_ids: list[int],
               progress: Callable[[int, int], None] | None = None) -> BuildSummary:
         """明示操作: 渡した巻の表紙を、内側アーカイブを取り出してでも作る(1 巻ずつ。失敗しても続ける)。"""

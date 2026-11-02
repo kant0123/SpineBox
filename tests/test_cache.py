@@ -83,3 +83,15 @@ def test_reload_restores_order_and_cleans_tmp(tmp_path):
     assert not (d / f"{TMP_PREFIX}abc").exists()
     _put(cache, "x", 1)  # 21 > 15 → 最古の old が消える
     assert _files(d) == ["new" + SUFFIX, "x" + SUFFIX]
+
+
+def test_contains_does_not_read_or_touch_lru(tmp_path):
+    """統計で全件を見る contains は中身を読まず、最後に使った順も変えない(#85)。消えたファイルは無いと答える。"""
+    cache = ExtractionCache(tmp_path / "c", 25)
+    _put(cache, "a", 10)
+    _put(cache, "b", 10)
+    assert cache.contains("a") and not cache.contains("zz")
+    _put(cache, "c", 10)        # contains("a") で a を使い直していないので、最古の a が消える
+    assert cache.keys() == ["b", "c"] and not cache.contains("a")
+    (tmp_path / "c" / ("b" + SUFFIX)).unlink()
+    assert not cache.contains("b")

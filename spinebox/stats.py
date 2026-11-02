@@ -51,7 +51,7 @@ def collect(conn: sqlite3.Connection, *, root_id: int | None, thumbs: Thumbnails
         if vid is None:
             continue  # 画像の巻が無い(小説だけ・オフラインだけ)作品は、表紙を作れないので数えない
         try:
-            if not thumbs.has(conn, vid):
+            if not thumbs.is_built(conn, vid):
                 no_cover += 1
         except (VolumeNotFound, VolumeOffline):
             no_cover += 1
