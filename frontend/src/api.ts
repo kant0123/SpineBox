@@ -152,6 +152,22 @@ export interface WorkAlias {
   confidence: number | null;
 }
 
+/** 種別。漫画 / 小説(手で直せる。公開データベースから入ることもある) */
+export type WorkKind = "manga" | "novel";
+
+/** 項目ごとの値と出所。manual = 利用者が手で直した(再取得・再計算で変えない) */
+export interface FieldInfo<T> {
+  value: T;
+  source: WorkSource;
+  manual: boolean;
+  confidence: number | null;
+  /** 公開データベースから入った値の取得元(ndl / anilist / mangaupdates) */
+  sources?: string[];
+  /** 巻の書誌: 取得元と、その書誌の URL */
+  from?: string | null;
+  url?: string | null;
+}
+
 export interface WorkSummary {
   id: number;
   title: string;
@@ -171,6 +187,13 @@ export interface WorkSummary {
   pending_proposals: number;
   /** 統合された作品(根拠は詳細の merges) */
   merged: boolean;
+  /** 公開データベース由来(または手で直した)作品の情報(#50) */
+  kind: WorkKind | null;
+  publisher: string | null;
+  genres: string[];
+  tags: string[];
+  /** 確認待ちの公開データベースの候補がある取得元の数 */
+  link_pending: number;
 }
 
 export interface WorkList {
@@ -189,7 +212,11 @@ export interface WorkVolume {
   volume_number: VolumeNumber | null;
   duplicate_count: number;
   assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
+  /** 巻の書誌(出版社・レーベル・発売日・ISBN など)。項目ごとに出所つき */
+  metadata?: Partial<Record<VolumeMetaField, FieldInfo<string | null>>>;
 }
+
+export type VolumeMetaField = "publisher" | "label" | "released" | "isbn" | "volume_label" | "subtitle";
 
 export interface WorkSlot {
   kind: "volume" | "episode";
@@ -243,8 +270,90 @@ export interface WorkMerge {
   titles: string[];
 }
 
+export type SourceName = "ndl" | "anilist" | "mangaupdates";
+
+/** 公開データベースの候補(利用者に見せる概要) */
+export interface LinkCandidate {
+  source_id: string;
+  title: string;
+  subtitle: string | null;
+  romaji: string | null;
+  authors: string[];
+  kind: WorkKind | null;
+  publisher: string | null;
+  label?: string | null;
+  released: string | null;
+  total_volumes: number | null;
+  genres: string[];
+  url: string | null;
+  score: number;
+  reasons: string[];
+  /** 国立国会図書館サーチ: 同じ本としてまとめた書誌の件数と、その巻番号 */
+  record_count?: number;
+  volumes?: number[];
+}
+
+export interface LinkFailure {
+  kind: "timeout" | "connect" | "http_status" | "rate_limited" | "invalid_response" | "too_large" | "disabled" | "internal";
+  message: string;
+  status: number | null;
+  retry_after: number | null;
+  at: string;
+}
+
+/** 作品と取得元 1 つの連携。status: linked 連携済み / pending 確認待ち / none 該当なし / null まだ取得できていない */
+export interface WorkLink {
+  source: SourceName;
+  label: string;
+  status: "linked" | "pending" | "none" | null;
+  manual: boolean;
+  confidence: number | null;
+  source_id: string | null;
+  attempted_at: string | null;
+  checked_at: string | null;
+  failure: LinkFailure | null;
+  linked: LinkCandidate | null;
+  decision: string | null;
+  margin: number | null;
+  /** kind_unresolved = 漫画か小説かが決まるまで自動では連携しない */
+  hold: string | null;
+  responses: { label: string; fetched_at: string; from_cache: boolean; stale: boolean }[];
+  candidates: LinkCandidate[];
+}
+
+export interface WorkEditBody {
+  title?: string;
+  author?: string | null;
+  kind?: WorkKind | null;
+  publisher?: string | null;
+  synopsis?: string | null;
+  genres?: string[];
+  tags?: string[];
+}
+
+export type WorkFieldName = "title" | "author" | "kind" | "publisher" | "genres" | "tags" | "synopsis";
+
+export interface MetadataFetchState {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number;
+  total: number;
+  current: number | null;
+  summary: { works: number; sources: Record<string, number> } | null;
+  error: string | null;
+}
+
+export interface MetadataStatus {
+  state: MetadataFetchState;
+  sources: SourceName[];
+  background: boolean;
+}
+
 export interface WorkDetail extends WorkSummary {
   title_confidence: number | null;
+  fields: Partial<Record<WorkFieldName | "total_volumes", FieldInfo<any>>>;
+  links: WorkLink[];
   slots: WorkSlot[];
   unnumbered: WorkVolume[];
   numbers: { volume: { max: number | null; missing: number[]; limited: boolean }; episode: { max: number | null; missing: number[]; limited: boolean } };
@@ -382,8 +491,28 @@ export const api = {
   refreshWorks: () => request<unknown>("/api/works/refresh", { method: "POST" }),
   listWorks: () => request<WorkList>("/api/works"),
   getWork: (id: number | string) => request<WorkDetail>(`/api/works/${vid(id)}`),
-  editWork: (id: number | string, body: { title?: string; author?: string }) =>
+  editWork: (id: number | string, body: WorkEditBody) =>
     request<WorkDetail>(`/api/works/${vid(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  /** 手動の項目を自動に戻す(直す前の値、無ければ公開データベースの値) */
+  resetWorkField: (id: number | string, field: WorkFieldName) =>
+    request<WorkDetail>(`/api/works/${vid(id)}/fields/${field}/reset`, { method: "POST" }),
+  /** この作品の公開データベースの情報を取りに行く(数秒かかる。取得元の失敗は 200 で返り、連携に記録される) */
+  fetchWorkMetadata: (id: number | string) => request<WorkDetail>(`/api/works/${vid(id)}/metadata/fetch`, { method: "POST" }),
+  /** 確認待ちの候補を選ぶ(sourceId が null なら「該当なし」)。選んだ結果は手動の決定になる */
+  chooseLink: (id: number | string, source: SourceName, sourceId: string | null) =>
+    request<WorkDetail>(`/api/works/${vid(id)}/links/${source}/choose`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_id: sourceId }),
+    }),
+  resetLink: (id: number | string, source: SourceName) => request<WorkDetail>(`/api/works/${vid(id)}/links/${source}/reset`, { method: "POST" }),
+  editVolumeMetadata: (id: VolumeId, body: Partial<Record<"publisher" | "label" | "released" | "isbn", string | null>>) =>
+    request<unknown>(`/api/volumes/${vid(id)}/metadata`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  resetVolumeMetadata: (id: VolumeId, field: "publisher" | "label" | "released" | "isbn") =>
+    request<unknown>(`/api/volumes/${vid(id)}/metadata/${field}/reset`, { method: "POST" }),
+  metadataStatus: () => request<MetadataStatus>("/api/works/metadata"),
+  /** 公開データベースの情報を、取得が必要な作品(all なら全作品)について取りに行く(裏で動く) */
+  fetchAllMetadata: (all = false) => request<MetadataFetchState>(`/api/works/metadata/fetch${all ? "?all=true" : ""}`, { method: "POST" }),
   addAlias: (id: number | string, alias: string) =>
     request<WorkDetail>(`/api/works/${vid(id)}/aliases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ alias }) }),
   removeAlias: (id: number | string, aliasId: number) => request<WorkDetail>(`/api/works/${vid(id)}/aliases/${aliasId}`, { method: "DELETE" }),

@@ -4,7 +4,8 @@
 呼び出し側が渡したファイルへ行い、エントリ名をディスク上のパスに使わない。
 エントリ名の検証と展開上限の判定は形式によらないので `list_entries()` でまとめて行う。
 
-形式は拡張子で選ぶ。zip / cbz は標準 zipfile、7z / rar(cb7 / cbr)は 7-Zip CLI(`sevenzip.py`)。
+形式は先頭のマジックバイトで選び、判定できなければ拡張子で選ぶ(`detect_format()`。rar / 7z を .cbz に
+改名したものが実データにある。#49)。zip は標準 zipfile、7z / rar は 7-Zip CLI(`sevenzip.py`)。
 7-Zip が見つからないときは UnsupportedArchive になり、スキャンは「未対応」として記録して一覧から外す。
 """
 from __future__ import annotations
@@ -82,6 +83,13 @@ class ArchiveReader(abc.ABC):
         self.copy_entry(entry, buf, limits.max_entry_bytes)
         return buf.getvalue()
 
+    # 複数エントリをまとめて読むと速くなる形式か(7-Zip CLI は 1 回の起動で複数を取り出せる)
+    batch_reads = False
+
+    def read_entries(self, entries: list[ArchiveEntry], limits: ExtractionLimits) -> dict[int, bytes]:
+        """複数エントリをメモリに読む(index → 中身)。既定は 1 つずつ。"""
+        return {e.index: self.read_entry(e, limits) for e in entries}
+
 
 @dataclass
 class Listing:
@@ -136,13 +144,87 @@ def reader_available(name: str, sevenzip_path: str = DEFAULT_SEVENZIP) -> bool:
     return entry is not None and entry[1](sevenzip_path)
 
 
+# 先頭のマジックバイト → 形式。zip は通常のローカルヘッダ・空の zip・分割の印
+_MAGIC = (
+    (b"PK\x03\x04", "zip"),
+    (b"PK\x05\x06", "zip"),
+    (b"PK\x07\x08", "zip"),
+    (b"Rar!\x1a\x07\x00", "rar"),       # RAR4
+    (b"Rar!\x1a\x07\x01\x00", "rar"),   # RAR5
+    (b"7z\xbc\xaf\x27\x1c", "7z"),
+)
+MAGIC_BYTES = max(len(m) for m, _ in _MAGIC)
+# 形式 → その形式のリーダーを登録している拡張子
+_FORMAT_EXT = {"zip": ".zip", "rar": ".rar", "7z": ".7z"}
+_EXT_FORMAT = {".zip": "zip", ".cbz": "zip", ".rar": "rar", ".cbr": "rar", ".7z": "7z", ".cb7": "7z"}
+
+
+def detect_format(path: Path) -> str | None:
+    """先頭のマジックバイトから形式("zip" / "rar" / "7z")を返す。判定できない・読めないなら None。
+
+    読むのは先頭 MAGIC_BYTES バイトだけ(読み取り専用)。自己解凍形式(先頭が実行ファイル)や
+    短すぎるファイルは None になり、呼び出し側が拡張子で選ぶ。
+    """
+    try:
+        with open(path, "rb") as f:
+            head = f.read(MAGIC_BYTES)
+    except OSError:
+        return None
+    for magic, fmt in _MAGIC:
+        if head.startswith(magic):
+            return fmt
+    return None
+
+
+def file_reader_available(path: Path, sevenzip_path: str = DEFAULT_SEVENZIP) -> bool:
+    """ディスク上の path を今読めるか。中身の形式が分かればそれで、分からなければ拡張子で判定する。"""
+    fmt = detect_format(path)
+    return reader_available("x" + _FORMAT_EXT[fmt] if fmt else path.name, sevenzip_path)
+
+
 def open_archive(path: Path, name: str | None = None, *, sevenzip_path: str = DEFAULT_SEVENZIP) -> ArchiveReader:
-    """path のアーカイブを読み取り専用で開く。形式は name(省略時は path)の拡張子で選ぶ。"""
+    """path のアーカイブを読み取り専用で開く。
+
+    形式は先頭のマジックバイトで選び、判定できなければ name(省略時は path)の拡張子で選ぶ。
+    拡張子と中身が食い違う(rar を .cbz に改名した等)ときは中身に従う。内側アーカイブは取り出した後の
+    ファイルを渡すので、同じ判定になる。
+    """
     ext = _ext(name or path.name)
-    entry = _READERS.get(ext)
-    if entry is None:
-        raise UnsupportedArchive(f"未対応の形式({ext or '拡張子なし'})")
-    return entry[0](path, sevenzip_path)
+    fmt = detect_format(path)
+    if fmt is None:
+        entry = _READERS.get(ext)
+        if entry is None:
+            raise UnsupportedArchive(f"未対応の形式({ext or '拡張子なし'})")
+        if _EXT_FORMAT.get(ext) == "zip":
+            return _open_zip_or_other(path, entry[0], sevenzip_path)
+        return entry[0](path, sevenzip_path)
+    factory, available = _READERS[_FORMAT_EXT[fmt]]
+    if fmt != _EXT_FORMAT.get(ext) and not available(sevenzip_path):
+        raise UnsupportedArchive(f"未対応(中身は {fmt}。拡張子は {ext or 'なし'}): "
+                                 f"7-Zip が見つからない(sevenzip_path = {sevenzip_path!r})")
+    return factory(path, sevenzip_path)
+
+
+def _open_zip_or_other(path: Path, zip_factory: ReaderFactory, sevenzip_path: str) -> ArchiveReader:
+    """先頭で形式が分からない zip / cbz。zipfile で開けなければ 7-Zip でも試す(自己解凍形式など)。
+
+    7-Zip でも開けなければ「本当に壊れている」として両方の理由を ArchiveError にする。
+    """
+    try:
+        return zip_factory(path, sevenzip_path)
+    except UnsupportedArchive:
+        raise
+    except ArchiveError as zip_error:
+        factory, available = _READERS[_FORMAT_EXT["7z"]]
+        if not available(sevenzip_path):
+            raise
+        reader = factory(path, sevenzip_path)
+        try:
+            reader.raw_entries()  # 開けるかをここで確かめる(目次は読んだ結果がリーダーに残る)
+        except ArchiveError as other_error:
+            reader.close()
+            raise ArchiveError(f"{zip_error}。7-Zip でも開けない: {other_error}") from other_error
+        return reader
 
 
 def _register_builtin() -> None:

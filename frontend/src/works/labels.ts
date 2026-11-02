@@ -1,4 +1,4 @@
-import type { MergeEvidence, WorkSource, WorkSummary } from "../api";
+import type { FieldInfo, LinkFailure, MergeEvidence, SourceName, WorkKind, WorkLink, WorkSource, WorkSummary } from "../api";
 
 const SOURCE_TEXT: Record<WorkSource, string> = {
   filename: "ファイル名から",
@@ -36,4 +36,52 @@ export function evidenceLines(ev: MergeEvidence): string[] {
     lines.push(`名前「${a.name}」(${a.is_title ? "作品名" : "別名"})と「${b.name}」(${b.is_title ? "作品名" : "別名"})が同じ`);
   }
   return lines;
+}
+
+/** 公開データベースの取得元の名前・サイト・利用している API(表示義務のあるクレジット) */
+export const SOURCE_SITES: Record<SourceName, { name: string; api: string; url: string }> = {
+  ndl: { name: "国立国会図書館サーチ", api: "NDL サーチ API", url: "https://ndlsearch.ndl.go.jp/" },
+  anilist: { name: "AniList", api: "AniList API", url: "https://anilist.co" },
+  mangaupdates: { name: "MangaUpdates", api: "MangaUpdates API", url: "https://www.mangaupdates.com" },
+};
+
+export const dbName = (s: string): string => (s in SOURCE_SITES ? SOURCE_SITES[s as SourceName].name : s);
+
+export const KIND_TEXT: Record<WorkKind, string> = { manga: "漫画", novel: "小説" };
+
+/** 項目の出所の注記(手動 / 公開データベース(取得元・確信度) / 名前から / 未設定) */
+export function fieldNote(info: FieldInfo<unknown> | null | undefined, unsetText = "未設定"): string {
+  if (!info) return unsetText;
+  if (info.manual) return "手動で編集";
+  if (info.source === "public_db") {
+    const names = (info.sources ?? []).map(dbName).join("・");
+    return `公開データベース${names ? `: ${names}` : ""}(確信度 ${confidenceText(info.confidence)})`;
+  }
+  return `${sourceText(info.source)}${info.confidence != null ? `(確信度 ${confidenceText(info.confidence)})` : ""}`;
+}
+
+const FAILURE_TEXT: Record<LinkFailure["kind"], string> = {
+  timeout: "応答が時間内に返りませんでした",
+  connect: "接続できませんでした",
+  http_status: "サーバーがエラーを返しました",
+  rate_limited: "短時間に問い合わせすぎて制限されています",
+  invalid_response: "読み取れない応答でした",
+  too_large: "応答が大きすぎて受け取れませんでした",
+  disabled: "この取得元は無効になっています",
+  internal: "取得中に想定外のエラーが起きました",
+};
+
+/** 取得に失敗した理由(取得元が落ちていても、すでに入った値はそのまま) */
+export function failureText(f: LinkFailure): string {
+  const status = f.status ? ` (HTTP ${f.status})` : "";
+  const retry = f.retry_after ? `、${f.retry_after} 秒後に再試行できます` : "";
+  return `${FAILURE_TEXT[f.kind] ?? f.message}${status}${retry}`;
+}
+
+/** 連携の状態を一言で */
+export function linkStatusText(l: WorkLink): string {
+  if (l.status === "linked") return l.manual ? "選んだ候補と連携中" : `自動で連携(確信度 ${confidenceText(l.confidence)})`;
+  if (l.status === "pending") return l.hold === "kind_unresolved" ? "漫画か小説かが決まるまで保留" : "確認待ち";
+  if (l.status === "none") return l.manual ? "該当なし(手動で選択)" : "該当なし";
+  return "未取得";
 }

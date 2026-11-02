@@ -27,7 +27,7 @@ from typing import Callable
 
 from .. import db
 from ..archive import ArchiveError, list_entries, open_archive
-from ..archive.base import reader_available
+from ..archive.base import file_reader_available, reader_available
 from ..cache import CacheTooLarge
 from ..config import Settings
 from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
@@ -35,7 +35,7 @@ from ..pages import is_image, natural_key
 from ..naming import parse_number
 from ..scanner import (LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, SCAN_VERSION, Scanner, VolumeSpec, _fs_name_bytes,
                        resolve_source_path, root_is_accessible)
-from ..works import WorkNotFound, root_of, transfer_assignment
+from ..works import WorkNotFound, root_of, transfer_assignment, transfer_volume_fields
 from . import cbz, fs
 from .template import NameTemplate, NameValues, ValueMissing, check_path_length
 
@@ -296,7 +296,7 @@ class Organizer:
 
     def _inspect_archive(self, path: Path, vols: list[dict], problems: list[str], warnings: list[str]) -> None:
         sevenzip = self.settings.sevenzip_path
-        if not reader_available(path.name, sevenzip):
+        if not file_reader_available(path, sevenzip):
             problems.append("この形式は今読めません(7-Zip が見つからない、または未対応)")
             return
         for v in vols:
@@ -896,12 +896,13 @@ class Organizer:
 
 
 def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_count: int | None) -> None:
-    """巻に紐づくユーザーの記録(読書位置・作品の割り当て)を別の巻へ写す。手動編集メタデータを足したらここで一緒に写す。
+    """巻に紐づくユーザーの記録(読書位置・作品の割り当て・巻の書誌)を別の巻へ写す。手動編集メタデータを足したらここで一緒に写す。
 
     ページの並びは CBZ 化の前後で同じ(今の並び順で固定する)なので、ページ番号はそのまま使える。
     作品の割り当ては手動の決定も含めてそのまま写す(整理で作品が変わらない。元に戻すときは逆向きに写す)。
     """
     transfer_assignment(c, from_id, to_id)
+    transfer_volume_fields(c, from_id, to_id)  # 手動で直した出版社・ISBN などを、整理しても失わない
     row = c.execute("SELECT page, finished FROM reading_progress WHERE volume_id = ?", (from_id,)).fetchone()
     if row is None:
         return
