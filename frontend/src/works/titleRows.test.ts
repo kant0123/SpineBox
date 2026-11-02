@@ -91,6 +91,11 @@ describe("作品全体の進み具合", () => {
       [],
       [release(3, "gap")],
     ));
-    expect(workProgress(rows)).toEqual({ percent: 80, read: 24, total: 30, finished: 2, volumes: 3 });
+    expect(workProgress(rows)).toEqual({ percent: 80, read: 24, total: 30, finished: 2, volumes: 3, unknown: 0 });
+  });
+
+  it("ページ数が未確定の巻(開いていない小説)は割合に数えず、件数だけ返す", () => {
+    const rows = buildTitleRows(work([slot(1, [vol(1)]), slot(2, [vol(2, { page_count: null })])], []));
+    expect(workProgress(rows)).toEqual({ percent: 0, read: 0, total: 10, finished: 0, volumes: 2, unknown: 1 });
   });
 });

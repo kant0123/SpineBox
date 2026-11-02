@@ -121,6 +121,8 @@ export interface WorkProgress {
   total: number;
   finished: number;
   volumes: number;
+  /** ページ数が未確定で割合に数えられない巻(まだ開いていない小説など) */
+  unknown: number;
 }
 
 /** 作品全体の進み具合(#115)。重複は 1 巻として数え、読んでいる巻の位置を使う */
@@ -129,15 +131,19 @@ export function workProgress(rows: TitleRow[]): WorkProgress {
   let total = 0;
   let finished = 0;
   let volumes = 0;
+  let unknown = 0;
   for (const row of rows) {
     if (row.kind === "missing") continue;
     volumes++;
     if (row.status === "finished") finished++;
     const pages = row.primary.page_count;
-    if (pages === null || pages <= 0) continue;
+    if (pages === null || pages <= 0) {
+      unknown++;
+      continue;
+    }
     total += pages;
     const p = row.primary.progress;
     read += p?.finished ? pages : p ? Math.min(p.page + 1, pages) : 0;
   }
-  return { percent: total > 0 ? Math.round((read / total) * 100) : 0, read, total, finished, volumes };
+  return { percent: total > 0 ? Math.round((read / total) * 100) : 0, read, total, finished, volumes, unknown };
 }

@@ -65,9 +65,10 @@ export function WorkTitles({ id }: { id: string }) {
   const overall = workProgress(rows);
   const missing = rows.filter((r) => r.kind === "missing").length;
   const meta = [work.author, work.kind ? KIND_TEXT[work.kind] : "", `${work.volume_count} 巻`].filter(Boolean).join(" / ");
+  const unknownNote = overall.unknown > 0 ? `(ページ数未確定 ${overall.unknown} 巻)` : "";
   const overallText = overall.total > 0
-    ? `全体 ${overall.percent}%(${overall.read} / ${overall.total})・読了 ${overall.finished} / ${overall.volumes} 巻`
-    : `全体 —・読了 ${overall.finished} / ${overall.volumes} 巻`;
+    ? `全体 ${overall.percent}%(${overall.read} / ${overall.total})・読了 ${overall.finished} / ${overall.volumes} 巻${unknownNote}`
+    : `全体 —・読了 ${overall.finished} / ${overall.volumes} 巻${unknownNote}`;
 
   const renderOwned = (row: OwnedTitleRow) => {
     const body = (
