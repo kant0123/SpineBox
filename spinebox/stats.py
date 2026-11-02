@@ -13,7 +13,7 @@ import sqlite3
 
 from . import works
 from .cache import ExtractionCache, MemoryCache
-from .library import VolumeNotFound, VolumeOffline, is_offline
+from .library import is_offline
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, collect_issues
 from .thumbs import Thumbnails
 
@@ -45,16 +45,10 @@ def collect(conn: sqlite3.Connection, *, root_id: int | None, thumbs: Thumbnails
 
     listing = works.list_works(conn, root_id=root_id)
     ws = listing["works"]
-    no_cover = 0
-    for w in ws:
-        vid = w["cover_volume_id"]
-        if vid is None:
-            continue  # 画像の巻が無い(小説だけ・オフラインだけ)作品は、表紙を作れないので数えない
-        try:
-            if not thumbs.is_built(conn, vid):
-                no_cover += 1
-        except (VolumeNotFound, VolumeOffline):
-            no_cover += 1
+    # 画像の巻が無い(小説だけ・オフラインだけ)作品は、表紙を作れないので数えない。巻の行は作品の数だけ引かずまとめて引く
+    cover_ids = [w["cover_volume_id"] for w in ws if w["cover_volume_id"] is not None]
+    built = thumbs.are_built(conn, cover_ids)
+    no_cover = sum(1 for vid in cover_ids if not built[vid])
     work_stats = {
         "total": len(ws),
         "manga": sum(1 for w in ws if w["kind"] == "manga"),

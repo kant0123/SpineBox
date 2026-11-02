@@ -243,3 +243,26 @@ def test_stats_counts_a_vanished_cover_file_as_no_cover(env):
     (a / "[東村アキコ] かくかくしかじか 第01巻.cbz").unlink()
     r = client.get("/api/stats")
     assert r.status_code == 200 and r.json()["works"]["no_cover"] == 2
+
+
+def test_stats_does_not_query_a_volume_row_per_work(env):
+    """統計は全作品の表紙の有無を見るので、巻の行を作品の数だけ SELECT しない(agy レビュー。N+1 の禁止)。
+    1000 作品分の表紙の巻を渡しても、巻の行は 500 件ずつの IN でまとめて引く。"""
+    settings, client, _, _ = env
+    conn = db.connect(settings.db_path)
+    try:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM volumes")]
+        from spinebox.app import ExtractionCache, Library, Thumbnails  # noqa: PLC0415
+        lib = Library(settings, ExtractionCache(settings.cache_dir, 10**9))
+        thumbs = Thumbnails(lib, ExtractionCache(settings.thumbs_dir, 10**9))
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+        built = thumbs.are_built(conn, ids * 250)  # 重複を含む 1000 件
+        conn.set_trace_callback(None)
+        volume_selects = [s for s in statements if "FROM volumes v JOIN sources s" in s]
+        assert set(built) == set(ids) and not any(built.values())
+        assert len(volume_selects) == 1
+        # 見えない巻(見つからない id)は False で、例外にならない
+        assert thumbs.are_built(conn, [999999]) == {999999: False}
+    finally:
+        conn.close()
