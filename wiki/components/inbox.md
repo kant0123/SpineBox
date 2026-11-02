@@ -2,7 +2,7 @@
 type: component
 summary: 受け入れ(フェーズ 4)。受け入れフォルダを蔵書と同じスキャナーで検出(同期)→ 作品・番号・重複・対象外の理由つきで整理案をプレビュー → 利用者が選んだものだけ承認で書庫へ入れる(元は受け入れフォルダの退避へ移すだけ・履歴から元に戻せる)。確信度が低い名寄せ・読めない番号・重複は自動で決めない
 updated: 2026-11-02
-related: [overview, backend, frontend, organize, work-grouping]
+related: [overview, backend, frontend, organize, work-grouping, data-jobs]
 ---
 
 # 受け入れ(受け入れフォルダ → 承認で書庫へ)
@@ -103,7 +103,7 @@ related: [overview, backend, frontend, organize, work-grouping]
   巻を数える新しいクエリはこの条件を使う(使わないと受け入れ待ちの本が蔵書に混ざる)
 - 書庫のスキャンが済んでいないと承認できない。受け入れ側の画面は先に書庫をスキャンするよう案内する
 - 承認の API は 1 件ずつの結果(`results`)を返す。HTTP が成功でも項目ごとに `ok: false` がありうる
-- 同期と承認はスキャンと同じロックで直列化する(`/api/scan` と同時に走ると 409)
+- 同期と承認はスキャンと同じロックで直列化する(`/api/scan` と同時に走ると 409)。同期はデータ管理のジョブ `inbox_sync` で、履歴に残る。承認はジョブに入れない(蔵書を動かすため。[[data-jobs]])
 - `tests/test_search.py` のマイグレーション数の検査は `>= 9`(件数を固定すると、列を足すたびに壊れる)
 
 ## 経緯

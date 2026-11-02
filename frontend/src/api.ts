@@ -155,6 +155,9 @@ export interface DuplicateScanState {
   total: number;
   summary: { fingerprinted: number; errors: number; candidates: number } | null;
   error: string | null;
+  /** データ管理のジョブ(#83)。待ちのときも running は true */
+  job_id?: number | null;
+  status?: JobStatus | null;
 }
 
 /** 表紙の作成(明示操作。POST /api/thumbnails/build)の状態 */
@@ -166,6 +169,55 @@ export interface ThumbnailBuildState {
   total: number;
   summary: { total: number; made: number; existing: number; skipped: number } | null;
   error: string | null;
+  job_id?: number | null;
+  status?: JobStatus | null;
+}
+
+// データ管理のジョブ(#83)。1 本ずつ動き、依頼は待ち行列に入る。履歴はサーバーの DB に残る
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+/** jobs = データ管理の画面、button = 各画面の既存のボタン、background = 裏の定期処理 */
+export type JobOrigin = "jobs" | "button" | "background";
+
+export interface Job {
+  id: number | null;
+  kind: string;
+  label: string;
+  origin: JobOrigin;
+  params: Record<string, unknown>;
+  status: JobStatus;
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number | null;
+  total: number | null;
+  /** 今の対象(ファイル・巻・作品の名前) */
+  current: string | null;
+  /** 複数の処理を順に行うジョブの、今の段 */
+  step: string | null;
+  /** 裏の定期処理で、続けて動いた回数(1 行にまとめる) */
+  runs: number;
+  summary: Record<string, unknown> | null;
+  error: string | null;
+  cancel_requested: boolean;
+  cancellable: boolean;
+}
+
+export interface JobsSnapshot {
+  current: Job | null;
+  queue: Job[];
+  history: Job[];
+}
+
+export interface JobKind {
+  kind: string;
+  group: string;
+  label: string;
+  description: string;
+  count: number | null;
+  count_text: string | null;
+  available: boolean;
+  unavailable_reason: string | null;
+  options: { name: string; label: string }[];
 }
 
 export interface DuplicateList {
@@ -406,9 +458,12 @@ export interface MetadataFetchState {
   finished_at: string | null;
   done: number;
   total: number;
-  current: number | null;
+  /** 今取得している作品の名前 */
+  current: string | null;
   summary: { works: number; sources: Record<string, number> } | null;
   error: string | null;
+  job_id?: number | null;
+  status?: JobStatus | null;
 }
 
 export interface MetadataStatus {
@@ -703,6 +758,15 @@ export const api = {
       body: JSON.stringify({ items }),
     }),
   /** 選んだものだけを書庫へ入れる(1 件ずつ。失敗した件は受け入れフォルダに残る) */
+  /** データ管理: 実行中・待ち行列・履歴 */
+  listJobs: () => request<JobsSnapshot>("/api/jobs"),
+  /** データ管理: 並べるジョブと対象の件数 */
+  jobCatalog: () => request<{ kinds: JobKind[] }>("/api/jobs/catalog"),
+  /** ジョブを待ち行列に入れる(同じジョブが待ち・実行中なら、それが返る) */
+  startJob: (kind: string, params: Record<string, boolean> = {}) =>
+    request<Job>("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, params }) }),
+  /** 待ちなら取り下げ、実行中なら区切りのよいところで止める */
+  cancelJob: (id: number) => request<Job>(`/api/jobs/${id}/cancel`, { method: "POST" }),
   approveInbox: (items: InboxDecision[]) =>
     request<{ results: InboxApproveResult[] }>("/api/inbox/approve", {
       method: "POST",

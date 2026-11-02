@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
 updated: 2026-11-02
-related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails]
+related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, data-jobs]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -32,7 +32,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
   `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:299 _open_unit()`
 - **親は「まとめ」として残す。** 開けば今までどおり全ページを読める。一覧(`LISTED_VOLUMES_WHERE`)は見えている子を持つ親を出さず、子を親の位置に並べる
 - 解析する契機: (1) 内側アーカイブの巻を開いたとき(`GET /api/volumes/{id}`。取り出しは済んでいるので追加の展開は無い)、
-  (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析
+  (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析(ほかのジョブが動いていないときだけ。[[data-jobs]])、(4) データ管理の「中の巻を調べる」(未解析を全部)
   (`spinebox/library.py:407 analyze_next()`、1 回に 1 巻、既定は無効)。**スキャンでは解析しない**
 - 解析の版 `analyzed_version` = 解析の仕方(`ANALYSIS_VERSION`)・`max_depth`・元ファイルのサイズと mtime。どれかが変われば開いたときに解析し直す。
   スキャンがソースを読み直したときも NULL(未解析)に戻す

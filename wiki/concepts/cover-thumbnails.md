@@ -2,7 +2,7 @@
 type: concept
 summary: 作品カードの表紙(#75)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作「表紙を作る」で作る理由と、却下した代替案
 updated: 2026-11-02
-related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection]
+related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection, data-jobs]
 ---
 
 # 表紙のサムネイル
@@ -25,7 +25,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。小説・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の
-  「表紙を作る」(`POST /api/thumbnails/build`。表紙の巻のうちまだ無いものを 1 巻ずつ、取り出してでも作る。進み具合は `GET /api/thumbnails`。スキャン中・実行中は 409)
+  「表紙を作る」(`POST /api/thumbnails/build`。表紙の巻のうちまだ無いものを 1 巻ずつ、取り出してでも作る。進み具合は `GET /api/thumbnails`。データ管理の「表紙のみ補完」と同じジョブ([[data-jobs]])で、ほかのジョブの実行中は待ち行列に入る)
 - **画面は「無ければ文字だけのカード」。** `<img loading="lazy">` で、読み込めたら見せ、404 などのエラーなら要素ごと消す。
   「表紙を作る」が終わったら URL に `?rev=` を付けて取り直す。サーバーは `ETag` + `Cache-Control: private, no-cache` で、同じ表紙は 304
 

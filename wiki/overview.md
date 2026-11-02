@@ -2,7 +2,7 @@
 type: concept
 summary: システム全体像と各ページへの入口
 updated: 2026-11-02
-related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources, novel-reader, work-search, inbox, cover-thumbnails]
+related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources, novel-reader, work-search, inbox, cover-thumbnails, data-jobs]
 ---
 
 # SpineBox 全体像
@@ -32,6 +32,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - [[work-grouping]] — 作品の名寄せ(`spinebox/works.py`)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。確信度の高い統合だけ自動、残りは確認待ち、欠け巻と重複を作品ページで見せる
 - [[metadata-linking]] — `spinebox/linking.py`。公開 DB の情報を作品・巻へ結線する規則。連携の自動/確認待ちの基準、空欄だけを埋める・手動は不変、取得失敗の扱い、全文検索・絞り込みの保存場所
 - [[work-search]] — 作品の全文検索(FTS5 trigram、`spinebox/search.py`)と、著者・種別・ジャンル・タグ・読書状態の絞り込み。索引はトリガーの印で次の一覧の前に追いつく
+- [[data-jobs]] — データ管理。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期をジョブとして 1 本ずつ動かし(依頼は待ち行列)、中止と履歴(`jobs` 表)を持つ。整理処理はジョブに入れない
 - [[frontend]] — `frontend/`。蔵書一覧と右綴じ・見開きリーダー(React + Vite)。ビルド結果をバックエンドが `/` で配信する
 - [[novel-reader]] — 小説(EPUB・テキスト)の巻と縦書きリーダー。EPUB の HTML は信用せず、サーバーの許可リスト・ブラウザでの作り直し・CSP の 3 段で止める。読書位置は区切り+割合
 

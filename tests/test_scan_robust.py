@@ -143,10 +143,10 @@ def test_unexpected_exception_while_registering_a_source_is_recorded(conn, tmp_p
     good(lib, "b.cbz")
     real = Scanner._replace_volumes
 
-    def explode(self, c, source_id, specs):
+    def explode(self, c, source_id, specs, **kw):
         if specs and specs[0].title == "b":
             raise OverflowError("Python int too large to convert to SQLite INTEGER")
-        return real(self, c, source_id, specs)
+        return real(self, c, source_id, specs, **kw)
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(Scanner, "_replace_volumes", explode)

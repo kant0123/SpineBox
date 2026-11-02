@@ -405,20 +405,24 @@ class Library:
             return None
         return analysis.analysis_version(f"{st.st_size}-{st.st_mtime_ns}", self.settings.limits.max_depth)
 
+    @staticmethod
+    def pending_analysis(conn: sqlite3.Connection) -> list[int]:
+        """未解析の内側アーカイブの巻の id(見えているルートのものだけ。解析の後に新しく増えることはない)。"""
+        return [r[0] for r in conn.execute(
+            """SELECT v.id FROM volumes v JOIN sources s ON s.id = v.source_id
+               JOIN library_roots r ON r.id = s.root_id
+               WHERE v.container_path IS NOT NULL AND v.parent_id IS NULL AND v.inner_path IS NULL
+                 AND v.analyzed_version IS NULL AND v.missing = 0 AND s.missing = 0 AND s.offline = 0
+                 AND r.online = 1 AND r.enabled = 1
+               ORDER BY v.id""")]
+
     def analyze_next(self, conn: sqlite3.Connection) -> int | None:
         """未解析の内側アーカイブの巻を 1 つ解析する(裏で少しずつ解析する用)。解析した巻の id を返す。
 
         オフライン・見つからない巻は飛ばす(記録しない。再接続後にまた候補になる)。読めなかった巻は
         理由を analysis_error に残し、元ファイルが変わるか明示的に解析するまで候補にしない。
         """
-        rows = conn.execute(
-            """SELECT v.id FROM volumes v JOIN sources s ON s.id = v.source_id
-               JOIN library_roots r ON r.id = s.root_id
-               WHERE v.container_path IS NOT NULL AND v.parent_id IS NULL AND v.inner_path IS NULL
-                 AND v.analyzed_version IS NULL AND v.missing = 0 AND s.missing = 0 AND s.offline = 0
-                 AND r.online = 1 AND r.enabled = 1
-               ORDER BY v.id""").fetchall()
-        for (volume_id,) in rows:
+        for volume_id in self.pending_analysis(conn):
             try:
                 self.analyze(conn, volume_id)
             except (VolumeOffline, VolumeNotFound):

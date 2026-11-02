@@ -2,7 +2,7 @@
 type: concept
 summary: 別スキャンの重複候補の検出。全ページの dHash の集合と巻番号の候補で判定し、自動では消さない。しきい値の根拠(実データの距離の分布)、全ページを指紋にした理由、却下の持ち方、計算の範囲
 updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, extraction-cache, archive-reading, organize, work-grouping, cover-thumbnails]
+related: [overview, backend, frontend, volume-split, extraction-cache, archive-reading, organize, work-grouping, cover-thumbnails, data-jobs]
 ---
 
 # 別スキャンの重複候補の検出
@@ -26,7 +26,7 @@ related: [overview, backend, frontend, volume-split, extraction-cache, archive-r
 - `POST /api/duplicates/scan`(`spinebox/duplicates.py:283 DuplicateScanner`)が、指紋の無い・版の古い・前回失敗した巻の指紋を作り、最後に候補を計算し直す。
   **スキャンでは計算しない**(内側アーカイブを取り出すため。スキャンが内側アーカイブを取り出さない不変条件のとおり)
 - 既定は裏のスレッドで動かして 202 を返し、進み具合(`done` / `total`)は `GET /api/duplicates` の `scan` に出る。`?wait=true` は終わるまで待つ(テスト・手動用)。
-  同時に 1 つだけ(409)。ライブラリのスキャン中も 409
+  データ管理のジョブ(`duplicates`。[[data-jobs]])として 1 本ずつ動き、ほかのジョブの実行中は待ち行列に入る(`?wait=true` は 409)。中止すると、それまでに作った指紋は残り候補は前回のまま
 - 対象は一覧に見えている巻(`LISTED_VOLUMES_WHERE`)のうち、オフラインでないもの。内側アーカイブの巻は**開いて中の巻に分解してから**(`Library.register_analysis`)、
   分解後の子の巻の指紋を作る(親は一覧から隠れるので対象外)。取り出しは通常の展開キャッシュと上限を使う([[extraction-cache]])
 - 読めなかった巻(展開上限・壊れた・未対応)は `volume_fingerprints.error` に理由を残して飛ばし、**明示操作のたびにやり直す**。オフライン・見つからない巻は記録せず飛ばす

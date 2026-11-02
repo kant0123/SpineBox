@@ -25,6 +25,7 @@ import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import Callable
 
 from . import db
 from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
@@ -66,6 +67,8 @@ class ScanResult:
     # 読めなかったもの(scan_issues の現在の内容)。{"path", "container_path", "entry_name", "reason"}
     issues: list[dict] = field(default_factory=list)
     issues_total: int = 0
+    # 中止の依頼で途中で止めた(残りのソースは読んでいない。見つからないソースの missing 化もしていない)
+    stopped: bool = False
 
 
 @dataclass(frozen=True)
@@ -160,9 +163,27 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
 
 
 class Scanner:
-    def __init__(self, conn: sqlite3.Connection, settings: Settings):
+    """recheck=True は、サイズ・mtime が前回と同じアーカイブ・EPUB の目次も読み直す(データ管理の「メンテナンス」)。
+    元ファイルが変わっていなければ、中の巻の解析はそのまま使う。
+
+    should_stop は中止の依頼(データ管理のジョブ。#83)。ソースの区切りで見て、真なら残りを読まずに止める。
+    止めたルートは最後まで見ていないので、見つからなかったソースを missing にしない。
+    on_source は読む前のソースの相対パスを受け取る(進み具合の表示用。例外を投げない関数を渡す)。
+    """
+
+    def __init__(self, conn: sqlite3.Connection, settings: Settings, *, recheck: bool = False,
+                 should_stop: Callable[[], bool] | None = None, on_source: Callable[[str], None] | None = None):
         self.conn = conn
         self.settings = settings
+        self.recheck = recheck
+        self.should_stop = should_stop
+        self.on_source = on_source
+        self.stopped = False
+
+    def _stop(self) -> bool:
+        if not self.stopped and self.should_stop is not None and self.should_stop():
+            self.stopped = True
+        return self.stopped
 
     # --- ルート -------------------------------------------------------------
 
@@ -196,6 +217,8 @@ class Scanner:
                      if _under_any(r["entry_name"] or "", prefixes) == inbox]
             c.executemany("DELETE FROM scan_issues WHERE id = ?", [(i,) for i in stale])
         for root_id, root in self._sync_roots(inbox):
+            if self._stop():
+                break
             try:
                 if root_is_accessible(root):
                     self._scan_root(root_id, root)
@@ -215,6 +238,7 @@ class Scanner:
                 "SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0]
         result.issues, result.issues_total = collect_issues(
             self.conn, inbox=inbox, inbox_prefixes=self._inbox_prefixes())
+        result.stopped = self.stopped
         return result
 
     def _inbox_prefixes(self) -> tuple[str, ...]:
@@ -297,6 +321,11 @@ class Scanner:
                 self._record_pathless(path, f"相対パスを求められない: {describe_exception(e)}")
                 return
             found.add(rel)  # 例外で読めなくても、見つかったものとして扱う(missing にしない)
+            if self._stop():
+                complete = False  # 残りを見ていない
+                return
+            if self.on_source is not None:
+                self.on_source(rel)
             try:
                 action(rel)
             except Exception as e:  # noqa: BLE001 (ソース 1 つの想定外で、スキャン全体を止めない)
@@ -305,6 +334,9 @@ class Scanner:
         excluded = self._excluded_dirs(root)
         try:
             for dirpath, dirnames, filenames in os.walk(root, onerror=onerror, followlinks=False):
+                if self._stop():
+                    complete = False
+                    break
                 dirnames[:] = self._walkable_dirs(dirpath, dirnames, excluded)
                 images = sorted(f for f in filenames if is_image(f))
                 if images:
@@ -396,8 +428,9 @@ class Scanner:
             return
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "archive")
-        if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
-                and src["scan_version"] == SCAN_VERSION):
+        unchanged = (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
+                     and src["scan_version"] == SCAN_VERSION)
+        if unchanged and not self.recheck:
             return  # 前回から変わっていない。開かない
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
@@ -422,7 +455,7 @@ class Scanner:
         with db.transaction(self.conn) as c:
             record_issues(c, src["id"], None, issues)
             if specs is not None:
-                self._replace_volumes(c, src["id"], specs)
+                self._replace_volumes(c, src["id"], specs, keep_analysis=unchanged)
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
             # 読めなかったときはサイズ・mtime を更新しない(次のスキャンで再挑戦する。既存の巻はそのまま)
@@ -437,7 +470,7 @@ class Scanner:
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "archive")
         if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
-                and src["scan_version"] == SCAN_VERSION):
+                and src["scan_version"] == SCAN_VERSION and not self.recheck):
             return
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
@@ -461,13 +494,15 @@ class Scanner:
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
 
-    def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec]) -> None:
+    def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec], *, keep_analysis: bool = False) -> None:
         """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。
 
         突き合わせるのはスキャンが切り出す巻(親を持たない巻)だけ。解析で作った子の巻はここでは触らない
         (親の解析をやり直したときに突き合わせる。spinebox/analysis.py)。ソースを読み直したので、
         内側アーカイブの巻は未解析に戻す(子の巻は残し、次に開いたときに同じ単位へ突き合わせ直す)。
+        keep_analysis=True(元ファイルが変わっていないのに読み直した。recheck)なら解析の結果はそのまま使う。
         """
+        keep = int(keep_analysis)
         now = db.now()
         existing = {(r["container_path"], r["entry_prefix"]): r["id"]
                     for r in c.execute("""SELECT id, container_path, entry_prefix FROM volumes
@@ -479,11 +514,15 @@ class Scanner:
             num = parse_number(s.title)
             numbers = (num.kind, num.start, num.end, num.evidence) if num else (None, None, None, None)
             if key in existing:
-                c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?, page_count = ?,
+                # 読み直しただけ(keep)なら、開いて数えたページ数(目次からは分からない内側アーカイブの巻)も残す
+                c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?,
+                             page_count = CASE WHEN ? THEN COALESCE(?, page_count) ELSE ? END,
                              number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
-                             analyzed_version = NULL, analysis_error = NULL, format = ?,
+                             analyzed_version = CASE WHEN ? THEN analyzed_version END,
+                             analysis_error = CASE WHEN ? THEN analysis_error END, format = ?,
                              missing = 0, updated_at = ? WHERE id = ?""",
-                          (s.title, s.name_raw, s.name_encoding, s.page_count, *numbers, s.format, now,
+                          (s.title, s.name_raw, s.name_encoding, keep, s.page_count, s.page_count, *numbers, keep, keep,
+                           s.format, now,
                            existing[key]))
             else:
                 c.execute("""INSERT INTO volumes (source_id, container_path, entry_prefix, title, name_raw,

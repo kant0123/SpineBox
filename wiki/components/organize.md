@@ -2,7 +2,7 @@
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ と、命名テンプレートどおりの改名・移動)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading]
+related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, data-jobs]
 ---
 
 # 整理処理(CBZ 化・テンプレートどおりの改名)
@@ -138,7 +138,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 - `same_drive` は存在する祖先で判定する。まだ無い作業場を作る前に調べられるようにするため。テストでは
   `Organizer(same_drive=...)` で差し替えて別ドライブ構成を作る(`move=` で途中失敗も作れる)
-- 実行と元に戻すはスキャンと同じロックで直列化する(`/api/scan` と同時に走ると半端な状態を走査する)
+- 実行と元に戻すはスキャンと同じロックで直列化する(`/api/scan` と同時に走ると半端な状態を走査する)。#83 からはデータ管理のジョブ全部と同じロックで、ジョブの実行中・待ち中は 409。整理そのものはジョブに入れない([[data-jobs]])
 - プロセスが実行中に落ちると、操作は `running` のまま残る。ジャーナルに各移動の from / to と状態があるので手で戻せるが、
   起動時の自動復旧は無い(#36)
 - 新しい CBZ の巻は、スキャナーが同じ CBZ から作るのと同じ形(直下の画像 = `entry_prefix ''`、`SCAN_VERSION` つき)で

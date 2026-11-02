@@ -2,7 +2,7 @@
 type: concept
 summary: 公開 DB の情報を作品・巻へ結線する規則(#50)。連携(work_links)の自動/確認待ちの基準、空欄だけを埋める・手動は不変・名前由来の値を置き換える条件、英語の語彙を日本語にして反映する規則(#74)、失敗の扱い、保存場所(全文検索・絞り込みが乗る列)、却下した代替案
 updated: 2026-11-02
-related: [metadata-clients, metadata-sources, work-grouping, backend, frontend, overview]
+related: [metadata-clients, metadata-sources, work-grouping, backend, frontend, overview, data-jobs]
 ---
 
 # 公開 DB の結線(`spinebox/linking.py`)
@@ -78,7 +78,7 @@ AniList / MangaUpdates のジャンル・タグ・あらすじは英語、MangaU
 失敗は**例外にせず**、作品 × 取得元の `work_links.failure`(種類・メッセージ・HTTP 状態・再試行秒・時刻)に記録し、成功すれば消す。すでに入った値と連携は失敗で変えない。
 有効期限切れでも取得元が落ちていれば古い保存済みの応答を使い(`stale`)、画面に出す。想定外の例外も `internal` として記録して続ける(`fetch_work` は raise しない)。
 全作品の取得(`POST /api/works/metadata/fetch`)は 1 本ずつ直列で、既定の最小間隔(NDL 1.0 秒・AniList 2.0 秒・MangaUpdates 1.0 秒)を守る。
-対象は未取得・失敗から `retry_hours` 経過・成功から `recheck_days` 経過の作品(`works_needing_fetch()`)。裏の定期取得は既定で無効(`[metadata] background`)。
+対象は未取得・失敗から `retry_hours` 経過・成功から `recheck_days` 経過の作品(`works_needing_fetch()`)。裏の定期取得は既定で無効(`[metadata] background`)。取得はどの経路もデータ管理のジョブとして 1 本ずつ動き、履歴に残る(中止・失敗でも取得できた分は反映する。[[data-jobs]])。
 
 ## 保存場所(全文検索・絞り込みの入口)
 
