@@ -11,13 +11,17 @@ export type Route =
   | { name: "works" }
   | { name: "work"; id: string }
   | { name: "work-proposals" }
-  | { name: "inbox" };
+  | { name: "inbox" }
+  | { name: "follows" }
+  | { name: "follow-manage" };
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
+  if (/^\/follows\/?$/.test(h)) return { name: "follows" };
+  if (/^\/follows\/manage\/?$/.test(h)) return { name: "follow-manage" };
   if (/^\/works\/?$/.test(h)) return { name: "works" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
@@ -44,6 +48,10 @@ export const duplicatesHref = "#/duplicates";
 /** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
 export const inboxHref = "#/inbox";
 export const worksHref = "#/works";
+/** フォロー: 続刊・欠けのある作品(#87。#85 のサイドバーに載せる入口) */
+export const followsHref = "#/follows";
+/** フォロー管理: フォロー中の作品・解除・続刊を調べる(#85 の管理のタブに載せる入口) */
+export const followManageHref = "#/follows/manage";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
 /** 作品の全巻をテンプレートどおりに整理(改名・移動)するプレビュー */

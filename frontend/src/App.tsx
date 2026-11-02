@@ -7,6 +7,7 @@ import { WorkPage } from "./works/WorkPage";
 import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
+import { FollowManage, FollowReleases } from "./follows/Follows";
 import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
 
 export function App() {
@@ -37,6 +38,10 @@ export function App() {
       return <WorkPage key={route.id} id={route.id} />;
     case "work-proposals":
       return <WorkProposals />;
+    case "follows":
+      return <FollowReleases />;
+    case "follow-manage":
+      return <FollowManage />;
     default:
       return <Library />;
   }

@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -18,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import db, linking, search, works
+from . import db, follows, linking, search, works
 from .analysis import compute_findings
 from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
 from .buildinfo import current_commit
@@ -28,6 +29,7 @@ from .library import (Library, NeedsExtraction, VolumeNotFound, VolumeOffline, V
                       is_analyzable, is_offline)
 from .novel.books import Books
 from .metadata import MetadataService
+from .metadata.service import shared_fetcher
 from .metadata.http import HttpFetcher
 from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
@@ -118,6 +120,17 @@ class VolumeMetaIn(BaseModel):
 class ChooseIn(BaseModel):
     """確認待ちの候補を選ぶ。source_id が null なら「該当なし」。"""
     source_id: StrictStr | None = None
+
+
+class SeenIn(BaseModel):
+    """見つけた巻を「確認済み」にする。volumes を省くと、その作品のまだ確認していない巻すべて。"""
+    work_id: StrictInt
+    volumes: list[StrictInt] | None = None
+
+
+class FollowCheckIn(BaseModel):
+    """続刊を調べる作品。省くとフォロー中の全作品。"""
+    work_ids: list[StrictInt] | None = None
 
 
 class AliasIn(BaseModel):
@@ -213,9 +226,54 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     metadata_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
                             "current": None, "summary": None, "error": None}
     enabled_sources = tuple(n for n in linking.SEARCH_ORDER if n in settings.metadata.sources)
+    follow_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
+                          "current": None, "summary": None, "error": None}
 
     def metadata_service(c: sqlite3.Connection) -> MetadataService:
         return MetadataService(settings.metadata, c, fetcher=metadata_fetcher)
+
+    def follow_service(c: sqlite3.Connection) -> MetadataService:
+        """続刊の確認用。保存済みの応答の有効期限だけ短くし、取得元の関門(最小間隔・429 の停止)は補完と共有する
+        (設定を変えたものを渡すと共有の fetcher が作り直されるので、元の設定の共有 fetcher を明示的に渡す)。"""
+        meta = dataclasses.replace(settings.metadata, cache_ttl_days=settings.follow.response_ttl_days)
+        return MetadataService(meta, c, fetcher=metadata_fetcher or shared_fetcher(settings.metadata))
+
+    def run_follow_check(ids: list[int]) -> None:
+        """metadata_lock を持ったまま呼ぶ(補完と同じ取得元を使うので直列にする)。1 作品ずつ調べ、失敗は作品に記録する。"""
+        c = None
+        try:
+            c = db.connect(settings.db_path)
+            counts = follows.check_many(c, follow_service(c), ids,
+                                        progress=lambda done, total, cur: follow_state.update(done=done, current=cur))
+            _sync_works(c)
+            follow_state.update(summary={"works": len(ids), "statuses": counts}, error=None)
+        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
+            log.exception("続刊の確認に失敗しました")
+            follow_state.update(error=str(e))
+        finally:
+            if c is not None:
+                c.close()
+            follow_state.update(running=False, finished_at=db.now(), current=None)
+            metadata_lock.release()
+
+    def background_follow(stop: threading.Event) -> None:
+        """設定で有効にしたとき、裏で 1 作品ずつ、interval_hours 以上調べていないフォロー中の作品を調べる。"""
+        while not stop.wait(settings.follow.background_interval_seconds):
+            if scan_lock.locked() or not metadata_lock.acquire(blocking=False):
+                continue
+            try:
+                c = db.connect(settings.db_path)
+                try:
+                    ids = follows.works_due(c, settings.follow.interval_hours)
+                    if ids:
+                        follows.check_many(c, follow_service(c), ids[:1])
+                        _sync_works(c)
+                finally:
+                    c.close()
+            except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
+                log.exception("裏の続刊の確認に失敗しました")
+            finally:
+                metadata_lock.release()
 
     def background_metadata(stop: threading.Event) -> None:
         """設定で有効にしたとき、裏で 1 作品ずつ公開 DB の情報を取りに行く。失敗してもスキャン・閲覧を止めない。"""
@@ -257,6 +315,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             threading.Thread(target=background_analysis, args=(stop,), name="spinebox-analysis", daemon=True).start()
         if settings.metadata.background and enabled_sources:
             threading.Thread(target=background_metadata, args=(stop,), name="spinebox-metadata", daemon=True).start()
+        if settings.follow.background and follows.SOURCE in enabled_sources:
+            threading.Thread(target=background_follow, args=(stop,), name="spinebox-follow", daemon=True).start()
         try:
             yield
         finally:
@@ -541,7 +601,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     def work_detail(conn: sqlite3.Connection, work_id: int) -> dict:
-        return works.get_work(conn, work_id, enabled_sources)
+        detail = works.get_work(conn, work_id, enabled_sources)
+        follows.resolve_merged(conn)  # 統合で吸収された作品のフォローは吸収先へ
+        detail["follow"] = follows.work_follow(conn, work_id)
+        return detail
 
     @app.get("/api/works")
     def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
@@ -638,6 +701,58 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             return dict(metadata_state)
         threading.Thread(target=_run_metadata_fetch, args=(ids,), name="spinebox-metadata-fetch", daemon=True).start()
         return JSONResponse(dict(metadata_state), status_code=202)
+
+    # --- フォロー(#87)。フォローした作品の続刊・欠けを公開 DB で調べて知らせる(本の入手はしない) ---
+
+    @app.get("/api/follows")
+    def list_follows(conn: sqlite3.Connection = Depends(get_conn)):
+        """フォロー管理: フォロー中の作品と最後に調べた日時・結果、続刊の確認の進み具合と設定。"""
+        return {"follows": follows.list_follows(conn), "state": dict(follow_state),
+                "available": follows.SOURCE in enabled_sources, "background": settings.follow.background,
+                "interval_hours": settings.follow.interval_hours}
+
+    @app.get("/api/follows/releases")
+    def list_follow_releases(seen: bool = False, conn: sqlite3.Connection = Depends(get_conn)):
+        """サイドバーの「フォロー」: 続刊・欠けのある作品(新しい発売日順)。seen=true なら確認済みの巻も含める。"""
+        return {"works": follows.list_releases(conn, include_seen=seen)}
+
+    @app.post("/api/follows/releases/seen")
+    def mark_follow_releases_seen(body: SeenIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """見つけた巻を「確認済み」にする。再確認でも再び出さない(新しく見つかった巻だけ出る)。"""
+        return {"marked": follows.mark_seen(conn, body.work_id, body.volumes)}
+
+    @app.post("/api/follows/check")
+    def start_follow_check(body: FollowCheckIn | None = None, wait: bool = False,
+                           conn: sqlite3.Connection = Depends(get_conn)):
+        """明示操作「続刊を調べる」。既定は裏で動かして 202 を返す(進み具合は GET /api/follows の state)。
+        取得元が落ちていても、作品ごとに失敗を記録して続ける。"""
+        if follows.SOURCE not in enabled_sources:
+            raise HTTPException(409, "国立国会図書館サーチが設定で無効になっています")
+        if not metadata_lock.acquire(blocking=False):
+            raise HTTPException(409, "公開 DB の情報を取得中です")
+        try:
+            followed = follows.followed_ids(conn)
+            ids = followed if body is None or body.work_ids is None else [i for i in body.work_ids if i in followed]
+        except Exception:
+            metadata_lock.release()
+            raise
+        follow_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=len(ids),
+                            current=None, summary=None, error=None)
+        if wait:
+            run_follow_check(ids)
+            return dict(follow_state)
+        threading.Thread(target=run_follow_check, args=(ids,), name="spinebox-follow-check", daemon=True).start()
+        return JSONResponse(dict(follow_state), status_code=202)
+
+    @app.put("/api/works/{work_id}/follow")
+    def follow_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        follows.follow(conn, work_id)
+        return follows.work_follow(conn, work_id)
+
+    @app.delete("/api/works/{work_id}/follow")
+    def unfollow_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        follows.unfollow(conn, work_id)
+        return follows.work_follow(conn, work_id)
 
     @app.get("/api/works/{work_id}")
     def get_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
