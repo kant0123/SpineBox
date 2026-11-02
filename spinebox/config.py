@@ -77,6 +77,8 @@ class Settings:
     cache_limit_bytes: int = 2 * GIB
     # RAM 層(ページのバイト列と 7z / rar の目次)の上限。0 なら RAM 層を使わない。サーバー機では 8 GiB まで上げてよい
     memory_cache_limit_bytes: int = 256 * MIB
+    # 表紙のサムネイル(`data_dir/thumbs/`)の上限。1 枚 20〜40 KB ほど
+    thumb_cache_limit_bytes: int = 256 * MIB
     host: str = "127.0.0.1"
     port: int = 8000
     sevenzip_path: str = "7z"
@@ -98,6 +100,10 @@ class Settings:
     @property
     def cache_dir(self) -> Path:
         return self.data_dir / "cache"
+
+    @property
+    def thumbs_dir(self) -> Path:
+        return self.data_dir / "thumbs"
 
     def inbox_for(self, path: Path | str) -> InboxSetting | None:
         """path(DB に記録した受け入れフォルダ)の設定。設定から外されていれば None。"""
@@ -277,6 +283,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         data_dir=_resolve(base_dir, _str(data, "data_dir", str(defaults.data_dir))),
         cache_limit_bytes=_int(data, "cache_limit_bytes", defaults.cache_limit_bytes, minimum=1),
         memory_cache_limit_bytes=_int(data, "memory_cache_limit_bytes", defaults.memory_cache_limit_bytes, minimum=0),
+        thumb_cache_limit_bytes=_int(data, "thumb_cache_limit_bytes", defaults.thumb_cache_limit_bytes, minimum=1),
         host=_str(data, "host", defaults.host),
         port=_int(data, "port", defaults.port, minimum=1),
         sevenzip_path=_str(data, "sevenzip_path", defaults.sevenzip_path),

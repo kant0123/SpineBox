@@ -57,6 +57,40 @@ describe("作品の一覧", () => {
   });
 });
 
+describe("作品カードの表紙(#75)", () => {
+  it("表紙の巻のサムネイルを出し、読み込めたら見せ、404 なら文字だけのカードに戻る", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const img = card.querySelector("img.work-cover") as HTMLImageElement;
+    expect(img.getAttribute("src")).toMatch(/^\/api\/volumes\/\d+\/thumbnail$/);
+    expect(img.getAttribute("loading")).toBe("lazy");
+    expect(img.classList.contains("loaded")).toBe(false);
+    fireEvent.load(img);
+    expect(img.classList.contains("loaded")).toBe(true);
+    fireEvent.error(img);
+    expect(card.querySelector("img")).toBeNull();
+    expect(within(card).getByText("サンプル漫画")).toBeTruthy();
+  });
+
+  it("「表紙を作る」で作成を起動し、実行中は進み具合を出す", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "表紙を作る" }));
+    expect(await screen.findByRole("button", { name: /表紙を作成中/ })).toBeTruthy();
+    expect(backend.log.some((e) => e.method === "POST" && e.path === "/api/thumbnails/build")).toBe(true);
+  });
+
+  it("モック: 入れ子の巻の表紙は、開くか作るまで 404 pending", () => {
+    const nested = backend.volumes.find((v) => v.page_count === null && !v.format)!;
+    const get = () => backend.handle("GET", `/api/volumes/${nested.id}/thumbnail`);
+    expect(get().status).toBe(404);
+    expect(JSON.parse(get().body as string).pending).toBe(true);
+    backend.handle("GET", `/api/volumes/${nested.id}`);
+    expect(get().status).toBe(200);
+  });
+});
+
 describe("作品の検索と絞り込み(#56)", () => {
   const cardTitles = () => Array.from(document.querySelectorAll(".work-card .volume-title")).map((e) => e.textContent);
 

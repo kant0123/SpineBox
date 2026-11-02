@@ -928,7 +928,7 @@ def decide_proposal(conn: sqlite3.Connection, proposal_id: int, action: str) -> 
 
 # --- 参照(API 用) ----------------------------------------------------------------------------
 
-_VOLUME_SELECT = """SELECT v.id, v.title, v.page_count, v.number_kind, v.number_start, v.number_end, v.number_evidence,
+_VOLUME_SELECT = """SELECT v.id, v.title, v.page_count, v.format, v.number_kind, v.number_start, v.number_end, v.number_evidence,
        pv.title AS parent_title, s.rel_path, s.offline AS source_offline, r.online AS root_online, p.page, p.finished,
        wv.work_id, wv.source AS a_source, wv.manual AS a_manual, wv.confidence AS a_confidence,
        wv.evidence AS a_evidence"""
@@ -943,7 +943,7 @@ def _volume_json(r, dup_counts: dict[int, int], meta: dict[int, dict] | None = N
                   "evidence": r["number_evidence"]}
     return {
         "id": r["id"], "title": r["title"], "parent_title": r["parent_title"], "page_count": r["page_count"],
-        "offline": is_offline(r),
+        "format": r["format"] or "images", "offline": is_offline(r),
         "progress": None if r["page"] is None else {"page": r["page"], "finished": bool(r["finished"])},
         "volume_number": number, "duplicate_count": dup_counts.get(r["id"], 0),
         "assignment": {"source": r["a_source"], "manual": bool(r["a_manual"]), "confidence": r["a_confidence"],
@@ -1054,6 +1054,19 @@ def _open_proposal_counts(c) -> dict[int, int]:
     return dict(counts)
 
 
+def cover_volume_id(vols: list[dict]) -> int | None:
+    """作品の表紙にする巻: 画像の巻(小説・オフライン・0 ページを除く)のうち、番号が最小のもの。
+
+    番号の無い巻は番号のある巻の後ろ。同じ番号(重複)なら巻の名前の自然順。表紙はその巻の 1 ページ目(spinebox/thumbs.py)。
+    """
+    candidates = [v for v in vols if v["format"] == "images" and not v["offline"] and v["page_count"] != 0]
+    if not candidates:
+        return None
+    best = min(candidates, key=lambda v: (v["volume_number"] is None,
+                                          (v["volume_number"] or {}).get("start") or 0, natural_key(v["title"]), v["id"]))
+    return best["id"]
+
+
 def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) -> dict:
     nums = number_summary(vols)
     slots, _ = build_slots(vols)
@@ -1076,6 +1089,7 @@ def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) 
         "genres": (w["fields"].get(FIELD_GENRES) or {}).get("value") or [],
         "tags": (w["fields"].get(FIELD_TAGS) or {}).get("value") or [],
         "link_pending": link_pending,
+        "cover_volume_id": cover_volume_id(vols),
     }
 
 

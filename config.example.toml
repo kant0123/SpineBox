@@ -21,6 +21,9 @@ cache_limit_bytes = 2147483648
 # 行き来したときに取り出し直さずに済む(合計がこの値を超えることはない。ただし Python 自体の使用量は別)
 memory_cache_limit_bytes = 268435456
 
+# 作品カードの表紙(1 ページ目の縮小。data_dir/thumbs/)の上限(バイト)。1 枚 20〜40 KB ほど。既定 256 MiB
+thumb_cache_limit_bytes = 268435456
+
 # 待ち受け。LAN の別端末から使うときだけサーバー機の LAN 側アドレス(または 0.0.0.0)にする。
 # インターネットへ直接公開しない(認証が無い。ルーターのポート開放もしない)。
 # LAN に公開するときは Windows ファイアウォールの規則も要る(deploy/firewall_rule.ps1、wiki/operations/server-setup.md)。

@@ -24,8 +24,8 @@ from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, d
 from .buildinfo import current_commit
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache
 from .config import Settings
-from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_analyzable,
-                      is_offline)
+from .library import (Library, NeedsExtraction, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row,
+                      is_analyzable, is_offline)
 from .novel.books import Books
 from .metadata import MetadataService
 from .metadata.http import HttpFetcher
@@ -33,6 +33,7 @@ from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, safe_text
+from .thumbs import ThumbnailUnavailable, Thumbnails
 
 log = logging.getLogger(__name__)
 
@@ -199,6 +200,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     memory = MemoryCache(settings.memory_cache_limit_bytes)
     library = Library(settings, cache, memory)
     books = Books(settings)
+    thumbs = Thumbnails(library, ExtractionCache(settings.thumbs_dir, settings.thumb_cache_limit_bytes))
+    thumb_lock = threading.Lock()
+    thumb_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
+                         "summary": None, "error": None}
     scan_lock = threading.Lock()
     duplicate_lock = threading.Lock()
     duplicate_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
@@ -270,6 +275,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     app.state.scan_lock = scan_lock
     app.state.duplicate_state = duplicate_state
     app.state.duplicate_lock = duplicate_lock
+    app.state.thumbs = thumbs
     commit = current_commit(REPO_ROOT)  # 起動時に一度だけ。古いプロセスが生き残っているかを見分けるため
 
     def get_conn() -> Iterator[sqlite3.Connection]:
@@ -737,6 +743,67 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 return Response(status_code=304, headers=headers)
             data = vol.read_page(index)
         return Response(data, media_type=media_type(name), headers=headers)
+
+    # --- 表紙のサムネイル(#75) ------------------------------------------------------
+
+    @app.get("/api/volumes/{volume_id}/thumbnail")
+    def get_thumbnail(volume_id: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+        """巻の表紙(1 ページ目の縮小 JPEG)。一覧から巻の数だけ呼ばれるので、取り出し・7-Zip が要る巻は作らずに
+        404(pending: true)を返す(巻を開いた後か、POST /api/thumbnails/build で作る)。"""
+        no_store = {"Cache-Control": "no-store"}
+        try:
+            key, data = thumbs.get(conn, volume_id)
+        except NeedsExtraction:
+            return JSONResponse({"detail": "表紙はまだ作っていません", "pending": True}, status_code=404,
+                                headers=no_store)
+        except ThumbnailUnavailable as e:
+            return JSONResponse({"detail": str(e), "pending": False}, status_code=404, headers=no_store)
+        headers = {"ETag": f'"{key[:32]}"', "Cache-Control": "private, no-cache"}
+        if request.headers.get("if-none-match") == headers["ETag"]:
+            return Response(status_code=304, headers=headers)
+        return Response(data, media_type="image/jpeg", headers=headers)
+
+    def _run_thumbnail_build() -> None:
+        """作品の表紙の巻のうち、まだ無いものを作る。thumb_lock を持ったまま呼び、終わったら離す。"""
+        c = None
+        try:
+            c = db.connect(settings.db_path)
+            ids = [w["cover_volume_id"] for w in works.list_works(c)["works"] if w["cover_volume_id"] is not None]
+
+            def progress(done: int, total: int) -> None:
+                thumb_state.update(done=done, total=total)
+
+            thumb_state.update(summary=asdict(thumbs.build(c, ids, progress)), error=None)
+        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
+            log.exception("表紙の作成に失敗しました")
+            thumb_state.update(error=str(e))
+        finally:
+            if c is not None:
+                c.close()
+            thumb_state.update(running=False, finished_at=db.now())
+            thumb_lock.release()
+
+    @app.get("/api/thumbnails")
+    def thumbnail_status():
+        return dict(thumb_state)
+
+    @app.post("/api/thumbnails/build")
+    def start_thumbnail_build(wait: bool = False):
+        """明示操作: 作品の表紙を、内側アーカイブを取り出してでも作る(スキャンでは作らない)。
+
+        既定は裏で動かして 202 を返す(進み具合は GET /api/thumbnails)。wait=true なら終わるまで待つ。
+        """
+        if scan_lock.locked():
+            raise HTTPException(409, "スキャン中です")
+        if not thumb_lock.acquire(blocking=False):
+            raise HTTPException(409, "表紙を作っています")
+        thumb_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=0, summary=None,
+                           error=None)
+        if wait:
+            _run_thumbnail_build()
+            return dict(thumb_state)
+        threading.Thread(target=_run_thumbnail_build, name="spinebox-thumbnails", daemon=True).start()
+        return JSONResponse(dict(thumb_state), status_code=202)
 
     @app.get("/api/volumes/{volume_id}/sections/{index}")
     def get_section(volume_id: int, index: int, conn: sqlite3.Connection = Depends(get_conn)):

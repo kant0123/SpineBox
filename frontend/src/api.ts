@@ -157,6 +157,17 @@ export interface DuplicateScanState {
   error: string | null;
 }
 
+/** 表紙の作成(明示操作。POST /api/thumbnails/build)の状態 */
+export interface ThumbnailBuildState {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  done: number;
+  total: number;
+  summary: { total: number; made: number; existing: number; skipped: number } | null;
+  error: string | null;
+}
+
 export interface DuplicateList {
   scan: DuplicateScanState;
   candidates: DuplicateCandidate[];
@@ -217,6 +228,8 @@ export interface WorkSummary {
   tags: string[];
   /** 確認待ちの公開データベースの候補がある取得元の数 */
   link_pending: number;
+  /** 表紙にする巻(最小の巻番号の画像の巻。無ければ null)。画像は `api.thumbnailUrl()`(#75) */
+  cover_volume_id: number | null;
 }
 
 export type ReadingState = "unread" | "reading" | "finished";
@@ -264,6 +277,7 @@ export interface WorkVolume {
   progress: Progress | null;
   volume_number: VolumeNumber | null;
   duplicate_count: number;
+  format?: VolumeFormat;
   assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
   /** 巻の書誌(出版社・レーベル・発売日・ISBN など)。項目ごとに出所つき */
   metadata?: Partial<Record<VolumeMetaField, FieldInfo<string | null>>>;
@@ -614,6 +628,11 @@ export const api = {
   dismissDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/dismiss`, { method: "POST" }),
   restoreDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/restore`, { method: "POST" }),
   pageUrl: (id: VolumeId, index: number) => `/api/volumes/${vid(id)}/pages/${index}`,
+  /** 巻の表紙(1 ページ目の縮小)。取り出しが要る巻でまだ作っていなければ 404(#75)。rev は作り直した後の取り直し用 */
+  thumbnailUrl: (id: VolumeId, rev = 0) => `/api/volumes/${vid(id)}/thumbnail${rev ? `?rev=${rev}` : ""}`,
+  thumbnailStatus: () => request<ThumbnailBuildState>("/api/thumbnails"),
+  /** 作品の表紙を、内側アーカイブを取り出してでも作る(裏で動く)。蔵書は変えない */
+  buildThumbnails: () => request<ThumbnailBuildState>("/api/thumbnails/build", { method: "POST" }),
   /** 小説の区切り 1 つの HTML(サーバーで無害化済み。画面に入れる前にもう一度 sanitize する) */
   getSection: (id: VolumeId, index: number) => request<{ index: number; html: string }>(`/api/volumes/${vid(id)}/sections/${index}`),
   planOrganize: (volumeId: VolumeId, naming: OrganizeNaming = "title") =>

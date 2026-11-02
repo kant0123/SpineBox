@@ -30,9 +30,9 @@ from typing import Callable, Iterator
 from . import analysis, db
 from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
                       open_archive)
-from .archive.base import reader_available
+from .archive.base import detect_format, reader_available
 from .archive.safety import Skip, depth_problem, entry_limit_problem
-from .cache import CacheTooLarge, ExtractionCache, MemoryCache, cache_key
+from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
 from .config import Settings
 from .pages import is_image, natural_key, page_sort_key, sort_pages
 from .scanner import record_issues, resolve_source_path, root_is_accessible
@@ -48,6 +48,10 @@ class VolumeOffline(Exception):
 
 class VolumeUnreadable(Exception):
     """巻を読めない(未対応の形式・壊れている・上限超過)。"""
+
+
+class NeedsExtraction(Exception):
+    """`open(extract=False)` で、開くには内側アーカイブの取り出しか 7-Zip の起動が要る巻。"""
 
 
 log = logging.getLogger(__name__)
@@ -117,7 +121,12 @@ class Library:
         self._archives_guard = threading.Lock()
 
     @contextmanager
-    def open(self, conn: sqlite3.Connection, volume_id: int) -> Iterator[OpenVolume]:
+    def open(self, conn: sqlite3.Connection, volume_id: int, *, extract: bool = True) -> Iterator[OpenVolume]:
+        """巻を開く。extract=False なら、取り出し・7-Zip が要る巻は開かずに NeedsExtraction にする。
+
+        extract=False で開けるのは、フォルダの巻、zip の中の画像を直接読む巻、展開キャッシュに取り出し済みの
+        内側 zip の巻だけ(一覧の表紙のように、巻の数だけ呼ばれうるところで使う。spinebox/thumbs.py)。
+        """
         row = get_volume_row(conn, volume_id)
         if row["format"] is not None:
             # 小説(EPUB・テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
@@ -145,13 +154,16 @@ class Library:
 
                 opened = OpenVolume(volume_id, names, version, read)
             else:
-                opened = self._open_archive_volume(conn, stack, row, path, version)
+                if not extract and detect_format(path) != "zip":
+                    raise NeedsExtraction(volume_id)
+                opened = self._open_archive_volume(conn, stack, row, path, version, extract)
             if row["page_count"] != len(opened.page_names):
                 with db.transaction(conn) as c:
                     c.execute("UPDATE volumes SET page_count = ? WHERE id = ?", (len(opened.page_names), volume_id))
             yield opened
 
-    def _open_archive_volume(self, conn, stack: ExitStack, row, path: Path, version: str) -> OpenVolume:
+    def _open_archive_volume(self, conn, stack: ExitStack, row, path: Path, version: str,
+                             extract: bool = True) -> OpenVolume:
         limits = self.settings.limits
         sevenzip = self.settings.sevenzip_path
         units = page_units = None
@@ -166,9 +178,9 @@ class Library:
                                  key=lambda e: page_sort_key(e.name))
                 pages = [(outer, e, root_key) for e in entries]
             elif row["inner_path"] is not None:
-                pages = self._open_unit(stack, row, root_key, outer, listing)
+                pages = self._open_unit(stack, row, root_key, outer, listing, extract)
             else:
-                found = self._open_inner(conn, stack, row, root_key, outer, listing)
+                found = self._open_inner(conn, stack, row, root_key, outer, listing, extract)
                 pages = [(r, e, k) for r, e, _, k in found]
                 page_units = [(chain, e.parent) for _, e, chain, _ in found]
                 units = _units(found, container)
@@ -270,7 +282,7 @@ class Library:
             raise VolumeNotFound(row["id"])
         return matches[0]
 
-    def _open_inner(self, conn, stack, row, root_key: str, outer, listing):
+    def _open_inner(self, conn, stack, row, root_key: str, outer, listing, extract: bool = True):
         """内側アーカイブを取り出して開き、(リーダー, エントリ, 入れ子の名前, リーダーのキー) のページ列を返す。
 
         内側にさらにアーカイブがあり、深さの上限に収まるなら、それも開いて名前の自然順に続ける
@@ -279,23 +291,24 @@ class Library:
         """
         container = row["container_path"]
         issues: list[Skip] = []
-        pages = self._expand(stack, outer, self._container_entry(row, listing), root_key, 1, (), issues)
+        pages = self._expand(stack, outer, self._container_entry(row, listing), root_key, 1, (), issues, extract)
         with db.transaction(conn) as c:
             record_issues(c, row["source_id"], container, issues)
         return pages
 
-    def _open_unit(self, stack, row, root_key: str, outer, listing):
+    def _open_unit(self, stack, row, root_key: str, outer, listing, extract: bool = True):
         """子の巻: 親の内側アーカイブから inner_path の入れ子を順に取り出し、entry_prefix 直下の画像を返す。"""
         try:
             chain = json.loads(row["inner_path"])
         except ValueError as e:
             raise VolumeNotFound(row["id"]) from e
-        reader, inner_listing, key = self._extract(stack, outer, self._container_entry(row, listing), root_key, 1)
+        reader, inner_listing, key = self._extract(stack, outer, self._container_entry(row, listing), root_key, 1,
+                                                   extract)
         for depth, name in enumerate(chain, start=2):
             matches = [e for e in inner_listing.entries if e.name == name and is_archive_name(e.name)]
             if not matches:
                 raise VolumeNotFound(row["id"])
-            reader, inner_listing, key = self._extract(stack, reader, matches[0], key, depth)
+            reader, inner_listing, key = self._extract(stack, reader, matches[0], key, depth, extract)
         prefix = row["entry_prefix"]
         images = sorted((e for e in inner_listing.entries if e.parent == prefix and is_image(e.name)),
                         key=lambda e: page_sort_key(e.name))
@@ -303,7 +316,7 @@ class Library:
             raise VolumeNotFound(row["id"])
         return [(reader, e, key) for e in images]
 
-    def _extract(self, stack, parent, entry, parent_key: str, depth: int):
+    def _extract(self, stack, parent, entry, parent_key: str, depth: int, extract: bool = True):
         """1 段の内側アーカイブをキャッシュへ取り出して開く。(リーダー, 目次, キー) を返す。
 
         キーは親のキーとエントリ名・番号から作るので、親の巻を開いたときと子の巻を開いたときで同じになる。
@@ -320,15 +333,23 @@ class Library:
         if problem:
             raise LimitExceeded(problem)
         key = cache_key("inner", parent_key, entry.name, entry.index)
-        cached = stack.enter_context(
-            self.cache.use(key, lambda f: parent.copy_entry(entry, f, limits.max_entry_bytes)))
+        if extract:
+            cached = stack.enter_context(
+                self.cache.use(key, lambda f: parent.copy_entry(entry, f, limits.max_entry_bytes)))
+        else:
+            try:
+                cached = stack.enter_context(self.cache.use_existing(key))
+            except NotCached:
+                raise NeedsExtraction(entry.name) from None
+            if detect_format(cached) != "zip":
+                raise NeedsExtraction(entry.name)  # 7z / rar の目次は 7-Zip の起動が要る
         inner = stack.enter_context(open_archive(cached, entry.name, sevenzip_path=sevenzip))
         return inner, self._list(inner, key), key
 
     def _expand(self, stack, parent, entry, parent_key: str, depth: int, chain: tuple[str, ...],
-                issues: list[Skip]):
+                issues: list[Skip], extract: bool = True):
         limits = self.settings.limits
-        inner, listing, key = self._extract(stack, parent, entry, parent_key, depth)
+        inner, listing, key = self._extract(stack, parent, entry, parent_key, depth, extract)
         label = "" if depth == 1 else entry.name + "/"
         issues.extend(Skip(label + (s.entry_name or ""), s.reason) if label else s for s in listing.skipped)
         images = sorted((e for e in listing.entries if is_image(e.name)), key=lambda e: page_sort_key(e.name))
@@ -339,7 +360,7 @@ class Library:
             if problem:
                 issues.append(Skip(f"{entry.name}/{nested.name}" if depth > 1 else nested.name, problem))
                 continue
-            pages += self._expand(stack, inner, nested, key, depth + 1, chain + (nested.name,), issues)
+            pages += self._expand(stack, inner, nested, key, depth + 1, chain + (nested.name,), issues, extract)
         return pages
 
     # --- 巻への分解 ---------------------------------------------------------
