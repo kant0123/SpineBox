@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from . import db, works
+from . import db, ja_terms, works
 from .analysis import compute_findings
 from .config import MetadataSettings
 from .metadata import MetadataService, SearchQuery
@@ -63,6 +63,23 @@ UNION_PRIORITY = {
 }
 UNION_LIMIT = {works.FIELD_GENRES: GENRES_LIMIT, works.FIELD_TAGS: TAGS_LIMIT}
 MANAGED_FIELDS = (*PRIORITY, *UNION_PRIORITY)
+
+
+@dataclass(frozen=True)
+class Display:
+    """日本語での表示の方針(#74。設定 `[metadata] untranslated_terms` / `english_synopsis`)。"""
+    keep_untranslated_terms: bool = False  # 対応表に無い英語のジャンル・タグを英語のまま入れるか
+    hide_english_synopsis: bool = False    # 日本語のあらすじが無いとき、英語のあらすじを作品の項目に入れないか
+
+
+_display = Display()
+
+
+def configure(settings: MetadataSettings) -> None:
+    """設定の表示方針を反映に使う。アプリの起動時(最初の `apply_all` の前)に呼ぶ。"""
+    global _display
+    _display = Display(keep_untranslated_terms=settings.untranslated_terms == "keep",
+                       hide_english_synopsis=settings.english_synopsis == "hide")
 
 
 # --- 候補 ------------------------------------------------------------------------------------
@@ -445,24 +462,30 @@ def _desired_fields(links: dict[str, sqlite3.Row]) -> dict[str, _Desired]:
         return float(r["confidence"] or 0.0), bool(r["manual"])
 
     for name, order in PRIORITY.items():
-        for source in order:
-            if source not in payload:
-                continue
-            value = _extract(name, payload[source])
-            if value:
-                conf, manual = meta(source)
-                out[name] = _Desired(value, conf, manual, [source])
-                break
+        found = [(s, v) for s in order if s in payload for v in [_extract(name, payload[s])] if v]
+        if name == works.FIELD_SYNOPSIS:
+            # 日本語のあらすじがあれば優先の順より先に採る。英語だけなら、設定で隠すときは入れない
+            found = ([x for x in found if ja_terms.is_japanese(x[1])]
+                     or ([] if _display.hide_english_synopsis else found))
+        if found:
+            source, value = found[0]
+            if name == works.FIELD_PUBLISHER:
+                value = ja_terms.publisher_ja(value)  # NDL は日本語。MangaUpdates のローマ字名を日本語に
+            conf, manual = meta(source)
+            out[name] = _Desired(value, conf, manual, [source])
     for name, order in UNION_PRIORITY.items():
         merged: list[str] = []
         seen: set[str] = set()
         used: list[str] = []
         for source in order:
-            for v in (payload.get(source) or {}).get(name) or []:
-                key = v.strip().casefold()
-                if key and key not in seen:
+            # 英語の語を日本語にしてから重ねる(MangaUpdates の `Teacher/s` と AniList の `Teacher` は同じ「教師」)
+            values = ja_terms.localize_terms((payload.get(source) or {}).get(name) or [],
+                                             keep_unknown=_display.keep_untranslated_terms)
+            for v in values:
+                key = v.casefold()
+                if key not in seen:
                     seen.add(key)
-                    merged.append(v.strip())
+                    merged.append(v)
                     if source not in used:
                         used.append(source)
         if merged:

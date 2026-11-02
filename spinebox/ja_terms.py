@@ -1,0 +1,558 @@
+"""公開 DB の英語の語彙(ジャンル・タグ・出版社のローマ字名)を日本語へ置き換える対応表(#74)。
+
+取得元の応答(`work_links.item` と `metadata_responses`)は英語のまま残し、作品の項目へ反映するとき
+(`spinebox/linking.py`)と候補を画面へ出すとき(`spinebox/works.py`)にだけここを通す。
+外部サービス(機械翻訳)には送らない。対応が無い語の扱いは呼び出し側が決める。
+
+規則と理由は wiki/concepts/metadata-linking.md の「日本語での表示」。
+"""
+from __future__ import annotations
+
+import re
+import unicodedata
+
+# ジャンル・タグ(AniList のジャンル 19 語・MangaUpdates のジャンル 36 語は全部。タグは頻出のもの)。
+# 鍵は `_key()` で正規化して引く(大文字小文字・`Teacher/s` の複数形・ハイフンと空白の揺れを畳む)。
+_TERMS: dict[str, str] = {
+    # --- ジャンル(AniList と MangaUpdates の固定の語彙) ---
+    "Action": "アクション",
+    "Adult": "成人向け",
+    "Adventure": "冒険",
+    "Comedy": "コメディ",
+    "Doujinshi": "同人誌",
+    "Drama": "ドラマ",
+    "Ecchi": "お色気",
+    "Fantasy": "ファンタジー",
+    "Gender Bender": "性転換",
+    "Harem": "ハーレム",
+    "Hentai": "成人向け",
+    "Historical": "歴史",
+    "Horror": "ホラー",
+    "Josei": "女性向け",
+    "Lolicon": "ロリコン",
+    "Mahou Shoujo": "魔法少女",
+    "Martial Arts": "格闘技",
+    "Mature": "大人向け",
+    "Mecha": "メカ・ロボット",
+    "Music": "音楽",
+    "Mystery": "ミステリー",
+    "Psychological": "心理",
+    "Romance": "恋愛",
+    "School Life": "学園",
+    "Sci-Fi": "SF",
+    "Seinen": "青年向け",
+    "Shotacon": "ショタコン",
+    "Shoujo": "少女向け",
+    "Shoujo Ai": "百合",
+    "Shounen": "少年向け",
+    "Shounen Ai": "BL",
+    "Slice of Life": "日常",
+    "Smut": "成人向け",
+    "Sports": "スポーツ",
+    "Supernatural": "超常",
+    "Thriller": "サスペンス",
+    "Tragedy": "悲劇",
+    "Yaoi": "BL",
+    "Yuri": "百合",
+    # --- タグ: 舞台・時代 ---
+    "20th Century": "20 世紀",
+    "21st Century": "21 世紀",
+    "Medieval": "中世",
+    "Japan": "日本",
+    "Rural": "田舎",
+    "Urban": "都会",
+    "Post-Apocalyptic": "終末後",
+    "Dystopian": "ディストピア",
+    "Space": "宇宙",
+    "Isekai": "異世界",
+    "Another World": "異世界",
+    "Transported to Another World": "異世界転移",
+    "Reincarnated in Another World": "異世界転生",
+    "Reincarnation": "転生",
+    "Memories of Past Life": "前世の記憶",
+    "Time Travel": "タイムトラベル",
+    "Time Skip": "時間経過",
+    "Time Progression": "時間経過",
+    "Extended Flashbacks": "回想",
+    "Flashback": "回想",
+    "Dungeon": "ダンジョン",
+    "Kingdom Management": "領地経営",
+    "Kingdom Building": "国づくり",
+    "Territory Management": "領地経営",
+    "Economics": "経済",
+    "Politics": "政治",
+    "War": "戦争",
+    "Military": "軍事",
+    "Survival": "サバイバル",
+    "Game": "ゲーム",
+    "Video Games": "ゲーム",
+    "Virtual World": "仮想世界",
+    "Cultivation": "修行",
+    "Magic": "魔法",
+    "Witch": "魔女",
+    "Demons": "悪魔",
+    "Demon": "悪魔",
+    "Demon Lord": "魔王",
+    "Dragons": "ドラゴン",
+    "Dragon": "ドラゴン",
+    "Elf": "エルフ",
+    "Elves": "エルフ",
+    "Ghost": "幽霊",
+    "Ghosts": "幽霊",
+    "Vampire": "吸血鬼",
+    "Vampires": "吸血鬼",
+    "Yokai": "妖怪",
+    "Youkai": "妖怪",
+    "Gods": "神",
+    "God": "神",
+    "Monster": "モンスター",
+    "Monsters": "モンスター",
+    "Monster Girl": "モンスター娘",
+    "Zombie": "ゾンビ",
+    "Zombies": "ゾンビ",
+    "Aliens": "宇宙人",
+    "Alien": "宇宙人",
+    "Robots": "ロボット",
+    "Robot": "ロボット",
+    "Androids": "アンドロイド",
+    "Cyberpunk": "サイバーパンク",
+    "Steampunk": "スチームパンク",
+    "Superhero": "ヒーロー",
+    "Super Power": "超能力",
+    "Superpowers": "超能力",
+    "Swordplay": "剣術",
+    "Sword and Sorcery": "剣と魔法",
+    "Guns": "銃",
+    "Assassins": "暗殺者",
+    "Ninja": "忍者",
+    "Samurai": "侍",
+    "Knights": "騎士",
+    "Knight": "騎士",
+    "Royalty": "王族",
+    "Royal Affairs": "王族",
+    "Nobility": "貴族",
+    "Aristocracy": "貴族",
+    "Nobility/Aristocracy": "貴族",
+    "Noble Male Lead": "貴族の男性主人公",
+    "Noble Female Lead": "貴族の女性主人公",
+    "Lord": "領主",
+    "Villainess": "悪役令嬢",
+    "Slavery": "奴隷",
+    "Crime": "犯罪",
+    "Detective": "探偵",
+    "Police": "警察",
+    "Yakuza": "ヤクザ",
+    "Delinquents": "不良",
+    "Delinquent": "不良",
+    "Gangs": "ギャング",
+    "Mafia": "マフィア",
+    "Revenge": "復讐",
+    "Death": "死",
+    "Death of Loved One": "大切な人の死",
+    "Suicide": "自殺",
+    "Gore": "流血",
+    "Body Horror": "ボディホラー",
+    "Cosmic Horror": "コズミックホラー",
+    "Mythology": "神話",
+    "Fairy Tale": "おとぎ話",
+    "Satire": "風刺",
+    "Parody": "パロディ",
+    "Surreal Comedy": "シュールなコメディ",
+    "Gag": "ギャグ",
+    "Gag Humor": "ギャグ",
+    "Iyashikei": "癒し系",
+    "Healing": "癒し",
+    "Cute Girls Doing Cute Things": "かわいい女の子の日常",
+    "Coming of Age": "成長",
+    "Philosophy": "哲学",
+    "Religion": "宗教",
+    "Meta": "メタ",
+    "Episodic": "1 話完結",
+    "Anthology": "アンソロジー",
+    "Oneshot": "読み切り",
+    "Full Color": "フルカラー",
+    "4-koma": "4 コマ",
+    "Yonkoma": "4 コマ",
+    "Non-fiction": "ノンフィクション",
+    "Nonfiction": "ノンフィクション",
+    "Autobiographical": "自伝",
+    "Biography / Autobiography": "伝記・自伝",
+    "Biography": "伝記",
+    "Autobiography": "自伝",
+    "Based on a True Story": "実話",
+    "Real Life": "実録",
+    "Educational": "学習",
+    "Award-Winning Work": "受賞作",
+    "Award Winning": "受賞作",
+    "Based on a Novel": "小説原作",
+    "Based on a Light Novel": "ライトノベル原作",
+    "Based on a Web Novel": "Web 小説原作",
+    "Based on a Video Game": "ゲーム原作",
+    "Based on an Anime": "アニメ原作",
+    "Adapted to Anime": "アニメ化",
+    "Adapted to Drama": "ドラマ化",
+    "Adapted to Movie": "映画化",
+    "Adapted to Live Action": "実写化",
+    "Light Novel": "ライトノベル",
+    "Web Novel": "Web 小説",
+    "Webtoon": "Web マンガ",
+    "Long Strip": "縦読み",
+    "First-Person Narrative": "一人称",
+    "Unreliable Narrator": "信頼できない語り手",
+    "Primarily Adult Cast": "大人が中心",
+    "Primarily Child Cast": "子どもが中心",
+    "Primarily Female Cast": "女性が中心",
+    "Primarily Male Cast": "男性が中心",
+    "Primarily Teen Cast": "10 代が中心",
+    "Ensemble Cast": "群像劇",
+    # --- タグ: 主人公・人物 ---
+    "Male Protagonist": "男性主人公",
+    "Female Protagonist": "女性主人公",
+    "Child Protagonist": "子どもの主人公",
+    "Shota Protagonist": "少年の主人公",
+    "Easygoing Protagonist": "のんびりした主人公",
+    "Hard-Working Protagonist": "努力家の主人公",
+    "Overpowered Protagonist": "最強主人公",
+    "OP MC": "最強主人公",
+    "Weak to Strong": "成り上がり",
+    "Underestimated Protagonist": "侮られる主人公",
+    "Underestimated Male Lead": "侮られる男性主人公",
+    "Strong Female Lead": "強い女性主人公",
+    "Ambitious Female Lead": "野心家の女性主人公",
+    "Anti-Hero": "アンチヒーロー",
+    "Villain Protagonist": "悪役の主人公",
+    "Tsundere": "ツンデレ",
+    "Yandere": "ヤンデレ",
+    "Kuudere": "クーデレ",
+    "Otaku Culture": "オタク文化",
+    "Otaku": "オタク",
+    "Hikikomori": "引きこもり",
+    "NEET": "ニート",
+    "Idol": "アイドル",
+    "Idols": "アイドル",
+    "Maid": "メイド",
+    "Butler": "執事",
+    "Teacher": "教師",
+    "Student": "学生",
+    "Art Student": "美大生",
+    "University/Post-Secondary Student": "大学生",
+    "Office Worker": "会社員",
+    "Office Lady": "OL",
+    "Salaryman": "サラリーマン",
+    "Doctor": "医師",
+    "Doctors": "医師",
+    "Nurse": "看護師",
+    "Chef": "料理人",
+    "Adventurer": "冒険者",
+    "Adventurers": "冒険者",
+    "Hero": "勇者",
+    "Heroes": "勇者",
+    "Mage": "魔法使い",
+    "Wizard": "魔法使い",
+    "Dreamer": "夢を追う人",
+    "Twins": "双子",
+    "Siblings": "きょうだい",
+    "Sibling": "きょうだい",
+    "Parent": "親",
+    "Single Parent": "ひとり親",
+    "Mother and Son": "母と息子",
+    "Father and Daughter": "父と娘",
+    "Family": "家族",
+    "Family Life": "家族の暮らし",
+    "Found Family": "疑似家族",
+    "Estranged Family": "疎遠な家族",
+    "Orphan": "孤児",
+    "Orphans": "孤児",
+    "Childhood Friends": "幼なじみ",
+    "Childhood Friend": "幼なじみ",
+    "Age Gap": "年の差",
+    "Heterosexual": "男女の恋愛",
+    "Boys' Love": "BL",
+    "Boys Love": "BL",
+    "Girls' Love": "百合",
+    "Girls Love": "百合",
+    "LGBTQ+ Themes": "LGBTQ",
+    "Transgender": "トランスジェンダー",
+    "Crossdressing": "女装・男装",
+    "Love Triangle": "三角関係",
+    "Romantic Subplot": "恋愛要素",
+    "Marriage": "結婚",
+    "Arranged Marriage": "政略結婚",
+    "Contract Marriage": "契約結婚",
+    "Couple": "カップル",
+    "Unrequited Love": "片思い",
+    "First Love": "初恋",
+    "Regret": "後悔",
+    "Search for Oneself": "自分探し",
+    "Dream": "夢",
+    "Memories": "記憶",
+    "Amnesia": "記憶喪失",
+    "Death of Loved Ones": "大切な人の死",
+    "Mental Illness": "心の病",
+    "Disability": "障がい",
+    "Animals": "動物",
+    "Animal": "動物",
+    "Cats": "猫",
+    "Cat": "猫",
+    "Dogs": "犬",
+    "Dog": "犬",
+    "Pets": "ペット",
+    "Mopeds": "原付",
+    "Motorcycles": "バイク",
+    "Cars": "車",
+    "Trains": "鉄道",
+    "Flat Chest": "貧乳",
+    "Large Breasts": "巨乳",
+    "Nudity": "裸",
+    # --- タグ: 学校・仕事・趣味 ---
+    "School": "学校",
+    "High School": "高校",
+    "Middle School": "中学校",
+    "Elementary School": "小学校",
+    "College": "大学",
+    "University": "大学",
+    "University/College": "大学",
+    "Art School": "美術学校",
+    "Boarding School": "全寮制",
+    "School Club": "部活動",
+    "Club": "部活動",
+    "Art Club": "美術部",
+    "Student Council": "生徒会",
+    "Work": "仕事",
+    "Workplace": "職場",
+    "Office": "職場",
+    "Business": "ビジネス",
+    "Merchant": "商人",
+    "Trade": "商売",
+    "Crafting": "ものづくり",
+    "Farming": "農業",
+    "Agriculture": "農業",
+    "Cooking": "料理",
+    "Food": "食べ物",
+    "Gourmet": "グルメ",
+    "Alcohol": "お酒",
+    "Medicine": "医療",
+    "Medical": "医療",
+    "Law": "法律",
+    "Science": "科学",
+    "Mathematics": "数学",
+    "History": "歴史",
+    "Art": "芸術",
+    "Painting": "絵画",
+    "Drawing": "絵",
+    "Writing": "執筆",
+    "Photography": "写真",
+    "Fashion": "ファッション",
+    "Makeup": "メイク",
+    "Dancing": "ダンス",
+    "Dance": "ダンス",
+    "Band": "バンド",
+    "Musical Theater": "ミュージカル",
+    "Theater": "演劇",
+    "Acting": "演技",
+    "Showbiz": "芸能界",
+    "Entertainment Industry": "芸能界",
+    "Manga": "マンガ",
+    "Comic Artist": "漫画家",
+    "Mangaka": "漫画家",
+    "Comic Industry": "マンガ業界",
+    "Comic Artist-Editor Relationship": "漫画家と編集者",
+    "Publishing Industry": "出版業界",
+    "Video Game Industry": "ゲーム業界",
+    "Anime Industry": "アニメ業界",
+    "Shogi": "将棋",
+    "Go": "囲碁",
+    "Mahjong": "麻雀",
+    "Card Battle": "カードバトル",
+    "Gambling": "ギャンブル",
+    "Board Game": "ボードゲーム",
+    "Chess": "チェス",
+    "Baseball": "野球",
+    "Basketball": "バスケットボール",
+    "Football": "サッカー",
+    "Soccer": "サッカー",
+    "Volleyball": "バレーボール",
+    "Tennis": "テニス",
+    "Boxing": "ボクシング",
+    "Swimming": "水泳",
+    "Cycling": "自転車",
+    "Racing": "レース",
+    "Fishing": "釣り",
+    "Camping": "キャンプ",
+    "Outdoor": "アウトドア",
+    "Outdoor Activities": "アウトドア",
+    "Travel": "旅",
+    "Battle Royale": "バトルロワイアル",
+    "Tournament": "トーナメント",
+    "Martial Arts Tournament": "武術大会",
+    "Fighting": "格闘",
+    "Combat": "戦闘",
+    "Espionage": "スパイ",
+    "Heist": "強盗",
+    "Conspiracy": "陰謀",
+    "Psychological Thriller": "サイコスリラー",
+    "Death Game": "デスゲーム",
+    "Love Comedy": "ラブコメ",
+    "Rom-Com": "ラブコメ",
+    "Romantic Comedy": "ラブコメ",
+    "Reverse Harem": "逆ハーレム",
+    "Female Harem": "ハーレム",
+    "Male Harem": "逆ハーレム",
+    "Slow Life": "スローライフ",
+    "Slow Romance": "スローペースの恋愛",
+    "Kids": "子ども",
+    "Children": "子ども",
+    "Parenting": "子育て",
+    "Pregnancy": "妊娠",
+    "Elderly Protagonist": "高齢の主人公",
+    "Countryside": "田舎",
+    "Seasons": "季節",
+    "Summer": "夏",
+}
+
+# 出版社のローマ字名(MangaUpdates の原版元)。国立国会図書館サーチの出版者が無いときだけ使われる。
+_PUBLISHERS: dict[str, str] = {
+    "Akita Shoten": "秋田書店",
+    "ASCII Media Works": "アスキー・メディアワークス",
+    "Bungeishunju": "文藝春秋",
+    "Bunkasha": "ぶんか社",
+    "Coamix": "コアミックス",
+    "Earth Star Entertainment": "アース・スター エンターテイメント",
+    "East Press": "イースト・プレス",
+    "Enterbrain": "エンターブレイン",
+    "Frontier Works": "フロンティアワークス",
+    "Fujimi Shobo": "富士見書房",
+    "Futabasha": "双葉社",
+    "Futami Shobo": "二見書房",
+    "Gakken": "学研",
+    "Gentosha": "幻冬舎",
+    "Gentosha Comics": "幻冬舎コミックス",
+    "Hakusensha": "白泉社",
+    "Hayakawa Publishing": "早川書房",
+    "Hifumi Shobo": "一二三書房",
+    "Hobby Japan": "ホビージャパン",
+    "Houbunsha": "芳文社",
+    "Ichijinsha": "一迅社",
+    "Jitsugyo no Nihonsha": "実業之日本社",
+    "Kadokawa": "KADOKAWA",
+    "Kadokawa Corporation": "KADOKAWA",
+    "Kadokawa Shoten": "角川書店",
+    "Kasakura Publishing": "笠倉出版社",
+    "Kawade Shobo Shinsha": "河出書房新社",
+    "Kobunsha": "光文社",
+    "Kodansha": "講談社",
+    "Leed Publishing": "リイド社",
+    "Libre": "リブレ",
+    "Libre Publishing": "リブレ出版",
+    "Mag Garden": "マッグガーデン",
+    "Media Factory": "メディアファクトリー",
+    "Micro Magazine": "マイクロマガジン社",
+    "Nihon Bungeisha": "日本文芸社",
+    "Ohta Publishing": "太田出版",
+    "Overlap": "オーバーラップ",
+    "Poplar Publishing": "ポプラ社",
+    "SB Creative": "SB クリエイティブ",
+    "Seirin Kogeisha": "青林工藝舎",
+    "Shinchosha": "新潮社",
+    "Shinshokan": "新書館",
+    "Shodensha": "祥伝社",
+    "Shogakukan": "小学館",
+    "Shonen Gahosha": "少年画報社",
+    "Shounen Gahousha": "少年画報社",
+    "Shueisha": "集英社",
+    "Shufunotomo": "主婦の友社",
+    "Shufu to Seikatsusha": "主婦と生活社",
+    "Square Enix": "スクウェア・エニックス",
+    "Takarajimasha": "宝島社",
+    "Takeshobo": "竹書房",
+    "Tokuma Shoten": "徳間書店",
+    "Tokyo Sogensha": "東京創元社",
+    "TO Books": "TO ブックス",
+    "Ushio Shuppansha": "潮出版社",
+    "Wani Books": "ワニブックス",
+}
+
+_PLURAL = re.compile(r"/s\b")
+_SPACES = re.compile(r"[\s\-‐]+")
+_SLASH = re.compile(r"\s*/\s*")
+
+
+def _key(text: str) -> str:
+    """表記の揺れを畳んだ鍵。`Teacher/s`→`teacher`、`Coming-of-Age`→`coming of age`、`A / B`→`a/b`。"""
+    t = unicodedata.normalize("NFKC", text).casefold().strip()
+    t = _PLURAL.sub("", t)
+    t = _SLASH.sub("/", t)
+    return _SPACES.sub(" ", t).strip()
+
+
+_TERM_INDEX = {_key(k): v for k, v in _TERMS.items()}
+_PUBLISHER_INDEX = {_key(k): v for k, v in _PUBLISHERS.items()}
+
+_JA_CHAR = re.compile(r"[぀-ヿ㐀-鿿々〆ヵヶ]")
+_PARENS = re.compile(r"[(（][^()（）]*[)）]")
+
+
+def is_japanese(text: str | None) -> bool:
+    """日本語の文か。括弧の中を除いて、かな・漢字が文字(英数字を含む)の 3 割以上。
+
+    英語のあらすじには日本語の題名が括弧で混ざる(AniList のアンソロジーの収録作の一覧
+    `Sexaroid Girl (セクサロイドガール)` など)ので、1 文字でもあれば日本語、とはしない。
+    """
+    if not text:
+        return False
+    letters = [ch for ch in _PARENS.sub("", text) if ch.isalnum()]
+    if not letters:
+        return False
+    ja = sum(1 for ch in letters if _JA_CHAR.match(ch))
+    return ja / len(letters) >= 0.3
+
+
+def term_ja(term: str) -> str | None:
+    """ジャンル・タグの日本語。日本語の語はそのまま返し、対応が無い英語の語は None。"""
+    term = (term or "").strip()
+    if not term:
+        return None
+    if is_japanese(term):
+        return term
+    return _TERM_INDEX.get(_key(term))
+
+
+def publisher_ja(name: str | None) -> str | None:
+    """出版社名の日本語。日本語の名前はそのまま、対応が無いローマ字名もそのまま返す(固有名なので隠さない)。"""
+    name = (name or "").strip()
+    if not name:
+        return None
+    if is_japanese(name):
+        return name
+    return _PUBLISHER_INDEX.get(_key(name), name)
+
+
+def localize_terms(terms, *, keep_unknown: bool) -> list[str]:
+    """ジャンル・タグの列を日本語にする。訳して同じになった語は 1 つにまとめる(順は最初に出た位置)。
+
+    keep_unknown: 対応が無い英語の語を英語のまま残すか(False なら除く)。
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in terms or []:
+        if not isinstance(t, str) or not t.strip():
+            continue
+        ja = term_ja(t)
+        value = ja if ja is not None else (t.strip() if keep_unknown else None)
+        if value is None:
+            continue
+        key = value.casefold()
+        if key not in seen:
+            seen.add(key)
+            out.append(value)
+    return out
+
+
+def localize_summary(summary: dict) -> dict:
+    """候補の概要(画面に出す)の出版社・ジャンルを日本語にした写し。候補選びの手がかりなので、対応の無い語も残す。"""
+    out = dict(summary)
+    if out.get("publisher"):
+        out["publisher"] = publisher_ja(out["publisher"])
+    if isinstance(out.get("genres"), list):
+        out["genres"] = localize_terms(out["genres"], keep_unknown=True)
+    return out

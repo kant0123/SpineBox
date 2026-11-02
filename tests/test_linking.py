@@ -110,8 +110,9 @@ def test_kakukaku_is_linked_automatically_and_fills_work_and_volume_fields(env_f
     assert {k: f["kind"][k] for k in ("value", "source", "manual")} == {"value": "manga", "source": "public_db", "manual": False}
     assert f["kind"]["sources"]
     assert f["publisher"]["value"] == "集英社" and f["publisher"]["source"] == "public_db"
-    assert "Slice of Life" in f["genres"]["value"] and "Josei" in f["genres"]["value"]       # AniList + MangaUpdates の和
-    assert "Coming of Age" in f["tags"]["value"] and f["tags"]["source"] == "public_db"
+    # AniList + MangaUpdates の和。英語の語彙は日本語にして入る(#74)
+    assert "日常" in f["genres"]["value"] and "女性向け" in f["genres"]["value"]
+    assert "成長" in f["tags"]["value"] and f["tags"]["source"] == "public_db"
     assert f["synopsis"]["value"] and f["total_volumes"]["value"] == 5
     assert w["kind"] == "manga" and w["genres"] and w["tags"]
     # ローマ字名・別名が別名に入る(出所つき)
@@ -444,7 +445,7 @@ def test_name_derived_values_are_replaced_only_when_confident_or_chosen(env_fact
     put_link(env, wid, "anilist", ANILIST_ITEM, confidence=confidence, manual=manual)
     f = env.work(wid)["fields"]
     # 空欄は、確信度が低くても埋める
-    assert f["kind"]["value"] == "manga" and f["genres"]["value"] == ["Drama"] and f["synopsis"]["value"] == "あらすじ"
+    assert f["kind"]["value"] == "manga" and f["genres"]["value"] == ["ドラマ"] and f["synopsis"]["value"] == "あらすじ"
     if replaced:
         assert (f["author"]["value"], f["author"]["source"]) == ("公開DBの著者", "public_db")
         assert f["title"]["value"] == "公開DBの作品名"
@@ -632,7 +633,7 @@ def test_list_and_detail_expose_kind_genres_tags_and_pending_counts(env_factory)
     env.fetch(wid)
     (summary,) = env.client.get("/api/works").json()["works"]
     assert summary["kind"] == "manga" and summary["publisher"] == "オーバーラップ" and summary["link_pending"] == 0
-    assert "Shounen" in summary["genres"] and summary["tags"]
+    assert "少年向け" in summary["genres"] and summary["tags"]
 
 
 # --- 整理(CBZ 化)で巻が置き換わっても、巻の書誌を失わない ------------------------------------------
@@ -792,3 +793,103 @@ def test_an_auto_link_whose_kind_contradicts_the_known_kind_is_dropped_on_refetc
     assert env.link(w, "anilist")["status"] != "linked"
     assert w["fields"]["kind"]["value"] == "novel" and w["fields"]["kind"]["manual"]
     assert "Comedy" not in (w["fields"].get("genres") or {}).get("value", [])      # 漫画側の候補の分類は残さない
+
+
+# --- 日本語での表示(#74) ----------------------------------------------------------------------------
+
+
+def _ascii_only(values) -> list[str]:
+    return [v for v in values if v.isascii()]
+
+
+def test_english_genres_and_tags_are_filled_in_japanese_and_the_raw_values_are_kept(env_factory):
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    f = env.fetch(wid)["fields"]
+    assert f["genres"]["value"] and not _ascii_only(f["genres"]["value"])
+    assert f["tags"]["value"] and not _ascii_only(f["tags"]["value"])
+    # 訳して同じになる語は 1 つにまとまる(MangaUpdates の `Teacher/s` と AniList の `Teacher`)
+    assert f["tags"]["value"].count("教師") == 1
+    # 取得元の応答から作った連携の中身は英語のまま(訳は反映で作るだけ)
+    (row,) = env.rows("SELECT item FROM work_links WHERE work_id = ? AND source = 'anilist'", wid)
+    assert "Slice of Life" in json.loads(row["item"])["genres"]
+
+
+@pytest.mark.parametrize("setting, expected", [
+    (None, ["ドラマ", "教師"]),
+    ("hide", ["ドラマ", "教師"]),
+    ("keep", ["ドラマ", "Unheard-of Tag", "教師"]),
+])
+def test_untranslated_terms_are_hidden_unless_configured(env_factory, setting, expected):
+    extra = {} if setting is None else {"untranslated_terms": setting}
+    env = env_factory("kaku", ["作品名X 第01巻.cbz"], **extra)
+    wid = env.work_id()
+    put_link(env, wid, "anilist", {**ANILIST_ITEM, "genres": [], "tags": ["Drama", "Unheard-of Tag", "Teacher/s"]},
+             confidence=0.8)
+    assert env.work(wid)["fields"]["tags"]["value"] == expected
+
+
+@pytest.mark.parametrize("setting", [None, "fold", "hide"])
+def test_english_synopsis_is_kept_for_folding_or_hidden_by_setting(env_factory, setting):
+    extra = {} if setting is None else {"english_synopsis": setting}
+    env = env_factory("kaku", ["作品名X 第01巻.cbz"], **extra)
+    wid = env.work_id()
+    english = "Van, the fourth son of a noble, remembers his past life (前世)."
+    put_link(env, wid, "anilist", {**ANILIST_ITEM, "synopsis": english}, confidence=0.8)
+    f = env.work(wid)["fields"]
+    if setting == "hide":
+        assert "synopsis" not in f
+    else:
+        assert f["synopsis"]["value"] == english
+
+
+def test_japanese_synopsis_wins_over_a_higher_priority_english_one(env_factory):
+    env = env_factory("kaku", ["作品名X 第01巻.cbz"])
+    wid = env.work_id()
+    put_link(env, wid, "anilist", {**ANILIST_ITEM, "synopsis": "An English synopsis."}, confidence=0.8)
+    put_link(env, wid, "mangaupdates", {**ANILIST_ITEM, "synopsis": "日本語のあらすじ。"}, confidence=0.8)
+    f = env.work(wid)["fields"]["synopsis"]
+    assert f["value"] == "日本語のあらすじ。" and f["sources"] == ["mangaupdates"]
+    # 日本語のあらすじの連携が外れたら、英語のあらすじに戻る
+    put_link(env, wid, "mangaupdates", {}, confidence=0.0, status="none")
+    assert env.work(wid)["fields"]["synopsis"]["value"] == "An English synopsis."
+
+
+@pytest.mark.parametrize("publisher, expected", [("Overlap", "オーバーラップ"), ("Kadokawa Shoten", "角川書店"),
+                                                 ("Unknown Shobo", "Unknown Shobo")])
+def test_romanized_publisher_from_mangaupdates_is_shown_in_japanese(env_factory, publisher, expected):
+    env = env_factory("kaku", ["作品名X 第01巻.cbz"])
+    wid = env.work_id()
+    put_link(env, wid, "mangaupdates", {**ANILIST_ITEM, "publisher": publisher}, confidence=0.8)
+    assert env.work(wid)["fields"]["publisher"]["value"] == expected
+    # 国立国会図書館サーチの出版者があれば、そちらが先
+    put_link(env, wid, "ndl", {"title": "作品名X", "publisher": "集英社", "records": []}, confidence=0.8)
+    assert env.work(wid)["fields"]["publisher"]["value"] == "集英社"
+
+
+def test_candidates_are_shown_in_japanese_but_stored_as_fetched(env_factory):
+    env = env_factory("okiraku", OKIRAKU_FILES)
+    wid = env.work_id()
+    w = env.fetch(wid)
+    mu = env.link(w, "mangaupdates")
+    assert mu["status"] == "pending"
+    assert "オーバーラップ" in [c["publisher"] for c in mu["candidates"]]
+    assert all(not _ascii_only(c["genres"]) for c in mu["candidates"] if c["genres"])
+    (row,) = env.rows("SELECT candidates FROM work_links WHERE work_id = ? AND source = 'mangaupdates'", wid)
+    assert "Overlap" in [c["summary"]["publisher"] for c in json.loads(row["candidates"])]
+
+
+def test_english_values_already_in_the_db_turn_japanese_at_startup_but_manual_ones_do_not(env_factory):
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    env.fetch(wid)
+    # 日本語化の前に入った値(英語)と、利用者が手で入れた英語の値
+    conn = db.connect(env.settings.db_path)
+    with db.transaction(conn) as c:
+        c.execute("UPDATE work_fields SET value = ? WHERE work_id = ? AND field = 'genres'", ('["Drama"]', wid))
+    conn.close()
+    assert env.client.patch(f"/api/works/{wid}", json={"tags": ["Drama", "My Tag"]}).status_code == 200
+    client = TestClient(create_app(env.settings, frontend_dist=None, metadata_fetcher=env.fetcher))
+    f = client.get(f"/api/works/{wid}").json()["fields"]
+    assert "ドラマ" in f["genres"]["value"] and "Drama" not in f["genres"]["value"]
+    assert (f["tags"]["value"], f["tags"]["manual"]) == (["Drama", "My Tag"], True)

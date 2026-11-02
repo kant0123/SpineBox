@@ -104,5 +104,13 @@ class ZipReader(ArchiveReader):
             raise ArchiveError(f"エントリを読めない: {e}") from e
         return written
 
+    def read_head(self, entry: ArchiveEntry, size: int) -> bytes | None:
+        # 先頭だけを伸長する(CRC は最後まで読まないと検査されないが、形式の判定には十分)
+        try:
+            with self._zip.open(self._infos[entry.index]) as src:
+                return src.read(size)
+        except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError, EOFError, zlib.error, ValueError):
+            return None  # 暗号化・未対応の圧縮方式など。名前で判定し、取り出し時に理由が出る
+
     def close(self) -> None:
         self._zip.close()

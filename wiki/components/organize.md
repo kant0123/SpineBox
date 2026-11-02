@@ -2,7 +2,7 @@
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ と、命名テンプレートどおりの改名・移動)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-02
-related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox]
+related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading]
 ---
 
 # 整理処理(CBZ 化・テンプレートどおりの改名)
@@ -37,14 +37,14 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:197 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
 | `spinebox/organize/template.py:73 NameTemplate` | テンプレートの検証(設定の読み込み時)と 1 巻ぶんの展開・無害化。`check_path_length` が全体の長さを見る |
 | `spinebox/organize/organizer.py:352 execute` | 作成 → 全巻検証 → 確定 → 退避 → DB。失敗時の巻き戻しもここ |
-| `spinebox/organize/organizer.py:492 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
-| `spinebox/organize/organizer.py:699 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
-| `spinebox/organize/organizer.py:612 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
+| `spinebox/organize/organizer.py:499 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、途中失敗時に「実行済み」へ戻す |
+| `spinebox/organize/organizer.py:706 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
+| `spinebox/organize/organizer.py:619 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:985 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
+| `spinebox/organize/organizer.py:992 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
-置き場は `spinebox/config.py:113 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
+置き場は `spinebox/config.py:121 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
 スキャンはこの置き場を走査しない(`spinebox/scanner.py:263 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
@@ -111,7 +111,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 ## 実行できないもの(計画の「問題」)
 
-- 読めない巻を含むソース(7-Zip が無いときの rar / 7z、内側アーカイブを含む)。全巻を CBZ にできないなら 1 巻も作らない
+- 読めない巻を含むソース(7-Zip が無いときの rar / 7z、内側アーカイブを含む)。全巻を CBZ にできないなら 1 巻も作らない。内側アーカイブも名前ではなく中身の先頭で判定する(#62。[[archive-reading]])
 - サブフォルダを含む画像フォルダ。元はフォルダごと退避するので、別の巻まで一緒に動いてしまう
 - 蔵書ルート直下の画像(ルートそのものは退避できない)、オフラインのルート、見つからない元
 - 画像以外のファイル(`notes.txt`、アーカイブ内の `info.txt`)は CBZ に入らない。止めずに「注意」として出す

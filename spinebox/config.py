@@ -38,6 +38,10 @@ DEFAULT_METADATA_SOURCES = ("ndl", "anilist", "mangaupdates")
 DEFAULT_MIN_INTERVALS = {"ndl": 1.0, "anilist": 2.0, "mangaupdates": 1.0}
 
 
+UNTRANSLATED_TERMS = ("hide", "keep")
+ENGLISH_SYNOPSIS = ("fold", "hide")
+
+
 @dataclass(frozen=True)
 class MetadataSettings:
     """外部メタデータ取得(ベストエフォート)の設定。"""
@@ -54,6 +58,10 @@ class MetadataSettings:
     recheck_days: float = 30.0         # 取得済みの作品を取り直す間隔
     retry_hours: float = 6.0           # 取得に失敗した作品を取り直すまでの間隔
     min_interval_seconds: dict = field(default_factory=lambda: dict(DEFAULT_MIN_INTERVALS))
+    # 日本語での表示(#74)。英語のジャンル・タグは対応表で日本語にする。対応が無い語を hide(出さない)か keep(英語のまま)か
+    untranslated_terms: str = "hide"
+    # 日本語のあらすじが無いときの英語のあらすじ。fold(画面で折りたたむ)か hide(作品の項目に入れない)か
+    english_synopsis: str = "fold"
     # 将来の取得元(楽天ブックスなど)の API キー。設定ファイル(リポジトリ外)にだけ置く。ログ・保存物には出さない
     keys: dict = field(default_factory=dict, repr=False)
 
@@ -238,6 +246,14 @@ def _metadata(data: dict) -> MetadataSettings:
     contact = table.get("contact", d.contact)
     if not isinstance(contact, str):
         raise ConfigError(f"metadata.contact は文字列で指定してください: {contact!r}")
+    untranslated = table.get("untranslated_terms", d.untranslated_terms)
+    if untranslated not in UNTRANSLATED_TERMS:
+        raise ConfigError(f"metadata.untranslated_terms は {' / '.join(UNTRANSLATED_TERMS)} のどれかで指定してください: "
+                          f"{untranslated!r}")
+    english_synopsis = table.get("english_synopsis", d.english_synopsis)
+    if english_synopsis not in ENGLISH_SYNOPSIS:
+        raise ConfigError(f"metadata.english_synopsis は {' / '.join(ENGLISH_SYNOPSIS)} のどれかで指定してください: "
+                          f"{english_synopsis!r}")
     return MetadataSettings(
         sources=tuple(sources),
         cache_ttl_days=_float(table, "cache_ttl_days", d.cache_ttl_days, minimum=0.0),
@@ -252,6 +268,8 @@ def _metadata(data: dict) -> MetadataSettings:
         recheck_days=_float(table, "recheck_days", d.recheck_days, minimum=1.0),
         retry_hours=_float(table, "retry_hours", d.retry_hours, minimum=0.1),
         min_interval_seconds=merged,
+        untranslated_terms=untranslated,
+        english_synopsis=english_synopsis,
         keys=dict(keys),
     )
 

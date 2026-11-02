@@ -94,6 +94,11 @@ background_interval_seconds = 120
 # 取得済みの作品を取り直す間隔(日)/ 取得に失敗した作品を取り直すまでの間隔(時間)
 recheck_days = 30
 retry_hours = 6
+# 日本語での表示。AniList / MangaUpdates の英語のジャンル・タグは対応表で日本語にして入れる(機械翻訳はしない)。
+# 対応表に無い語を hide(入れない)か keep(英語のまま入れる)か。取得した元の値は消えないので、いつでも切り替えられる
+untranslated_terms = "hide"
+# 日本語のあらすじが無いとき、英語のあらすじを fold(作品ページで折りたたむ)か hide(入れない)か
+english_synopsis = "fold"
 
 # 取得元ごとの最小間隔(秒)。直前の要求が終わってから空ける。既定は各取得元の公開されている制限から決めた値
 # (wiki/concepts/metadata-sources.md)。AniList は通常 90 回/分・障害時 30 回/分

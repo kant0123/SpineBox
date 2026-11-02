@@ -21,7 +21,7 @@ import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from . import db, search
+from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
 from .naming import normalize_title, parse_work_name
@@ -1196,10 +1196,11 @@ def _link_json(row) -> dict:
         "manual": bool(row["manual"]), "confidence": row["confidence"], "source_id": row["source_id"],
         "attempted_at": row["attempted_at"], "checked_at": row["checked_at"],
         "failure": json.loads(row["failure"]) if row["failure"] else None,
-        "linked": ev.get("summary") if row["status"] == "linked" else None,
+        # 候補の出版社・ジャンルは保存した英語のまま持ち、画面へ出すときに日本語にする(#74)
+        "linked": ja_terms.localize_summary(ev["summary"]) if row["status"] == "linked" and ev.get("summary") else None,
         "decision": ev.get("decision"), "margin": ev.get("margin"), "hold": ev.get("hold"),
         "responses": ev.get("responses", []),
-        "candidates": [c["summary"] for c in candidates],
+        "candidates": [ja_terms.localize_summary(c["summary"]) for c in candidates],
     }
 
 
