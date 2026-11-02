@@ -72,11 +72,14 @@ def test_every_term_in_the_recorded_responses_has_a_translation():
     assert sorted(p for p in publishers if ja_terms.publisher_ja(p) == p) == []
 
 
-def test_recorded_english_synopses_are_not_taken_as_japanese():
-    """記録済みの AniList・MangaUpdates のあらすじ(英語。日本語の題名が括弧で混ざるものを含む)は日本語と判定しない。"""
-    items = [mangaupdates.parse_detail(p.read_bytes()) for p in (FIXTURES / "mangaupdates").glob("*-detail-*.json")]
-    items += [i for p in (FIXTURES / "anilist").glob("*-search.json") for i in anilist.parse_search(p.read_bytes())]
-    synopses = [i.synopsis for i in items if i.synopsis]
+def test_recorded_english_descriptions_are_not_taken_as_japanese():
+    """記録済みの AniList・MangaUpdates の英語の説明文(日本語の題名が括弧で混ざるものを含む)は日本語と判定しない。
+    あらすじは廃止した(#82)が、日本語かどうかの判定(ジャンル・タグ・出版社に使う)の、英語の文に対する回帰として残す。"""
+    synopses = [json.loads(p.read_bytes()).get("description")
+                for p in (FIXTURES / "mangaupdates").glob("*-detail-*.json")]
+    synopses += [m.get("description") for p in (FIXTURES / "anilist").glob("*-search.json")
+                 for m in json.loads(p.read_bytes())["data"]["Page"]["media"]]
+    synopses = [s for s in synopses if isinstance(s, str) and s.strip()]
     assert len(synopses) >= 10
     assert [s[:40] for s in synopses if ja_terms.is_japanese(s)] == []
 
