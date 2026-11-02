@@ -227,7 +227,7 @@ def test_rename_roundtrip_keeps_state_on_same_volume(env):
     assert done["state"] == "done"
     assert sorted(p.name for p in (root / TITLE).iterdir()) == [
         f"{TITLE} 第01巻.cbz", f"{TITLE} 第02巻.cbz", f"{TITLE} 第04巻.cbz"]
-    assert (root / TITLE / f"{TITLE} 第02巻.cbz").read_bytes() == before[0][f"別スキャン/{TITLE} 第2巻.cbz"][0]
+    assert (root / TITLE / f"{TITLE} 第02巻.cbz").read_bytes() == before[0][str(Path("別スキャン") / f"{TITLE} 第2巻.cbz")][0]
     assert not (root / "受け入れ" / f"{TITLE} 1巻.cbz").exists()
     assert (root / "受け入れ").is_dir()  # 空になった元のフォルダも消さない
     # 巻 id はそのまま。読書位置・作品・重複の却下が残り、名前と番号は新しいファイル名のもの
