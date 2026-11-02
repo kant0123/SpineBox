@@ -11,6 +11,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .organize.template import DEFAULT_NAME_TEMPLATE, NameTemplate, TemplateError
+
 CONFIG_ENV = "SPINEBOX_CONFIG"
 DEFAULT_CONFIG_NAME = "config.local.toml"
 MIB = 1024 ** 2
@@ -71,6 +73,8 @@ class Settings:
     # 整理処理(CBZ 化)の作業場・退避フォルダの置き場。相対パスは各蔵書ルートが起点(設定ファイルの場所ではない)。
     # 作業場は蔵書と同じドライブに置く必要があるため(別ドライブになる構成は実行前に拒否する)
     organize_dir: str = DEFAULT_ORGANIZE_DIR
+    # 命名テンプレート(`[organize] name_template`)。規則は spinebox/organize/template.py
+    name_template: str = DEFAULT_NAME_TEMPLATE
     limits: ExtractionLimits = field(default_factory=ExtractionLimits)
     # 内側アーカイブの巻を裏で少しずつ解析して巻に分解する(既定は無効。開いたとき・明示操作では常に解析する)
     background_analysis: bool = False
@@ -122,6 +126,18 @@ def _organize_dir(data: dict) -> str:
     if not path.is_absolute() and (".." in path.parts or str(path) in ("", ".")):
         raise ConfigError(f"organize_dir の相対パスは蔵書ルートの中のフォルダを指してください: {value!r}")
     return value
+
+
+def _name_template(data: dict) -> str:
+    table = data.get("organize", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[organize] はテーブルで指定してください")
+    value = table.get("name_template", DEFAULT_NAME_TEMPLATE)
+    try:
+        NameTemplate(value)
+    except TemplateError as e:
+        raise ConfigError(str(e)) from e
+    return value.strip()
 
 
 def _float(table: dict, key: str, default: float, *, minimum: float = 0.0) -> float:
@@ -200,6 +216,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         port=_int(data, "port", defaults.port, minimum=1),
         sevenzip_path=_str(data, "sevenzip_path", defaults.sevenzip_path),
         organize_dir=_organize_dir(data),
+        name_template=_name_template(data),
         limits=limits,
         background_analysis=_bool(data, "background_analysis", defaults.background_analysis),
         background_analysis_interval=_int(data, "background_analysis_interval",

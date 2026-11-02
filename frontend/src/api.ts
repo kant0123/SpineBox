@@ -414,7 +414,7 @@ export interface WorkDetail extends WorkSummary {
   merges: WorkMerge[];
 }
 
-// 整理処理(CBZ 化)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
+// 整理処理(CBZ 化・テンプレートでの改名と移動)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
 export type OrganizeState =
   | "blocked" // 問題があり実行できない計画(保存されない。op_id は null)
   | "planned"
@@ -434,8 +434,33 @@ export interface OrganizeVolume {
   new_volume_id?: number | null;
 }
 
+/** 改名・移動の計画での各巻の扱い */
+export type OrganizeItemStatus = "move" | "unchanged" | "excluded" | "conflict" | "skipped";
+
+export interface OrganizeItem {
+  volume_id: number;
+  title: string;
+  from_rel_path: string;
+  output_rel_path: string | null;
+  status: OrganizeItemStatus;
+  /** 対象外・衝突・外した理由 */
+  reason: string | null;
+  /** 1 巻 = 1 CBZ でない巻。この巻から「CBZ に整理」(テンプレートの名前)を始められる */
+  cbz_volume_id: number | null;
+}
+
+/** cbz: 1 ソース → 巻ごとの CBZ / rename: 1 巻 = 1 CBZ の巻をテンプレートの名前へ改名・移動するだけ */
+export type OrganizeKind = "cbz" | "rename";
+/** 出力名: 巻の表示名(title)か命名テンプレート(template) */
+export type OrganizeNaming = "title" | "template";
+
 export interface OrganizeOp {
   op_id: string | null;
+  kind?: OrganizeKind;
+  naming?: OrganizeNaming;
+  template?: string | null;
+  work_id?: number;
+  items?: OrganizeItem[];
   state: OrganizeState;
   error?: string | null;
   created_at?: string;
@@ -503,11 +528,18 @@ export const api = {
   pageUrl: (id: VolumeId, index: number) => `/api/volumes/${vid(id)}/pages/${index}`,
   /** 小説の区切り 1 つの HTML(サーバーで無害化済み。画面に入れる前にもう一度 sanitize する) */
   getSection: (id: VolumeId, index: number) => request<{ index: number; html: string }>(`/api/volumes/${vid(id)}/sections/${index}`),
-  planOrganize: (volumeId: VolumeId) =>
+  planOrganize: (volumeId: VolumeId, naming: OrganizeNaming = "title") =>
     request<OrganizeOp>("/api/organize/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ volume_id: Number(volumeId) }),
+      body: JSON.stringify({ volume_id: Number(volumeId), naming }),
+    }),
+  /** 作品の全巻をテンプレートの名前へ改名・移動する計画(プレビュー)。excludeVolumeIds は外す巻 */
+  planRename: (workId: number | string, excludeVolumeIds: number[] = []) =>
+    request<OrganizeOp>("/api/organize/rename-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ work_id: Number(workId), exclude_volume_ids: excludeVolumeIds }),
     }),
   executeOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/execute`, { method: "POST" }),
   undoOrganize: (opId: string) => request<OrganizeOp>(`/api/organize/${encodeURIComponent(opId)}/undo`, { method: "POST" }),

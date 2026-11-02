@@ -174,6 +174,15 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[archive-reading]]
 - 備考: #49、PR #60。本番蔵書で中身が zip でない .cbz 12 件が「File is not a zip file」で一覧から外れた。rar / 7z を改名したものは 7-Zip で読み、7-Zip が無ければ中身の形式を理由に書く。先頭で分からない zip / cbz は zipfile → 7-Zip の順に試す。
 
+## [2026-11-02] ingest | PR #65 命名テンプレートに沿った整理(CBZ 化の出力先・作品単位の改名と移動)
+- 更新: [[organize]], [[backend]], [[frontend]], [[work-grouping]], [[overview]], [[server-setup]](コード参照の行番号のみ)
+- 備考: #58。設定 `[organize] name_template`(既定 `<作品名>/<作品名> 第NN巻.cbz`。番号の直後の「巻」は話単位の巻で「話」)。
+  CBZ 化に `naming="template"` を足し、既に 1 巻 = 1 CBZ の巻を作品単位で改名・移動する `kind="rename"` の操作を足した。
+  改名・移動は巻 id を変えずに `sources.rel_path` を付け替える(読書位置・作品の割り当て・指紋・重複の却下がそのまま残る)。
+  衝突は連番にせず、プレビューで衝突として出して「外す」で選ばせる。出力のために作ったフォルダは mkdir としてジャーナルに残し、
+  元に戻すで空なら消す(往復後にフォルダまで一致させるため)。マイグレーションなし(`organize_ops.kind` は既存の列)。
+  クラウドで実装し、ローカルで引き取って main(#50・#54・#49)へ追従した(作品名・出版社は #50 の `work_fields` をそのまま使う。テストのパス区切りが OS 依存だった所を直した)。`_参考/サンプル本` のコピーで、CBZ 化+テンプレート → 元に戻す、CBZ 化済みの巻の改名・移動 → 元に戻す(お気楽領主の別スキャン 1・2 巻の衝突を確認)の往復後に、コピーがパス・sha256・サイズ・mtime まで実行前と一致、読書位置の引き継ぎ・復元、原本 2 ファイルの不変を確認。375px と 1280px の組み込みブラウザで作品ページ → プレビュー → 実行 → 履歴 → 元に戻すを確認。main の #57(小説リーダー。マイグレーション 8)を取り込み、小説は CBZ 化も改名・移動も対象外(理由つき)にしてテストを足した(この PR はマイグレーションを足さない)
+
 ## [2026-11-02] ingest | 作品の全文検索と絞り込み
 - 新規: [[work-search]]
 - 更新: [[backend]], [[frontend]], [[work-grouping]], [[metadata-clients]], [[overview]], [[volume-split]], [[recurring-review-findings]], [[server-setup]](後 2 つは `MIGRATIONS` の行番号の参照だけ)

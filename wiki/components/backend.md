@@ -22,7 +22,7 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:154 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:162 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:367 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
@@ -36,7 +36,7 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 | `spinebox/works.py:392 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
-| `spinebox/config.py:216 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
+| `spinebox/config.py:237 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
@@ -68,9 +68,10 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 | `POST /api/duplicates/{id}/dismiss` / `restore` | 「重複ではない」と却下する / 戻す。`{"id", "dismissed"}`。無い id は 404。蔵書には触れない |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool, "position"?: 0〜1}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422。小説は page が区切りの番号、`position` が区切りの中の割合で、`progress` にも `position` が付く。画像の巻の `position` は捨てる |
-| `POST /api/organize/plan` | body `{"volume_id"}` か `{"source_id"}`(どちらか一方)。その巻を含むソース全体の計画。整理の単位は見えている子を持たない巻(分解済みなら子の巻ごと)。問題があれば `state: "blocked"`・`op_id: null`(保存しない)。中の巻を調べていない内側アーカイブは `needs_analysis`(巻 id の配列)で返す。蔵書に書かない |
+| `POST /api/organize/plan` | body `{"volume_id"}` か `{"source_id"}`(どちらか一方)と、任意の `naming`(`"title"` 既定 / `"template"`: 出力先を命名テンプレートで決める)。その巻を含むソース全体の計画。整理の単位は見えている子を持たない巻(分解済みなら子の巻ごと)。問題があれば `state: "blocked"`・`op_id: null`(保存しない)。中の巻を調べていない内側アーカイブは `needs_analysis`(巻 id の配列)で返す。蔵書に書かない |
 | `POST /api/organize/{op_id}/execute` / `.../undo` | 操作(`{"op_id", "state", "volumes": [{"volume_id", "output_rel_path", "new_volume_id", ...}], "warnings", "problems", "error", ...}`)。始められない・失敗(巻き戻し済み)は 409 で `{"detail", "op"}`。スキャン中も 409 |
-| `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない) |
+| `POST /api/organize/rename-plan` | body `{"work_id", "exclude_volume_ids"}`。作品の全巻をテンプレートの名前へ改名・移動する計画(`kind: "rename"`)。`items` に各巻の `status`(move / unchanged / excluded / conflict / skipped)・`reason`・`from_rel_path`・`output_rel_path`。動かす巻が無ければ `blocked`。実行・元に戻すは上と同じエンドポイント |
+| `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない)。各操作に `kind`(cbz / rename)・`naming`・`template` |
 
 すべての応答に `Content-Security-Policy`(`spinebox/app.py:41 APP_CSP`。インラインのスクリプトと外部の読み込みを止める)と `X-Content-Type-Options: nosniff` を付ける。
 画面に外部のスクリプト・画像・フォントを足すときは、この CSP を同じ PR で直す([[novel-reader]] の安全方針の 3 段目)。
@@ -125,6 +126,8 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **`volumes_locator`(一意索引)は `inner_path` を含む。** 子の巻は親と同じ (source, container_path, entry_prefix) を持ちうる(親の内側アーカイブ直下の単位は `inner_path = "[]"`、親は NULL)
 - 相対パスは設定ファイルの場所が起点。サービスとして起動したときのカレントに左右されないため。
   例外は `organize_dir`(整理処理の作業場・退避フォルダ)で、相対なら各蔵書ルートが起点(蔵書と同じドライブに置くため)
+- `[organize] name_template`(命名テンプレート)は読み込み時に検証し、`..`・絶対パス・ドライブ文字・知らない変数は `ConfigError` で起動させない
+  (規則は [[organize]])
 - スキャンは整理処理の置き場(既定 `<ルート>/.spinebox`)を走査しない。退避した元・作業場の CBZ を巻として拾わないため
 - SQLite はリクエストごとに接続を開く(FastAPI の同期エンドポイントはスレッドプールで動くため)。WAL を使う
 
