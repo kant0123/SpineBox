@@ -49,6 +49,11 @@ describe("データ管理の画面", () => {
     expect(screen.getByRole("heading", { name: "ライブラリ全体" })).toBeTruthy();
     expect(within(screen.getByText("中の巻を調べる").closest("li")!).getByText("未解析 1 巻")).toBeTruthy();
     expect(within(screen.getByText("作品情報のみ補完").closest("li")!).getByLabelText("全作品を取り直す")).toBeTruthy();
+    // 作品一覧のヘッダーから移した操作(#102)
+    const individual = screen.getByRole("heading", { name: "個別" }).parentElement!;
+    expect(within(individual).getByText("表紙のみ補完")).toBeTruthy();
+    expect(within(individual).getByText("重複を調べる")).toBeTruthy();
+    expect(within(individual).getByText("作品の名寄せを計算し直す")).toBeTruthy();
     const history = screen.getByRole("heading", { name: "履歴" }).parentElement!;
     const rows = within(history).getAllByRole("listitem");
     expect(rows.map((r) => within(r).getByText(/スキャン|重複/, { selector: "strong" }).textContent)).toEqual(["ファイルのスキャンのみ", "重複を調べる"]);

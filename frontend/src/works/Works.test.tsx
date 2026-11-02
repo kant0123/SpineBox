@@ -55,6 +55,16 @@ describe("作品の一覧", () => {
     // 巻の一覧と行き来できる
     expect(screen.getByRole("link", { name: "巻" }).getAttribute("href")).toBe("#/volumes");
   });
+
+  it("ヘッダーに重複の候補・情報を補完・表紙を作る・名寄せを取り直すを置かない(管理のデータ管理タブに集約)", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect(screen.queryByRole("link", { name: "重複の候補" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "情報を補完" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "表紙を作る" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "名寄せを取り直す" })).toBeNull();
+  });
 });
 
 describe("作品カードの表紙(#75)", () => {
@@ -71,14 +81,6 @@ describe("作品カードの表紙(#75)", () => {
     fireEvent.error(img);
     expect(card.querySelector("img")).toBeNull();
     expect(within(card).getByText("サンプル漫画")).toBeTruthy();
-  });
-
-  it("「表紙を作る」で作成を起動し、実行中は進み具合を出す", async () => {
-    window.location.hash = "#/works";
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "表紙を作る" }));
-    expect(await screen.findByRole("button", { name: /表紙を作成中/ })).toBeTruthy();
-    expect(backend.log.some((e) => e.method === "POST" && e.path === "/api/thumbnails/build")).toBe(true);
   });
 
   it("モック: 入れ子の巻の表紙は、開くか作るまで 404 pending", () => {
@@ -231,7 +233,7 @@ describe("統合の提案", () => {
 });
 
 describe("公開データベースの情報(#50)", () => {
-  it("作品の一覧に確認待ちが出て、情報の取得ボタンと利用元の表示がある", async () => {
+  it("作品の一覧に確認待ちが出て、利用元の表示がある", async () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
@@ -241,8 +243,6 @@ describe("公開データベースの情報(#50)", () => {
     expect(credits.textContent).toContain("NDL サーチ API");
     expect(credits.textContent).toContain("AniList API");
     expect(credits.textContent).toContain("MangaUpdates API");
-    fireEvent.click(await screen.findByRole("button", { name: "情報を補完" }));
-    await waitFor(() => expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/works/metadata/fetch")).toBe(true));
   });
 
   it("確認待ちの候補を選ぶと反映され、出所が公開データベースになる。失敗した取得元はその理由が出る", async () => {

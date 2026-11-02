@@ -13,7 +13,7 @@ related: [metadata-clients, metadata-sources, work-grouping, work-search, backen
 ## 全体像
 
 ```
-fetch_work(作品, 取得元)  ← 唯一ネットワークに触る。ボタン/「情報を補完」/裏の定期取得からだけ
+fetch_work(作品, 取得元)  ← 唯一ネットワークに触る。データ管理のジョブ/作品ページの「情報を取得」/裏の定期取得からだけ
    │  候補を作って work_links に保存(自動で連携 / 確認待ち / 該当なし / 失敗の記録)
    ▼
 apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・reset・スキャン後に走る
