@@ -52,7 +52,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - 作品名・著者を手で直すと `manual = 1`。再計算は触らない。直す前の作品名は別名(`previous_title`・手動)に残す
 - 別名は外した(`dismissed_at`)ものを再計算で戻さない
 - 巻の付け替えは手動の割り当て(`manual = 1`)で、再計算で動かさない。分解された巻([[volume-split]])の子は親の手動の割り当てを引き継ぐ
-- 整理処理([[organize]])が作る CBZ の巻へは、`spinebox/organize/organizer.py:1166 transfer_volume_state()` が元の巻の作品の割り当て
+- 整理処理([[organize]])が作る CBZ の巻へは、`spinebox/organize/organizer.py:1184 transfer_volume_state()` が元の巻の作品の割り当て
   (手動かどうかも)を写し、元に戻すと逆向きに写す。そうしないと整理しただけで作品から外れる。
   テンプレートどおりの改名・移動は巻 id を変えないので、割り当てはそのまま残る。命名テンプレートの `<作品名>`・`<著者>` は
   この作品の項目(統合されていれば吸収先)から取る

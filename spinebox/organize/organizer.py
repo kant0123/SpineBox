@@ -250,30 +250,47 @@ class Organizer:
         return None
 
     def name_values(self, volume_ids: list[int]) -> dict[int, NameValues]:
-        """巻ごとのテンプレートの値。作品の項目は統合されていれば吸収先のもの。番号は名前から読んだ候補。"""
+        """巻ごとのテンプレートの値。作品の項目は統合されていれば吸収先のもの。番号は名前から読んだ候補。
+
+        範囲指定の整理は蔵書ルート全体の巻をまとめて渡すので、巻ごとに SQL を発行しない(まとめて引く)。
+        """
         out: dict[int, NameValues] = {}
         fields_cache: dict[int, dict] = {}
-        for vid in volume_ids:
-            row = self.conn.execute(
-                """SELECT v.number_kind, v.number_start, v.number_end, v.format, wv.work_id FROM volumes v
-                   LEFT JOIN work_volumes wv ON wv.volume_id = v.id WHERE v.id = ?""", (vid,)).fetchone()
-            fields: dict = {}
-            work_id = root_of(self.conn, row["work_id"]) if row["work_id"] is not None else None
-            if work_id is not None:
-                if work_id not in fields_cache:
-                    fields_cache[work_id] = {r["field"]: r["value"] for r in self.conn.execute(
-                        "SELECT field, value FROM work_fields WHERE work_id = ?", (work_id,))}
-                fields = dict(fields_cache[work_id])
-            # 種別は作品の項目(manga / novel)を日本語にする。未決でも小説の巻(EPUB・テキスト)は小説と分かる
-            kind = fields.get(works.FIELD_KIND) or ("novel" if row["format"] else None)
-            fields["kind"] = KIND_LABELS.get(kind)
+        roots: dict[int, int | None] = {}  # 作品 id → 統合の吸収先(作品ごとに 1 回)
+        ids = list(dict.fromkeys(volume_ids))
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = self.conn.execute(
+                f"""SELECT v.id, v.number_kind, v.number_start, v.number_end, v.format, wv.work_id FROM volumes v
+                    LEFT JOIN work_volumes wv ON wv.volume_id = v.id WHERE v.id IN ({marks})""", chunk).fetchall()
             # レーベル・発売年は巻の書誌(volume_fields)。発売日は「2020-05-01」「2020」などの先頭の 4 桁
-            vf = {r["field"]: r["value"] for r in self.conn.execute(
-                "SELECT field, value FROM volume_fields WHERE volume_id = ? AND field IN ('label', 'released')", (vid,))}
-            fields["label"] = vf.get("label")
-            year = re.match(r"\s*(\d{4})", vf.get("released") or "")
-            fields["year"] = year.group(1) if year else None
-            out[vid] = NameValues(fields, row["number_kind"], row["number_start"], row["number_end"])
+            vfields: dict[int, dict] = {}
+            for r in self.conn.execute(
+                    f"SELECT volume_id, field, value FROM volume_fields WHERE volume_id IN ({marks}) "
+                    "AND field IN ('label', 'released')", chunk):
+                vfields.setdefault(r["volume_id"], {})[r["field"]] = r["value"]
+            for row in rows:
+                vid = row["id"]
+                work_id = None
+                if row["work_id"] is not None:
+                    if row["work_id"] not in roots:
+                        roots[row["work_id"]] = root_of(self.conn, row["work_id"])
+                    work_id = roots[row["work_id"]]
+                fields: dict = {}
+                if work_id is not None:
+                    if work_id not in fields_cache:
+                        fields_cache[work_id] = {r["field"]: r["value"] for r in self.conn.execute(
+                            "SELECT field, value FROM work_fields WHERE work_id = ?", (work_id,))}
+                    fields = dict(fields_cache[work_id])
+                # 種別は作品の項目(manga / novel)を日本語にする。未決でも小説の巻(EPUB・テキスト)は小説と分かる
+                kind = fields.get(works.FIELD_KIND) or ("novel" if row["format"] else None)
+                fields["kind"] = KIND_LABELS.get(kind)
+                vf = vfields.get(vid, {})
+                fields["label"] = vf.get("label")
+                year = re.match(r"\s*(\d{4})", vf.get("released") or "")
+                fields["year"] = year.group(1) if year else None
+                out[vid] = NameValues(fields, row["number_kind"], row["number_start"], row["number_end"])
         return out
 
     def _unanalyzed(self, rows: list[dict], problems: list[str]) -> list[int]:

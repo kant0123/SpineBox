@@ -472,3 +472,22 @@ def test_range_path_with_different_case_on_a_case_insensitive_filesystem(env):
     assert plan["scope"]["path"] == "Manga/Sub"
     item = by_from(plan)[f"Manga/Sub/{TITLE} 9巻.cbz"]
     assert item["status"] == "move" and item["output_rel_path"].startswith("Manga/Sub/")
+
+
+def test_name_values_does_not_query_per_volume(env):
+    """範囲は蔵書全体の巻をまとめて渡すので、巻の数に比例して SQL を発行しない(agy レビュー。N+1 の禁止)。
+    作品ごとの項目は作品の数だけ・巻の行と書誌は 500 件ずつまとめて引く。"""
+    ids = [r["id"] for r in env.conn.execute("SELECT id FROM volumes")]
+    statements: list[str] = []
+    env.conn.set_trace_callback(statements.append)
+    try:
+        once = organizer(env).name_values(ids)
+        n_once = len(statements)
+        statements.clear()
+        many = organizer(env).name_values(ids * 100)  # 重複は 1 回にまとめる
+        n_many = len(statements)
+    finally:
+        env.conn.set_trace_callback(None)
+    assert many == once and n_many == n_once
+    n_works = env.conn.execute("SELECT COUNT(DISTINCT work_id) FROM work_volumes").fetchone()[0]
+    assert n_once <= 2 + 2 * n_works  # 巻の行・書誌の 2 回 + 作品ごとの 2 回(吸収先・項目)

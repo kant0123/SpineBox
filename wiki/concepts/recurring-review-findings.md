@@ -137,6 +137,7 @@ push 前に確かめること:
 - PR #40 — `wiki/log.md` — 取り込みで触った `wiki/components/organize.md` と、`archive-reading` の相互参照を「更新:」に載せていなかった
 - PR #34 — `wiki/overview.md` — リンクを足したが `updated` をプレースホルダーのまま残し、log の「更新:」にも載せなかった
 - PR #59 — `wiki/log.md` / 各ページの `updated` — クラウドで書いたエントリの日付が UTC の `2026-11-01` で、main の JST の `2026-11-02` より前に巻き戻っていた(agy の NITPICK。`git log` の日付と、直前のエントリの日付で確かめて直した)
+- PR #91 — `wiki/components/backend.md` API 契約表 — 新しいエンドポイント(`range-plan`・`range/options`・`range/example`・`range/folders`)と `GET /api/organize` の `kind` の値(`range`)を表に足していなかった。行番号の直しだけでページに触れていたので「更新済み」に見えていた
 
 ### 「手動の決定を守る」判定が、手動になりうる項目の全部を見ていない
 
@@ -194,10 +195,12 @@ push 前に確かめること:
 
 - ループの中で、全件を引く SQL・全件を対象にするファイルシステム操作を呼んでいないか。引き直しが要るのは「一巡して新しい対象が現れたとき」だけか
 - 呼び出し回数をテストで数えたか(`pending()` の呼び出しを数えて件数に比例しないことを確かめるなど)
+- 蔵書全体の巻をまとめて渡される関数が、巻ごとに SELECT を発行していないか(巻の行・書誌は IN で 500 件ずつまとめて引く。作品のように重複する対象は 1 回ずつ)。`set_trace_callback` で文の数が巻の数に比例しないことを確かめたか
 
 実例:
 
 - PR #40 — `spinebox/duplicates.py DuplicateScanner.run()` — 指紋を 1 巻作るたびに `pending()`(全巻の SELECT と作成済みの巻すべての `stat()`)を呼んでいた。`pending` の呼び出し回数を数えて再現し、1 巡ごとに直した
+- PR #91 — `spinebox/organize/organizer.py name_values()` — 範囲指定が蔵書ルート全体の巻を渡すのに、巻ごとに 3 回 SELECT していた(20000 巻で 1.1 秒。10 万巻規模で効く)。文の数を数えるテストを足して `IN` でまとめて引くようにした
 
 ### 共有すべき状態を、呼び出しごとに作るインスタンスに持たせている
 
