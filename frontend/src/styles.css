@@ -248,6 +248,25 @@ button.small { padding: 4px 10px; font-size: 0.8rem; }
 .work-cover.loaded { opacity: 1; }
 .work-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 button.secondary { background: transparent; color: var(--accent); }
+
+/* 作品のタイトル一覧(#105)。作品カードから開き、管理ページへはボタンで移る */
+.work-titles .library-header { flex-wrap: wrap; align-items: flex-start; }
+.work-titles-head { min-width: 0; }
+.work-titles-head h1 { overflow-wrap: anywhere; }
+.work-titles-meta { margin: 0 0 8px; }
+.manage-button {
+  flex: none; display: inline-block; margin: 4px 0;
+  padding: 8px 16px; border-radius: 8px;
+  background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
+  white-space: nowrap;
+}
+.title-list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.title-item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+.title-item.offline { opacity: 0.6; }
+.title-number { flex: none; min-width: 3.5em; font-size: 0.85rem; color: var(--muted); }
+.title-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.title-body a { color: var(--accent); text-decoration: none; }
+
 .work-page h2 { font-size: 1.05rem; margin: 16px 0 6px; }
 .work-page h3 { font-size: 0.95rem; margin: 12px 0 6px; }
 .work-section { margin: 12px 0; overflow-wrap: anywhere; }

@@ -23,6 +23,8 @@ export type Route =
   | { name: "work-organize"; id: string }
   | { name: "duplicates" }
   | { name: "work"; id: string }
+  /** 作品のタイトル(巻)の一覧。作品カードから開き、管理ページ(`#/works/<id>`)へはボタンで移る */
+  | { name: "work-titles"; id: string }
   | { name: "work-proposals" }
   | { name: "inbox" }
   | { name: "organize-files" }
@@ -66,8 +68,12 @@ export function parseRoute(hash: string): Route {
   if (/^\/data\/?$/.test(h)) return { name: "admin", tab: "data" };
   if (/^\/data\/organize\/?$/.test(h)) return { name: "organize-files" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
-  const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
-  if (w) return w[2] ? { name: "work-organize", id: w[1] } : { name: "work", id: w[1] };
+  const w = h.match(/^\/works\/(\d+)(?:\/(organize|titles))?\/?$/);
+  if (w) {
+    if (w[2] === "organize") return { name: "work-organize", id: w[1] };
+    if (w[2] === "titles") return { name: "work-titles", id: w[1] };
+    return { name: "work", id: w[1] };
+  }
   const m = h.match(/^\/(read|organize)\/([^/?#]+)(\/template)?\/?$/);
   if (m && !(m[1] === "read" && m[3])) {
     try {
@@ -108,6 +114,8 @@ export const followManageHref = "#/admin/follows";
 export const bookmarksHref = "#/bookmarks";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
+/** 作品のタイトル(巻)の一覧。作品カードの行き先 */
+export const workTitlesHref = (id: string | number) => `${workHref(id)}/titles`;
 /** 作品の全巻をテンプレートどおりに整理(改名・移動)するプレビュー */
 export const workOrganizeHref = (id: string | number) => `${workHref(id)}/organize`;
 export const mangaHref = "#/manga";
