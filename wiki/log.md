@@ -302,4 +302,5 @@ grep "^## \[" wiki/log.md | tail -5
   モック API(`npm run dev:mock`)を 375px と 1280px のヘッドレス Chrome で開き、作品一覧のヘッダーに 4 つの操作が無いこと(`.library-header .header-actions` が 0)、データ管理タブに「作品情報のみ補完」「表紙のみ補完」「作品の名寄せを計算し直す」「重複を調べる」と「重複の候補」への入口があること、`scrollWidth` が `clientWidth` と一致し横スクロールが無いことを確認した。コンソールのエラーは既存の表紙の 404 pending(`/api/volumes/5/thumbnail`)だけ。
 
 ## [2026-11-03] ingest | PR #111 DADS(v2.18.2)準拠の画面作成・修正スキルを追加
-- 備考: #108。`.agent/skills/dads-ui/`(と `.claude/skills/` の写し)を追加した。DADS の公式 Markdown 一式(2026-10-21 版 = v2.18.2)・HTML 版スニペット・`@digital-go-jp/design-tokens` 2.1.0 を一次情報として参照する手順、トークン値(色・タイポ・余白・角丸・影・768px)、コンポーネント対応、検証チェックリストを置いた。Wiki のページは更新していない(画面の見た目の規約はスキル側に置き、[[frontend]] は構造と振る舞いのページのため)。
+- 更新: [[recurring-review-findings]]
+- 備考: #108。`.agent/skills/dads-ui/`(と `.claude/skills/` の写し)を追加した。DADS の公式 Markdown 一式(2026-10-21 版 = v2.18.2)・HTML 版スニペット・`@digital-go-jp/design-tokens` 2.1.0 を一次情報として参照する手順、トークン値(色・タイポ・余白・角丸・影・768px)、コンポーネント対応、検証チェックリストを置いた。[[frontend]] は更新していない(構造と振る舞いのページのため)。agy レビューの WARNING で、`.page` を「リーダーの紙面用なので画面コンテナに使わない」と書いたのが実装と逆(実際は画面共通の枠)と分かり、スキルを直して台帳に「既存のクラス・関数の役割を、コードを確かめずに文書に書く」を足した。

@@ -117,8 +117,8 @@ Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/digital-go-
 
 ## このリポジトリの罠
 
-- **`.page` を新しい画面のコンテナに使わない** — リーダーの紙面用(#99)。
-  `pointer-events: none` は `.stage .page` に限定してある。
+- **`.page` は画面共通のコンテナ枠**(`styles.css` の「新しい画面の共通の枠」)。リーダーの紙面用の
+  `pointer-events: none` は `.stage .page` に限定してある(#99)。`.page` 単独に効く指定を足さない。
 - **ライト/ダークの両方**を確認する。`:root[data-theme="dark"]` と `prefers-color-scheme` の
   2 経路がある。
 - 768px 未満のサイドバーは引き出し。画面の要素を引き出しの上に重ねない。
