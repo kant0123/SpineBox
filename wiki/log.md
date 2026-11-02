@@ -208,7 +208,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #72。main 18852b8 で `py -3.12 scripts/ci_local.py --no-report` 成功(pytest 929 passed / vitest 105 passed / wiki-lint OK)。`_参考/サンプル本` を同じドライブの一時ディレクトリへコピーし、書庫(かくかくしかじかの 7z)と受け入れフォルダ(お気楽領主の zip)にして実起動: 同期で受け入れ側は「確認が要る」(巻の名前の作品名がローマ字と日本語で揃わない)・v01s / v02s は第01・02巻と同じ出力名になると理由つきで出た。作品名を指定し v01s / v02s を外して承認 → 書庫に `お気楽領主の楽しい領地防衛/お気楽領主の楽しい領地防衛 第NN巻.cbz` が 6 つでき、作品 6 巻・欠け無し・最終ページ取得可(プレビューでは何も書かれない)。かくかくしかじかは「中の巻を調べる」を求められ、解析後にテンプレートで CBZ 4 つ(`Kakukaku Shikajika/… 第NN巻.cbz`)。両方を元に戻すと書庫・受け入れフォルダの sha256 が実行前と一致し、作成物は退避フォルダに残り、受け入れ側は再び確認待ちとして出た。cp932 の青空文庫形式テキストを 375px で開き、縦書き(`vertical-rl`)・ルビ 400 か所の表示を確認。EPUB の安全性(スクリプト・外部読み込みの遮断)は #57(PR #64)の実ブラウザ確認による。原本 2 ファイルのサイズ・mtime・sha256 は検証前後で一致。
 
 ## [2026-11-02] ingest | 公開 DB のジャンル・タグ・出版社・あらすじを日本語で表示する
-- 更新: [[metadata-linking]], [[metadata-sources]], [[frontend]], [[backend]], 他に `config.example.toml`(`untranslated_terms` / `english_synopsis`)。コード参照の行番号のずれも直した(backend / inbox / organize / metadata-linking)
+- 更新: [[metadata-linking]], [[metadata-sources]], [[frontend]], [[backend]], [[inbox]], [[organize]], 他に `config.example.toml`(`untranslated_terms` / `english_synopsis`)。inbox / organize はコード参照の行番号のずれだけ直した
 - 備考: #74。英語の語彙は対応表 `spinebox/ja_terms.py` で反映のときに日本語にし、取得した元の値(`work_links.item`・生の応答)は英語のまま残す。起動時の反映で、入っている英語の値も日本語になる(手動の値は変えない)。
   記録済みの応答に出るジャンル・タグ・原版元は全部対応表で引ける。日本語のあらすじを持つ取得元は今の 3 つに無い(NDL OpenSearch の `dc:description` は書誌の注記)ので、英語のあらすじは既定で作品ページに折りたたむ。
   機械翻訳(外部送信)は入れず、利用者の判断待ちとして wiki に提案だけ書いた。
