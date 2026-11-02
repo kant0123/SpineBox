@@ -211,7 +211,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: なし(GOAL.md のチェックボックスのみ)
 - 備考: #77。利用者がサーバー機(DESKTOP-80AKMUB)で `config.local.toml` の `host` を LAN アドレスにし、`deploy\install_task.ps1 -Action Register` で常駐タスクを登録(Python はフルパス、`-UserName` 付き)。再起動後に自動起動し、LAN 内の別端末から閲覧できることを確認(#20)。開発機からも `http://192.168.11.50:8000/healthz` が `{"ok":true,"commit":"dd66b1a"}` を返し、サーバー機の `logs\supervisor.log` に Job Object の有効化と `python -m spinebox` の起動、`.err.log` に LAN 公開の注意と uvicorn の起動が残っていることを確認。手順で `.\deploy\` のパスと `-PythonPath` / `-HealthUrl` を省いていたため一度失敗した(稼働確認 URL の自動化は #76)。これで GOAL.md フェーズ 1〜4 の完了条件はすべて満たした。
 
-## [2026-11-02] ingest | 公開 DB のジャンル・タグ・出版社・あらすじを日本語で表示する
+## [2026-11-02] ingest | PR #80 公開 DB のジャンル・タグ・出版社・あらすじを日本語で表示する
 - 更新: [[metadata-linking]], [[metadata-sources]], [[frontend]], [[backend]], [[inbox]], [[organize]], 他に `config.example.toml`(`untranslated_terms` / `english_synopsis`)。inbox / organize はコード参照の行番号のずれだけ直した
 - 備考: #74。英語の語彙は対応表 `spinebox/ja_terms.py` で反映のときに日本語にし、取得した元の値(`work_links.item`・生の応答)は英語のまま残す。起動時の反映で、入っている英語の値も日本語になる(手動の値は変えない)。
   記録済みの応答に出るジャンル・タグ・原版元は全部対応表で引ける。日本語のあらすじを持つ取得元は今の 3 つに無い(NDL OpenSearch の `dc:description` は書誌の注記)ので、英語のあらすじは既定で作品ページに折りたたむ。
