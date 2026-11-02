@@ -283,3 +283,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-03] ingest | PR #97 README の更新とサーバー機の再起動・更新用バッチ
 - 更新: [[server-setup]], [[recurring-review-findings]]
 - 備考: #96。README をフェーズ 1〜4 完了後の現状(できること・画面構成・蔵書を壊さない約束・サーバー機での導入と更新)に書き直した。`deploy/update_spinebox.ps1`(`-Mode Restart / Update`、`-DryRun`)と、ダブルクリック用の `deploy/restart_spinebox.bat`・`deploy/update_spinebox.bat`(管理者へ昇格して呼ぶだけ・ASCII・CRLF。`.gitattributes` に `*.bat text eol=crlf`)を足した。稼働確認の URL は `python -m spinebox --print-bind` から決める。`tests/test_deploy_scripts.py` に BOM・構文・バッチの ASCII/CRLF・DryRun が何も変えないこと・リポジトリ不在や設定不正で終了コード 2 のテストを足した(27 passed)。
+
+## [2026-11-03] ingest | PR #100 管理画面やファセット一覧のタブ・リンクがクリックできない不具合を修正
+- 更新: [[frontend]]
+- 備考: #99。リーダーの紙面画像用のスタイル `.page { pointer-events: none; }` がグローバルに定義されていたため、管理画面 `<div className="page admin">` やファセット一覧 `<div className="page facets">` の画面コンテナ枠と衝突し、画面全体でクリックイベントが無効化されていた。`.stage .page` にセレクタを絞り込むことで、リーダー画像のスタイルを保護しつつ管理画面のタブリンクやボタンが正常に操作できるようにした。`frontend/src/shell/AppShell.test.tsx` に各タブの href 検証および `.page` 単体への `pointer-events: none` 適用を防ぐリグレッションテストを追加した。

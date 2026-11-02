@@ -150,6 +150,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   (`src/reader/Reader.test.tsx`)。先読み済み(complete)の画像の分岐は `HTMLImageElement.prototype` の `complete` / `naturalWidth` を差し替えて通す
 - 単体テストの jsdom には `PointerEvent` が無いので、タップ・スワイプは判定関数の単体テストと実ブラウザで確かめる
   (結線のテスト `src/App.test.tsx` はキーボードで操作している)
+- リーダーの紙面画像用の `.page` スタイルは `.stage .page` にスコープを絞る(#99)。画面共通コンテナ枠 `<div className="page admin">` や `<div className="page facets">` とセレクタが衝突すると、`pointer-events: none` が画面全体に漏れてタブやリンクがクリックできなくなる。jsdom は CSS のポインターイベントを解釈しないため単体テストでは見逃されやすい
 
 ## CI への組み込み
 
