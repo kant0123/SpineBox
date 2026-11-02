@@ -193,14 +193,18 @@ export function createMockWorks(
   /** 見えている巻を持つ作品(root を渡すとその蔵書ルートに巻があるものだけ) */
   const listed = (root: string | null) => works.filter((w) => volumesOf(w, root).length > 0);
 
-  /** GET /api/works/facets/{name}: 値と作品数 */
+  // 著者・タグ・出版社などのスター(#117): `${name}:${key}` -> created_at
+  const facetStars = new Map<string, string>();
+  const facetKey = (v: string) => normalizeSearch(v) || v.trim();
+
+  /** GET /api/works/facets/{name}: 値と作品数・スターの有無 */
   function facetValues(name: string, root: string | null): Res {
     if (!["author", "kind", "genre", "tag", "publisher"].includes(name)) return res(404, { detail: `未対応の項目: ${name}` });
-    const counts = new Map<string, { value: string; count: number }>();
+    const counts = new Map<string, { value: string; count: number; starred: boolean }>();
     for (const w of listed(root)) {
       for (const v of new Set(valuesOf(w)[name as WorkFilterName])) {
-        const key = normalizeSearch(v);
-        const e = counts.get(key) ?? { value: v, count: 0 };
+        const key = facetKey(v);
+        const e = counts.get(key) ?? { value: v, count: 0, starred: facetStars.has(`${name}:${key}`) };
         e.count++;
         counts.set(key, e);
       }
@@ -405,6 +409,22 @@ export function createMockWorks(
     if (method === "GET" && path === "/api/works") return listWorks(query);
     const facet = path.match(/^\/api\/works\/facets\/([a-z]+)$/);
     if (facet && method === "GET") return facetValues(facet[1], new URLSearchParams(query).get("root"));
+    const facetStar = path.match(/^\/api\/works\/facets\/([a-z]+)\/star$/);
+    if (facetStar && method === "PUT") {
+      const name = facetStar[1];
+      if (!["author", "kind", "genre", "tag", "publisher"].includes(name)) return res(404, { detail: `未対応の項目: ${name}` });
+      const text = typeof body?.value === "string" ? body.value.trim() : "";
+      const key = facetKey(text);
+      if (!key || typeof body?.starred !== "boolean") return res(422, { detail: "スターを付ける値が空です" });
+      const mapKey = `${name}:${key}`;
+      if (body.starred) {
+        if (!facetStars.has(mapKey)) facetStars.set(mapKey, "2026-11-03T00:00:00+00:00");
+      } else {
+        facetStars.delete(mapKey);
+      }
+      const created_at = facetStars.get(mapKey) ?? null;
+      return res(200, { name, value: text, starred: created_at !== null, created_at });
+    }
     if (method === "POST" && path === "/api/works/refresh") return res(200, { works_created: 0, volumes_assigned: 0, merged: 0, proposals_open: proposals.length });
     if (method === "GET" && path === "/api/works/proposals") {
       const status = new URLSearchParams(query).get("status") ?? "open";

@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:225 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:231 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:423 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
@@ -58,7 +58,8 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/volumes/{id}/resources/{index}` | EPUB の中の画像(manifest の JPEG / PNG / GIF / WebP だけ。SVG は返さない)。`Content-Security-Policy: default-src 'none'; sandbox` 付き |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
 | `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged", "reading_state", "kind", "publisher", "genres", "tags", "link_pending", "cover_volume_id"}], "total", "facets", "unassigned"}`。`cover_volume_id` は表紙にする巻(無ければ null。[[cover-thumbnails]])。一覧に見えている巻を持つ作品だけ(統合された側は出ない)。クエリ `q`(全文検索。空白区切りで AND)・`author` / `kind` / `genre` / `tag` / `publisher`(項目の値の一致。ジャンル・タグは `work_fields` の `genres` / `tags`)・`status`(`unread` / `reading` / `finished`)で絞る(組み合わせ可。未対応の `status` は 422)。`total` は絞る前の作品数、`facets` は絞る前の作品から作った絞り込みの候補 `{"author", "kind", "genre", "tag", "publisher"}`([[work-search]])。`root` は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・欠け・読書状態・表紙もそのルートの巻で数える(`total`・`facets`・`unassigned` も同じ) |
-| `GET /api/works/facets/{name}?root` | 著者・タグ・出版社などの一覧(#85)`{"name", "values": [{"value", "count"}]}`。`count` はその値を持つ作品の数、値の名前順。`name` は `author` / `kind` / `genre` / `tag` / `publisher`(他は 404) |
+| `GET /api/works/facets/{name}?root` | 著者・タグ・出版社などの一覧(#85 / #117)`{"name", "values": [{"value", "count", "starred"}]}`。`count` はその値を持つ作品の数、`starred` はスター(お気に入り)が付いているか、値の名前順。`name` は `author` / `kind` / `genre` / `tag` / `publisher`(他は 404) |
+| `PUT /api/works/facets/{name}/star` | 著者・タグ・出版社などの値にスターを付ける / 外す(#117)。body `{"value": str, "starred": bool}` → `{"name", "value", "starred", "created_at"}`。表記の揺れは `search._facet_key()` で同じ値として扱い、付け直しても `created_at` は変えない。未対応の `name` は 404、空の `value` は 422 |
 | `GET /api/stats?root` | 管理の統計タブ(#85)`{"root_id", "works", "volumes", "pages", "unassigned_volumes", "duplicate_candidates", "scan_issues", "cache": {"disk", "memory", "thumbnails"}}`。数え方は `spinebox/stats.py`。`scan_issues` とキャッシュは `root` で絞らない |
 | `GET /api/settings` | 好みタブに出すサーバーの設定(読み取りだけ)`{"untranslated_terms", "cache_limit_bytes", "memory_cache_limit_bytes", "metadata_sources", "metadata_background"}` |
 | `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)・`bookmarked`(作品の印。各巻にも `bookmarked`)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
@@ -157,6 +158,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 ## 経緯
 
+- #117 で著者・タグ・出版社などの一覧の値ごとにスター(お気に入り)を付け外しできるようにした。マイグレーション 15(`facet_stars`。#83 のマイグレーション 14 の後ろ)。キーは `search._facet_key(name, value)` で正規化し、表記揺れのまとめと同じ単位で持つ。蔵書がオフラインになってもレコードは消さない
 - #87 でフォロー([[follow]])を足した。マイグレーション 13(`follows` / `follow_releases`。#86 のマイグレーション 12 の後ろ)。設定 `[follow]`(`background` 既定は無効・`interval_hours`・`background_interval_seconds`・`response_ttl_days`)。
   続刊の確認は #83 のジョブ(`follow_check`)として 1 本ずつ動く(下)
 - #83 でデータ管理のジョブを足した([[data-jobs]])。マイグレーション 14(`jobs`。ブックマークの 12・フォローの 13 の後ろ)。個別のロックと状態(`duplicate_lock` / `metadata_lock` / `thumb_lock` と `*_state`)を `JobRunner` にまとめ、`scan_lock` はジョブと整理処理の共有のロックとして残した。

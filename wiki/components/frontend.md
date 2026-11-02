@@ -24,7 +24,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
 | `frontend/src/admin/Admin.tsx:29 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口) |
-| `frontend/src/browse/FacetList.tsx:17 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧 |
+| `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
 | `frontend/src/reader/Reader.tsx:49 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
 | `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
@@ -39,7 +39,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
-| `frontend/src/api.ts:882 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:891 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -184,6 +184,7 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #117 でタグ・著者・出版社の一覧(`FacetList`)の各項目にスター(★/☆)を付け外しできるようにした。ボタンはリンク `<a>` の外(横並びの兄弟要素)に置き、DADS v2.18.2 準拠でターゲット領域 44×44px 以上・境界コントラスト 3:1 以上(`#666666` / ダーク `#6b6b75`)・二重フォーカスリングを満たす。スター付きの項目は名前順・作品の多い順のどちらでも上部に優先表示する。モック API を 375px・768px・1280px(ライト・ダーク両方)のヘッドレス Chrome で確認し、横スクロールが出ないこと・スターの切り替えで最上部へ移動することを確認した
 - #105 で作品カードの行き先をタイトル一覧(`#/works/<id>/titles`)にし、そこから「作品を管理」で今までの作品ページ(`#/works/<id>`)へ移るようにした。利用者の「カードを押したらまず作品のタイトル一覧を見たい。管理ページはその中のボタンから」という要望。
   モック API を `npm run dev:mock` で起動し、ヘッドレス Chromium の 375px と 1280px で、ホーム → カードのクリック → タイトル一覧(4 件・重複の印・リーダーへのリンク)→「作品を管理」→ 作品ページ(戻り先が「タイトル一覧へ」)を通した。横スクロールは無く、コンソールのエラーは表紙の 404 pending(既存の挙動)だけ
 - #102 で作品一覧(ホーム・漫画・小説・著者・タグ・出版社)のヘッダーから「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」を外し、管理のデータ管理タブへ集約した。同じ操作は #83 のジョブ(「作品情報のみ補完」「表紙のみ補完」「作品の名寄せを計算し直す」「重複を調べる」)と「ほかの画面」の「重複の候補」に揃っている。使わなくなった進み具合のポーリング・`thumbs`・`coverRev` と、表紙の `?rev=` のキャッシュ避けを削除した。モック API を 375px と 1280px のヘッドレス Chrome で開き、作品一覧のヘッダーに 4 つの操作が無いこと、データ管理タブにジョブと「重複の候補」への入口があること、横スクロールが無いことを確認した(コンソールのエラーは表紙の 404 pending だけ)。

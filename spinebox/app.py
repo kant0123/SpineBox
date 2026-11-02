@@ -158,6 +158,12 @@ class MergeIn(BaseModel):
     other_id: StrictInt
 
 
+class FacetStarIn(BaseModel):
+    """著者・タグ・出版社などの一覧で値にスターを付ける / 外す(#117)。"""
+    value: StrictStr
+    starred: StrictBool
+
+
 class JobIn(BaseModel):
     """データ管理のジョブの依頼。params は種類ごとの指定(作品情報のみ補完の all、続刊の確認の work_ids)。"""
     kind: StrictStr
@@ -619,12 +625,20 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.get("/api/works/facets/{name}")
     def list_work_facet(name: str, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
-        """著者・タグ・出版社などの一覧(#85): 値と、その値を持つ作品の数。name は author / kind / genre / tag / publisher。"""
+        """著者・タグ・出版社などの一覧(#85 / #117): 値と、その値を持つ作品の数・スターの有無。name は author / kind / genre / tag / publisher。"""
         if name not in search.FILTER_FIELDS:
             raise HTTPException(404, f"未対応の項目: {name}")
         listing = works.list_works(conn, root_id=root)
         return {"name": name, "values": search.facet_counts(search.field_values(conn),
-                                                             [w["id"] for w in listing["works"]], name)}
+                                                             [w["id"] for w in listing["works"]], name,
+                                                             search.starred_facet_keys(conn, name))}
+
+    @app.put("/api/works/facets/{name}/star")
+    def star_work_facet(name: str, body: FacetStarIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """著者・タグ・出版社などの値にスターを付ける / 外す(#117)。付け直しても日時は変わらない。"""
+        if name not in search.FILTER_FIELDS:
+            raise HTTPException(404, f"未対応の項目: {name}")
+        return search.set_facet_star(conn, name, body.value, body.starred)
 
     @app.get("/api/stats")
     def get_stats(root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
