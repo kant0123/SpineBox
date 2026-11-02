@@ -10,7 +10,6 @@ import json
 import logging
 import sqlite3
 import threading
-from dataclasses import asdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Iterator, Literal
@@ -21,7 +20,9 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
 from . import bookmarks, db, follows, linking, search, stats, works
 from .analysis import compute_findings
-from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
+from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
+from .duplicates import CandidateNotFound, candidate_counts, dismiss
+from .jobs import Busy, Job, JobNotFound, JobRunner, NotCancellable, legacy_state
 from .buildinfo import current_commit
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache
 from .config import Settings
@@ -35,7 +36,7 @@ from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer, RangeError, RangeNotFound
 from .organize.template import PARAMETERS, PRESETS, NameTemplate, TemplateError, range_examples
 from .pages import media_type, natural_key
-from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, inbox_prefixes, safe_text
+from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, inbox_prefixes, safe_text
 from .thumbs import ThumbnailUnavailable, Thumbnails
 
 log = logging.getLogger(__name__)
@@ -157,6 +158,12 @@ class MergeIn(BaseModel):
     other_id: StrictInt
 
 
+class JobIn(BaseModel):
+    """データ管理のジョブの依頼。params は種類ごとの指定(作品情報のみ補完の all、続刊の確認の work_ids)。"""
+    kind: StrictStr
+    params: dict[str, StrictBool | list[StrictInt]] = Field(default_factory=dict)
+
+
 class AssignIn(BaseModel):
     """巻の付け替え。work_id が null なら新しい作品に分ける(title は新しい作品の名前。省略すると巻の名前から)。"""
     volume_ids: list[StrictInt] = Field(min_length=1)
@@ -231,19 +238,11 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     library = Library(settings, cache, memory)
     books = Books(settings)
     thumbs = Thumbnails(library, ExtractionCache(settings.thumbs_dir, settings.thumb_cache_limit_bytes))
-    thumb_lock = threading.Lock()
-    thumb_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
-                         "summary": None, "error": None}
+    # ジョブ(スキャン・補完・表紙など)は 1 本ずつ、このロックを持って動く。整理処理の実行・元に戻す・受け入れの承認も
+    # 同じロックで、ジョブの実行中は 409 にする(蔵書・DB を同時に触らない。wiki/concepts/data-jobs.md)
     scan_lock = threading.Lock()
-    duplicate_lock = threading.Lock()
-    duplicate_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
-                             "summary": None, "error": None}
-    metadata_lock = threading.Lock()
-    metadata_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
-                            "current": None, "summary": None, "error": None}
+    runner = JobRunner(settings.db_path, scan_lock)
     enabled_sources = tuple(n for n in linking.SEARCH_ORDER if n in settings.metadata.sources)
-    follow_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
-                          "current": None, "summary": None, "error": None}
 
     def metadata_service(c: sqlite3.Connection) -> MetadataService:
         return MetadataService(settings.metadata, c, fetcher=metadata_fetcher)
@@ -254,89 +253,60 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         meta = dataclasses.replace(settings.metadata, cache_ttl_days=settings.follow.response_ttl_days)
         return MetadataService(meta, c, fetcher=metadata_fetcher or shared_fetcher(settings.metadata))
 
-    def run_follow_check(ids: list[int]) -> None:
-        """metadata_lock を持ったまま呼ぶ(補完と同じ取得元を使うので直列にする)。1 作品ずつ調べ、失敗は作品に記録する。"""
-        c = None
-        try:
-            c = db.connect(settings.db_path)
-            counts = follows.check_many(c, follow_service(c), ids,
-                                        progress=lambda done, total, cur: follow_state.update(done=done, current=cur))
-            _sync_works(c)
-            follow_state.update(summary={"works": len(ids), "statuses": counts}, error=None)
-        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
-            log.exception("続刊の確認に失敗しました")
-            follow_state.update(error=str(e))
-        finally:
-            if c is not None:
-                c.close()
-            follow_state.update(running=False, finished_at=db.now(), current=None)
-            metadata_lock.release()
+    data_jobs = DataJobs(settings, library, thumbs, metadata_service, enabled_sources, _sync_works, follow_service)
 
-    def background_follow(stop: threading.Event) -> None:
-        """設定で有効にしたとき、裏で 1 作品ずつ、interval_hours 以上調べていないフォロー中の作品を調べる。"""
-        while not stop.wait(settings.follow.background_interval_seconds):
-            if scan_lock.locked() or not metadata_lock.acquire(blocking=False):
-                continue
+    def background_loop(stop: threading.Event, interval: float, kind: str, fn) -> None:
+        """裏の定期処理。1 回に 1 件、ほかのジョブが動いていないときだけ動き、動いたら履歴に残す。失敗しても止まらない。"""
+        while not stop.wait(interval):
             try:
-                c = db.connect(settings.db_path)
-                try:
-                    ids = follows.works_due(c, settings.follow.interval_hours)
-                    if ids:
-                        follows.check_many(c, follow_service(c), ids[:1])
-                        _sync_works(c)
-                finally:
-                    c.close()
+                runner.run_background(kind, kind_label(kind), fn)
             except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
-                log.exception("裏の続刊の確認に失敗しました")
-            finally:
-                metadata_lock.release()
-
-    def background_metadata(stop: threading.Event) -> None:
-        """設定で有効にしたとき、裏で 1 作品ずつ公開 DB の情報を取りに行く。失敗してもスキャン・閲覧を止めない。"""
-        while not stop.wait(settings.metadata.background_interval_seconds):
-            if scan_lock.locked() or not metadata_lock.acquire(blocking=False):
-                continue
-            try:
-                c = db.connect(settings.db_path)
-                try:
-                    ids = linking.works_needing_fetch(c, settings.metadata, enabled_sources)
-                    if ids:
-                        linking.fetch_work(c, metadata_service(c), ids[0])
-                        _sync_works(c)
-                finally:
-                    c.close()
-            except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
-                log.exception("裏の公開 DB の取得に失敗しました")
-            finally:
-                metadata_lock.release()
-
-    def background_analysis(stop: threading.Event) -> None:
-        """裏で少しずつ解析する(設定で有効なときだけ)。1 回に 1 巻。スキャン中は待つ。失敗しても止まらない。"""
-        while not stop.wait(settings.background_analysis_interval):
-            if scan_lock.locked():
-                continue
-            try:
-                c = db.connect(settings.db_path)
-                try:
-                    library.analyze_next(c)
-                finally:
-                    c.close()
-            except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
-                log.exception("裏の解析に失敗しました")
+                log.exception("%s に失敗しました", kind_label(kind))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         stop = threading.Event()
         if settings.background_analysis:
-            threading.Thread(target=background_analysis, args=(stop,), name="spinebox-analysis", daemon=True).start()
+            threading.Thread(target=background_loop, name="spinebox-analysis", daemon=True,
+                             args=(stop, settings.background_analysis_interval, "background_analysis",
+                                   data_jobs.background_analysis)).start()
         if settings.metadata.background and enabled_sources:
-            threading.Thread(target=background_metadata, args=(stop,), name="spinebox-metadata", daemon=True).start()
+            threading.Thread(target=background_loop, name="spinebox-metadata", daemon=True,
+                             args=(stop, settings.metadata.background_interval_seconds, "background_metadata",
+                                   data_jobs.background_metadata)).start()
         if settings.follow.background and follows.SOURCE in enabled_sources:
-            threading.Thread(target=background_follow, args=(stop,), name="spinebox-follow", daemon=True).start()
+            threading.Thread(target=background_loop, name="spinebox-follow", daemon=True,
+                             args=(stop, settings.follow.background_interval_seconds, "background_follow",
+                                   data_jobs.background_follow)).start()
         try:
             yield
         finally:
             stop.set()
+            runner.stop()
+
+    def submit_job(kind: str, params: dict | None = None, *, origin: str = "jobs") -> Job:
+        """待ち行列に入れる。動かせない設定なら 409。"""
+        params = params or {}
+        try:
+            fn = data_jobs.build(kind, params)
+        except Unavailable as e:
+            raise HTTPException(409, str(e)) from None
+        return runner.submit(kind, kind_label(kind), fn, origin=origin, params=params)
+
+    def run_job_now(kind: str, params: dict | None = None, *, fn=None, label: str | None = None) -> Job:
+        """その場で動かして終わったジョブを返す(既存のボタンの同期 API 用)。ほかのジョブが実行中・待ち中なら 409。"""
+        params = params or {}
+        try:
+            fn = fn or data_jobs.build(kind, params)
+        except Unavailable as e:
+            raise HTTPException(409, str(e)) from None
+        try:
+            return runner.run_now(kind, label or kind_label(kind), fn, origin="button", params=params)
+        except Busy:
+            raise HTTPException(409, "ほかのジョブを実行中です(データ管理の画面で確かめ・中止できます)") from None
+
+    def job_state(kind: str) -> dict:
+        return legacy_state(runner.latest(kind))
 
     app = FastAPI(title="SpineBox", lifespan=lifespan)
 
@@ -350,8 +320,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     app.state.cache = cache
     app.state.memory = memory
     app.state.scan_lock = scan_lock
-    app.state.duplicate_state = duplicate_state
-    app.state.duplicate_lock = duplicate_lock
+    app.state.jobs = runner
     app.state.thumbs = thumbs
     commit = current_commit(REPO_ROOT)  # 起動時に一度だけ。古いプロセスが生き残っているかを見分けるため
 
@@ -407,18 +376,31 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             return JSONResponse({"ok": False, "commit": commit, "detail": "DB に接続できません"}, status_code=503)
         return {"ok": True, "commit": commit}
 
+    def _finished_or_raise(job: Job, what: str) -> None:
+        if job.status == "failed":
+            raise HTTPException(500, safe_text(f"{what}に失敗しました: {job.error}"))
+        if job.status == "cancelled":
+            raise HTTPException(409, f"{what}は中止されました")
+
     @app.post("/api/scan")
-    def scan(conn: sqlite3.Connection = Depends(get_conn)):
-        if not scan_lock.acquire(blocking=False):
-            raise HTTPException(409, "スキャン中です")
-        try:
-            result = Scanner(conn, settings).scan()
-            _sync_works(conn)  # 名前の解析だけ。内側のアーカイブは取り出さない
-        except Exception as e:  # noqa: BLE001 (画面に原因を出す。トレースバックはログへ)
-            log.exception("スキャンに失敗しました")
-            raise HTTPException(500, safe_text(f"スキャンに失敗しました: {type(e).__name__}: {e}")) from e
-        finally:
-            scan_lock.release()
+    def scan():
+        """一覧の「スキャン」。データ管理の「ファイルのスキャンのみ」と同じジョブを、その場で動かして結果を返す。"""
+        found: dict = {}
+
+        def run(ctx):
+            c = db.connect(settings.db_path)
+            try:
+                ctx.step("ファイルのスキャン")
+                result = data_jobs.scan(ctx, c)
+                _sync_works(c)  # 名前の解析だけ。内側のアーカイブは取り出さない
+                ctx.check()
+                found["result"] = result
+                return data_jobs.scan_summary(result)
+            finally:
+                c.close()
+        job = run_job_now("scan", fn=run)
+        _finished_or_raise(job, "スキャン")
+        result = found["result"]
         return {"volumes": result.volumes, "offline_roots": result.offline_roots,
                 "issues": result.issues, "issues_total": result.issues_total}
 
@@ -534,44 +516,18 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     # --- 別スキャンの重複候補(#38) ----------------------------------------------------
 
-    def _run_duplicate_scan() -> None:
-        """指紋を作って候補を計算し直す。duplicate_lock を持ったまま呼び、終わったら離す。"""
-        c = None
-        try:
-            c = db.connect(settings.db_path)
-
-            def progress(done: int, total: int) -> None:
-                duplicate_state.update(done=done, total=total)
-
-            summary = DuplicateScanner(c, library, progress).run()
-            _sync_works(c)  # 重複候補の証拠で、作品の統合を提案・実行する
-            duplicate_state.update(summary=asdict(summary), error=None)
-        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
-            log.exception("重複候補の調査に失敗しました")
-            duplicate_state.update(error=str(e))
-        finally:
-            if c is not None:
-                c.close()
-            duplicate_state.update(running=False, finished_at=db.now())
-            duplicate_lock.release()
+    def _start_legacy(kind: str, wait: bool, params: dict | None = None):
+        """既存の「裏で動かす」ボタンの API。wait=true はその場で動かす(ほかのジョブが動いていれば 409)。
+        既定は待ち行列に入れて 202(同じジョブが待ち・実行中なら、それの状態を返す)。"""
+        if wait:
+            return legacy_state(run_job_now(kind, params))
+        return JSONResponse(legacy_state(submit_job(kind, params, origin="button")), status_code=202)
 
     @app.post("/api/duplicates/scan")
     def start_duplicate_scan(wait: bool = False):
-        """見た目の指紋を作って重複候補を出す明示操作。スキャンでは行わない(内側アーカイブを取り出すため)。
-
-        既定は裏で動かして 202 を返す(進み具合は GET /api/duplicates の scan)。wait=true なら終わるまで待つ。
-        """
-        if scan_lock.locked():
-            raise HTTPException(409, "スキャン中です")
-        if not duplicate_lock.acquire(blocking=False):
-            raise HTTPException(409, "重複候補を調べています")
-        duplicate_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=0, summary=None,
-                               error=None)
-        if wait:
-            _run_duplicate_scan()
-            return dict(duplicate_state)
-        threading.Thread(target=_run_duplicate_scan, name="spinebox-duplicates", daemon=True).start()
-        return JSONResponse(dict(duplicate_state), status_code=202)
+        """見た目の指紋を作って重複候補を出す明示操作(データ管理の「重複を調べる」と同じジョブ)。
+        スキャンでは行わない(内側アーカイブを取り出すため)。進み具合は GET /api/duplicates の scan。"""
+        return _start_legacy("duplicates", wait)
 
     @app.get("/api/duplicates")
     def list_duplicates(status: str = "open", conn: sqlite3.Connection = Depends(get_conn)):
@@ -603,7 +559,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "dismissed": r["dismissed_at"] is not None,
             "a": cards[r["volume_a"]], "b": cards[r["volume_b"]],
         } for r in rows if r["volume_a"] in cards and r["volume_b"] in cards]
-        return {"scan": dict(duplicate_state), "candidates": candidates}
+        return {"scan": job_state("duplicates"), "candidates": candidates}
 
     def _set_dismissed(candidate_id: int, conn, *, restore: bool):
         try:
@@ -686,9 +642,11 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "metadata_background": settings.metadata.background}
 
     @app.post("/api/works/refresh")
-    def refresh_works(conn: sqlite3.Connection = Depends(get_conn)):
+    def refresh_works():
         """作品への割り当てと統合の提案を取り直す(名前の解析と DB の更新だけ)。手動の決定は変えない。"""
-        return asdict(works.sync(conn))
+        job = run_job_now("works_refresh")
+        _finished_or_raise(job, "名寄せの計算")
+        return job.summary
 
     @app.get("/api/works/proposals")
     def list_work_proposals(status: str = "open", conn: sqlite3.Connection = Depends(get_conn)):
@@ -713,69 +671,22 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/works/metadata")
     def metadata_status():
         """「情報を補完」(公開 DB の情報を全作品について取りに行く明示操作)の進み具合と、有効な取得元。"""
-        return {"state": dict(metadata_state), "sources": list(enabled_sources),
+        return {"state": job_state("metadata"), "sources": list(enabled_sources),
                 "background": settings.metadata.background}
 
-    def _run_metadata_fetch(ids: list[int]) -> None:
-        """metadata_lock を持ったまま呼ぶ。作品ごとに取得し、取得元の失敗は作品に記録して次へ進む。"""
-        c = None
-        counts: dict[str, int] = {}
-        try:
-            c = db.connect(settings.db_path)
-            service = metadata_service(c)
-            for i, work_id in enumerate(ids):
-                metadata_state.update(done=i, current=work_id)
-                try:
-                    result = linking.fetch_work(c, service, work_id)
-                except works.WorkNotFound:
-                    continue  # 取得の途中で別の作品に統合された
-                for status in result.sources.values():
-                    counts[status] = counts.get(status, 0) + 1
-                _sync_works(c, apply_links=False)
-            _sync_works(c)
-            metadata_state.update(done=len(ids), summary={"works": len(ids), "sources": counts}, error=None)
-        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
-            log.exception("公開 DB の情報の補完に失敗しました")
-            metadata_state.update(error=str(e))
-        finally:
-            if c is not None:
-                c.close()
-            metadata_state.update(running=False, finished_at=db.now(), current=None)
-            metadata_lock.release()
-
     @app.post("/api/works/metadata/fetch")
-    def start_metadata_fetch(wait: bool = False, all: bool = False, conn: sqlite3.Connection = Depends(get_conn)):
-        """公開 DB の情報を、取得が必要な作品(all=true なら全作品)について取りに行く明示操作。
-
-        既定は裏で動かして 202 を返す(進み具合は GET /api/works/metadata)。スキャンとは独立で、
-        取得元が落ちていても作品ごとに失敗を記録して続ける。
-        """
-        if not enabled_sources:
-            raise HTTPException(409, "公開 DB の取得元が設定で無効になっています")
-        if not metadata_lock.acquire(blocking=False):
-            raise HTTPException(409, "公開 DB の情報を取得中です")
-        try:
-            if all:
-                ids = [w["id"] for w in works.list_works(conn)["works"]]
-            else:
-                ids = linking.works_needing_fetch(conn, settings.metadata, enabled_sources)
-        except Exception:
-            metadata_lock.release()
-            raise
-        metadata_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=len(ids),
-                              current=None, summary=None, error=None)
-        if wait:
-            _run_metadata_fetch(ids)
-            return dict(metadata_state)
-        threading.Thread(target=_run_metadata_fetch, args=(ids,), name="spinebox-metadata-fetch", daemon=True).start()
-        return JSONResponse(dict(metadata_state), status_code=202)
+    def start_metadata_fetch(wait: bool = False, all: bool = False):
+        """公開 DB の情報を、取得が必要な作品(all=true なら全作品)について取りに行く明示操作
+        (データ管理の「作品情報のみ補完」と同じジョブ)。進み具合は GET /api/works/metadata。
+        取得元が落ちていても作品ごとに失敗を記録して続ける。"""
+        return _start_legacy("metadata", wait, {"all": True} if all else {})
 
     # --- フォロー(#87)。フォローした作品の続刊・欠けを公開 DB で調べて知らせる(本の入手はしない) ---
 
     @app.get("/api/follows")
     def list_follows(conn: sqlite3.Connection = Depends(get_conn)):
         """フォロー管理: フォロー中の作品と最後に調べた日時・結果、続刊の確認の進み具合と設定。"""
-        return {"follows": follows.list_follows(conn), "state": dict(follow_state),
+        return {"follows": follows.list_follows(conn), "state": job_state("follow_check"),
                 "available": follows.SOURCE in enabled_sources, "background": settings.follow.background,
                 "interval_hours": settings.follow.interval_hours}
 
@@ -790,27 +701,12 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return {"marked": follows.mark_seen(conn, body.work_id, body.volumes)}
 
     @app.post("/api/follows/check")
-    def start_follow_check(body: FollowCheckIn | None = None, wait: bool = False,
-                           conn: sqlite3.Connection = Depends(get_conn)):
-        """明示操作「続刊を調べる」。既定は裏で動かして 202 を返す(進み具合は GET /api/follows の state)。
+    def start_follow_check(body: FollowCheckIn | None = None, wait: bool = False):
+        """明示操作「続刊を調べる」(データ管理の「フォロー中の作品の続刊を調べる」と同じジョブ)。既定は待ち行列に入れて 202
+        (進み具合は GET /api/follows の state)。wait=true はその場で動かし、ほかのジョブが動いていれば 409。
         取得元が落ちていても、作品ごとに失敗を記録して続ける。"""
-        if follows.SOURCE not in enabled_sources:
-            raise HTTPException(409, "国立国会図書館サーチが設定で無効になっています")
-        if not metadata_lock.acquire(blocking=False):
-            raise HTTPException(409, "公開 DB の情報を取得中です")
-        try:
-            followed = follows.followed_ids(conn)
-            ids = followed if body is None or body.work_ids is None else [i for i in body.work_ids if i in followed]
-        except Exception:
-            metadata_lock.release()
-            raise
-        follow_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=len(ids),
-                            current=None, summary=None, error=None)
-        if wait:
-            run_follow_check(ids)
-            return dict(follow_state)
-        threading.Thread(target=run_follow_check, args=(ids,), name="spinebox-follow-check", daemon=True).start()
-        return JSONResponse(dict(follow_state), status_code=202)
+        params = {} if body is None or body.work_ids is None else {"work_ids": sorted(set(body.work_ids))}
+        return _start_legacy("follow_check", wait, params)
 
     @app.put("/api/works/{work_id}/follow")
     def follow_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
@@ -853,8 +749,13 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
         if not enabled_sources:
             raise HTTPException(409, "公開 DB の取得元が設定で無効になっています")
-        linking.fetch_work(conn, metadata_service(conn), work_id)
-        _sync_works(conn)
+        if works.root_of(conn, work_id) != work_id:
+            raise works.WorkNotFound(work_id)
+        job = run_job_now("work_metadata", {"work_id": work_id},
+                          label=f"{kind_label('work_metadata')}: {work_title(conn, work_id)}")
+        if job.status == "failed" and job.error and job.error.startswith("WorkNotFound"):
+            raise works.WorkNotFound(work_id)
+        _finished_or_raise(job, "公開 DB の取得")
         return work_detail(conn, works.root_of(conn, work_id) or work_id)
 
     @app.post("/api/works/{work_id}/links/{source}/choose")
@@ -974,47 +875,15 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             return Response(status_code=304, headers=headers)
         return Response(data, media_type="image/jpeg", headers=headers)
 
-    def _run_thumbnail_build() -> None:
-        """作品の表紙の巻のうち、まだ無いものを作る。thumb_lock を持ったまま呼び、終わったら離す。"""
-        c = None
-        try:
-            c = db.connect(settings.db_path)
-            ids = [w["cover_volume_id"] for w in works.list_works(c)["works"] if w["cover_volume_id"] is not None]
-
-            def progress(done: int, total: int) -> None:
-                thumb_state.update(done=done, total=total)
-
-            thumb_state.update(summary=asdict(thumbs.build(c, ids, progress)), error=None)
-        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
-            log.exception("表紙の作成に失敗しました")
-            thumb_state.update(error=str(e))
-        finally:
-            if c is not None:
-                c.close()
-            thumb_state.update(running=False, finished_at=db.now())
-            thumb_lock.release()
-
     @app.get("/api/thumbnails")
     def thumbnail_status():
-        return dict(thumb_state)
+        return job_state("thumbnails")
 
     @app.post("/api/thumbnails/build")
     def start_thumbnail_build(wait: bool = False):
-        """明示操作: 作品の表紙を、内側アーカイブを取り出してでも作る(スキャンでは作らない)。
-
-        既定は裏で動かして 202 を返す(進み具合は GET /api/thumbnails)。wait=true なら終わるまで待つ。
-        """
-        if scan_lock.locked():
-            raise HTTPException(409, "スキャン中です")
-        if not thumb_lock.acquire(blocking=False):
-            raise HTTPException(409, "表紙を作っています")
-        thumb_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=0, summary=None,
-                           error=None)
-        if wait:
-            _run_thumbnail_build()
-            return dict(thumb_state)
-        threading.Thread(target=_run_thumbnail_build, name="spinebox-thumbnails", daemon=True).start()
-        return JSONResponse(dict(thumb_state), status_code=202)
+        """明示操作: 作品の表紙を、内側アーカイブを取り出してでも作る(スキャンでは作らない。
+        データ管理の「表紙のみ補完」と同じジョブ)。進み具合は GET /api/thumbnails。"""
+        return _start_legacy("thumbnails", wait)
 
     @app.get("/api/volumes/{volume_id}/sections/{index}")
     def get_section(volume_id: int, index: int, conn: sqlite3.Connection = Depends(get_conn)):
@@ -1109,8 +978,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return organizer(conn).get(op_id)
 
     def _exclusive(fn):
-        if not scan_lock.acquire(blocking=False):
-            raise HTTPException(409, "スキャンか整理の処理中です")
+        if runner.busy() or not scan_lock.acquire(blocking=False):
+            raise HTTPException(409, "ジョブか整理の処理中です(データ管理の画面で確かめられます)")
         try:
             return fn()
         finally:
@@ -1140,11 +1009,23 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.post("/api/inbox/sync")
     def inbox_sync(conn: sqlite3.Connection = Depends(get_conn)):
-        """受け入れフォルダを走査して新しいものを検出し、整理案を返す。読み取りだけ(蔵書にも受け入れフォルダにも書かない)。"""
-        def run():
-            result = Scanner(conn, settings).scan_inbox()
-            return {**intake(conn).list_items(), "volumes": result.volumes, "offline_roots": result.offline_roots}
-        return _exclusive(run)
+        """受け入れフォルダを走査して新しいものを検出し、整理案を返す。読み取りだけ(蔵書にも受け入れフォルダにも書かない)。
+        データ管理の「受け入れフォルダを同期」と同じジョブを、その場で動かす。受け入れフォルダが無い設定でも空の結果を返す。"""
+        found: dict = {}
+
+        def run(ctx):
+            c = db.connect(settings.db_path)
+            try:
+                ctx.step("受け入れフォルダの同期")
+                found["result"] = result = data_jobs.scan(ctx, c, inbox=True)
+                ctx.check()
+                return data_jobs.scan_summary(result)
+            finally:
+                c.close()
+        job = run_job_now("inbox_sync", fn=run)
+        _finished_or_raise(job, "受け入れフォルダの同期")
+        result = found["result"]
+        return {**intake(conn).list_items(), "volumes": result.volumes, "offline_roots": result.offline_roots}
 
     @app.post("/api/inbox/preview")
     def inbox_preview(body: InboxItemsIn, conn: sqlite3.Connection = Depends(get_conn)):
@@ -1156,6 +1037,49 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         """選んだものだけを書庫へ入れる(1 件ずつ。失敗した件は巻き戻し済みで、受け入れフォルダに残る)。"""
         decisions = [d.to_decision() for d in body.items]
         return _exclusive(lambda: intake(conn).approve(decisions))
+
+    # --- データ管理のジョブ(#83) ------------------------------------------------------------
+
+    @app.get("/api/jobs")
+    def list_jobs(limit: int = 50):
+        """実行中のジョブ・待ち行列・履歴(新しい順)。"""
+        return runner.snapshot(max(1, min(limit, 500)))
+
+    @app.get("/api/jobs/catalog")
+    def job_catalog(conn: sqlite3.Connection = Depends(get_conn)):
+        """画面に並べるジョブと、それぞれの対象の件数。"""
+        return {"kinds": data_jobs.catalog(conn)}
+
+    @app.post("/api/jobs")
+    def start_job(body: JobIn):
+        """ジョブを待ち行列に入れる(202)。同じジョブが待ち・実行中なら新しく足さずにそれを返す。"""
+        if body.kind not in KIND_BY_NAME:
+            raise HTTPException(422, f"知らないジョブです: {body.kind}")
+        allowed = {"metadata": {"all": bool}, "follow_check": {"work_ids": list}}.get(body.kind, {})
+        unknown = set(body.params) - set(allowed)
+        if unknown:
+            raise HTTPException(422, "知らない指定です: " + "・".join(sorted(unknown)))
+        if any(not isinstance(v, allowed[k]) for k, v in body.params.items()):
+            raise HTTPException(422, "指定の形が違います")
+        params = {k: (sorted(set(v)) if isinstance(v, list) else v) for k, v in body.params.items() if v is not False}
+        return JSONResponse(submit_job(body.kind, params).to_json(), status_code=202)
+
+    @app.get("/api/jobs/{job_id}")
+    def get_job(job_id: int):
+        job = runner.get(job_id)
+        if job is None:
+            raise HTTPException(404, "ジョブが見つかりません")
+        return job.to_json()
+
+    @app.post("/api/jobs/{job_id}/cancel")
+    def cancel_job(job_id: int):
+        """待ちなら取り下げ、実行中なら区切りのよいところで止める。終わったジョブ・裏の定期処理は 409。"""
+        try:
+            return runner.cancel(job_id).to_json()
+        except JobNotFound:
+            raise HTTPException(404, "ジョブが見つかりません") from None
+        except NotCancellable:
+            raise HTTPException(409, "このジョブは中止できません(終わっているか、裏の定期処理です)") from None
 
     if frontend_dist is not None and (frontend_dist / "index.html").is_file():
         _mount_frontend(app, frontend_dist)

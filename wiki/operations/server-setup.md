@@ -31,7 +31,7 @@ py -3.12 -m spinebox                                          # 手動で起動�
   7z が無いことが多いので、名前だけにせずパスで指定する。見つからないと 7z / rar は「未対応」として一覧から外れる([[archive-reading]])
 - `host` の既定は `127.0.0.1`(自機だけ)。LAN で使うときはサーバー機の LAN アドレスか `0.0.0.0` を**明示して**設定する。
   127.0.0.1 以外のときは起動時に注意を stderr へ出す(`spinebox/__main__.py:17 main`)
-- `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:218 create_app` の `healthz`)。DB を開けなければ 503。
+- `GET /healthz` が `{"ok": true, "commit": "<短い SHA>"}`(`spinebox/app.py:225 create_app` の `healthz`)。DB を開けなければ 503。
   `commit` は**プロセスが起動時に読んだ**コミット(`spinebox/buildinfo.py:14 current_commit`)で、git が使えず `.git` も読めなければ null。
   古いプロセスが生き残っていると 200 のまま古い `commit` を返すので、更新後は `commit` で反映を見分ける
 - `/read/<id>` を直接開いてもよい。バックエンドは未知のパスに `index.html` を返し(SPA fallback)、

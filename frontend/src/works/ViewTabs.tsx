@@ -1,6 +1,6 @@
 import { volumesHref, worksHref } from "../route";
 
-/** 一覧の表示の切り替え(作品 / 巻)。ブックマークの入口はサイドバー(#85)にある。 */
+/** 一覧の表示の切り替え(作品 / 巻)。ブックマーク・データ管理の入口はサイドバー(#85)にある。 */
 export function ViewTabs({ current }: { current: "works" | "volumes" }) {
   return (
     <nav className="view-tabs" aria-label="表示">

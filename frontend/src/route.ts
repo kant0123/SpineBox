@@ -63,6 +63,7 @@ export function parseRoute(hash: string): Route {
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
+  if (/^\/data\/?$/.test(h)) return { name: "admin", tab: "data" };
   if (/^\/data\/organize\/?$/.test(h)) return { name: "organize-files" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
@@ -95,6 +96,10 @@ export const inboxHref = "#/inbox";
 /** 範囲指定の整理(ファイル名・フォルダーのテンプレート、ファイル名の整理)。データ管理ページ(#83)の「整理」節の単独版 */
 export const organizeFilesHref = "#/data/organize";
 export const worksHref = "#/works";
+/** データ管理(スキャン・補完・表紙などのジョブと履歴。#83) */
+export const dataHref = "#/admin/data";
+/** タスクセンター: ジョブの実行中・待ち・履歴(管理のタブ) */
+export const tasksHref = "#/admin/tasks";
 /** フォロー: 続刊・欠けのある作品(#87。#85 のサイドバーに載せる入口) */
 export const followsHref = "#/follows";
 /** フォロー管理: フォロー中の作品・解除・続刊を調べる(管理の「フォロー管理」タブ。旧 `#/follows/manage` も同じタブを開く) */

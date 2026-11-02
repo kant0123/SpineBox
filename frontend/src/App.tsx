@@ -14,7 +14,6 @@ import { Inbox } from "./organize/Inbox";
 import { FollowReleases } from "./follows/Follows";
 import { Bookmarks } from "./bookmarks/Bookmarks";
 import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
-import { OrganizeFilesPage } from "./organize/OrganizeFiles";
 
 /** サイドバーの中に出す画面 */
 function Page({ route }: { route: Route }) {
@@ -34,7 +33,7 @@ function Page({ route }: { route: Route }) {
     case "inbox":
       return <Inbox />;
     case "organize-files":
-      return <OrganizeFilesPage />;
+      return <Admin tab="data" focus="organize" />;
     case "work":
       return <WorkPage key={route.id} id={route.id} />;
     case "work-proposals":

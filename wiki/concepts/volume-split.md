@@ -2,7 +2,7 @@
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
 updated: 2026-11-02
-related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks]
+related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks, data-jobs]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -16,12 +16,12 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 - 入口: `spinebox/naming.py:95 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:40 MIGRATIONS` の 2 番)。
-  スキャンが切り出す巻は `spinebox/scanner.py:464 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
+  スキャンが切り出す巻は `spinebox/scanner.py:497 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
   印の無い範囲 `01-03` は最も弱い規則として最後に試す
-- 読み方を変えたら `spinebox/scanner.py:38 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
+- 読み方を変えたら `spinebox/scanner.py:44 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
 
 ### 分解(巻の単位と子の巻)
 
@@ -32,8 +32,8 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
   `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:299 _open_unit()`
 - **親は「まとめ」として残す。** 開けば今までどおり全ページを読める。一覧(`LISTED_VOLUMES_WHERE`)は見えている子を持つ親を出さず、子を親の位置に並べる
 - 解析する契機: (1) 内側アーカイブの巻を開いたとき(`GET /api/volumes/{id}`。取り出しは済んでいるので追加の展開は無い)、
-  (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析
-  (`spinebox/library.py:407 analyze_next()`、1 回に 1 巻、既定は無効)。**スキャンでは解析しない**
+  (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析(ほかのジョブが動いていないときだけ。[[data-jobs]])、(4) データ管理の「中の巻を調べる」(未解析を全部)
+  (`spinebox/library.py:419 analyze_next()`、1 回に 1 巻、既定は無効)。**スキャンでは解析しない**
 - 解析の版 `analyzed_version` = 解析の仕方(`ANALYSIS_VERSION`)・`max_depth`・元ファイルのサイズと mtime。どれかが変われば開いたときに解析し直す。
   スキャンがソースを読み直したときも NULL(未解析)に戻す
 - 子は (inner_path, entry_prefix) で突き合わせるので、解析し直しても同じ単位は同じ巻 id(読書位置が続く)。消えた単位は missing にするだけ

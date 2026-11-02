@@ -15,6 +15,7 @@ import type {
   VolumeSummary,
 } from "../api";
 import { createMockInbox } from "./mockInbox";
+import { createMockJobs } from "./mockJobs";
 import { createMockRange } from "./mockRange";
 import { createMockWorks } from "./mockWorks";
 
@@ -195,6 +196,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const ops: OrganizeOp[] = [];
   let opSeq = 0;
   const inbox = createMockInbox(ops, () => `op-${++opSeq}`);
+  const jobs = createMockJobs();
   const range = createMockRange(ops, () => `op-${++opSeq}`);
   const sections = mockSections();
 
@@ -333,6 +335,11 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (b) return b;
     const w = mockWorks.handle(method, path, rawPath.split("?")[1] ?? "", parsed);
     if (w) return json(w.status, w.body);
+
+    if (path.startsWith("/api/jobs")) {
+      const r = jobs.handle(method, path, parsed);
+      if (r) return json(r.status, r.body);
+    }
 
     const shown = () => volumes.filter((v) => !v.hidden);
     const query = new URLSearchParams(rawPath.split("?")[1] ?? "");

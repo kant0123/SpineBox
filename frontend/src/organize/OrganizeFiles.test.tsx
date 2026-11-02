@@ -28,12 +28,12 @@ const fileInput = () => screen.getByLabelText("ファイル名テンプレート
 const folderInput = () => screen.getByLabelText("フォルダーテンプレート") as HTMLInputElement;
 
 describe("範囲指定の整理", () => {
-  it("単独のルートで開け、一覧のヘッダーから辿れる", async () => {
+  it("単独のルートで開け、管理のデータ管理タブの整理の節に出る", async () => {
     expect(parseRoute(organizeFilesHref)).toEqual({ name: "organize-files" });
-    window.location.hash = "#/volumes";
+    window.location.hash = organizeFilesHref;
     render(<App />);
-    const link = await screen.findByRole("link", { name: "ファイル名の整理" });
-    expect(link.getAttribute("href")).toBe(organizeFilesHref);
+    await screen.findByLabelText("ファイル名テンプレート");
+    expect(screen.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
   });
 
   it("ファイル名の整理だけをプレビューし、実行してからまとめて元に戻せる", async () => {

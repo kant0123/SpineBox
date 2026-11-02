@@ -18,7 +18,7 @@ export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
  * タブの中身。データ管理(#83・#84)・フォロー管理(#87)・タスクセンター(#83)はそれぞれの Issue の画面を
  * panels.tsx の各パネルに差し込む(組み込み口)。
  */
-const PANELS: Record<AdminTab, ComponentType> = {
+const PANELS: Record<AdminTab, ComponentType<{ focus?: "organize" }>> = {
   stats: Stats,
   preferences: Preferences,
   data: DataPanel,
@@ -26,7 +26,8 @@ const PANELS: Record<AdminTab, ComponentType> = {
   tasks: TasksPanel,
 };
 
-export function Admin({ tab }: { tab: AdminTab }) {
+/** focus="organize" は単独の入口 #/data/organize(データ管理の「整理」節へ移す) */
+export function Admin({ tab, focus }: { tab: AdminTab; focus?: "organize" }) {
   const Panel = PANELS[tab];
   return (
     <div className="page admin">
@@ -41,7 +42,7 @@ export function Admin({ tab }: { tab: AdminTab }) {
         ))}
       </nav>
       <section className="admin-panel" aria-label={ADMIN_TAB_LABELS[tab]}>
-        <Panel />
+        <Panel focus={focus} />
       </section>
     </div>
   );

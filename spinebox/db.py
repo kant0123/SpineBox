@@ -404,6 +404,29 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 14: データ管理のジョブの履歴(#83。spinebox/jobs.py)。origin: jobs(データ管理の画面)/ button(各画面の既存のボタン・API)/
+    #     background(裏の定期処理。続けて動いた分は 1 行にまとめ、runs に回数)。蔵書の記録ではないので、行を消してもよい
+    [
+        """
+        CREATE TABLE jobs (
+            id INTEGER PRIMARY KEY,
+            kind TEXT NOT NULL,
+            label TEXT NOT NULL,
+            origin TEXT NOT NULL,
+            params TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+            queued_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            done INTEGER,
+            total INTEGER,
+            runs INTEGER NOT NULL DEFAULT 1,
+            summary TEXT,
+            error TEXT
+        )
+        """,
+        "CREATE INDEX jobs_kind ON jobs (kind, id)",
+    ],
 ]
 
 

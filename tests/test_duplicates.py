@@ -318,19 +318,27 @@ def test_api_scan_in_background_returns_202_and_finishes(api):
     assert state["running"] is False and state["summary"]["candidates"] == 1
 
 
-def test_api_scan_is_refused_while_another_is_running_or_the_library_is_scanning(api):
-    lock = api.app.state.duplicate_lock
-    assert lock.acquire(blocking=False)
-    try:
-        assert api.post("/api/duplicates/scan").status_code == 409
-    finally:
-        lock.release()
+def test_api_scan_waits_in_the_queue_while_another_job_runs(api):
+    """#83: ジョブは 1 本ずつ。ほかのジョブ(整理処理を含む)が動いている間の依頼は待ち行列に入り、終わったら動く。
+    その場で結果を返す wait=true は待たずに 409。"""
     scan_lock = api.app.state.scan_lock
     assert scan_lock.acquire(blocking=False)
     try:
-        assert api.post("/api/duplicates/scan").status_code == 409
+        r = api.post("/api/duplicates/scan")
+        assert r.status_code == 202 and r.json()["status"] == "queued" and r.json()["running"] is True
+        again = api.post("/api/duplicates/scan").json()  # 同じジョブは二重に積まない
+        assert again["job_id"] == r.json()["job_id"]
+        assert api.post("/api/duplicates/scan?wait=true").status_code == 409
+        time.sleep(0.3)
+        assert api.get("/api/duplicates").json()["scan"]["status"] == "queued"
     finally:
         scan_lock.release()
+    for _ in range(200):
+        state = api.get("/api/duplicates").json()["scan"]
+        if not state["running"]:
+            break
+        time.sleep(0.05)
+    assert state["status"] == "succeeded" and state["summary"]["candidates"] == 1
     assert api.post("/api/duplicates/scan?wait=true").status_code == 200
 
 
@@ -339,7 +347,7 @@ def test_api_scan_failure_is_reported_and_releases_the_lock(api, monkeypatch):
         raise RuntimeError("壊れた")
     monkeypatch.setattr(duplicates.DuplicateScanner, "run", boom)
     state = api.post("/api/duplicates/scan?wait=true").json()
-    assert state["running"] is False and state["error"] == "壊れた"
+    assert state["running"] is False and state["error"] == "RuntimeError: 壊れた" and state["status"] == "failed"
     monkeypatch.undo()
     assert api.post("/api/duplicates/scan?wait=true").json()["error"] is None
 

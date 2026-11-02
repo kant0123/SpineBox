@@ -464,6 +464,34 @@ a.stat-body .stat-label { color: var(--accent); }
 .follow-kind.new { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .follow-volume { font-weight: 600; overflow-wrap: anywhere; }
 .follow-panel { margin: 8px 0; }
+/* データ管理(#83)。ジョブの一覧・実行中の進み具合・待ち行列・履歴。375px では説明の下にボタンを回り込ませる */
+.job-section { margin: 16px 0 0; }
+.job-section h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.job-section h3 { font-size: 0.95rem; margin: 12px 0 4px; }
+.job-kinds, .job-history, .job-queue { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.job-kind { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.job-kind-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.job-kind-text .muted { font-size: 0.85rem; }
+.job-kind > button { flex: none; }
+.job-count { font-size: 0.85rem; color: var(--accent); }
+.job-option { display: flex; gap: 6px; align-items: center; font-size: 0.85rem; }
+.job-running { background: var(--card); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.job-running > button { align-self: flex-start; }
+.job-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; overflow-wrap: anywhere; }
+.job-progress-text { font-size: 0.9rem; }
+.job-current { font-size: 0.8rem; overflow-wrap: anywhere; }
+.job-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.job-bar span { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
+.job-bar span.indeterminate { width: 30%; animation: job-bar 1.2s ease-in-out infinite; }
+@keyframes job-bar { from { margin-left: -30%; } to { margin-left: 100%; } }
+.job-queue li { display: flex; gap: 8px; align-items: center; justify-content: space-between; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; overflow-wrap: anywhere; }
+.job-history-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.job-when, .job-summary, .job-error { font-size: 0.85rem; overflow-wrap: anywhere; }
+.job-error { color: var(--warn); }
+.job-status { font-size: 0.75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); }
+.job-status.succeeded { color: var(--done); border-color: var(--done); }
+.job-status.failed { color: var(--warn); border-color: var(--warn); }
+.job-status.running, .job-status.queued { color: var(--accent); border-color: var(--accent); }
 /* ブックマーク(#86) */
 button.bookmark-button { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 0.85rem; background: transparent; color: var(--accent); border-color: var(--border); white-space: nowrap; }
 button.bookmark-button.on { color: var(--warn); border-color: var(--warn); }

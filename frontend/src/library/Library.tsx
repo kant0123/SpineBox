@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, isNovel, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
-import { duplicatesHref, inboxHref, organizeFilesHref, organizeHistoryHref, organizeHref, readHref } from "../route";
+import { duplicatesHref, inboxHref, organizeHref, readHref } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { ViewTabs } from "../works/ViewTabs";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
@@ -136,8 +136,6 @@ export function Library() {
             重複の候補
           </a>
           <a href={inboxHref}>受け入れ</a>
-          <a href={organizeFilesHref}>ファイル名の整理</a>
-          <a href={organizeHistoryHref}>整理の履歴</a>
           <button type="button" onClick={scan} disabled={scanning}>
             {scanning ? "スキャン中…" : "スキャン"}
           </button>
