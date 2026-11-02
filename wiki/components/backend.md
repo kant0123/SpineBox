@@ -32,7 +32,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/library.py:120 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:368 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:95 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
-| `spinebox/linking.py:319 fetch_work()` / `spinebox/linking.py:624 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
+| `spinebox/linking.py:319 fetch_work()` / `spinebox/linking.py:613 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
 | `spinebox/works.py:394 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
@@ -54,7 +54,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/volumes/{id}/resources/{index}` | EPUB の中の画像(manifest の JPEG / PNG / GIF / WebP だけ。SVG は返さない)。`Content-Security-Policy: default-src 'none'; sandbox` 付き |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
 | `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged", "reading_state", "kind", "publisher", "genres", "tags", "link_pending", "cover_volume_id"}], "total", "facets", "unassigned"}`。`cover_volume_id` は表紙にする巻(無ければ null。[[cover-thumbnails]])。一覧に見えている巻を持つ作品だけ(統合された側は出ない)。クエリ `q`(全文検索。空白区切りで AND)・`author` / `kind` / `genre` / `tag`(項目の値の一致。ジャンル・タグは `work_fields` の `genres` / `tags`)・`status`(`unread` / `reading` / `finished`)で絞る(組み合わせ可。未対応の `status` は 422)。`total` は絞る前の作品数、`facets` は絞る前の作品から作った絞り込みの候補 `{"author", "kind", "genre", "tag"}`([[work-search]]) |
-| `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "synopsis"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
+| `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
 | `POST /api/works/{id}/fields/{field}/reset` | 手動の項目を自動に戻す(直す前の値、無ければ空にして公開 DB の値を入れ直す)。手動でない項目・直す前の名前が無い作品名は 409 |
 | `POST /api/works/{id}/metadata/fetch` | その作品の公開 DB を取得して連携を更新し、詳細を返す(同期。取得元の失敗は 200 で `links[].failure` に出る)。取得元が無効なら 409 |
 | `POST /api/works/{id}/links/{source}/choose` / `.../reset` | 確認待ちの候補を選ぶ `{"source_id"}`(null = 該当なし)/ 手動の選択を解除する。選んだ連携は手動で、再取得で変わらない。候補にない id は 422、取得元が違えば 404 |
@@ -148,7 +148,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   サーバー機のトレースバックは未取得(利用者に依頼中)。合成データで確かめた再現は、同名の内側アーカイブを持つ zip(`IntegrityError`)と、
   孤立サロゲート・不正バイトを含むファイル名(`UnicodeEncodeError`)で、どちらも修正前は 500 でスキャン全体が止まった。
   応答に `issues`・`issues_total` を足し(契約は上の表)、画面で「読めなかったもの N 件」と理由を見せる。マイグレーションは足していない
-- #74 で公開 DB の英語の語彙を日本語にして反映するようにした([[metadata-linking]] の「日本語での表示」)。設定 `[metadata]` に `untranslated_terms`(`hide` / `keep`)・`english_synopsis`(`fold` / `hide`)。
+- #82 であらすじを廃止した([[metadata-linking]] の「あらすじの廃止」)。PATCH の `synopsis` と設定 `english_synopsis` を外し(設定に残っていても無視して警告するだけ)、
+  作品の詳細の `fields` にも出さない。マイグレーション 11 はあらすじの行を持つ作品に索引し直しの印を立てるだけで、行は消さない
+- #74 で公開 DB の英語の語彙を日本語にして反映するようにした([[metadata-linking]] の「日本語での表示」)。設定 `[metadata]` に `untranslated_terms`(`hide` / `keep`)・`english_synopsis`(`fold` / `hide`。#82 で廃止)。
   `create_app` が起動時に `linking.configure()` してから反映するので、入っている英語の値は起動で日本語になる。マイグレーションは足していない(取得した元の値は `work_links.item` にあるので、反映し直すだけで済む)
 - #50 で公開 DB の結線を足した([[metadata-linking]])。マイグレーション 7(`work_links` / `volume_fields`)。設定 `[metadata]` に `background`(定期取得、既定は無効)・`background_interval_seconds`・`recheck_days`・`retry_hours`。
   `SearchQuery.limit` を足した(NDL のみ。連携は 100 件引いて巻を揃える)。`merge_works` は種別・出版社・ジャンルなども手動優先で引き継ぎ、整理で巻が作り直されても書誌は `transfer_volume_fields` で引き継ぐ

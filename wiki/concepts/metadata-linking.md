@@ -1,8 +1,8 @@
 ---
 type: concept
-summary: 公開 DB の情報を作品・巻へ結線する規則(#50)。連携(work_links)の自動/確認待ちの基準、空欄だけを埋める・手動は不変・名前由来の値を置き換える条件、英語の語彙を日本語にして反映する規則(#74)、失敗の扱い、保存場所(全文検索・絞り込みが乗る列)、却下した代替案
+summary: 公開 DB の情報を作品・巻へ結線する規則(#50)。連携(work_links)の自動/確認待ちの基準、空欄だけを埋める・手動は不変・名前由来の値を置き換える条件、英語の語彙を日本語にして反映する規則(#74)、あらすじの廃止(#82)、失敗の扱い、保存場所(全文検索・絞り込みが乗る列)、却下した代替案
 updated: 2026-11-02
-related: [metadata-clients, metadata-sources, work-grouping, backend, frontend, overview]
+related: [metadata-clients, metadata-sources, work-grouping, work-search, backend, frontend, overview]
 ---
 
 # 公開 DB の結線(`spinebox/linking.py`)
@@ -38,21 +38,21 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 - 決め直す経路(手動の選択の解除 `reset_link()`、粘る近道)も同じ規則を通す: 手動の連携から入った種別を前提にせず(外してから判定する)、種別が未決なら保留、作品の種別と食い違う候補は粘らない
 - 自動連携は粘る(再取得で候補が残っていれば維持)。手動の連携は再取得で変えない(同じ候補が出たときに中身だけ更新)。手動の「どれでもない」は、その取得元へ問い合わせない
 
-## 項目の埋め方(`spinebox/linking.py:504 _apply_field()`)
+## 項目の埋め方(`spinebox/linking.py:493 _apply_field()`)
 
 | 規則 | 理由 |
 | --- | --- |
 | 手動の項目は何があっても変えない(空にした項目も空のまま) | CLAUDE.md の不変条件。`manual` 列で見る。`tests/test_linking.py` が全項目で再取得・スキャン・再計算の前後を確かめる |
 | 空欄は埋める(出所 `public_db`、確信度 = 連携の確信度、`evidence.link.sources` に取得元) | 外部は空欄だけを埋める |
 | 名前(ファイル名・外側のアーカイブ名)由来の値は、**連携の確信度 ≥ 0.9 か、利用者が連携を選んだときだけ**置き換える。置き換えた元の値は `evidence.replaced` に残し、連携を外すと戻す | 実データで作品名「Kakukaku Shikajika」→「かくかくしかじか」になる。確信度が低い連携で作品名を変えると、取り返しがつかなくなる。置き換えた作品名は別名に残す(その名前の巻がまた新しい作品にならないように) |
-| 取得元の優先: 種別・出版社は NDL、あらすじ・巻数は AniList → MangaUpdates、ジャンル・タグは MangaUpdates と AniList の和(重複除去・上限つき) | 取得元の強みで分けた(NDL は書誌、他は作品単位の分類)。あらすじは日本語のものが優先の順より先(下の「日本語での表示」) |
+| 取得元の優先: 種別・出版社は NDL、巻数は AniList → MangaUpdates、ジャンル・タグは MangaUpdates と AniList の和(重複除去・上限つき)。あらすじは入れない(下の「あらすじの廃止」) | 取得元の強みで分けた(NDL は書誌、他は作品単位の分類) |
 | 別名は公開 DB の名前から(ローマ字と日本語を先に、最大 6、3 文字未満・非対応文字種は除く) | 別名の一致が名寄せの証拠([[work-grouping]])になるので、タイ語など使えない綴りは入れない。公開 DB の別名で作品が自動統合されることがある(確信度は連携の確信度)。連携を外す・別の候補にすると、その別名も外す(手動の別名・利用者が外した別名は触らない) |
 | 巻の書誌(出版社・レーベル・発売日・ISBN・巻次)は、NDL の連携がある作品の**巻番号が単独で分かる巻**だけに入れる(`_apply_volumes()`) | 範囲(`v01-03`)の巻や、名前と中身の食い違い([[work-grouping]] の findings)がある巻には入れない。巻番号は名前から読んだ候補にすぎない。同じ番号の重複スキャンには同じ書誌が入る |
 
 ## 日本語での表示(#74)
 
-AniList / MangaUpdates のジャンル・タグ・あらすじは英語、MangaUpdates の出版社はローマ字(`Overlap`)で来る。利用者の要望(#74)で、反映のときに日本語にする。
-入口は `spinebox/ja_terms.py:510 term_ja()` / `spinebox/ja_terms.py:520 publisher_ja()`(対応表)と `spinebox/linking.py:456 _desired_fields()`(反映で使う)。
+AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出版社はローマ字(`Overlap`)で来る。利用者の要望(#74)で、反映のときに日本語にする。
+入口は `spinebox/ja_terms.py:510 term_ja()` / `spinebox/ja_terms.py:520 publisher_ja()`(対応表)と `spinebox/linking.py:449 _desired_fields()`(反映で使う)。
 
 | 規則 | 理由 |
 | --- | --- |
@@ -60,12 +60,25 @@ AniList / MangaUpdates のジャンル・タグ・あらすじは英語、MangaU
 | ジャンル・タグは対応表(AniList・MangaUpdates のジャンルは全語、タグは頻出のもの)で引く。表記の揺れ(`Teacher/s` と `Teacher`、ハイフン、全角、大文字小文字)は畳み、訳して同じになった語は 1 つにまとめる | MangaUpdates のタグ(categories)は利用者投稿で数千語あり全部は持てない。記録済みの応答に出る語はすべて引ける(`tests/test_ja_terms.py` が確かめる) |
 | **対応表に無い語は既定で入れない**(`[metadata] untranslated_terms = "hide"`。`keep` で英語のまま入れる) | 利用者が日本語で揃えたいと要望した。元の値は残っているので、`keep` にすれば次の起動で戻る。隠した語は絞り込みの候補にも出ない |
 | 出版社は NDL(日本語)が先。NDL の連携が無く MangaUpdates の原版元だけのときは、ローマ字名を対応表で日本語にする。**対応が無いローマ字名はそのまま出す** | 英語表記が入る経路はこれだけ(NDL が確認待ち・該当なしの作品)。出版社名は固有名なので、隠すより読める綴りで残す |
-| あらすじは、日本語のもの(`spinebox/ja_terms.py:495 is_japanese()`: 括弧の中を除いて、かな・漢字が文字の 3 割以上)があれば優先の順より先に採る。英語だけなら、既定(`english_synopsis = "fold"`)は入れて作品ページで折りたたみ、`hide` なら入れない | 今の 3 取得元に日本語のあらすじは無い(NDL の OpenSearch に内容紹介は無い。[[metadata-sources]])。取得元を足したときに優先の順を直さずに日本語が勝つようにした。英語のあらすじには日本語の題名が括弧で混ざる(AniList のアンソロジーの収録作一覧)ので、1 文字でもあれば日本語、とはしない |
 | 手動の項目は訳さない(英語で手入力した値も英語のまま) | 不変条件。訳すのは公開 DB から入る値だけ |
 
-**機械翻訳は入れていない。** あらすじを日本語にするには外部サービス(翻訳 API)へあらすじを送ることになり、利用者の判断が要る(#74 で保留)。
-入れるなら、翻訳結果を `work_links` とは別に保存して取得と同じ明示操作・レート制限に載せ、反映(DB だけで完結)からは呼ばない形になる。
-日本語の内容紹介を持つ取得元(楽天ブックスの商品説明など。API キーが要る)を足す手もある。
+**機械翻訳は入れていない。** 外部サービス(翻訳 API)へ蔵書の情報を送ることになるため。
+
+## あらすじの廃止(#82)
+
+あらすじは作品の項目にしない(利用者の判断、2026-11-02)。今の 3 取得元で得られるあらすじは英語だけで
+(NDL の OpenSearch に内容紹介は無い。[[metadata-sources]])、#74 では英語のまま折りたたんでいたが、機械翻訳(外部送信)は使わないので廃止した。
+
+| 規則 | 理由 |
+| --- | --- |
+| **取得元クライアントはあらすじを読み取らない**(`MetadataItem` に項目が無い)。結線も入れない | 読み取って使わない値は、`work_links.item` / `candidates` に溜まり続け、また使う実装を誘う。英語のあらすじが要る用途が今は無い |
+| AniList の GraphQL のクエリからは `description` を外していない(`spinebox/metadata/anilist.py` `QUERY`) | クエリは要求の本文で、本文は保存済みの生応答の鍵(`spinebox/metadata/http.py:73 SourceRequest.key()`)に入る。外すと保存済みの AniList の応答が全部使えなくなり、取り直しになる |
+| **既に DB にあるあらすじの行(`work_fields` の `synopsis`)は消さない。** API・作品の詳細・編集・自動に戻す・統合での引き継ぎ・全文検索には出さない(`spinebox/works.py` `RETIRED_FIELDS`) | 手で書いたあらすじもありうる。元に戻せない削除をしない。生の応答(`metadata_responses`)と、廃止前に保存した候補の中身(`work_links.item`)のあらすじもそのまま |
+| 廃止したあらすじの手動の行は「手動が絡む」(`spinebox/works.py` `_manual_involved()`)に数えない | 画面から見えず「自動に戻す」もできない行で、確信度の高い自動統合が止まり続けるのを避ける。統合されても行は吸収された作品に残る(消えない) |
+| 索引からはマイグレーション 11 で外す。あらすじの行を持つ作品にだけ `work_search_dirty` の印を立て、次の検索の前に索引し直す | 索引は派生データ([[work-search]])。全件の作り直しは要らない |
+| 設定 `[metadata] english_synopsis` は廃止。古い設定ファイルに残っていても値によらず無視し、読み込みで警告を 1 回ログに出す(`spinebox/config.py` `RETIRED_METADATA_KEYS`) | サーバー機の `config.local.toml` に残っていても常駐が起動しなくならないように |
+
+日本語のあらすじを持つ取得元(楽天ブックスの商品説明など。API キーが要る)を足すなら、項目を戻すことになる。
 
 ## 手動の編集と「自動に戻す」
 
@@ -86,7 +99,7 @@ AniList / MangaUpdates のジャンル・タグ・あらすじは英語、MangaU
 
 | 何 | どこ |
 | --- | --- |
-| 作品の項目(`title` `author` `kind` `publisher` `genres` `tags` `synopsis` `total_volumes`)と出所・手動・確信度 | `work_fields`(マイグレーション 6 の既存表。`genres` / `tags` は JSON 配列なので `json_each(value)` で展開。定数は `spinebox/works.py:32 FIELD_KIND` ほか) |
+| 作品の項目(`title` `author` `kind` `publisher` `genres` `tags` `total_volumes`。廃止した `synopsis` の行も残っている)と出所・手動・確信度 | `work_fields`(マイグレーション 6 の既存表。`genres` / `tags` は JSON 配列なので `json_each(value)` で展開。定数は `spinebox/works.py:32 FIELD_KIND` ほか) |
 | 作品の別名(公開 DB 由来を含む) | `work_aliases`(`source = 'public_db'`) |
 | 巻の書誌(`publisher` `label` `released` `isbn` `volume_label` `subtitle`) | `volume_fields`(マイグレーション 7) |
 | 連携・候補・失敗 | `work_links`(マイグレーション 7。`candidates` `item` は JSON) |
