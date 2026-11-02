@@ -905,8 +905,8 @@ export const api = {
   dismissDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/dismiss`, { method: "POST" }),
   restoreDuplicate: (id: number) => request<unknown>(`/api/duplicates/${id}/restore`, { method: "POST" }),
   pageUrl: (id: VolumeId, index: number) => `/api/volumes/${vid(id)}/pages/${index}`,
-  /** 巻の表紙(1 ページ目の縮小)。取り出しが要る巻でまだ作っていなければ 404(#75)。rev は作り直した後の取り直し用 */
-  thumbnailUrl: (id: VolumeId, rev = 0) => `/api/volumes/${vid(id)}/thumbnail${rev ? `?rev=${rev}` : ""}`,
+  /** 巻の表紙(1 ページ目の縮小)。取り出しが要る巻でまだ作っていなければ 404(#75) */
+  thumbnailUrl: (id: VolumeId) => `/api/volumes/${vid(id)}/thumbnail`,
   thumbnailStatus: () => request<ThumbnailBuildState>("/api/thumbnails"),
   /** 作品の表紙を、内側アーカイブを取り出してでも作る(裏で動く)。蔵書は変えない */
   buildThumbnails: () => request<ThumbnailBuildState>("/api/thumbnails/build", { method: "POST" }),

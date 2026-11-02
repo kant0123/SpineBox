@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, type MetadataStatus, type ReadingState, type ThumbnailBuildState, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
-import { duplicatesHref, facetListHref, workProposalsHref, workTitlesHref, type WorksScope } from "../route";
+import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
+import { facetListHref, workProposalsHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
@@ -37,14 +37,11 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const fixed = scopeQuery(scope);
   const [data, setData] = useState<WorkList | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(0);
   const [text, setText] = useState("");
   const [query, setQuery] = useState<WorkQuery>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [meta, setMeta] = useState<MetadataStatus | null>(null);
-  const [thumbs, setThumbs] = useState<ThumbnailBuildState | null>(null);
-  const [coverRev, setCoverRev] = useState(0);
+  const [sources, setSources] = useState<SourceName[]>([]);
   const seq = useRef(0);
 
   const fixedKey = JSON.stringify(fixed);
@@ -74,51 +71,9 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
 
   useEffect(() => {
     void loadProposals();
-    api.metadataStatus().then(setMeta, () => setMeta(null));
+    // 利用元の表示(#45)にだけ使う。取得・表紙・名寄せの実行と進み具合は管理のデータ管理タブ(#83)
+    api.metadataStatus().then((m) => setSources(m.sources), () => setSources([]));
   }, [loadProposals]);
-
-  // 裏で情報を取っている間は、状態を見に行く(終わったら一覧を取り直す)
-  const running = meta?.state.running ?? false;
-  useEffect(() => {
-    if (!running) return;
-    const t = window.setInterval(() => {
-      api.metadataStatus().then((m) => {
-        setMeta(m);
-        if (!m.state.running) setQuery((cur) => ({ ...cur })); // 同じ条件でもう一度引く
-      }, () => undefined);
-    }, 2000);
-    return () => window.clearInterval(t);
-  }, [running]);
-
-  // 表紙の作成(#75)。実行中は状態を見に行き、終わったら表紙を取り直す
-  const buildingCovers = thumbs?.running ?? false;
-  useEffect(() => {
-    if (!buildingCovers) return;
-    const t = window.setInterval(() => {
-      api.thumbnailStatus().then((st) => {
-        setThumbs(st);
-        if (!st.running) setCoverRev((r) => r + 1);
-      }, () => undefined);
-    }, 2000);
-    return () => window.clearInterval(t);
-  }, [buildingCovers]);
-
-  const buildCovers = async () => {
-    try {
-      setThumbs(await api.buildThumbnails());
-    } catch (e) {
-      setError(e instanceof ApiError && e.detail ? e.detail : "表紙の作成を依頼できませんでした。");
-    }
-  };
-
-  const fetchAll = async () => {
-    try {
-      const state = await api.fetchAllMetadata();
-      setMeta((m) => (m ? { ...m, state } : m));
-    } catch (e) {
-      setError(e instanceof ApiError && e.detail ? e.detail : "公開データベースの情報の取得を依頼できませんでした。");
-    }
-  };
 
   // 検索語は少し待ってからクエリに入れる
   useEffect(() => {
@@ -136,41 +91,10 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0);
   const filtering = activeFilters > 0 || !!query.q?.trim();
 
-  const refresh = async () => {
-    setBusy(true);
-    try {
-      await api.refreshWorks();
-      await Promise.all([load(query), loadProposals()]);
-    } catch (e) {
-      // ほかのジョブ(データ管理)が動いている間は 409 で、その旨が detail に入る
-      setError(e instanceof ApiError && e.detail ? e.detail : "作品の割り当てを取り直せませんでした。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="library works">
       <header className="library-header">
         <h1>{scopeTitle(scope)}</h1>
-        <div className="header-actions">
-          <a className="header-link" href={duplicatesHref}>
-            重複の候補
-          </a>
-          {meta && meta.sources.length > 0 && (
-            <button type="button" onClick={() => void fetchAll()} disabled={running}>
-              {running ? `情報を取得中… ${meta.state.done} / ${meta.state.total}` : "情報を補完"}
-            </button>
-          )}
-          {data && data.total > 0 && (
-            <button type="button" onClick={() => void buildCovers()} disabled={buildingCovers} title="入れ子のアーカイブの巻も取り出して、まだ無い表紙を作ります(蔵書は変えません)">
-              {buildingCovers ? `表紙を作成中… ${thumbs!.done} / ${thumbs!.total}` : "表紙を作る"}
-            </button>
-          )}
-          <button type="button" onClick={refresh} disabled={busy}>
-            {busy ? "取り直し中…" : "名寄せを取り直す"}
-          </button>
-        </div>
       </header>
       {scope.by === "all" && <ViewTabs current="works" />}
       {(scope.by === "author" || scope.by === "tag" || scope.by === "publisher") && (
@@ -185,16 +109,6 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
         <div className="notice" role="status">
           <a href={workProposalsHref}>統合の提案が {pending} 件あります</a>
           (同じ作品かもしれない組。承認するまで統合しません)
-        </div>
-      )}
-      {thumbs?.error && (
-        <div className="notice warn" role="status">
-          表紙の作成は途中で止まりました: {thumbs.error}
-        </div>
-      )}
-      {meta?.state.error && (
-        <div className="notice warn" role="status">
-          前回の取得は途中で止まりました: {meta.state.error}
         </div>
       )}
       <form className="work-search" role="search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
@@ -259,7 +173,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           return (
             <li key={w.id} className="work-card">
               <a className="work-link" href={workTitlesHref(w.id)}>
-                {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} rev={coverRev} />}
+                {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} />}
                 <span className="work-text">
                   <span className="volume-title">{w.title}</span>
                   {w.author && <span className="volume-meta">{w.author}</span>}
@@ -285,7 +199,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           );
         })}
       </ul>
-      <Credits sources={meta?.sources ?? []} />
+      <Credits sources={sources} />
     </div>
   );
 }
