@@ -76,7 +76,7 @@ export function Works() {
 
   // 検索語は少し待ってからクエリに入れる
   useEffect(() => {
-    const t = window.setTimeout(() => setQuery((cur) => (cur.q === text ? cur : { ...cur, q: text })), SEARCH_DELAY_MS);
+    const t = window.setTimeout(() => setQuery((cur) => ((cur.q ?? "") === text ? cur : { ...cur, q: text })), SEARCH_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [text]);
 

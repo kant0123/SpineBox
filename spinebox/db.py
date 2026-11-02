@@ -22,7 +22,7 @@ def _mark_dirty(expr: str) -> str:
 
 
 def _dirty_triggers() -> list[str]:
-    """版 8 のトリガー。作品の検索の索引が古くなる変更で、その作品に印を付ける。"""
+    """版 9 のトリガー。作品の検索の索引が古くなる変更で、その作品に印を付ける。"""
     out = []
     for table in ("work_fields", "work_aliases", "work_volumes"):
         out.append(f"CREATE TRIGGER {table}_search_ins AFTER INSERT ON {table} BEGIN {_mark_dirty('NEW.work_id')} END")
@@ -326,7 +326,15 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
-    # 8: 作品の全文検索(#56)。索引そのもの(work_search。FTS5 trigram か、無い SQLite では普通の表)は
+    # 8: 小説(EPUB・テキスト)の巻(#57)。volumes.format: NULL = 画像の巻(漫画など)、'epub' / 'text' = 小説。
+    #    小説のソースは 1 ファイルなので sources.kind は 'archive'(CHECK を作り直さないため。読み分けは format で行う)。
+    #    小説の page_count は区切り(EPUB の spine の本文 / テキストの一定文字数ごと)の数で、開いたときに決まる。
+    #    reading_progress.position: 小説の区切りの中の割合(0〜1)。page は区切りの番号。画像の巻は NULL
+    [
+        "ALTER TABLE volumes ADD COLUMN format TEXT",
+        "ALTER TABLE reading_progress ADD COLUMN position REAL",
+    ],
+    # 9: 作品の全文検索(#56)。索引そのもの(work_search。FTS5 trigram か、無い SQLite では普通の表)は
     #    実行時の SQLite で形が変わる派生データなので、ここでは作らず spinebox/search.py が作る・作り直す。
     #    ここで足すのは「索引が古くなった作品」の印(work_search_dirty)と、それを立てるトリガーだけ。
     #    作品の項目・別名・巻の割り当て・統合・巻の名前のどれが変わっても印が立つので、書き換える側の

@@ -2,7 +2,7 @@
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
 updated: 2026-11-02
-related: [work-grouping, backend, frontend, metadata-clients, overview]
+related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, novel-reader, overview]
 ---
 
 # 作品の検索と絞り込み(`spinebox/search.py`)
@@ -19,13 +19,14 @@ related: [work-grouping, backend, frontend, metadata-clients, overview]
 - 統合された作品(`merged_into`)は索引から消す。統合先の作品が、吸収した作品名を別名として・巻の名前ごと持つ([[work-grouping]])
 - 公開 DB の結線(#50。[[metadata-linking]])が足す別名(`work_aliases` の `source = 'public_db'`)も、外されていなければ入る。巻の書誌(`volume_fields` の出版社・レーベル・副題など)は
   索引に入れない(作品単位の出版社・あらすじ・ジャンル・タグで足りる。巻の書誌を引きたくなったら、`volume_fields` の変更にもトリガーが要る)
+- 小説(EPUB・テキスト。#57。[[novel-reader]])の巻も画像の巻と同じ `volumes` の行で、作品に割り当てられれば作品名・巻の名前が索引に入る(テストで確認)。
 - 巻の名前は**見えなくなった巻も含めて**割り当てがあれば入れる(missing の巻の名前で当たっても、一覧は見えている巻を持つ作品しか出さない)
 - 巻の名前には `[東村アキコ] …` のような著者の括弧も入っているので、著者を手で直しても前の著者名の検索では当たり続ける。
   「その著者の作品だけ」は著者の絞り込み(項目の値で比べる)で見る
 
 ## 索引を古くしない仕組み
 
-- `spinebox/db.py:24 _dirty_triggers()`(マイグレーション 8)が、`work_fields` / `work_aliases` / `work_volumes` の挿入・更新・削除、
+- `spinebox/db.py:24 _dirty_triggers()`(マイグレーション 9)が、`work_fields` / `work_aliases` / `work_volumes` の挿入・更新・削除、
   `works` の追加・統合、`volumes.title` の更新で、その作品 id を `work_search_dirty` に入れる
 - `spinebox/search.py:130 prepare()` が一覧の前に、印のある作品だけ索引し直して印を消す。印が無ければ書き込みのトランザクションを取らない。
   索引が無い(移行直後・SQLite を替えた後)ときは作り直す。起動時(`create_app`)にも一度呼ぶ
@@ -55,7 +56,7 @@ trigram は 3 文字未満の語を索引から引けない(MATCH が何も返�
 trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Python 3.12 は 3.34 以上を同梱する(開発機のコンテナでは 3.53)。
 `spinebox/search.py:62 trigram_available()` が一時表を作れるかで確かめ、無ければ同じ名前・同じ列の**普通の表**を作って全部 LIKE で引く。結果は同じで遅いだけ。
 どちらの形かは表の定義(`sqlite_master.sql` に `fts5` があるか)で見分けるので、SQLite を上げたら `--rebuild-search` で FTS5 に作り直せる。
-索引の表をマイグレーションで作らないのはこのため(実行時の SQLite で形が変わる派生データ)。マイグレーション 8 は印の表とトリガーだけ。
+索引の表をマイグレーションで作らないのはこのため(実行時の SQLite で形が変わる派生データ)。マイグレーション 9 は印の表とトリガーだけ。
 
 ## 絞り込み
 

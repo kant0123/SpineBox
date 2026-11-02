@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import page_bytes, write_zip
+from novels import epub_bytes
 from spinebox import db, search, works
 from spinebox.app import create_app
 
@@ -288,6 +289,22 @@ def test_fields_edited_through_the_work_api_are_searchable_and_filterable(env):
     assert titles(client, genre="コメディ") == [] and titles(client, q="コメディ") == []
 
 
+def test_novel_volumes_are_searchable_by_name_and_filter_by_kind(env):
+    """小説(EPUB・テキスト。#57)の巻も作品になり、作品名・巻の名前で引ける。種別を手で足せば小説で絞れる。"""
+    settings, client = env
+    lib = settings.library_roots[0]
+    (lib / "[夏目漱石] 吾輩は猫である 第1巻.epub").write_bytes(epub_bytes(["<p>吾輩は猫である。</p>"]))
+    (lib / "[夏目漱石] 吾輩は猫である 第2巻.txt").write_bytes("名前はまだ無い。".encode("utf-8"))
+    assert client.post("/api/scan").status_code == 200
+    assert titles(client, q="吾輩") == ["吾輩は猫である"]
+    assert titles(client, q="夏目") == ["吾輩は猫である"]      # 著者
+    assert titles(client, q="第2巻") == ["吾輩は猫である"]     # 巻の名前(txt)
+    wid = work_id(client, "吾輩は猫である")
+    assert client.patch(f"/api/works/{wid}", json={"kind": "novel"}).status_code == 200
+    assert titles(client, kind="小説") == ["吾輩は猫である"]
+    assert titles(client, kind="漫画") == []
+
+
 def test_split_values_reads_json_arrays_and_separated_strings():
     assert search.split_values('["a", " b ", "", 3]') == ["a", "b"]
     assert search.split_values("a、b, c") == ["a", "b", "c"]
@@ -307,9 +324,9 @@ def test_list_works_function_without_api(env):
 
 # --- 移行 ------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("base", [6, 7])
-def test_migration_8_from_a_works_db_builds_the_index_on_first_use(tmp_path, base):
-    """#56 の移行(版 8): 作品まで(版 6)・公開 DB の結線まで(版 7)の DB に検索の印とトリガーを足し、
+@pytest.mark.parametrize("base", [6, 7, 8])
+def test_migration_9_from_a_works_db_builds_the_index_on_first_use(tmp_path, base):
+    """#56 の移行(版 9): 作品まで(版 6)・公開 DB の結線まで(版 7)・小説まで(版 8)の DB に検索の印とトリガーを足し、
     最初の一覧で索引を作る。作品・巻は変わらない。"""
     path = tmp_path / f"v{base}.db"
     conn = db.connect(path)
@@ -331,7 +348,7 @@ def test_migration_8_from_a_works_db_builds_the_index_on_first_use(tmp_path, bas
 
     conn = db.open_db(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) == 8
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(db.MIGRATIONS) == 9
         assert conn.execute("SELECT COUNT(*) FROM work_search_dirty").fetchone()[0] == 0
         res = works.list_works(conn, "お気楽")
         assert [w["id"] for w in res["works"]] == [3]

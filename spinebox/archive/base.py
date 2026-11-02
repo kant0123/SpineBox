@@ -232,7 +232,8 @@ def _register_builtin() -> None:
     from .sevenzip import make_reader, sevenzip_available
     from .zipreader import ZipReader
 
-    for ext in (".zip", ".cbz"):
+    # EPUB も zip として読む(巻の候補にするかはスキャナーが拡張子で決める。spinebox/novel/)
+    for ext in (".zip", ".cbz", ".epub"):
         register_reader(ext, lambda path, sevenzip_path: ZipReader(path))
     for ext in SEVENZIP_EXTS:
         register_reader(ext, make_reader, sevenzip_available)

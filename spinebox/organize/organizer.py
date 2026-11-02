@@ -129,6 +129,9 @@ class Organizer:
         if not source_path.exists():
             problems.append("元のファイル・フォルダが見つかりません(再スキャンしてください)")
             return self._finish_plan(plan, vols)
+        if any(v["format"] for v in vols):
+            problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
+            return self._finish_plan(plan, vols)
         if not vols:
             problems.append("整理できる巻がありません")
         plan["needs_analysis"] = self._unanalyzed(all_rows, problems)

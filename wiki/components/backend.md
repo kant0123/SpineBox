@@ -2,7 +2,7 @@
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
 updated: 2026-11-02
-related: [metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, work-search]
+related: [metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search]
 ---
 
 # バックエンド
@@ -14,7 +14,7 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 
 - する: 設定の読み込み、スキャン(目次読みだけ)、巻を開いてページを返す、読書位置の保存、
   内側アーカイブの巻の分解と巻範囲の食い違いの検出([[volume-split]])、別スキャンの重複候補の検出(明示操作。[[duplicate-detection]])、
-  巻の名前から作る作品の名寄せ(別名・著者・統合の根拠・欠け巻。[[work-grouping]])、作品の全文検索と絞り込み([[work-search]])
+  巻の名前から作る作品の名寄せ(別名・著者・統合の根拠・欠け巻。[[work-grouping]])、小説(EPUB・テキスト)の区切りごとの無害化した本文([[novel-reader]])、作品の全文検索と絞り込み([[work-search]])
 - しない: 蔵書への書き込み(読み取り専用。例外は整理処理 [[organize]] だけで、ユーザーの明示操作でだけ動く)、認証。外部メタデータの取得クライアント(`spinebox/metadata/`、[[metadata-clients]])は、作品・巻へ `spinebox/linking.py` で結線する([[metadata-linking]])。ネットワークに触るのは明示操作と設定した定期取得だけで、スキャン・閲覧・編集は通信しない
 - アーカイブの中身の扱いは [[archive-reading]]、内側アーカイブの取り出し先は [[extraction-cache]]
 
@@ -22,13 +22,13 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:135 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:154 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/__main__.py:15 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:357 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:243 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
-| `spinebox/scanner.py:215 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:444 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:367 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:249 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:221 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:489 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:120 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:344 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:92 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:283 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
@@ -38,6 +38,7 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 | `spinebox/scanner.py:45 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用 |
 | `spinebox/config.py:216 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:38 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
+| `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
 ## API 契約(フロントと共有)
 
@@ -46,8 +47,10 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 | メソッドとパス | 返すもの |
 | --- | --- |
 | `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...], "issues": [{"path", "container_path", "entry_name", "reason"}], "issues_total": 件数}`。件数は一覧に出る巻の数(オフラインの巻を含む。分解済みの親は数えず子を数える)。`issues` は「読めなかったもの」(`scan_issues` の現在の内容。最大 200 件で、切った分も `issues_total` には数える)。スキャン中の再実行は 409。DB が使えないなど続行できない失敗は 500 + `{"detail": "スキャンに失敗しました: 型: メッセージ"}`(トレースバックはログ) |
-| `GET /api/volumes` | `[{"id", "title", "source_name", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43) |
-| `GET /api/volumes/{id}` | `{"id", "title", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する |
+| `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`format` は `images`(ページ画像の巻)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57) |
+| `GET /api/volumes/{id}` | `{"id", "title", "format", "page_count", "pages": [{"index", "name"}], "progress", "parent_id", "volume_number", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する。小説は `pages: []` で、`sections: [{"index", "length"}]`(`length` は全体の進み具合の重み)と `encoding`(テキストの文字コード)が付く。文字コードを判定できないテキストは 422 |
+| `GET /api/volumes/{id}/sections/{index}` | 小説の区切り 1 つ `{"index", "html"}`。EPUB は無害化済み、テキストはエスケープしてから組み立てた HTML([[novel-reader]])。範囲外は 404、画像の巻は 422 |
+| `GET /api/volumes/{id}/resources/{index}` | EPUB の中の画像(manifest の JPEG / PNG / GIF / WebP だけ。SVG は返さない)。`Content-Security-Policy: default-src 'none'; sandbox` 付き |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
 | `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged", "reading_state", "kind", "publisher", "genres", "tags", "link_pending"}], "total", "facets", "unassigned"}`。一覧に見えている巻を持つ作品だけ(統合された側は出ない)。クエリ `q`(全文検索。空白区切りで AND)・`author` / `kind` / `genre` / `tag`(項目の値の一致。ジャンル・タグは `work_fields` の `genres` / `tags`)・`status`(`unread` / `reading` / `finished`)で絞る(組み合わせ可。未対応の `status` は 422)。`total` は絞る前の作品数、`facets` は絞る前の作品から作った絞り込みの候補 `{"author", "kind", "genre", "tag"}`([[work-search]]) |
 | `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "synopsis"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
@@ -64,10 +67,13 @@ related: [metadata-linking, overview, archive-reading, extraction-cache, server-
 | `GET /api/duplicates?status=open\|dismissed` | `{"scan": <上と同じ状態>, "candidates": [{"id", "rule" (`same_number` / `visual_only`), "matched_pages", "compared_pages", "evidence", "dismissed", "a", "b"}]}`。a・b は `{id, title, source_name, parent_title, page_count, offline, volume_number, progress}`。一覧に見えている巻どうしの組だけ。`status` が他なら 422 |
 | `POST /api/duplicates/{id}/dismiss` / `restore` | 「重複ではない」と却下する / 戻す。`{"id", "dismissed"}`。無い id は 404。蔵書には触れない |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
-| `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422 |
+| `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool, "position"?: 0〜1}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422。小説は page が区切りの番号、`position` が区切りの中の割合で、`progress` にも `position` が付く。画像の巻の `position` は捨てる |
 | `POST /api/organize/plan` | body `{"volume_id"}` か `{"source_id"}`(どちらか一方)。その巻を含むソース全体の計画。整理の単位は見えている子を持たない巻(分解済みなら子の巻ごと)。問題があれば `state: "blocked"`・`op_id: null`(保存しない)。中の巻を調べていない内側アーカイブは `needs_analysis`(巻 id の配列)で返す。蔵書に書かない |
 | `POST /api/organize/{op_id}/execute` / `.../undo` | 操作(`{"op_id", "state", "volumes": [{"volume_id", "output_rel_path", "new_volume_id", ...}], "warnings", "problems", "error", ...}`)。始められない・失敗(巻き戻し済み)は 409 で `{"detail", "op"}`。スキャン中も 409 |
 | `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない) |
+
+すべての応答に `Content-Security-Policy`(`spinebox/app.py:41 APP_CSP`。インラインのスクリプトと外部の読み込みを止める)と `X-Content-Type-Options: nosniff` を付ける。
+画面に外部のスクリプト・画像・フォントを足すときは、この CSP を同じ PR で直す([[novel-reader]] の安全方針の 3 段目)。
 
 `GET /healthz`(`/api` の外、フロントは使わない)は稼働確認用で、`{"ok": true, "commit": 短い SHA か null}`。
 DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`commit` はプロセスが起動時に読んだコミット。使い方は [[server-setup]]。
@@ -124,7 +130,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 ## 経緯
 
-- #56 で作品の全文検索と絞り込みを足した([[work-search]])。マイグレーション 8(`work_search_dirty` と、索引が古くなる変更で印を付けるトリガー)。
+- #57 で小説(EPUB・テキスト)を足した([[novel-reader]])。マイグレーション 8(`volumes.format`・`reading_progress.position`)。
+  小説のソースは 1 ファイルなので `sources.kind` は `archive`(CHECK を作り直さないため)。新しい種類のソースなので `SCAN_VERSION` は上げていない
+- #56 で作品の全文検索と絞り込みを足した([[work-search]])。マイグレーション 9(`work_search_dirty` と、索引が古くなる変更で印を付けるトリガー)。
   索引の表 `work_search` はマイグレーションではなく起動時・一覧の前に `spinebox/search.py` が作る(SQLite の trigram の有無で形が変わるため)
 
 - #48 でスキャンの想定外の例外を、ソース単位で記録して続けるようにした。サーバー機の実蔵書で画面が「スキャンに失敗しました」のまま止まった件で、

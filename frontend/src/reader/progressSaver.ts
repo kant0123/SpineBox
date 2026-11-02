@@ -16,7 +16,7 @@ export function createProgressSaver(save: SaveFn, delayMs = 800) {
     timer = null;
     const p = pending;
     pending = null;
-    if (!p || (last && last.page === p.page && last.finished === p.finished)) return;
+    if (!p || (last && last.page === p.page && last.finished === p.finished && last.position === p.position)) return;
     last = p;
     save(p).catch(() => {
       // 失敗した値は「送れた」扱いにしない。同じ位置で再度呼ばれたら送り直す
