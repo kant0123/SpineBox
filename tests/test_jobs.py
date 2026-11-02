@@ -488,3 +488,95 @@ def test_metadata_jobs_with_a_fake_network(make_settings, tmp_path):
     assert [(j["kind"], j["origin"]) for j in history[:2]] == [("metadata", "button"), ("work_metadata", "button")]
     assert history[1]["label"].startswith("作品の情報を取得: ")
     assert client.get("/api/works/metadata").json()["state"]["job_id"] == history[0]["id"]
+
+
+# --- フォローの続刊の確認(#87)をジョブに載せたもの ---------------------------------------------
+
+
+@pytest.fixture
+def follow_env(make_settings, tmp_path):
+    from test_follows import Env, kaku_files
+    env = Env(make_settings, tmp_path, "kaku", [*kaku_files(1, 2, 3, 4), "別の作品 第01巻.cbz", "別の作品 第02巻.cbz"])
+    env.kaku, env.other = env.work_id("かくかくしかじか"), env.work_id("別の作品")
+    env.follow(env.kaku)
+    env.follow(env.other)
+    return env
+
+
+def test_follow_check_job_and_button_api_share_one_history(follow_env):
+    env = follow_env
+    client = env.client
+    kinds = {k["kind"]: k for k in client.get("/api/jobs/catalog").json()["kinds"]}
+    assert kinds["follow_check"]["available"] is True and kinds["follow_check"]["count_text"] == "フォロー中 2 作品"
+    # データ管理から: 作品を絞れる。フォローしていない作品の id は飛ばす
+    r = client.post("/api/jobs", json={"kind": "follow_check", "params": {"work_ids": [env.kaku, 99999]}})
+    assert r.status_code == 202
+    job = wait_job(client, r.json()["id"])
+    assert job["status"] == "succeeded" and job["origin"] == "jobs"
+    assert job["summary"] == {"works": 1, "statuses": {"ok": 1}}
+    assert env.entry(env.kaku)["checked_at"] and env.entry(env.other)["checked_at"] is None
+    # 既存のボタンの API(wait)も同じ種類のジョブとして履歴に残り、GET /api/follows の state はその最新を見せる
+    state = env.check()
+    assert state["summary"] == {"works": 2, "statuses": {"ok": 1, "unlinked": 1}} and state["status"] == "succeeded"
+    history = client.get("/api/jobs").json()["history"]
+    assert [(j["kind"], j["origin"]) for j in history[:2]] == [("follow_check", "button"), ("follow_check", "jobs")]
+    assert env.follows()["state"]["job_id"] == history[0]["id"]
+
+
+def test_follow_check_runs_one_at_a_time_and_waiting_button_is_refused(follow_env, monkeypatch):
+    from spinebox import follows
+    env = follow_env
+    client = env.client
+    block = Blocker(monkeypatch, follows, "check_work")
+    first = client.post("/api/jobs", json={"kind": "follow_check"}).json()
+    assert block.entered.wait(5)
+    assert client.post("/api/follows/check?wait=true").status_code == 409  # 動いている間は待たずに断る
+    again = client.post("/api/follows/check")  # 待ち行列に入る側は、同じジョブ(同じ指定)を返す
+    assert again.status_code == 202 and again.json()["job_id"] == first["id"]
+    block.go.set()
+    assert wait_job(client, first["id"])["status"] == "succeeded"
+
+
+def test_follow_check_can_be_cancelled_between_works(follow_env, monkeypatch):
+    from spinebox import follows
+    env = follow_env
+    client = env.client
+    block = Blocker(monkeypatch, follows, "check_work")
+    job = client.post("/api/jobs", json={"kind": "follow_check"}).json()
+    assert block.entered.wait(5)
+    assert client.post(f"/api/jobs/{job['id']}/cancel").status_code == 200
+    block.go.set()
+    done = wait_job(client, job["id"])
+    assert done["status"] == "cancelled" and done["error"] == "中止しました"
+    # 調べた 1 作品の結果は残り、残りは調べていない。フォローも見つけた巻も消えない
+    checked = [env.entry(w)["checked_at"] for w in (env.kaku, env.other)]
+    assert sum(c is not None for c in checked) == 1
+    assert len(env.follows()["follows"]) == 2
+    assert wait_job(client, client.post("/api/jobs", json={"kind": "follow_check"}).json()["id"])["status"] == "succeeded"
+
+
+def test_follow_check_is_unavailable_when_ndl_is_disabled(make_settings, tmp_path):
+    from test_follows import Env, kaku_files
+    env = Env(make_settings, tmp_path, "kaku", kaku_files(1), sources=("anilist",))
+    kinds = {k["kind"]: k for k in env.client.get("/api/jobs/catalog").json()["kinds"]}
+    assert kinds["follow_check"]["available"] is False and "国立国会図書館サーチ" in kinds["follow_check"]["unavailable_reason"]
+    r = env.client.post("/api/jobs", json={"kind": "follow_check"})
+    assert r.status_code == 409 and "国立国会図書館サーチ" in r.json()["detail"]
+    assert env.client.post("/api/follows/check").status_code == 409
+
+
+def test_background_follow_check_is_recorded_as_one_row(make_settings, tmp_path):
+    from test_follows import Env, kaku_files
+    from spinebox.config import FollowSettings
+    env = Env(make_settings, tmp_path, "kaku", kaku_files(1, 2, 3, 4),
+              follow=FollowSettings(background=True, background_interval_seconds=1, interval_hours=0.0001,
+                                    response_ttl_days=0.0))
+    wid = env.work_id()
+    env.follow(wid)
+    with env.client:
+        wait_until(lambda: env.entry(wid)["checked_at"] is not None, timeout=15, what="裏の続刊の確認")
+        wait_until(lambda: any(j["kind"] == "background_follow" for j in env.client.get("/api/jobs").json()["history"]),
+                   timeout=15, what="裏の確認の履歴")
+    rows = [j for j in env.client.get("/api/jobs").json()["history"] if j["kind"] == "background_follow"]
+    assert len(rows) == 1 and rows[0]["origin"] == "background" and rows[0]["label"] == "裏の続刊の確認"
+    assert rows[0]["summary"]["works"] >= 1

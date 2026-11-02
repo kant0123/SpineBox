@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -17,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import bookmarks, db, linking, search, works
+from . import bookmarks, db, follows, linking, search, works
 from .analysis import compute_findings
 from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
 from .duplicates import CandidateNotFound, candidate_counts, dismiss
@@ -29,6 +30,7 @@ from .library import (Library, NeedsExtraction, VolumeNotFound, VolumeOffline, V
                       is_analyzable, is_offline)
 from .novel.books import Books
 from .metadata import MetadataService
+from .metadata.service import shared_fetcher
 from .metadata.http import HttpFetcher
 from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
@@ -120,6 +122,17 @@ class ChooseIn(BaseModel):
     source_id: StrictStr | None = None
 
 
+class SeenIn(BaseModel):
+    """見つけた巻を「確認済み」にする。volumes を省くと、その作品のまだ確認していない巻すべて。"""
+    work_id: StrictInt
+    volumes: list[StrictInt] | None = None
+
+
+class FollowCheckIn(BaseModel):
+    """続刊を調べる作品。省くとフォロー中の全作品。"""
+    work_ids: list[StrictInt] | None = None
+
+
 class AliasIn(BaseModel):
     alias: StrictStr
 
@@ -129,9 +142,9 @@ class MergeIn(BaseModel):
 
 
 class JobIn(BaseModel):
-    """データ管理のジョブの依頼。params は種類ごとの指定(作品情報のみ補完の all など)。"""
+    """データ管理のジョブの依頼。params は種類ごとの指定(作品情報のみ補完の all、続刊の確認の work_ids)。"""
     kind: StrictStr
-    params: dict[str, StrictBool] = Field(default_factory=dict)
+    params: dict[str, StrictBool | list[StrictInt]] = Field(default_factory=dict)
 
 
 class AssignIn(BaseModel):
@@ -217,7 +230,13 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def metadata_service(c: sqlite3.Connection) -> MetadataService:
         return MetadataService(settings.metadata, c, fetcher=metadata_fetcher)
 
-    data_jobs = DataJobs(settings, library, thumbs, metadata_service, enabled_sources, _sync_works)
+    def follow_service(c: sqlite3.Connection) -> MetadataService:
+        """続刊の確認用。保存済みの応答の有効期限だけ短くし、取得元の関門(最小間隔・429 の停止)は補完と共有する
+        (設定を変えたものを渡すと共有の fetcher が作り直されるので、元の設定の共有 fetcher を明示的に渡す)。"""
+        meta = dataclasses.replace(settings.metadata, cache_ttl_days=settings.follow.response_ttl_days)
+        return MetadataService(meta, c, fetcher=metadata_fetcher or shared_fetcher(settings.metadata))
+
+    data_jobs = DataJobs(settings, library, thumbs, metadata_service, enabled_sources, _sync_works, follow_service)
 
     def background_loop(stop: threading.Event, interval: float, kind: str, fn) -> None:
         """裏の定期処理。1 回に 1 件、ほかのジョブが動いていないときだけ動き、動いたら履歴に残す。失敗しても止まらない。"""
@@ -238,6 +257,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             threading.Thread(target=background_loop, name="spinebox-metadata", daemon=True,
                              args=(stop, settings.metadata.background_interval_seconds, "background_metadata",
                                    data_jobs.background_metadata)).start()
+        if settings.follow.background and follows.SOURCE in enabled_sources:
+            threading.Thread(target=background_loop, name="spinebox-follow", daemon=True,
+                             args=(stop, settings.follow.background_interval_seconds, "background_follow",
+                                   data_jobs.background_follow)).start()
         try:
             yield
         finally:
@@ -537,7 +560,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     def work_detail(conn: sqlite3.Connection, work_id: int) -> dict:
-        return works.get_work(conn, work_id, enabled_sources)
+        detail = works.get_work(conn, work_id, enabled_sources)
+        follows.resolve_merged(conn)  # 統合で吸収された作品のフォローは吸収先へ
+        detail["follow"] = follows.work_follow(conn, work_id)
+        return detail
 
     @app.get("/api/works")
     def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
@@ -589,6 +615,43 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         (データ管理の「作品情報のみ補完」と同じジョブ)。進み具合は GET /api/works/metadata。
         取得元が落ちていても作品ごとに失敗を記録して続ける。"""
         return _start_legacy("metadata", wait, {"all": True} if all else {})
+
+    # --- フォロー(#87)。フォローした作品の続刊・欠けを公開 DB で調べて知らせる(本の入手はしない) ---
+
+    @app.get("/api/follows")
+    def list_follows(conn: sqlite3.Connection = Depends(get_conn)):
+        """フォロー管理: フォロー中の作品と最後に調べた日時・結果、続刊の確認の進み具合と設定。"""
+        return {"follows": follows.list_follows(conn), "state": job_state("follow_check"),
+                "available": follows.SOURCE in enabled_sources, "background": settings.follow.background,
+                "interval_hours": settings.follow.interval_hours}
+
+    @app.get("/api/follows/releases")
+    def list_follow_releases(seen: bool = False, conn: sqlite3.Connection = Depends(get_conn)):
+        """サイドバーの「フォロー」: 続刊・欠けのある作品(新しい発売日順)。seen=true なら確認済みの巻も含める。"""
+        return {"works": follows.list_releases(conn, include_seen=seen)}
+
+    @app.post("/api/follows/releases/seen")
+    def mark_follow_releases_seen(body: SeenIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """見つけた巻を「確認済み」にする。再確認でも再び出さない(新しく見つかった巻だけ出る)。"""
+        return {"marked": follows.mark_seen(conn, body.work_id, body.volumes)}
+
+    @app.post("/api/follows/check")
+    def start_follow_check(body: FollowCheckIn | None = None, wait: bool = False):
+        """明示操作「続刊を調べる」(データ管理の「フォロー中の作品の続刊を調べる」と同じジョブ)。既定は待ち行列に入れて 202
+        (進み具合は GET /api/follows の state)。wait=true はその場で動かし、ほかのジョブが動いていれば 409。
+        取得元が落ちていても、作品ごとに失敗を記録して続ける。"""
+        params = {} if body is None or body.work_ids is None else {"work_ids": sorted(set(body.work_ids))}
+        return _start_legacy("follow_check", wait, params)
+
+    @app.put("/api/works/{work_id}/follow")
+    def follow_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        follows.follow(conn, work_id)
+        return follows.work_follow(conn, work_id)
+
+    @app.delete("/api/works/{work_id}/follow")
+    def unfollow_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        follows.unfollow(conn, work_id)
+        return follows.work_follow(conn, work_id)
 
     @app.get("/api/works/{work_id}")
     def get_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
@@ -894,10 +957,13 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         """ジョブを待ち行列に入れる(202)。同じジョブが待ち・実行中なら新しく足さずにそれを返す。"""
         if body.kind not in KIND_BY_NAME:
             raise HTTPException(422, f"知らないジョブです: {body.kind}")
-        unknown = set(body.params) - ({"all"} if body.kind == "metadata" else set())
+        allowed = {"metadata": {"all": bool}, "follow_check": {"work_ids": list}}.get(body.kind, {})
+        unknown = set(body.params) - set(allowed)
         if unknown:
             raise HTTPException(422, "知らない指定です: " + "・".join(sorted(unknown)))
-        params = {k: v for k, v in body.params.items() if v}
+        if any(not isinstance(v, allowed[k]) for k, v in body.params.items()):
+            raise HTTPException(422, "指定の形が違います")
+        params = {k: (sorted(set(v)) if isinstance(v, list) else v) for k, v in body.params.items() if v is not False}
         return JSONResponse(submit_job(body.kind, params).to_json(), status_code=202)
 
     @app.get("/api/jobs/{job_id}")

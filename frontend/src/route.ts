@@ -12,6 +12,8 @@ export type Route =
   | { name: "work"; id: string }
   | { name: "work-proposals" }
   | { name: "inbox" }
+  | { name: "follows" }
+  | { name: "follow-manage" }
   | { name: "bookmarks" }
   | { name: "data" };
 
@@ -21,6 +23,8 @@ export function parseRoute(hash: string): Route {
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
   if (/^\/data\/?$/.test(h)) return { name: "data" };
+  if (/^\/follows\/?$/.test(h)) return { name: "follows" };
+  if (/^\/follows\/manage\/?$/.test(h)) return { name: "follow-manage" };
   if (/^\/bookmarks\/?$/.test(h)) return { name: "bookmarks" };
   if (/^\/works\/?$/.test(h)) return { name: "works" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
@@ -50,6 +54,10 @@ export const inboxHref = "#/inbox";
 export const worksHref = "#/works";
 /** データ管理(スキャン・補完・表紙などのジョブと履歴。#83) */
 export const dataHref = "#/data";
+/** フォロー: 続刊・欠けのある作品(#87。#85 のサイドバーに載せる入口) */
+export const followsHref = "#/follows";
+/** フォロー管理: フォロー中の作品・解除・続刊を調べる(#85 の管理のタブに載せる入口) */
+export const followManageHref = "#/follows/manage";
 /** ブックマーク(#86)。サイドバー(#85)の「ブックマーク」の行き先 */
 export const bookmarksHref = "#/bookmarks";
 export const workProposalsHref = "#/works/proposals";

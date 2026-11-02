@@ -45,7 +45,7 @@ API(`GET /api/volumes/{id}` の `format`・`sections`・`encoding`、`/sections/
 2. **ブラウザでの作り直し(`sanitizeFragment`)。** サーバーが返した HTML も信用せず、`DOMParser`(スクリプトを実行せず画像も読み込まない文書)で
    解析し、同じ許可リストで新しい要素を作って入れる。`innerHTML` / `dangerouslySetInnerHTML` は使わない
 3. **CSP。** すべての応答に `Content-Security-Policy`(`script-src 'self'` でインラインのスクリプト・イベントハンドラを止め、
-   `connect-src` / `img-src` も自分のオリジンだけ)と `X-Content-Type-Options: nosniff` を付ける(`spinebox/app.py:41 APP_CSP`)。
+   `connect-src` / `img-src` も自分のオリジンだけ)と `X-Content-Type-Options: nosniff` を付ける(`spinebox/app.py:47 APP_CSP`)。
    画像の資源は直接開かれても何も動かないよう `default-src 'none'; sandbox` を付ける
 
 **EPUB の CSS は使わない。** `url()` での外部読み込み・`@import`・画面を覆う配置(偽の UI)を止めるため。見た目はリーダーの CSS が決める。

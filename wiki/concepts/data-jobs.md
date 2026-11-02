@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: データ管理とジョブ(#83)。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期を 1 本ずつ動かす待ち行列と履歴(jobs 表)。依頼は待ち行列、その場で結果を返す API は他が動いていれば 409、中止は区切りで止める。1 本ずつにした理由と却下した代替案
-updated: 2026-11-02
-related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize]
+updated: 2026-11-03
+related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize, follow]
 ---
 
 # データ管理とジョブ
@@ -17,7 +17,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | --- | --- |
 | `spinebox/jobs.py:138 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
 | `spinebox/datajobs.py:82 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
-| `spinebox/app.py:257 run_job_now()` / `spinebox/app.py:453 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/app.py:279 run_job_now()` / `spinebox/app.py:479 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:183 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:130 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 
@@ -31,9 +31,10 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | `full_sync` | ライブラリ全体を同期 | メンテナンス → 中の巻を調べる → 名寄せ → 補完待ちの取得(取得元が有効なら)→ 表紙 |
 | `metadata_thumbs` / `metadata` / `thumbnails` | 情報と表紙 / 作品情報のみ(`all` で全作品)/ 表紙のみ | 取得と `Thumbnails.build()` |
 | `analyze` | 中の巻を調べる | `Library.pending_analysis()` を一度だけ引いて全部 `analyze()`。読めない巻(7-Zip が無い・壊れた)は理由を記録して次へ |
+| `follow_check` | フォロー中の作品の続刊を調べる | `follows.check_many()`([[follow]])。NDL が無効なら動かせない(画面で押せない・API は 409)。`params.work_ids` で作品を絞れる(作品ごとの確認)。取得元の失敗は作品ごとに `follows.failure` へ残して続ける |
 | `duplicates` / `works_refresh` / `inbox_sync` | 重複 / 名寄せ / 受け入れフォルダの同期 | 既存の処理そのまま。受け入れは検出と整理案まで |
 | `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る |
-| `background_analysis` / `background_metadata` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
+| `background_analysis` / `background_metadata` / `background_follow` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
 
 **整理処理(CBZ 化・改名・受け入れの承認)はジョブに入れない。** 蔵書を動かすので、今どおりプレビューを見てから明示的に実行する
 (GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ジョブはどれも蔵書を読むだけ。
@@ -82,3 +83,4 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 - [[frontend]] — 画面(`#/data`)
 - [[duplicate-detection]] / [[cover-thumbnails]] / [[metadata-linking]] / [[volume-split]] / [[inbox]] — 各ジョブの中身
 - [[organize]] — ジョブに入れない整理処理(同じロックで排他)
+- [[follow]] — `follow_check` の中身(続刊・欠けの調べ方)

@@ -11,7 +11,7 @@ import sqlite3
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from . import db, linking, works
+from . import db, follows, linking, works
 from .cache import CacheTooLarge
 from .config import Settings
 from .duplicates import DuplicateScanner
@@ -57,6 +57,8 @@ KINDS: list[Kind] = [
          "作品の表紙をまだ無いものだけ作ります(入れ子のアーカイブの巻も取り出して作ります)。"),
     Kind("analyze", "個別", "中の巻を調べる", "まだ調べていない内側のアーカイブを全部開いて、中の巻に分けます。"),
     Kind("duplicates", "個別", "重複を調べる", "見た目の指紋を作り、別スキャンの重複の候補を出します。何も消しません。"),
+    Kind("follow_check", "個別", "フォロー中の作品の続刊を調べる",
+         "フォローした作品の続刊・欠けを、国立国会図書館サーチで調べます(本の入手はしません)。結果はフォローの画面に出ます。"),
     Kind("works_refresh", "個別", "作品の名寄せを計算し直す",
          "巻を作品にまとめ直し、統合の提案を取り直します。手で決めたことは変えません。"),
     Kind("inbox_sync", "個別", "受け入れフォルダを同期",
@@ -65,7 +67,8 @@ KINDS: list[Kind] = [
 KIND_BY_NAME = {k.kind: k for k in KINDS}
 # 画面の一覧には出さないが、履歴に残る種類(作品ページの「情報を取得」と裏の定期処理)
 EXTRA_LABELS = {"work_metadata": "作品の情報を取得", "background_analysis": "裏の解析(中の巻を調べる)",
-                "background_metadata": "裏の公開データベースの取得"}
+                "background_metadata": "裏の公開データベースの取得",
+                "background_follow": "裏の続刊の確認"}
 
 
 def work_title(c: sqlite3.Connection, work_id: int) -> str:
@@ -84,13 +87,15 @@ class DataJobs:
 
     def __init__(self, settings: Settings, library: Library, thumbs: Thumbnails,
                  metadata_service: Callable[[sqlite3.Connection], MetadataService],
-                 enabled_sources: tuple[str, ...], sync_works: Callable[..., None]):
+                 enabled_sources: tuple[str, ...], sync_works: Callable[..., None],
+                 follow_service: Callable[[sqlite3.Connection], MetadataService] | None = None):
         self.settings = settings
         self.library = library
         self.thumbs = thumbs
         self.metadata_service = metadata_service
         self.enabled_sources = enabled_sources
         self.sync_works = sync_works
+        self.follow_service = follow_service or metadata_service
 
     # --- 組み立て --------------------------------------------------------------------
 
@@ -98,6 +103,8 @@ class DataJobs:
         """ジョブの関数。動かせない設定なら Unavailable、知らない種類なら KeyError。"""
         if kind in ("daily_metadata", "metadata", "metadata_thumbs", "work_metadata") and not self.enabled_sources:
             raise Unavailable("公開データベースの取得元が設定で無効になっています")
+        if kind in ("follow_check", "background_follow") and follows.SOURCE not in self.enabled_sources:
+            raise Unavailable("国立国会図書館サーチが設定で無効になっています")
         if kind == "inbox_sync" and not self.settings.inboxes:
             raise Unavailable("受け入れフォルダが設定されていません")
         steps: dict[str, Callable[[JobContext, sqlite3.Connection], dict]] = {
@@ -111,6 +118,7 @@ class DataJobs:
             "thumbnails": self._thumbnails,
             "analyze": self._analyze,
             "duplicates": self._duplicates,
+            "follow_check": lambda ctx, c: self._follow_check(ctx, c, params.get("work_ids")),
             "works_refresh": lambda ctx, c: asdict(works.sync(c)),
             "inbox_sync": self._inbox_sync,
             "work_metadata": lambda ctx, c: self._metadata(ctx, c, ids=[int(params["work_id"])]),
@@ -203,6 +211,22 @@ class DataJobs:
             self.sync_works(c)  # 中止・失敗でも、取得できた分の連携を統合後の作品へ反映する
         return {"works": len(ids), "fetched": fetched, "sources": counts}
 
+    def _follow_check(self, ctx: JobContext, c, work_ids: list[int] | None) -> dict:
+        """フォロー中の作品(work_ids があればその中のフォロー中のもの)の続刊・欠けを 1 作品ずつ調べる。
+        失敗は作品ごとに follows.failure へ記録して続ける。中止は 1 作品ごとの区切り(調べた分は記録済み)。"""
+        ctx.step("続刊の確認")
+        followed = follows.followed_ids(c)
+        ids = followed if work_ids is None else [i for i in work_ids if i in set(followed)]
+        if not ids:
+            return {"works": 0, "statuses": {}}
+        try:
+            counts = follows.check_many(c, self.follow_service(c), ids,
+                                        progress=lambda done, total, cur: ctx.progress(
+                                            done, total, work_title(c, cur) if cur is not None else None))
+        finally:
+            self.sync_works(c)  # 中止・失敗でも、取得できた連携を統合後の作品へ反映する
+        return {"works": len(ids), "statuses": counts}
+
     def thumbnail_targets(self, c) -> list[int]:
         return [w["cover_volume_id"] for w in works.list_works(c)["works"] if w["cover_volume_id"] is not None]
 
@@ -258,6 +282,20 @@ class DataJobs:
         finally:
             c.close()
 
+    def background_follow(self, ctx: JobContext) -> dict | None:
+        """設定で有効にしたとき、interval_hours 以上調べていないフォロー中の作品を 1 回に 1 作品調べる。"""
+        c = db.connect(self.settings.db_path)
+        try:
+            ids = follows.works_due(c, self.settings.follow.interval_hours)
+            if not ids:
+                return None
+            ctx.progress(current=work_title(c, ids[0]))
+            follows.check_many(c, self.follow_service(c), ids[:1])
+            self.sync_works(c)
+            return {"works": 1}
+        finally:
+            c.close()
+
     # --- 画面の一覧(対象の件数つき) --------------------------------------------------
 
     def catalog(self, c: sqlite3.Connection) -> list[dict]:
@@ -280,6 +318,7 @@ class DataJobs:
                WHERE r.inbox = 1 AND r.enabled = 1 AND s.missing = 0 AND v.missing = 0
                  AND v.organized_op_id IS NULL""").fetchone()[0]) if self.settings.inboxes else None
         n_works = len(work_list) if work_list is not None else None
+        n_follow = safely(lambda: len(follows.followed_ids(c))) if follows.SOURCE in self.enabled_sources else None
 
         def text(n, unit_text):
             return None if n is None else unit_text.format(n=n)
@@ -296,6 +335,7 @@ class DataJobs:
             "thumbnails": (no_cover, text(no_cover, "表紙なし {n} 作品")),
             "analyze": (unanalyzed, text(unanalyzed, "未解析 {n} 巻")),
             "duplicates": (unprinted, text(unprinted, "指紋が未作成 {n} 巻")),
+            "follow_check": (n_follow, text(n_follow, "フォロー中 {n} 作品")),
             "works_refresh": (n_works, text(n_works, "{n} 作品")),
             "inbox_sync": (inbox, text(inbox, "受け入れ待ち {n} 件")),
         }

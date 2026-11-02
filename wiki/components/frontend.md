@@ -1,8 +1,8 @@
 ---
 type: component
 summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、モック API、CI への組み込み
-updated: 2026-11-02
-related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, data-jobs]
+updated: 2026-11-03
+related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
 
 # フロントエンド(`frontend/`)
@@ -29,6 +29,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/organize/Organize.tsx:136 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。バッジは欠け・重複・統合済み・統合の提案・候補の確認待ち・読書状態。上に検索欄と「絞り込み」([[work-search]])。「情報を補完」で全作品の取得を起動し、実行中は 2 秒ごとに状態を見る)。作品ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
 | `frontend/src/data/DataJobs.tsx:130 DataJobs()` | データ管理の画面(`#/data`。[[data-jobs]])。作品・巻の一覧のタブ `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` から辿る。モックは `frontend/src/mock/mockJobs.ts` |
+| `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()`(`#/follows/manage`)はフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。#85 のサイドバー・管理のタブが入るまでは、作品一覧のヘッダーの「フォロー」から入る |
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。「表紙を作る」と進み具合は `Works()` |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
@@ -53,7 +54,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:65 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:73 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。

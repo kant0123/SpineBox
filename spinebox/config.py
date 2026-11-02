@@ -72,6 +72,16 @@ class MetadataSettings:
 
 
 @dataclass(frozen=True)
+class FollowSettings:
+    """フォロー(#87)。続刊の確認は明示操作が基本で、自動の定期実行は background で有効にしたときだけ。"""
+    background: bool = False
+    interval_hours: float = 24.0             # 定期実行で、同じ作品を調べ直すまでの間隔
+    background_interval_seconds: int = 300   # 定期実行の見回りの間隔(1 回に 1 作品)
+    # 続刊の確認で、保存済みの生応答を使い回す期間。公開 DB の補完([metadata] cache_ttl_days)より短くして新刊を拾う
+    response_ttl_days: float = 1.0
+
+
+@dataclass(frozen=True)
 class InboxSetting:
     """受け入れフォルダと、承認で本を入れる書庫(`library_roots` のうちの 1 つ)。"""
     path: Path
@@ -102,6 +112,7 @@ class Settings:
     background_analysis: bool = False
     background_analysis_interval: int = 60  # 秒。1 回に 1 巻
     metadata: MetadataSettings = field(default_factory=MetadataSettings)
+    follow: FollowSettings = field(default_factory=FollowSettings)
 
     @property
     def db_path(self) -> Path:
@@ -275,6 +286,20 @@ def _metadata(data: dict) -> MetadataSettings:
     )
 
 
+def _follow(data: dict) -> FollowSettings:
+    table = data.get("follow", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[follow] はテーブルで指定してください")
+    d = FollowSettings()
+    return FollowSettings(
+        background=_bool(table, "background", d.background),
+        interval_hours=_float(table, "interval_hours", d.interval_hours, minimum=1.0),
+        background_interval_seconds=_int(table, "background_interval_seconds", d.background_interval_seconds,
+                                         minimum=10),
+        response_ttl_days=_float(table, "response_ttl_days", d.response_ttl_days, minimum=0.0),
+    )
+
+
 def _resolve(base: Path, value: str) -> Path:
     path = Path(value).expanduser()
     return path if path.is_absolute() else (base / path)
@@ -313,6 +338,7 @@ def parse_settings(data: dict, base_dir: Path) -> Settings:
         background_analysis_interval=_int(data, "background_analysis_interval",
                                           defaults.background_analysis_interval, minimum=1),
         metadata=_metadata(data),
+        follow=_follow(data),
     )
 
 
