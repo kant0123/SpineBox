@@ -6,6 +6,7 @@
 # 1 行も実行されない)と合わせて、改行も Windows 側に揃えておく。
 # BOM はファイルの中身なので git がそのまま保持する。
 *.ps1 text eol=crlf
+*.bat text eol=crlf
 *.ps1.example text eol=crlf
 
 # .sh は LF で固定する。core.autocrlf=true の Windows でチェックアウトすると CRLF になり、

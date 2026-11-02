@@ -51,6 +51,9 @@ push 前に確かめること:
 - 出力を解釈する正規表現・パーサは、引用符・空白・非 ASCII・前置き・CRLF の付いた値でも合うか
 - 外部から来たパスを `resolve()` / `open()` する前に、不正な値で例外が出たときの扱いがあるか
 - 同じ記録(PR コメント等)が何度も書かれうるとき、どれを正とするか(最新か・全部か)を決めているか
+- 標準出力を解釈するとき、標準エラーを混ぜていないか(警告 1 行で値を読み違える)
+- Windows PowerShell 5.1 のスクリプトで、`$ErrorActionPreference = "Stop"` のまま外部コマンドの stderr を受けていないか(警告・進み具合の 1 行で例外になる。成否は終了コードで見る)
+- 同じ値を 2 か所で作って比べるとき、形(短縮 SHA の長さなど)がそろっているか
 
 実例:
 
@@ -60,6 +63,8 @@ push 前に確かめること:
 - PR #20 — `review/agy_review.py` パスの解決 — Windows で不正な文字を含むパスで `OSError`
 - PR #33 — `review/agy_review.py has_unverified_critical()` — 評価の理由文に「未確認」があるだけで判定語と取り違えていた
 - PR #33 — `review/agy_review.py has_unverified_critical()` — 過去の評価も見ていて、記録し直しても差し止めが解けなかった
+- PR #97 — `deploy/update_spinebox.ps1 Get-HealthUrl` — `--print-bind` の出力を `2>&1` で読み、設定の警告(使われなくなったキー)が stderr に出ると host を読み違えた。直したら今度は Windows PowerShell 5.1 が stderr を例外にして止まった(警告の出る偽の spinebox で再現・修正)
+- PR #97 — `deploy/update_spinebox.ps1` 起動前のコミット取得 — `git` が失敗すると同じく例外で止まり、「途中で失敗しても起動し直す」に届かなかった(git リポジトリでない場所で再現)。比べる短縮 SHA もアプリ(7 文字固定)と git の既定(環境で長くなる)で長さがずれていた。さらに `/healthz` が `commit: null`(git が見えない環境)を返すと照合の前に null のメソッドを呼んで例外になり、正常起動でもタイムアウトしていた(偽の /healthz で再現・修正)
 - 導入先 MeltKelp PR #16 — `.claude/hooks/command_match.mjs` ヒアドキュメントの終端行 — CRLF の入力だと終端行が `EOF\r` になって区切り語と一致せず、後ろのマージのコマンドまで本文として読み飛ばして素通ししていた(agy レビューで発覚。`\r` を除いて再現・修正)
 
 ### 新しく足した分岐・関数にテストが無い
@@ -77,6 +82,7 @@ push 前に確かめること:
 - PR #8 — `review/agy_review.py` — `cmd_review` / `cmd_triage` / `cmd_check` / `call_agy` / `ci_state` にテストが無かった
 - PR #23 — `review/agy_review.py call_agy()` — 再試行時の `--conversation` 付与にテストが無かった
 - PR #61 — `spinebox/app.py background_metadata()` — 設定で有効にしたときに常駐する裏のスレッドにテストが無かった(既存の裏の解析は `tests/test_analysis.py` に有る。足したら同じ形で足す)
+- PR #97 — `deploy/update_spinebox.ps1` — 「途中の手順が失敗しても起動し直す」「止められなければ何もしない」の分岐にテストが無かった(止める・起動するを `-TaskRunner` で差し替えられるようにしてテストを足した)
 - PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う

@@ -20,7 +20,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "deploy"
-SCRIPTS = ["start_spinebox.ps1", "install_task.ps1", "firewall_rule.ps1"]
+SCRIPTS = ["start_spinebox.ps1", "install_task.ps1", "firewall_rule.ps1", "update_spinebox.ps1"]
+BATCHES = {"restart_spinebox.bat": "Restart", "update_spinebox.bat": "Update"}
 WINDOWS = sys.platform == "win32"
 # 本番は Windows PowerShell 5.1(OS 標準)で動かすので、実行するテストは powershell.exe に限る
 POWERSHELL = shutil.which("powershell")
@@ -318,3 +319,149 @@ def test_free_port_logs_nothing_about_conflicts(tmp_path):
     r, supervisor = run_wrapper_once(tmp_path, repo, env)
     assert r.returncode == 0, supervisor
     assert "警告" not in supervisor and "省略" not in supervisor
+
+
+# --- 再起動・更新のバッチ(#96) -------------------------------------------------------
+
+
+@pytest.mark.parametrize("name,mode", BATCHES.items())
+def test_batches_are_ascii_crlf_and_call_the_script(name, mode):
+    # cmd はバッチを OEM の文字コードで読むので、日本語を入れると化ける。改行は CRLF でないと行の解釈がずれることがある
+    data = (DEPLOY / name).read_bytes()
+    assert data.isascii()
+    assert b"\r\n" in data and b"\n" not in data.replace(b"\r\n", b"")
+    text = data.decode("ascii")
+    assert "update_spinebox.ps1" in text and f"-Mode {mode}" in text and "-Verb RunAs" in text
+
+
+def fake_bind_repo(tmp_path, bind):
+    repo = tmp_path / "repo"
+    (repo / "spinebox").mkdir(parents=True)
+    (repo / "spinebox" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "spinebox" / "__main__.py").write_text(
+        f"import sys\nif '--print-bind' in sys.argv:\n    print({bind!r})\n    sys.exit(0)\nsys.exit(3)\n", encoding="utf-8")
+    return repo
+
+
+def snapshot(root):
+    return sorted((str(p.relative_to(root)), p.stat().st_mtime_ns) for p in root.rglob("*") if "__pycache__" not in p.parts)
+
+
+@needs_windows_ps
+@pytest.mark.parametrize("mode", ["Restart", "Update"])
+def test_update_dry_run_shows_the_steps_and_changes_nothing(tmp_path, mode):
+    repo = fake_bind_repo(tmp_path, "0.0.0.0 8123")
+    before = snapshot(repo)
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", mode, "-DryRun", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskName", f"SpineBoxTest-{uuid.uuid4().hex[:8]}"])
+    out = r.stdout.decode("utf-8", "replace") + r.stdout.decode("cp932", "replace")
+    assert r.returncode == 0, out
+    # 0.0.0.0 で待ち受ける設定は、この機械の 127.0.0.1 で応答を確かめる
+    assert "http://127.0.0.1:8123/healthz" in out
+    assert ("git pull" in out) == (mode == "Update")
+    assert snapshot(repo) == before
+
+
+@needs_windows_ps
+def test_update_rejects_a_missing_repo_and_unreadable_config(tmp_path):
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-DryRun", "-RepoPath", str(tmp_path / "no-such")])
+    assert r.returncode == 2
+    repo = fake_bind_repo(tmp_path, "garbage")
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-DryRun", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B"])
+    assert r.returncode == 2
+
+
+def fake_noisy_repo(tmp_path, bind):
+    """--print-bind の前に stderr へ警告を出す偽の spinebox(古い設定のキーを無視したときの警告など)。"""
+    repo = tmp_path / "repo"
+    (repo / "spinebox").mkdir(parents=True)
+    (repo / "spinebox" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "spinebox" / "__main__.py").write_text(
+        "import sys\n"
+        "print('WARNING:spinebox.config:old key ignored', file=sys.stderr)\n"
+        f"print({bind!r})\n", encoding="utf-8")
+    return repo
+
+
+@needs_windows_ps
+def test_update_reads_the_bind_line_even_with_warnings_on_stderr(tmp_path):
+    repo = fake_noisy_repo(tmp_path, "192.168.0.5 8123")
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-DryRun", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B"])
+    out = r.stdout.decode("utf-8", "replace") + r.stdout.decode("cp932", "replace")
+    assert r.returncode == 0, out
+    assert "http://192.168.0.5:8123/healthz" in out
+
+
+def fake_runner(tmp_path, stop_exit=0):
+    """止める・起動するの代わりに呼ばれる偽の実行役。呼ばれた順を calls.txt に残す。"""
+    log = tmp_path / "calls.txt"
+    runner = tmp_path / "runner.ps1"
+    runner.write_bytes(b"\xef\xbb\xbf" + (
+        "param([string]$Action)\r\n"
+        f"Add-Content -LiteralPath '{log}' -Value $Action\r\n"
+        f"if ($Action -eq 'Stop') {{ exit {stop_exit} }}\r\n"
+        "exit 0\r\n").encode("utf-8"))
+    return runner, log
+
+
+@needs_windows_ps
+def test_update_starts_again_even_when_a_step_fails(tmp_path):
+    # git リポジトリではないので git pull が失敗する。それでも最後に起動し直し、止めたままにしない
+    repo = fake_bind_repo(tmp_path, f"127.0.0.1 {free_port()}")
+    runner, log = fake_runner(tmp_path)
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", "Update", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskRunner", str(runner), "-TimeoutSeconds", "1"])
+    assert r.returncode == 1
+    assert log.read_text(encoding="utf-8").split() == ["Stop", "Start"]
+
+
+@needs_windows_ps
+def test_update_does_nothing_more_when_stopping_fails(tmp_path):
+    repo = fake_bind_repo(tmp_path, f"127.0.0.1 {free_port()}")
+    runner, log = fake_runner(tmp_path, stop_exit=1)
+    r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", "Update", "-RepoPath", str(repo),
+                "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskRunner", str(runner), "-TimeoutSeconds", "1"])
+    assert r.returncode == 1
+    assert log.read_text(encoding="utf-8").split() == ["Stop"]  # 更新も起動もしない(何も変えていない)
+
+
+def health_server(tmp_path, body):
+    """/healthz に body を返す小さなサーバーを別プロセスで立てる。(プロセス, ポート)を返す。"""
+    port = free_port()
+    script = tmp_path / "health.py"
+    script.write_text(
+        "import http.server, json, sys\n"
+        f"BODY = json.dumps({body!r}).encode()\n"
+        "class H(http.server.BaseHTTPRequestHandler):\n"
+        "    def do_GET(self):\n"
+        "        self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()\n"
+        "        self.wfile.write(BODY)\n"
+        "    def log_message(self, *a): pass\n"
+        f"http.server.HTTPServer(('127.0.0.1', {port}), H).serve_forever()\n", encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, str(script)])
+    for _ in range(50):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    return proc, port
+
+
+@needs_windows_ps
+@pytest.mark.parametrize("commit", [None, "abc1234"])
+def test_restart_succeeds_when_healthz_answers_with_or_without_a_commit(tmp_path, commit):
+    # git が見えない環境ではアプリの /healthz が commit: null を返す。それでも正常に起動したと判定する
+    proc, port = health_server(tmp_path, {"ok": True, "commit": commit})
+    try:
+        repo = fake_bind_repo(tmp_path, f"127.0.0.1 {port}")
+        runner, log = fake_runner(tmp_path)
+        r = run_ps(["-File", str(DEPLOY / "update_spinebox.ps1"), "-Mode", "Restart", "-RepoPath", str(repo),
+                    "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskRunner", str(runner), "-TimeoutSeconds", "10"])
+        assert r.returncode == 0, r.stdout.decode("cp932", "replace")
+        assert log.read_text(encoding="utf-8").split() == ["Stop", "Start"]
+    finally:
+        proc.kill()
+
