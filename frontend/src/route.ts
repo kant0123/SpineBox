@@ -12,6 +12,7 @@ export type Route =
   | { name: "work"; id: string }
   | { name: "work-proposals" }
   | { name: "inbox" }
+  | { name: "bookmarks" }
   | { name: "data" };
 
 export function parseRoute(hash: string): Route {
@@ -20,6 +21,7 @@ export function parseRoute(hash: string): Route {
   if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
   if (/^\/data\/?$/.test(h)) return { name: "data" };
+  if (/^\/bookmarks\/?$/.test(h)) return { name: "bookmarks" };
   if (/^\/works\/?$/.test(h)) return { name: "works" };
   if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(\/organize)?\/?$/);
@@ -48,6 +50,8 @@ export const inboxHref = "#/inbox";
 export const worksHref = "#/works";
 /** データ管理(スキャン・補完・表紙などのジョブと履歴。#83) */
 export const dataHref = "#/data";
+/** ブックマーク(#86)。サイドバー(#85)の「ブックマーク」の行き先 */
+export const bookmarksHref = "#/bookmarks";
 export const workProposalsHref = "#/works/proposals";
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
 /** 作品の全巻をテンプレートどおりに整理(改名・移動)するプレビュー */

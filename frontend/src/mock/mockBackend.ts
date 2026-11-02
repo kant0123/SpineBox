@@ -2,6 +2,7 @@
 // アプリ本体からは import しない(本番のバンドルに入れないため)。
 
 import type {
+  BookmarkItem,
   DuplicateCandidate,
   DuplicateScanState,
   DuplicateVolume,
@@ -165,7 +166,7 @@ function pageSvg(title: string, index: number, total: number): string {
 /** 状態を持つモック。progress の保存は次の GET に反映される。 */
 export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), options: MockOptions = {}) {
   const log: { method: string; path: string; body?: unknown }[] = [];
-  const mockWorks = createMockWorks(() => volumes);
+  const mockWorks = createMockWorks(() => volumes, (kind, id) => marks[kind].has(id));
   const opened = new Set<number>();
   const candidates = defaultCandidates(volumes);
   const idleScan: DuplicateScanState = { running: false, started_at: null, finished_at: null, done: 0, total: 0, summary: null, error: null };
@@ -267,11 +268,57 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     return json(200, op);
   }
 
+  // ブックマーク(#86)。付けた日時は呼び出しごとに 1 秒ずつ進める(並び順を確かめられるように)
+  let markClock = Date.parse("2026-11-02T00:00:00Z");
+  const marks = { work: new Map<number, string>(), volume: new Map<number, string>() };
+  function handleBookmarks(method: string, path: string, query: string): MockResponse | null {
+    if (method === "GET" && path === "/api/bookmarks") {
+      const sort = new URLSearchParams(query).get("sort") ?? "added";
+      if (sort !== "added" && sort !== "title") return json(422, { detail: `未対応の並び順: ${sort}` });
+      const items: BookmarkItem[] = [];
+      for (const [id, at] of marks.work) {
+        const w = mockWorks.summaryOf(id);
+        if (w) items.push({ kind: "work", created_at: at, work: w });
+      }
+      for (const [id, at] of marks.volume) {
+        const v = volumes.find((x) => x.id === id && !x.hidden);
+        if (!v) continue;
+        const owner = v.work_id ?? mockWorks.works.find((w) => w.volumeIds.includes(v.id))?.id;
+        const work = owner ? mockWorks.summaryOf(owner) : null;
+        items.push({
+          kind: "volume", created_at: at,
+          volume: { id: v.id, title: v.title, parent_title: v.parent_title, format: v.format ?? "images", page_count: v.page_count,
+                    offline: v.offline, progress: v.progress, volume_number: v.volume_number,
+                    work_id: work ? work.id : null, work_title: work ? work.title : null },
+        });
+      }
+      const titleOf = (i: BookmarkItem) => (i.kind === "work" ? i.work.title : (i.volume.work_title ?? i.volume.title));
+      items.sort(sort === "added"
+        ? (a, b) => b.created_at.localeCompare(a.created_at)
+        : (a, b) => titleOf(a).localeCompare(titleOf(b), "ja") || (a.kind === "work" ? -1 : 1));
+      return json(200, { sort, items });
+    }
+    const m = path.match(/^\/api\/bookmarks\/(works|volumes)\/(\d+)$/);
+    if (!m || (method !== "PUT" && method !== "DELETE")) return null;
+    const kind = m[1] === "works" ? "work" : "volume";
+    const id = Number(m[2]);
+    const exists = kind === "work" ? mockWorks.summaryOf(id) !== null : volumes.some((v) => v.id === id);
+    if (!exists) return json(404, { detail: kind === "work" ? "作品が見つかりません" : "巻が見つかりません" });
+    const map = marks[kind];
+    if (method === "PUT" && !map.has(id)) map.set(id, new Date((markClock += 1000)).toISOString().replace(".000Z", "+00:00"));
+    if (method === "DELETE") map.delete(id);
+    const v = kind === "volume" ? volumes.find((x) => x.id === id) : undefined;
+    if (v) v.bookmarked = map.has(id);
+    return json(200, { [`${kind}_id`]: id, bookmarked: map.has(id), created_at: map.get(id) ?? null });
+  }
+
   function handle(method: string, rawPath: string, body?: string): MockResponse {
     const path = rawPath.split("?")[0];
     const parsed = body ? JSON.parse(body) : undefined;
     log.push({ method, path, body: parsed });
 
+    const b = handleBookmarks(method, path, rawPath.split("?")[1] ?? "");
+    if (b) return b;
     const w = mockWorks.handle(method, path, rawPath.split("?")[1] ?? "", parsed);
     if (w) return json(w.status, w.body);
 
@@ -362,6 +409,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         sections: novel.map((h, i) => ({ index: i, length: h.length })),
         encoding: v.format === "text" ? "cp932" : null,
         progress: v.progress, parent_id: null, volume_number: v.volume_number, findings: [],
+        bookmarked: marks.volume.has(v.id),
       };
       return json(200, detail);
     }
@@ -384,6 +432,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         parent_id: v.parent_id,
         volume_number: v.volume_number,
         findings: v.findings,
+        bookmarked: marks.volume.has(v.id),
       };
       const first = v.page_count === null && !opened.has(v.id);
       opened.add(v.id);

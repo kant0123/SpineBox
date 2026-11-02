@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import db, linking, search, works
+from . import bookmarks, db, linking, search, works
 from .analysis import compute_findings
 from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
 from .duplicates import CandidateNotFound, candidate_counts, dismiss
@@ -369,6 +369,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         findings = compute_findings(conn)
         duplicates = candidate_counts(conn)
         work_ids = works.assignments(conn)
+        marked = bookmarks.volume_ids(conn)
         return [{
             "id": r["id"],
             "title": r["title"],
@@ -383,6 +384,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "findings": findings.get(r["id"], []),
             "duplicate_count": duplicates.get(r["id"], 0),
             "work_id": work_ids.get(r["id"]),
+            "bookmarked": r["id"] in marked,
             "can_analyze": is_analyzable(r) and r["analyzed_version"] is None and not is_offline(r),
         } for r in rows]
 
@@ -402,6 +404,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "sections": [{"index": i, "length": n} for i, n in enumerate(book.lengths)],
                 "encoding": book.encoding,
                 "progress": _get_progress(conn, volume_id),
+                "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
                 "parent_id": row["parent_id"],
                 "volume_number": _number(row),
                 "findings": [],
@@ -423,6 +426,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "page_count": len(vol.page_names),
                 "pages": [{"index": i, "name": n.rsplit("/", 1)[-1]} for i, n in enumerate(vol.page_names)],
                 "progress": _get_progress(conn, volume_id),
+                "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
                 "parent_id": row["parent_id"],
                 "volume_number": _number(row),
                 "findings": compute_findings(conn).get(volume_id, []),
@@ -682,6 +686,33 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         works.merge_manual(conn, work_id, body.other_id)
         _sync_works(conn)
         return work_detail(conn, work_id)
+
+    # --- ブックマーク(#86) ---
+
+    @app.exception_handler(bookmarks.InvalidSort)
+    def _bookmark_sort_invalid(request: Request, exc: bookmarks.InvalidSort):
+        return JSONResponse({"detail": str(exc)}, status_code=422)
+
+    @app.get("/api/bookmarks")
+    def list_bookmarks(sort: str = "added", conn: sqlite3.Connection = Depends(get_conn)):
+        """印を付けた作品・巻。sort = added(付けた新しい順)/ title(作品名の順)。"""
+        return bookmarks.list_bookmarks(conn, sort)
+
+    @app.put("/api/bookmarks/works/{work_id}")
+    def add_work_bookmark(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return bookmarks.set_work(conn, work_id, True)
+
+    @app.delete("/api/bookmarks/works/{work_id}")
+    def remove_work_bookmark(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return bookmarks.set_work(conn, work_id, False)
+
+    @app.put("/api/bookmarks/volumes/{volume_id}")
+    def add_volume_bookmark(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return bookmarks.set_volume(conn, volume_id, True)
+
+    @app.delete("/api/bookmarks/volumes/{volume_id}")
+    def remove_volume_bookmark(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return bookmarks.set_volume(conn, volume_id, False)
 
     @app.get("/api/volumes/{volume_id}/pages/{index}")
     def get_page(volume_id: int, index: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):

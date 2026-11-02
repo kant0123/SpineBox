@@ -8,6 +8,7 @@ import { WorkProposals } from "./works/WorkProposals";
 import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
 import { DataJobs } from "./data/DataJobs";
+import { Bookmarks } from "./bookmarks/Bookmarks";
 import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
 
 export function App() {
@@ -40,6 +41,8 @@ export function App() {
       return <WorkPage key={route.id} id={route.id} />;
     case "work-proposals":
       return <WorkProposals />;
+    case "bookmarks":
+      return <Bookmarks />;
     default:
       return <Library />;
   }

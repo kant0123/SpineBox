@@ -1,4 +1,4 @@
-import { dataHref, libraryHref, worksHref } from "../route";
+import { bookmarksHref, dataHref, libraryHref, worksHref } from "../route";
 
 /** 一覧の表示の切り替え(作品 / 巻)と、データ管理(スキャン・補完などのジョブ)への入口。 */
 export function ViewTabs({ current }: { current: "works" | "volumes" | "data" }) {
@@ -12,6 +12,10 @@ export function ViewTabs({ current }: { current: "works" | "volumes" | "data" })
       </a>
       <a href={dataHref} aria-current={current === "data" ? "page" : undefined}>
         データ管理
+      </a>
+      {/* サイドバー(#85)が入ったら、そちらの「ブックマーク」とデータ管理へ移す */}
+      <a className="view-tabs-extra" href={bookmarksHref}>
+        ☆ ブックマーク
       </a>
     </nav>
   );
