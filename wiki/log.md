@@ -291,3 +291,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-03] ingest | PR #104 ファビコン(SVG/ICO/PNG)の追加
 - 更新: [[frontend]]
 - 備考: #101。SpineBox の象徴である本の背表紙(Spine)と箱(Box)を組み合わせた案A「ブックボックス」のファビコンアセット一式(frontend/public/ 配下の favicon.svg, favicon.ico, apple-touch-icon.png)を追加し、frontend/index.html に link タグを配置した。Vite ビルド(npm run build)で frontend/dist/ へコピーされ、FastAPI の静的配信(/)経由で配信される。
+
+## [2026-11-03] ingest | PR #107 作品一覧のカードから別名の表示を削除
+- 更新: [[frontend]]
+- 備考: #103。`Works()` の作品カードから「別名: ...」の行を外した(利用者の要望。一覧では見ない)。別名は作品ページで見る。API(`GET /api/works` の `aliases`)・作品ページ・統合の提案の表示は変えていない。`.work-aliases` は使わなくなったので削除。モック API の 375px・1000px で、カードから別名が消え、ほかの項目・バッジの並びが崩れないことを確認(375px のヘッダーの横はみ出しは main でも同じ既存の状態)。
