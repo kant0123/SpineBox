@@ -79,7 +79,8 @@ describe("作品ページ", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(screen.getAllByText("手動で編集").length).toBe(2));
     expect(backend.log.find((l) => l.method === "PATCH")!.body).toEqual({ title: "サンプル漫画 改", author: "花子" });
-    expect(screen.getByText("サンプル漫画")).toBeTruthy(); // 直す前の作品名は別名に残る
+    // 直す前の作品名は別名に残る
+    expect(within(screen.getByLabelText("別名を足す").closest("section")!).getByText("サンプル漫画", { selector: "span" })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("別名を足す"), { target: { value: "Sample" } });
     fireEvent.click(screen.getByRole("button", { name: "足す" }));
@@ -141,5 +142,104 @@ describe("統合の提案", () => {
     window.location.hash = "#/works";
     await waitFor(() => expect(screen.getByText("外付けの作品")).toBeTruthy());
     expect(screen.queryByText("別の読み物")).toBeNull();
+  });
+});
+
+describe("公開データベースの情報(#50)", () => {
+  it("作品の一覧に確認待ちが出て、情報の取得ボタンと利用元の表示がある", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    expect(within(card).getByText("候補の確認待ち")).toBeTruthy();
+    const credits = await screen.findByRole("contentinfo", { name: "利用している公開データベース" });
+    expect(within(credits).getByRole("link", { name: "国立国会図書館サーチ" }).getAttribute("href")).toBe("https://ndlsearch.ndl.go.jp/");
+    expect(credits.textContent).toContain("NDL サーチ API");
+    expect(credits.textContent).toContain("AniList API");
+    expect(credits.textContent).toContain("MangaUpdates API");
+    fireEvent.click(await screen.findByRole("button", { name: "情報を補完" }));
+    await waitFor(() => expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/works/metadata/fetch")).toBe(true));
+  });
+
+  it("確認待ちの候補を選ぶと反映され、出所が公開データベースになる。失敗した取得元はその理由が出る", async () => {
+    window.location.hash = "#/works/1";
+    render(<App />);
+    const ndl = (await screen.findByLabelText("国立国会図書館サーチとの連携")) as HTMLElement;
+    expect(within(ndl).getByText("確認待ち")).toBeTruthy();
+    expect(screen.getByLabelText("AniListとの連携").textContent).toContain("漫画か小説かが決まるまで保留");
+    expect(screen.getByLabelText("MangaUpdatesとの連携").textContent).toContain("応答が時間内に返りませんでした");
+    // 種別はまだ入っていない
+    expect((screen.getByLabelText("種別") as HTMLSelectElement).value).toBe("");
+
+    fireEvent.click(within(ndl).getByRole("button", { name: "サンプル漫画(漫画・集英社) を採用" }));
+    await waitFor(() => expect(within(screen.getByLabelText("国立国会図書館サーチとの連携")).getByText("選んだ候補と連携中")).toBeTruthy());
+    expect(backend.log.find((l) => l.path === "/api/works/1/links/ndl/choose")!.body).toEqual({ source_id: "ndl:a1" });
+    expect((screen.getByLabelText("種別") as HTMLSelectElement).value).toBe("manga");
+    expect((screen.getByLabelText("出版社") as HTMLInputElement).value).toBe("集英社");
+    expect(screen.getAllByText(/公開データベース: 国立国会図書館サーチ/).length).toBeGreaterThan(0);
+    // 保留だった AniList は種別が決まって自動で連携する
+    expect(within(screen.getByLabelText("AniListとの連携")).getByText(/自動で連携/)).toBeTruthy();
+    expect((screen.getByLabelText("ジャンル(「、」区切り)") as HTMLInputElement).value).toBe("Action、Comedy");
+  });
+
+  it("手で直した項目は手動と示され、自動に戻せる。どれでもないも選べる", async () => {
+    window.location.hash = "#/works/1";
+    render(<App />);
+    await screen.findByLabelText("国立国会図書館サーチとの連携");
+    fireEvent.change(screen.getByLabelText("出版社"), { target: { value: "手で入れた出版社" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "出版社を自動に戻す" })).toBeTruthy());
+    expect(backend.log.find((l) => l.method === "PATCH")!.body).toEqual({ publisher: "手で入れた出版社" });
+    fireEvent.click(screen.getByRole("button", { name: "出版社を自動に戻す" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "出版社を自動に戻す" })).toBeNull());
+    expect((screen.getByLabelText("出版社") as HTMLInputElement).value).toBe("");
+
+    fireEvent.click(within(screen.getByLabelText("国立国会図書館サーチとの連携")).getAllByRole("button", { name: "どれでもない" })[0]);
+    await waitFor(() => expect(within(screen.getByLabelText("国立国会図書館サーチとの連携")).getByText("該当なし(手動で選択)")).toBeTruthy());
+    fireEvent.click(within(screen.getByLabelText("国立国会図書館サーチとの連携")).getByRole("button", { name: "手動の選択を解除" }));
+    await waitFor(() => expect(within(screen.getByLabelText("国立国会図書館サーチとの連携")).getByText("確認待ち")).toBeTruthy());
+  });
+
+  it("作品ページに利用元の表示がある", async () => {
+    window.location.hash = "#/works/1";
+    render(<App />);
+    const credits = await screen.findByRole("contentinfo", { name: "利用している公開データベース" });
+    expect(within(credits).getByRole("link", { name: "AniList" }).getAttribute("href")).toBe("https://anilist.co");
+    expect(within(credits).getByRole("link", { name: "MangaUpdates" }).getAttribute("href")).toBe("https://www.mangaupdates.com");
+  });
+
+  it("巻の書誌に出所と出典が出て、手で直して自動に戻せる", async () => {
+    window.location.hash = "#/works/1";
+    render(<App />);
+    await screen.findByLabelText("国立国会図書館サーチとの連携");
+    fireEvent.click(within(screen.getByLabelText("国立国会図書館サーチとの連携")).getByRole("button", { name: "サンプル漫画(漫画・集英社) を採用" }));
+    await waitFor(() => expect(screen.getAllByText(/書誌: 集英社/).length).toBeGreaterThan(0));
+    const row = screen.getByText("サンプル漫画 第01巻").closest("li")!;
+    const details = row.querySelector("details")!;
+    expect(details.textContent).toContain("公開データベース: 国立国会図書館サーチ");
+    expect(within(details as HTMLElement).getAllByRole("link", { name: "出典" })[0].getAttribute("href")).toContain("ndlsearch.ndl.go.jp");
+    fireEvent.change(within(details as HTMLElement).getByLabelText("この巻のISBN"), { target: { value: "9784088700000" } });
+    fireEvent.click(within(details as HTMLElement).getByRole("button", { name: "書誌を保存" }));
+    await waitFor(() => expect(within(row).getByRole("button", { name: "ISBNを自動に戻す" })).toBeTruthy());
+    expect(backend.log.find((l) => l.method === "PATCH" && l.path === "/api/volumes/1/metadata")!.body).toEqual({ isbn: "9784088700000" });
+    fireEvent.click(within(row).getByRole("button", { name: "ISBNを自動に戻す" }));
+    await waitFor(() => expect(within(row).queryByRole("button", { name: "ISBNを自動に戻す" })).toBeNull());
+  });
+});
+
+describe("統合された作品のページ", () => {
+  it("情報の取得で別の作品に自動統合されたら、吸収先の作品ページへ移る", async () => {
+    window.location.hash = "#/works/2";
+    // 取得の結果、作品 2 が作品 3 に吸収された(サーバーは吸収先の詳細を返す)
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/works/2/metadata/fetch")) {
+        const r = backend.handle("GET", "/api/works/3");
+        return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+      }
+      return stub(url, init);
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "情報を取得" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/works/3"));
   });
 });

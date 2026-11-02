@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import db, works
+from . import db, linking, works
 from .analysis import compute_findings
 from .duplicates import CandidateNotFound, DuplicateScanner, candidate_counts, dismiss
 from .buildinfo import current_commit
@@ -26,6 +26,8 @@ from .cache import CacheTooLarge, ExtractionCache, MemoryCache
 from .config import Settings
 from .library import (Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row, is_analyzable,
                       is_offline)
+from .metadata import MetadataService
+from .metadata.http import HttpFetcher
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer
 from .pages import media_type, natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, Scanner, safe_text
@@ -49,9 +51,27 @@ class ProgressIn(BaseModel):
 
 
 class WorkEditIn(BaseModel):
-    """作品の手動編集。送ったものだけ直す(author は null / 空文字で空欄にできる)。"""
+    """作品の手動編集。送ったものだけ直す(title 以外は null / 空文字 / 空配列で空欄にできる)。"""
     title: StrictStr | None = None
     author: StrictStr | None = None
+    kind: StrictStr | None = None  # manga / novel
+    publisher: StrictStr | None = None
+    synopsis: StrictStr | None = None
+    genres: list[StrictStr] | None = None
+    tags: list[StrictStr] | None = None
+
+
+class VolumeMetaIn(BaseModel):
+    """巻の書誌の手動編集。送ったものだけ直す(null / 空文字で空欄にできる)。"""
+    publisher: StrictStr | None = None
+    label: StrictStr | None = None
+    released: StrictStr | None = None
+    isbn: StrictStr | None = None
+
+
+class ChooseIn(BaseModel):
+    """確認待ちの候補を選ぶ。source_id が null なら「該当なし」。"""
+    source_id: StrictStr | None = None
 
 
 class AliasIn(BaseModel):
@@ -99,15 +119,22 @@ def _list_sort_key(r) -> tuple:
             natural_key(_chain_text(r["inner_path"])), natural_key(r["entry_prefix"]))
 
 
-def _sync_works(conn: sqlite3.Connection) -> None:
-    """巻を作品に割り当て直す。名前の解析と DB の更新だけで、失敗しても本体(スキャン・閲覧)を止めない。"""
+def _sync_works(conn: sqlite3.Connection, *, apply_links: bool = True) -> None:
+    """巻を作品に割り当て直し、公開 DB の連携の中身を新しい巻・統合後の作品へ反映する。
+
+    名前の解析と DB の更新だけ(ネットワークには出ない)で、失敗しても本体(スキャン・閲覧)を止めない。
+    """
     try:
         works.sync(conn)
+        if apply_links:
+            linking.apply_all(conn)
     except Exception:  # noqa: BLE001 (派生データの更新で本体を止めない)
         log.exception("作品の割り当てに失敗しました")
 
 
-def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND_DIST) -> FastAPI:
+def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND_DIST,
+               metadata_fetcher: HttpFetcher | None = None) -> FastAPI:
+    """metadata_fetcher はテスト用の差し替え(通常はプロセス共有の fetcher を使う)。"""
     conn = db.open_db(settings.db_path)  # 起動時にマイグレーションを当てる
     _sync_works(conn)  # 作品への割り当てを取り直す(作品の機能が入る前の DB は、ここで初めて作品になる)
     conn.close()
@@ -118,6 +145,32 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     duplicate_lock = threading.Lock()
     duplicate_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
                              "summary": None, "error": None}
+    metadata_lock = threading.Lock()
+    metadata_state: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0,
+                            "current": None, "summary": None, "error": None}
+    enabled_sources = tuple(n for n in linking.SEARCH_ORDER if n in settings.metadata.sources)
+
+    def metadata_service(c: sqlite3.Connection) -> MetadataService:
+        return MetadataService(settings.metadata, c, fetcher=metadata_fetcher)
+
+    def background_metadata(stop: threading.Event) -> None:
+        """設定で有効にしたとき、裏で 1 作品ずつ公開 DB の情報を取りに行く。失敗してもスキャン・閲覧を止めない。"""
+        while not stop.wait(settings.metadata.background_interval_seconds):
+            if scan_lock.locked() or not metadata_lock.acquire(blocking=False):
+                continue
+            try:
+                c = db.connect(settings.db_path)
+                try:
+                    ids = linking.works_needing_fetch(c, settings.metadata, enabled_sources)
+                    if ids:
+                        linking.fetch_work(c, metadata_service(c), ids[0])
+                        _sync_works(c)
+                finally:
+                    c.close()
+            except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
+                log.exception("裏の公開 DB の取得に失敗しました")
+            finally:
+                metadata_lock.release()
 
     def background_analysis(stop: threading.Event) -> None:
         """裏で少しずつ解析する(設定で有効なときだけ)。1 回に 1 巻。スキャン中は待つ。失敗しても止まらない。"""
@@ -138,6 +191,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         stop = threading.Event()
         if settings.background_analysis:
             threading.Thread(target=background_analysis, args=(stop,), name="spinebox-analysis", daemon=True).start()
+        if settings.metadata.background and enabled_sources:
+            threading.Thread(target=background_metadata, args=(stop,), name="spinebox-metadata", daemon=True).start()
         try:
             yield
         finally:
@@ -388,6 +443,9 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def _work_invalid(request: Request, exc: works.InvalidValue):
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
+    def work_detail(conn: sqlite3.Connection, work_id: int) -> dict:
+        return works.get_work(conn, work_id, enabled_sources)
+
     @app.get("/api/works")
     def list_works(conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。"""
@@ -406,7 +464,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.post("/api/works/proposals/{proposal_id}/{action}")
     def decide_work_proposal(proposal_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)):
         """action: approve(統合する)/ dismiss(別の作品として却下)/ restore(却下を取り消す)。"""
-        return works.decide_proposal(conn, proposal_id, action)
+        res = works.decide_proposal(conn, proposal_id, action)
+        if action == "approve":
+            _sync_works(conn)  # 統合で増えた巻へ、残った作品の連携から書誌を入れる
+        return res
 
     @app.post("/api/works/assign")
     def assign_work_volumes(body: AssignIn, conn: sqlite3.Connection = Depends(get_conn)):
@@ -415,40 +476,157 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         _sync_works(conn)
         return {"work_id": work_id}
 
+    @app.get("/api/works/metadata")
+    def metadata_status():
+        """「情報を補完」(公開 DB の情報を全作品について取りに行く明示操作)の進み具合と、有効な取得元。"""
+        return {"state": dict(metadata_state), "sources": list(enabled_sources),
+                "background": settings.metadata.background}
+
+    def _run_metadata_fetch(ids: list[int]) -> None:
+        """metadata_lock を持ったまま呼ぶ。作品ごとに取得し、取得元の失敗は作品に記録して次へ進む。"""
+        c = None
+        counts: dict[str, int] = {}
+        try:
+            c = db.connect(settings.db_path)
+            service = metadata_service(c)
+            for i, work_id in enumerate(ids):
+                metadata_state.update(done=i, current=work_id)
+                try:
+                    result = linking.fetch_work(c, service, work_id)
+                except works.WorkNotFound:
+                    continue  # 取得の途中で別の作品に統合された
+                for status in result.sources.values():
+                    counts[status] = counts.get(status, 0) + 1
+                _sync_works(c, apply_links=False)
+            _sync_works(c)
+            metadata_state.update(done=len(ids), summary={"works": len(ids), "sources": counts}, error=None)
+        except Exception as e:  # noqa: BLE001 (裏の処理。失敗は状態に残して本体を止めない)
+            log.exception("公開 DB の情報の補完に失敗しました")
+            metadata_state.update(error=str(e))
+        finally:
+            if c is not None:
+                c.close()
+            metadata_state.update(running=False, finished_at=db.now(), current=None)
+            metadata_lock.release()
+
+    @app.post("/api/works/metadata/fetch")
+    def start_metadata_fetch(wait: bool = False, all: bool = False, conn: sqlite3.Connection = Depends(get_conn)):
+        """公開 DB の情報を、取得が必要な作品(all=true なら全作品)について取りに行く明示操作。
+
+        既定は裏で動かして 202 を返す(進み具合は GET /api/works/metadata)。スキャンとは独立で、
+        取得元が落ちていても作品ごとに失敗を記録して続ける。
+        """
+        if not enabled_sources:
+            raise HTTPException(409, "公開 DB の取得元が設定で無効になっています")
+        if not metadata_lock.acquire(blocking=False):
+            raise HTTPException(409, "公開 DB の情報を取得中です")
+        try:
+            if all:
+                ids = [w["id"] for w in works.list_works(conn)["works"]]
+            else:
+                ids = linking.works_needing_fetch(conn, settings.metadata, enabled_sources)
+        except Exception:
+            metadata_lock.release()
+            raise
+        metadata_state.update(running=True, started_at=db.now(), finished_at=None, done=0, total=len(ids),
+                              current=None, summary=None, error=None)
+        if wait:
+            _run_metadata_fetch(ids)
+            return dict(metadata_state)
+        threading.Thread(target=_run_metadata_fetch, args=(ids,), name="spinebox-metadata-fetch", daemon=True).start()
+        return JSONResponse(dict(metadata_state), status_code=202)
+
     @app.get("/api/works/{work_id}")
     def get_work(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
-        return works.get_work(conn, work_id)
+        return work_detail(conn, work_id)
 
     @app.patch("/api/works/{work_id}")
     def edit_work(work_id: int, body: WorkEditIn, conn: sqlite3.Connection = Depends(get_conn)):
-        """作品名・著者を手で直す。手動の項目は再計算でも外部ソースでも上書きしない。"""
-        sent = body.model_fields_set
-        if not sent & {"title", "author"}:
-            raise HTTPException(422, "title か author を指定してください")
+        """作品の項目を手で直す。手動の項目は再計算でも公開 DB の取得でも上書きしない。"""
+        sent = body.model_fields_set & set(works.EDITABLE_FIELDS)
+        if not sent:
+            raise HTTPException(422, "直す項目を指定してください(" + "・".join(works.EDITABLE_FIELDS) + ")")
         if "title" in sent and body.title is None:
             raise HTTPException(422, "作品名は null にできません")
-        works.update_fields(conn, work_id, title=body.title, author=body.author,
-                            set_title="title" in sent, set_author="author" in sent)
+        works.edit_fields(conn, work_id, {name: getattr(body, name) for name in works.EDITABLE_FIELDS if name in sent})
         _sync_works(conn)  # 直した作品名が別の作品の名前と一致したら、統合の提案が出る
-        return works.get_work(conn, work_id)
+        return work_detail(conn, work_id)
+
+    @app.post("/api/works/{work_id}/fields/{field}/reset")
+    def reset_work_field(work_id: int, field: str, conn: sqlite3.Connection = Depends(get_conn)):
+        """手動の項目を自動に戻す(直す前の値、無ければ公開 DB の値)。"""
+        works.reset_field(conn, work_id, field)
+        linking.apply_work(conn, work_id)
+        _sync_works(conn)
+        # 手動が外れて止まっていた自動統合が成り立ち、この作品が吸収されることがある。吸収先を返す(404 にしない)
+        return work_detail(conn, works.root_of(conn, work_id) or work_id)
+
+    @app.post("/api/works/{work_id}/metadata/fetch")
+    def fetch_work_metadata(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """この作品の公開 DB の情報を取りに行く(数秒かかる)。取得元の失敗は作品の連携に理由つきで記録し、
+        応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
+        if not enabled_sources:
+            raise HTTPException(409, "公開 DB の取得元が設定で無効になっています")
+        linking.fetch_work(conn, metadata_service(conn), work_id)
+        _sync_works(conn)
+        return work_detail(conn, works.root_of(conn, work_id) or work_id)
+
+    @app.post("/api/works/{work_id}/links/{source}/choose")
+    def choose_work_link(work_id: int, source: str, body: ChooseIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """確認待ちの候補を選ぶ(source_id が null なら「該当なし」)。選んだ結果は手動の決定になる。"""
+        linking.choose(conn, work_id, source, body.source_id)
+        _sync_works(conn)
+        return work_detail(conn, works.root_of(conn, work_id) or work_id)
+
+    @app.post("/api/works/{work_id}/links/{source}/reset")
+    def reset_work_link(work_id: int, source: str, conn: sqlite3.Connection = Depends(get_conn)):
+        """選んだ連携の手動を解除して、自動の規則で決め直す。"""
+        linking.reset_link(conn, work_id, source)
+        _sync_works(conn)
+        return work_detail(conn, works.root_of(conn, work_id) or work_id)
+
+    def _volume_meta_json(conn: sqlite3.Connection, volume_id: int) -> dict:
+        return {"volume_id": volume_id, "metadata": {
+            r["field"]: {"value": r["value"], "source": r["source"], "manual": bool(r["manual"]),
+                         "confidence": r["confidence"]}
+            for r in conn.execute("SELECT * FROM volume_fields WHERE volume_id = ?", (volume_id,))}}
+
+    @app.patch("/api/volumes/{volume_id}/metadata")
+    def edit_volume_metadata(volume_id: int, body: VolumeMetaIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """巻の書誌(出版社・レーベル・発売日・ISBN)を手で直す。再取得・再計算で上書きしない。"""
+        sent = body.model_fields_set & set(works.VOLUME_EDITABLE_FIELDS)
+        if not sent:
+            raise HTTPException(422, "直す項目を指定してください(" + "・".join(works.VOLUME_EDITABLE_FIELDS) + ")")
+        works.edit_volume_fields(conn, volume_id, {name: getattr(body, name) for name in sent})
+        return _volume_meta_json(conn, volume_id)
+
+    @app.post("/api/volumes/{volume_id}/metadata/{field}/reset")
+    def reset_volume_metadata(volume_id: int, field: str, conn: sqlite3.Connection = Depends(get_conn)):
+        """巻の手動の項目を自動に戻す(直す前の値、無ければ公開 DB の値)。"""
+        works.reset_volume_field(conn, volume_id, field)
+        work_id = works.assignments(conn).get(volume_id)
+        if work_id is not None:
+            linking.apply_work(conn, work_id)
+        return _volume_meta_json(conn, volume_id)
 
     @app.post("/api/works/{work_id}/aliases")
     def add_work_alias(work_id: int, body: AliasIn, conn: sqlite3.Connection = Depends(get_conn)):
         works.add_alias(conn, work_id, body.alias)
         _sync_works(conn)
         # 別名の一致で自動統合され、この作品が吸収されることがある。吸収先を返す(404 にしない)
-        return works.get_work(conn, works.root_of(conn, work_id) or work_id)
+        return work_detail(conn, works.root_of(conn, work_id) or work_id)
 
     @app.delete("/api/works/{work_id}/aliases/{alias_id}")
     def remove_work_alias(work_id: int, alias_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         works.dismiss_alias(conn, work_id, alias_id)
-        return works.get_work(conn, work_id)
+        return work_detail(conn, work_id)
 
     @app.post("/api/works/{work_id}/merge")
     def merge_work(work_id: int, body: MergeIn, conn: sqlite3.Connection = Depends(get_conn)):
         """work_id に other_id を統合する(手動)。"""
         works.merge_manual(conn, work_id, body.other_id)
-        return works.get_work(conn, work_id)
+        _sync_works(conn)
+        return work_detail(conn, work_id)
 
     @app.get("/api/volumes/{volume_id}/pages/{index}")
     def get_page(volume_id: int, index: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):
