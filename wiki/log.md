@@ -194,7 +194,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: なし(GOAL.md のチェックボックスのみ)
 - 備考: #67。main d4f2793 で `py -3.12 scripts/ci_local.py --no-report` 成功(pytest 893 passed / vitest 99 passed / wiki-lint OK)、`tests/test_linking.py` 82 passed(手で直した作品・巻の全項目が再取得・再スキャン・再計算で変わらない、取得元のタイムアウト・500・接続不可・429 でスキャンと閲覧が止まらない)。`_参考/サンプル本`(読み取りのみ)で実起動・実通信: スキャン 10 巻 → 解析・重複検出 → 作品 2 件。お気楽領主はローマ字名 5 巻と日本語名 3 巻が 1 作品(別名 Okiraku ryoshu no tanoshi ryochi、確信度 0.989)。公開 DB の取得(全作品 約 13 秒): かくかくしかじかは 3 取得元とも自動連携し、作品名・種別(漫画)・出版社(集英社)・ジャンル・タグ・あらすじが埋まった。お気楽領主は国立国会図書館サーチで漫画と小説が同点のため確認待ちになり(GOAL「確信度が低い候補は確認を求める」どおり)、漫画の候補を選ぶと 3 取得元とも連携して種別・出版社(オーバーラップ)・ジャンル・タグ・あらすじ・全巻数 8 が埋まった。かくかくしかじかの出版社とジャンルを手で直し、全作品の再取得・再スキャン・再計算の後も手動の値のまま。検索「領地防衛」で該当作品。原本 2 ファイルのサイズ・mtime は不変。
 
-## [2026-11-02] ingest | PR #PR番号 受け入れ(受け入れフォルダ → 同期 → プレビュー → 承認で書庫へ)
+## [2026-11-02] ingest | PR #71 受け入れ(受け入れフォルダ → 同期 → プレビュー → 承認で書庫へ)
 - 新規: [[inbox]]
 - 更新: [[organize]], [[backend]], [[frontend]], [[work-grouping]], [[overview]], 他に `config.example.toml`(`inbox_dirs`)。コード参照の行番号のずれも直した(backend / novel-reader / frontend / organize / volume-split / work-grouping / server-setup)
 - 備考: #66、GOAL.md フェーズ 4。マイグレーション 10(`library_roots.inbox`)。受け入れフォルダは蔵書と同じスキャナーで走査するが `inbox = 1` で一覧・作品・検索・重複・結線から外す。
