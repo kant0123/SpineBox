@@ -819,7 +819,25 @@ class Organizer:
             raise RangeError("作業場・退避フォルダは範囲にできません")
         if not full.is_dir():
             raise RangeError(f"範囲のフォルダが見つかりません: {norm}")
-        return norm
+        return self._disk_case(root, norm)
+
+    @staticmethod
+    def _disk_case(root: Path, norm: str) -> str:
+        """区切りごとにディスク上の綴り(大文字小文字)へ直す。Windows は綴りが違っても同じフォルダを指すが、
+        DB の相対パスとの前方一致や出力先のフォルダ名は綴りが合っている必要がある。ぴったり同じ名前があればそれを使う
+        (大文字小文字を区別するファイルシステムで別のフォルダを取り違えない)。"""
+        cur, parts = root, []
+        for part in norm.split("/"):
+            name = part
+            try:
+                names = [e.name for e in os.scandir(cur)]
+            except OSError:
+                names = []
+            if part not in names:
+                name = next((n for n in sorted(names) if n.casefold() == part.casefold()), part)
+            parts.append(name)
+            cur = cur / name
+        return "/".join(parts)
 
     def range_folders(self, root_id: int, path: str = "") -> dict:
         """範囲を選ぶための、フォルダの直下のフォルダ名(読むだけ)。作業場・退避フォルダと「.」で始まるものは出さない。"""

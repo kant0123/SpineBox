@@ -458,3 +458,17 @@ def test_range_folders_hide_workspace_and_hidden_and_refuse_offline(env):
         c.execute("UPDATE library_roots SET online = 0")
     with pytest.raises(RangeError, match="オフライン"):
         organizer(env).range_folders(env.root_id)
+
+
+def test_range_path_with_different_case_on_a_case_insensitive_filesystem(env):
+    """Windows ではフォルダの大文字小文字を変えて書いても同じフォルダを指す。DB の相対パスの大文字小文字と
+    食い違って「巻がありません」にならず、出力先のフォルダもディスク上の綴りになる(agy レビュー)。"""
+    cbz(env.root / "Manga" / "Sub" / f"{TITLE} 9巻.cbz", "case9")
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    if not (env.root / "manga").exists():
+        pytest.skip("大文字小文字を区別するファイルシステム")
+    plan = plan_range(env, "manga/SUB", "{title} 第{number:2}{unit}", "{title}")
+    assert plan["scope"]["path"] == "Manga/Sub"
+    item = by_from(plan)[f"Manga/Sub/{TITLE} 9巻.cbz"]
+    assert item["status"] == "move" and item["output_rel_path"].startswith("Manga/Sub/")
