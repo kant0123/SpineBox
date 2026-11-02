@@ -72,6 +72,14 @@ export interface SectionInfo {
   length: number;
 }
 
+/** 同じ作品の次の巻(#113)。リーダーの最終ページからさらに進む先。オフラインの巻も返る */
+export interface NextVolume {
+  id: VolumeId;
+  title: string;
+  volume_number: VolumeNumber | null;
+  offline: boolean;
+}
+
 export interface VolumeDetail {
   id: VolumeId;
   title: string;
@@ -87,6 +95,8 @@ export interface VolumeDetail {
   progress: Progress | null;
   parent_id?: VolumeId | null;
   volume_number?: VolumeNumber | null;
+  /** 同じ作品の次の巻。無い・作品に割り当てられていない巻は null */
+  next_volume?: NextVolume | null;
   findings?: Finding[];
 }
 

@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、見開き計算の規則、読書位置の保存の仕方、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
+summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、見開き計算の規則、読書位置の保存の仕方、最終ページからの次巻への移動、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
 updated: 2026-11-03
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
@@ -39,7 +39,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
-| `frontend/src/api.ts:882 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:892 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -60,6 +60,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **一度既読になった巻は、前のページへ戻っても `finished=true` のまま送る。** 読み返しで既読が消えないようにするため
 - **保存は 800ms のデバウンスで最後の位置だけ。** 一覧へ戻る・タブが裏に回る(`pagehide`/`visibilitychange`)ときは待たずに
   `fetch(..., {keepalive: true})` で送る。スマホはタブを閉じずに切り替えることが多く、デバウンス中の位置が失われるため
+- **最終ページからさらに進むと、同じ作品の次の巻へ移る(#113)。** 次の巻はバックエンドが作品の一覧の並び
+  (番号順 → 番号なしは名前順)から決める。同じ番号の重複は同じ巻として飛ばし、次の番号に重複があれば
+  その並びの 1 つ目を開く。次の巻がオフラインのときは移動せず「次の巻「<名前>」はオフラインです」を出す。
+  移動の前に今の巻の位置(既読を含む)は後始末の `flush()` が送る。次巻は通常どおり保存位置(未読なら先頭)から開く。
+  漫画と小説の両方が `frontend/src/reader/nextVolume.ts:10 nextVolumeStep()` を使う
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
