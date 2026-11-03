@@ -77,6 +77,12 @@ describe("受け入れ", () => {
     fireEvent.click(within(c).getByLabelText("取り込まない")); // 戻す
     fireEvent.change(within(c).getByLabelText("第2巻.cbz の作品"), { target: { value: "new" } });
     fireEvent.change(within(c).getByLabelText("第2巻.cbz の新しい作品名"), { target: { value: "あたらしい作品" } });
+    const titleInput = within(c).getByLabelText("第2巻.cbz の新しい作品名");
+    const descId = titleInput.getAttribute("aria-describedby")!;
+    expect(descId).not.toMatch(/\s/);
+    const hint = document.getElementById(descId)!;
+    expect(hint.textContent).toMatch(/空欄なら「.+」/);
+    expect(hint.compareDocumentPosition(titleInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(await within(c).findByText("あたらしい作品/あたらしい作品 第02巻.cbz")).toBeTruthy();
     expect(backend.log.filter((l) => l.path === "/api/inbox/preview").at(-1)?.body).toEqual({
       items: [{ source_id: 103, new_title: "あたらしい作品" }],
@@ -110,6 +116,12 @@ describe("受け入れ", () => {
     const c = card("第2巻.cbz");
     fireEvent.change(within(c).getByLabelText("第2巻.cbz の作品"), { target: { value: "new" } });
     fireEvent.change(within(c).getByLabelText("第2巻.cbz の新しい作品名"), { target: { value: "あたらしい作品" } });
+    const titleInput = within(c).getByLabelText("第2巻.cbz の新しい作品名");
+    const descId = titleInput.getAttribute("aria-describedby")!;
+    expect(descId).not.toMatch(/\s/);
+    const hint = document.getElementById(descId)!;
+    expect(hint.textContent).toMatch(/空欄なら「.+」/);
+    expect(hint.compareDocumentPosition(titleInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await within(c).findByText("あたらしい作品/あたらしい作品 第02巻.cbz");
     fireEvent.click(screen.getByLabelText("サンプル漫画 第03巻.cbz を承認する")); // 1 件は選ばない
     await waitFor(() => expect(screen.getByRole("button", { name: "承認して書庫へ(2 件)" })).toBeTruthy());

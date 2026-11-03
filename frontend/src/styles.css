@@ -434,7 +434,8 @@ button.small::after {
   background: var(--card);
 }
 .view-tabs a:hover { background: var(--accent-subtle); text-decoration: underline; }
-.view-tabs a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.view-tabs a[aria-current="page"],
+.view-tabs a[aria-current="page"]:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 /* 作品の検索と絞り込み(#56)。スマホ幅では検索欄と「絞り込み」ボタンの 1 行だけを出し、絞り込みは開いたときだけ */
 .work-search { margin: 4px 0 0; }
 .work-search-row { display: flex; gap: 8px; }
@@ -749,7 +750,8 @@ button.secondary:disabled {
   white-space: nowrap;
 }
 .admin-tabs a:hover { background: var(--accent-subtle); text-decoration: underline; }
-.admin-tabs a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.admin-tabs a[aria-current="page"],
+.admin-tabs a[aria-current="page"]:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .admin-panel h2 { font-size: 1.25rem; margin: 20px 0 8px; }
 /* タブの中に置いた既存の画面は、管理のページの余白に任せる(二重の余白・幅の上限を外す) */
 .admin-panel .library, .admin-panel .organize { padding: 0; max-width: none; margin: 0; }

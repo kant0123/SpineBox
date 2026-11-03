@@ -301,13 +301,15 @@ export function OrganizeFilesSection() {
       </div>
       <div className="organize-field">
         <label htmlFor="organize-path">範囲のパス</label>
+        <p id="organize-path-hint" className="muted organize-hint">空欄なら蔵書フォルダ全体。パスを指定するとサブフォルダーも対象になり、フォルダーテンプレートはそのパスを起点にします。</p>
+
         <div className="organize-inline">
           <input id="organize-path" value={path} onChange={(e) => setPath(e.target.value)} aria-describedby="organize-path-hint" disabled={!editable} />
           <button type="button" className="secondary" onClick={() => setPicker((x) => !x)} disabled={rootId === null || !editable}>
             フォルダを選ぶ
           </button>
         </div>
-        <p id="organize-path-hint" className="muted organize-hint">空欄なら蔵書フォルダ全体。パスを指定するとサブフォルダーも対象になり、フォルダーテンプレートはそのパスを起点にします。</p>
+
         {picker && rootId !== null && (
           <FolderPicker
             rootId={rootId}
@@ -335,6 +337,8 @@ export function OrganizeFilesSection() {
       </div>
       <div className="organize-field">
         <label htmlFor="organize-folder-template">フォルダーテンプレート</label>
+        <p id="organize-folder-template-hint" className="muted organize-hint">空欄なら同じ場所で名前だけ変更します。拡張子は元のまま。/ でフォルダーを区切ります。[ ] の中は、項目が空のとき全体が省略されます(角括弧そのものは [[ ]])。</p>
+
         <input
           id="organize-folder-template"
           ref={folderRef}
@@ -345,7 +349,7 @@ export function OrganizeFilesSection() {
           aria-invalid={templateError !== null || undefined}
           disabled={!editable}
         />
-        <p id="organize-folder-template-hint" className="muted organize-hint">空欄なら同じ場所で名前だけ変更します。拡張子は元のまま。/ でフォルダーを区切ります。[ ] の中は、項目が空のとき全体が省略されます(角括弧そのものは [[ ]])。</p>
+
       </div>
 
       {options && editable && (

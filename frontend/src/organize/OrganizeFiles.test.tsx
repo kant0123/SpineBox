@@ -89,6 +89,14 @@ describe("範囲指定の整理", () => {
     expect(await screen.findByText("{ が閉じていません")).toBeTruthy();
     expect(fileInput().getAttribute("aria-invalid")).toBe("true");
     expect(fileInput().getAttribute("aria-describedby")).toBe("organize-template-error organize-file-template-hint");
+    for (const [input, hintId] of [
+      [screen.getByLabelText("範囲のパス"), "organize-path-hint"],
+      [fileInput(), "organize-file-template-hint"],
+      [folderInput(), "organize-folder-template-hint"],
+    ] as const) {
+      const hint = document.getElementById(hintId)!;
+      expect(hint.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
     expect((screen.getByRole("button", { name: "プレビュー" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
