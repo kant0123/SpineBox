@@ -280,7 +280,8 @@ export function WorkPage({ id }: { id: string }) {
               });
           }}
         >
-          <input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="別名を足す" aria-label="別名を足す" />
+          <label htmlFor="add-alias-input" className="organize-label">別名を足す</label>
+          <input id="add-alias-input" value={alias} onChange={(e) => setAlias(e.target.value)} aria-label="別名を足す" />
           <button type="submit" className="small" disabled={busy || !alias.trim()}>
             足す
           </button>
@@ -382,7 +383,8 @@ export function WorkPage({ id }: { id: string }) {
         <div className="work-move">
           <h3>選んだ巻({ids.length})を動かす</h3>
           <div className="work-inline">
-            <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="新しい作品名(省略可)" aria-label="新しい作品名" />
+            <label htmlFor="move-new-title-input" className="organize-label">新しい作品名(省略可)</label>
+            <input id="move-new-title-input" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} aria-label="新しい作品名" />
             <button
               type="button"
               className="small"

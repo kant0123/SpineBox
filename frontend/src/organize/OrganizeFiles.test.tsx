@@ -87,6 +87,8 @@ describe("範囲指定の整理", () => {
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.change(fileInput(), { target: { value: "{title" } });
     expect(await screen.findByText("{ が閉じていません")).toBeTruthy();
+    expect(fileInput().getAttribute("aria-invalid")).toBe("true");
+    expect(fileInput().getAttribute("aria-describedby")).toBe("organize-template-error organize-file-template-hint");
     expect((screen.getByRole("button", { name: "プレビュー" }) as HTMLButtonElement).disabled).toBe(true);
   });
 

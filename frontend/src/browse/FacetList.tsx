@@ -51,7 +51,7 @@ export function FacetList({ field }: { field: FacetField }) {
       </header>
       {error && <div className="notice error" role="alert">{error}</div>}
       <div className="facet-toolbar">
-        <input type="search" aria-label={`${title}を絞り込む`} placeholder={`${title}の名前で絞り込む`} value={filter}
+        <input type="search" aria-label={`${title}を絞り込む`} value={filter}
           onChange={(e) => setFilter(e.target.value)} />
         <select aria-label="並び順" value={order} onChange={(e) => setOrder(e.target.value as Order)}>
           <option value="name">名前順</option>

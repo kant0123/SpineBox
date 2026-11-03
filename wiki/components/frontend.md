@@ -140,6 +140,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **ライト/ダークは CSS 変数の 2 組。** `<html data-theme>` があればそちら、無ければ `prefers-color-scheme` に従う。既定は OS に従い、
   サイドバーの切り替えを押すと「いま効いている方の逆」を `localStorage`(`spinebox.theme`)に記憶する。OS に従うへ戻すのは好みタブから。
   `main.tsx` で描画の前に適用するのは、ダークで開いたときに一瞬ライトになるのと、リーダーから直接開いたときに付かないのを避けるため
+- **画面の配色・余白・タイポ・フォーム・フォーカスリングは DADS(デジタル庁デザインシステムβ版 v2.18.2)に準拠する(#112, #119, #126)。**
+  リンク・テキスト・ボタンに使う `--accent`(`#1b52b8` / ダーク `#70a5ff`)・`--done`(`#197a4b` / ダーク `#5fc48d`)・`--muted`・`--warn`・`--error` は `--bg`・`--card`・`--sidebar-active` 上で 4.5:1 以上を満たし、フォームの入力欄・選択欄の枠線は `--border-strong`(`#666666` / ダーク `#8e8e98`)で 3:1 以上を満たす。`:focus-visible` は黒 4px + オフセット 2px + 黄(`#ffd43d`) 2px の二重リングに統一し、最小フォントサイズは 14px(`0.875rem`)、小ボタン(`button.small` / `button.bookmark-button`)は `::after` 疑似要素で 44×44px のタッチターゲットを確保する。入力欄に `placeholder` は使わず、サポートテキストと `aria-describedby` / `aria-invalid` で示す。ブレークポイントは `768px` の 1 つに統一する
 - **蔵書の切り替えは端末ごとに記憶し(`spinebox.library`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
   設定からルートを外しても、端末に残った id で一覧が空になり続けないように。オフラインのルートも候補に出す(巻はオフラインとして残る)
 - **好みタブの各項目の置き場所:** テーマ・リーダーの既定(見開き・表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。リーダーの中で変えたものと同じ鍵)。
@@ -188,6 +190,8 @@ npm run build      # frontend/dist
 ```
 
 ## 経緯
+
+- #126(#112・#119 を含む)で `frontend/` の全画面を DADS(デジタル庁デザインシステムβ版 v2.18.2)準拠に統一した。`styles.css` のカラートークンを 4.5:1(テキスト・アイコン)/ 3:1(フォーム枠線 `--border-strong`・カード枠線 `--border`)以上に改め、二重フォーカスリング(黒 4px + 黄 `#ffd43d` 2px)・14px 未満の文字サイズの全廃・小ボタンの `::after` による 44×44px ターゲット確保・768px ブレークポイント統一・`prefers-reduced-motion` / `forced-colors` 対応を入れた。また `Works.tsx`・`FacetList.tsx`・`WorkPage.tsx`・`VolumeMeta.tsx`・`OrganizeFiles.tsx`・`Inbox.tsx` の全 9 箇所の `placeholder` と `DataJobs.tsx` の `aria-live` を廃止し、可視ラベルとサポートテキスト(`aria-describedby`・`aria-invalid`)に置き換えた。モック API(`npm run dev:mock`)とヘッドレス Chrome で全 22 ルート × 3 幅(375px / 768px / 1280px)× ライト/ダーク(計 132 状態)を巡回し、横スクロール 0 件・14px 未満の文字 0 件・`placeholder` 0 件を確認した
 
 - #105 で作品カードの行き先をタイトル一覧(`#/works/<id>/titles`)にし、そこから「作品を管理」で今までの作品ページ(`#/works/<id>`)へ移るようにした。利用者の「カードを押したらまず作品のタイトル一覧を見たい。管理ページはその中のボタンから」という要望。
   モック API を `npm run dev:mock` で起動し、ヘッドレス Chromium の 375px と 1280px で、ホーム → カードのクリック → タイトル一覧(4 件・重複の印・リーダーへのリンク)→「作品を管理」→ 作品ページ(戻り先が「タイトル一覧へ」)を通した。横スクロールは無く、コンソールのエラーは表紙の 404 pending(既存の挙動)だけ

@@ -86,7 +86,7 @@ function progressText(job: Job): string {
 function RunningJob({ job, onCancel }: { job: Job; onCancel: (job: Job) => void }) {
   const pct = job.total ? Math.min(100, Math.round(((job.done ?? 0) / job.total) * 100)) : null;
   return (
-    <div className="job-running" aria-live="polite">
+    <div className="job-running">
       <div className="job-title">
         <strong>{job.label}</strong>
         <span className="muted">{ORIGIN_TEXT[job.origin]}</span>

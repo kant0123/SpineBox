@@ -302,12 +302,12 @@ export function OrganizeFilesSection() {
       <div className="organize-field">
         <label htmlFor="organize-path">範囲のパス</label>
         <div className="organize-inline">
-          <input id="organize-path" value={path} onChange={(e) => setPath(e.target.value)} placeholder="空欄なら蔵書フォルダ全体" disabled={!editable} />
+          <input id="organize-path" value={path} onChange={(e) => setPath(e.target.value)} aria-describedby="organize-path-hint" disabled={!editable} />
           <button type="button" className="secondary" onClick={() => setPicker((x) => !x)} disabled={rootId === null || !editable}>
             フォルダを選ぶ
           </button>
         </div>
-        <p className="muted organize-hint">パスを指定するとサブフォルダーも対象。フォルダーテンプレートはそのパスを起点にします。</p>
+        <p id="organize-path-hint" className="muted organize-hint">空欄なら蔵書フォルダ全体。パスを指定するとサブフォルダーも対象になり、フォルダーテンプレートはそのパスを起点にします。</p>
         {picker && rootId !== null && (
           <FolderPicker
             rootId={rootId}
@@ -321,13 +321,15 @@ export function OrganizeFilesSection() {
       </div>
       <div className="organize-field">
         <label htmlFor="organize-file-template">ファイル名テンプレート</label>
+        <p id="organize-file-template-hint" className="muted organize-hint">空欄なら今の名前を整理するだけです。</p>
         <input
           id="organize-file-template"
           ref={fileRef}
           value={fileTemplate}
           onFocus={() => setFocused("file")}
           onChange={(e) => setFileTemplate(e.target.value)}
-          placeholder="空欄なら今の名前を整理するだけ"
+          aria-describedby={templateError ? "organize-template-error organize-file-template-hint" : "organize-file-template-hint"}
+          aria-invalid={templateError !== null || undefined}
           disabled={!editable}
         />
       </div>
@@ -339,10 +341,11 @@ export function OrganizeFilesSection() {
           value={folderTemplate}
           onFocus={() => setFocused("folder")}
           onChange={(e) => setFolderTemplate(e.target.value)}
-          placeholder="空欄なら同じ場所で名前だけ変更"
+          aria-describedby={templateError ? "organize-template-error organize-folder-template-hint" : "organize-folder-template-hint"}
+          aria-invalid={templateError !== null || undefined}
           disabled={!editable}
         />
-        <p className="muted organize-hint">拡張子は元のまま。/ でフォルダーを区切ります。[ ] の中は、項目が空のとき全体が省略されます(角括弧そのものは [[ ]])。</p>
+        <p id="organize-folder-template-hint" className="muted organize-hint">空欄なら同じ場所で名前だけ変更します。拡張子は元のまま。/ でフォルダーを区切ります。[ ] の中は、項目が空のとき全体が省略されます(角括弧そのものは [[ ]])。</p>
       </div>
 
       {options && editable && (
@@ -386,7 +389,7 @@ export function OrganizeFilesSection() {
 
       {templateError ? (
         <div className="notice error" role="alert">
-          {templateError}
+          <span id="organize-template-error">{templateError}</span>
         </div>
       ) : (
         examples.length > 0 && (

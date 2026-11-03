@@ -319,3 +319,7 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-03] ingest | PR #125 ツール共通の入口(AGENTS.md)と画面の DADS 準拠ルールを追加
 - 備考: #124。`AGENTS.md`(ツール共通の入口)・`GEMINI.md`・`.github/copilot-instructions.md`・`.agent/rules/ui-dads.md` を追加し、`CLAUDE.md` に「画面(UI)の作成・変更」節を足した。`frontend/` の画面は DADS v2.18.2 準拠を常時ルールとし、スキル機構が無いツールは `SKILL.md` と `references/` を直接読む。スキル本体の値・ルールは変えていない。
+
+## [2026-11-03] ingest | PR #127 全画面ページを DADS(v2.18.2)準拠に統一
+- 更新: [[frontend]]
+- 備考: #126(#112・#119 を含む)。`frontend/src/styles.css` の配色トークンをコントラスト 4.5:1(テキスト)/ 3:1(フォーム枠線 `--border-strong`・カード枠線 `--border`)以上に改め、二重フォーカスリング(黒 4px + 黄 `#ffd43d` 2px)・14px 未満の文字サイズの全廃・小ボタンの `::after` 44×44px タッチターゲット・768px ブレークポイント統一を適用した。全 9 箇所の `placeholder` と不要な `aria-live` を廃止して可視ラベル・サポートテキスト(`aria-describedby`・`aria-invalid`)に置き換え、ヘッドレス Chrome で全 22 ルート × 3 幅(375/768/1280px)× ライト/ダーク(132 状態)を実測して横スクロール 0 件・14px 未満 0 件を確認した。
