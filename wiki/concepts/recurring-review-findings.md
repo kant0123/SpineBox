@@ -109,6 +109,7 @@ push 前に確かめること:
 - PR #61 — `spinebox/linking.py choose()` / `reset_link()` — API 契約と mock は未知の取得元を 404 としたが、実装は 409 を返した(契約・mock・実装の突き合わせ漏れ)
 - PR #61 — `spinebox/linking.py reset_link()` / `_store()` — 連携を決める通常の経路(`fetch_work`)には「種別が未決なら保留」「作品の種別と食い違う候補は除く」があるのに、手動の選択を解除する経路と、自動連携を保つ近道は通らず、規則を飛ばして連携した(同じ判定を `decide()` へ集める。近道は判定の前提を満たすときだけ)
 - PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
+- PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 

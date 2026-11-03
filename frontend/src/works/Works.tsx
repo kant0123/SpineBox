@@ -112,11 +112,12 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
         </div>
       )}
       <form className="work-search" role="search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
+        <p id="work-search-hint" className="muted organize-hint">作品名・別名・著者で検索できます</p>
         <div className="work-search-row">
           <input
             type="search"
             aria-label="作品を検索"
-            placeholder="作品名・別名・著者で検索"
+            aria-describedby="work-search-hint"
             value={text}
             onChange={(e) => setText(e.target.value)}
             enterKeyHint="search"

@@ -212,11 +212,12 @@ function ItemCard({
           {choice.work === "new" && (
             <label className="inbox-field">
               作品名
+              <span id={`inbox-title-hint-${item.source_id}`} className="organize-hint muted">(空欄なら「{w.title}」)</span>
               <input
                 type="text"
                 aria-label={`${item.name} の新しい作品名`}
                 value={choice.newTitle}
-                placeholder={w.title}
+                aria-describedby={`inbox-title-hint-${item.source_id}`}
                 onChange={(e) => onChange({ ...choice, newTitle: e.target.value })}
               />
             </label>

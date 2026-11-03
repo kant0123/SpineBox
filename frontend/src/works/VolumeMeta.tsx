@@ -54,7 +54,8 @@ export function VolumeMeta({
             <div key={f.name} className="bib-field">
               <label>
                 この巻の{f.label}
-                <input value={value(f.name)} onChange={(e) => setDraft({ ...draft, [f.name]: e.target.value })} placeholder={f.hint} />
+                {f.hint && <span id={`bib-hint-${v.id}-${f.name}`} className="organize-hint muted">例: {f.hint}</span>}
+                <input value={value(f.name)} onChange={(e) => setDraft({ ...draft, [f.name]: e.target.value })} aria-describedby={f.hint ? `bib-hint-${v.id}-${f.name}` : undefined} />
               </label>
               <span className="volume-meta">
                 {fieldNote(info?.from ? { ...info, sources: [info.from] } : info)}
