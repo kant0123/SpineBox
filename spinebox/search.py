@@ -254,18 +254,52 @@ def facets(values_by_work: dict[int, dict[str, list[str]]], work_ids) -> dict[st
     return out
 
 
-def facet_counts(values_by_work: dict[int, dict[str, list[str]]], work_ids, name: str) -> list[dict]:
-    """1 つの項目の値と、その値を持つ作品の数(著者・タグ・出版社の一覧 #85)。表記の揺れは facets と同じくまとめる。"""
+def _facet_key(name: str, value: str) -> str:
+    """ファセットの同一視キー。記号だけの値で正規化が空になっても別の値と衝突しないよう元の文字列を残す。"""
+    return _comparable(name, value) or value.strip()
+
+
+def starred_facet_keys(conn: sqlite3.Connection, name: str) -> set[str]:
+    """指定した項目(author / tag / publisher 等)でスターが付いている正規化キーの集合(#117)。"""
     if name not in FILTER_FIELDS:
         raise InvalidFilter(f"未対応の項目: {name}")
+    return {r[0] for r in conn.execute("SELECT key FROM facet_stars WHERE field = ?", (name,))}
+
+
+def set_facet_star(conn: sqlite3.Connection, name: str, value: str, starred: bool) -> dict:
+    """ファセットの値にスターを付ける / 外す(#117)。表記揺れは _facet_key で同一視し、付け直しても日時は変えない。"""
+    if name not in FILTER_FIELDS:
+        raise InvalidFilter(f"未対応の項目: {name}")
+    text = (value or "").strip()
+    key = _facet_key(name, text)
+    if not key:
+        raise InvalidFilter("スターを付ける値が空です")
+    with db.transaction(conn) as c:
+        if starred:
+            c.execute("INSERT INTO facet_stars (field, key, value, created_at) SELECT ?, ?, ?, ? "
+                      "WHERE NOT EXISTS (SELECT 1 FROM facet_stars WHERE field = ? AND key = ?)",
+                      (name, key, text, db.now(), name, key))
+        else:
+            c.execute("DELETE FROM facet_stars WHERE field = ? AND key = ?", (name, key))
+        row = c.execute("SELECT created_at FROM facet_stars WHERE field = ? AND key = ?", (name, key)).fetchone()
+        return {"name": name, "value": text, "starred": row is not None,
+                "created_at": row["created_at"] if row else None}
+
+
+def facet_counts(values_by_work: dict[int, dict[str, list[str]]], work_ids, name: str,
+                 starred_keys: set[str] | None = None) -> list[dict]:
+    """1 つの項目の値と、その値を持つ作品の数・スターの有無(著者・タグ・出版社の一覧 #85 / #117)。表記の揺れは facets と同じくまとめる。"""
+    if name not in FILTER_FIELDS:
+        raise InvalidFilter(f"未対応の項目: {name}")
+    stars = starred_keys or set()
     found: dict[str, list] = {}
     for wid in work_ids:
         seen: set[str] = set()
         for v in values_by_work.get(wid, {}).get(name, []):
-            key = _comparable(name, v)
+            key = _facet_key(name, v)
             if key in seen:
                 continue
             seen.add(key)
-            entry = found.setdefault(key, [v, 0])
+            entry = found.setdefault(key, [v, 0, key in stars])
             entry[1] += 1
-    return [{"value": v, "count": n} for v, n in sorted(found.values(), key=lambda e: e[0])]
+    return [{"value": v, "count": n, "starred": st} for v, n, st in sorted(found.values(), key=lambda e: e[0])]

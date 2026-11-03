@@ -218,6 +218,57 @@ describe("著者・タグ・出版社の一覧", () => {
     fireEvent.change(screen.getByLabelText("著者を絞り込む"), { target: { value: "山田" } });
     expect(screen.getByText("山田太郎")).toBeTruthy();
   });
+
+  it("タグ・著者・出版社の項目ごとにスターを付け外しでき、スター付きを上部に優先表示する", async () => {
+    // 作品にタグと出版社を付けておく
+    backend.handle("PATCH", "/api/works/1", JSON.stringify({ tags: ["ファンタジー", "バトル"], publisher: "集英社" }));
+    backend.handle("PATCH", "/api/works/2", JSON.stringify({ tags: ["ファンタジー", "学園"], publisher: "講談社" }));
+
+    window.location.hash = "#/tags";
+    render(<App />);
+    await screen.findByText("ファンタジー");
+    const listedValues = () => Array.from(document.querySelectorAll(".facet-list .facet-value")).map((e) => e.textContent);
+    // 初期状態は名前順: バトル(1), ファンタジー(2), 学園(1)
+    expect(listedValues()).toEqual(["バトル", "ファンタジー", "学園"]);
+
+    // 「学園」にスターを付けると最上部に移動する
+    const starGakuen = screen.getByRole("button", { name: "学園 にスターを付ける" });
+    expect(starGakuen.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(starGakuen);
+    await waitFor(() => expect(starGakuen.getAttribute("aria-pressed")).toBe("true"));
+    expect(listedValues()).toEqual(["学園", "バトル", "ファンタジー"]);
+
+    // 作品の多い順に変えてもスター付きの「学園」(1 作品)が「ファンタジー」(2 作品)より上に来る
+    fireEvent.change(screen.getByLabelText("並び順"), { target: { value: "count" } });
+    expect(listedValues()).toEqual(["学園", "ファンタジー", "バトル"]);
+
+    // スターを外すと元の順序に戻る
+    fireEvent.click(starGakuen);
+    await waitFor(() => expect(starGakuen.getAttribute("aria-pressed")).toBe("false"));
+    expect(listedValues()).toEqual(["ファンタジー", "バトル", "学園"]);
+
+    // 出版社ページでもスターを付けられ、別画面から戻っても保持されている
+    await navigate("#/publishers");
+    await screen.findByText("講談社");
+    expect(listedValues()).toEqual(["講談社", "集英社"]);
+    fireEvent.click(screen.getByRole("button", { name: "集英社 にスターを付ける" }));
+    await waitFor(() => expect(listedValues()).toEqual(["集英社", "講談社"]));
+    await navigate("#/authors");
+    await screen.findByText("山田太郎");
+    await navigate("#/publishers");
+    await screen.findByText("集英社");
+    expect(listedValues()).toEqual(["集英社", "講談社"]);
+
+    // API が失敗したら元の状態に戻してエラーを出す
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/star")) return new Response(JSON.stringify({ detail: "失敗" }), { status: 500 });
+      const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "講談社 にスターを付ける" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "講談社 にスターを付ける" }).getAttribute("aria-pressed")).toBe("false");
+  });
 });
 
 describe("管理", () => {

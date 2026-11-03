@@ -68,23 +68,70 @@ describe("作品の一覧", () => {
   });
 });
 
-describe("作品のタイトル一覧(#105)", () => {
-  it("作品カードから開くと、巻のタイトルが番号順に並び、管理ページへのボタンがある", async () => {
+describe("作品のタイトル一覧(#105 / #115)", () => {
+  it("巻を番号順に並べ、名前を「作品名 第N巻」にそろえ、表紙・読書状態・全体の進捗を出す", async () => {
     window.location.hash = "#/works/1/titles";
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "タイトル一覧(4)" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "タイトル一覧(5)" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "サンプル漫画" })).toBeTruthy();
-    const items = [...document.querySelectorAll(".title-list .title-item")];
-    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "1巻", "2巻", "4巻"]);
+    const items = [...document.querySelectorAll<HTMLElement>(".title-list .title-item")];
+    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻
+    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "2巻", "3巻", "4巻", "5巻"]);
     expect(items.map((li) => li.querySelector(".volume-title")!.textContent)).toEqual([
-      "サンプル漫画 第01巻", "Sample manga v01", "サンプル漫画 第02巻", "読了済みの巻",
+      "サンプル漫画 第1巻", "サンプル漫画 第2巻", "サンプル漫画 第3巻", "サンプル漫画 第4巻", "サンプル漫画 第5巻",
     ]);
-    // 読める巻はリーダーへ、重複は印を出す
-    expect(items[0].querySelector("a")!.getAttribute("href")).toBe("#/read/1");
-    expect(items[0].querySelector(".dup-badge")!.textContent).toBe("重複");
+    // 表紙は行の一番左(読み込めない・まだ作っていないときは枠だけ残る)
+    expect(items[0].firstElementChild!.classList.contains("title-cover")).toBe(true);
+    expect(items[0].querySelector("img.work-cover")!.getAttribute("src")).toBe("/api/volumes/1/thumbnail");
+    // 進み具合は「N% (読んだ / 全体)」。未読の文字は行に出さない
+    expect(items[1].querySelector(".volume-meta")!.textContent).toContain("50% (4/8)");
+    expect(within(items[1]).queryByText("未読")).toBeNull();
+    // 行の色と凡例
+    expect(items[0].classList.contains("status-unread")).toBe(true);
+    expect(items[1].classList.contains("status-reading")).toBe(true);
+    expect(items[3].classList.contains("status-finished")).toBe(true);
+    const legend = screen.getByRole("list", { name: "読書状態の凡例" });
+    expect(legend.textContent).toContain("未読");
+    expect(legend.textContent).toContain("読書中");
+    expect(legend.textContent).toContain("読了");
+    // 作品全体の進み具合(9 / 22 ページ・読了 1 / 3 巻)
+    expect(screen.getByText(/全体 41%\(9 \/ 22\)・読了 1 \/ 3 巻/)).toBeTruthy();
+    // 欠け・最新巻はフォローの続刊の確認から出し、リーダーへは行かせない
+    expect(within(items[2]).getByText("欠け")).toBeTruthy();
+    expect(within(items[2]).getByText(/2014年1月 発売/)).toBeTruthy();
+    expect(items[2].querySelector("a")).toBeNull();
+    expect(within(items[4]).getByText("最新巻")).toBeTruthy();
+    expect(within(items[4]).getByText(/2015年3月 発売/)).toBeTruthy();
     // ボタンは今まで作品カードから開いていた作品の管理ページ(#/works/<id>)へ
     expect(screen.getByRole("link", { name: "作品を管理" }).getAttribute("href")).toBe("#/works/1");
     expect(screen.getByRole("link", { name: "‹ 作品の一覧へ" }).getAttribute("href")).toBe("#/works");
+  });
+
+  it("重複は 1 行にまとめ、押すと重複の一覧から読む巻を選べる", async () => {
+    window.location.hash = "#/works/1/titles";
+    render(<App />);
+    await screen.findByRole("heading", { name: "タイトル一覧(5)" });
+    const items = [...document.querySelectorAll<HTMLElement>(".title-list .title-item")];
+    const dup = items[0];
+    expect(dup.querySelector(".dup-badge")!.textContent).toBe("重複");
+    expect(dup.tagName).toBe("BUTTON");
+    expect(items[1].tagName).toBe("A");
+    expect(items[1].getAttribute("href")).toBe("#/read/2");
+    fireEvent.click(dup);
+    const dialog = await screen.findByRole("dialog", { name: "1巻 の重複(2 冊)" });
+    const choices = [...dialog.querySelectorAll("a")];
+    expect(choices.map((a) => a.getAttribute("href"))).toEqual(["#/read/1", "#/read/6"]);
+    expect(choices[0].textContent).toContain("サンプル漫画 第01巻");
+    expect(choices[1].textContent).toContain("Sample manga v01");
+    // Tab はモーダルの中を回る(最後の「閉じる」から先頭の巻へ)
+    const close = within(dialog).getByRole("button", { name: "閉じる" });
+    close.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(choices[0]);
+    // Escape で閉じ、開いた行へフォーカスが戻る
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(dup);
   });
 
   it("オフラインの巻はタイトルだけ出し、リーダーへはリンクしない", async () => {

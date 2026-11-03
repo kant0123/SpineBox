@@ -1,5 +1,5 @@
-// 著者・タグ・出版社の一覧(#85)。値ごとの作品数を出し、選ぶとその値で絞った作品一覧へ。蔵書の切り替えに従う。
-import { useEffect, useMemo, useState } from "react";
+// 著者・タグ・出版社の一覧(#85 / #117)。値ごとの作品数とスター(お気に入り)を出し、選ぶとその値で絞った作品一覧へ。蔵書の切り替えに従う。
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type FacetValue } from "../api";
 import { facetWorksHref, type FacetField } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
@@ -14,16 +14,22 @@ const EMPTY_TEXT: Record<FacetField, string> = {
 
 type Order = "name" | "count";
 
+const facetKey = (v: string) => normalizeSearch(v) || v.trim();
+
 export function FacetList({ field }: { field: FacetField }) {
   const { root } = useLibraryScope();
   const [values, setValues] = useState<FacetValue[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [starError, setStarError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [order, setOrder] = useState<Order>("name");
+  const busyRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
     setValues(null);
+    setStarError(null);
+    busyRef.current.clear();
     api.listFacet(field, root).then(
       (r) => {
         if (!alive) return;
@@ -37,10 +43,31 @@ export function FacetList({ field }: { field: FacetField }) {
     };
   }, [field, root]);
 
+  const toggleStar = async (value: string, next: boolean) => {
+    const targetKey = facetKey(value);
+    if (busyRef.current.has(targetKey)) return;
+    busyRef.current.add(targetKey);
+    setStarError(null);
+    setValues((prev) => prev?.map((v) => (facetKey(v.value) === targetKey ? { ...v, starred: next } : v)) ?? null);
+    try {
+      const r = await api.setFacetStar(field, value, next);
+      setValues((prev) => prev?.map((v) => (facetKey(v.value) === targetKey ? { ...v, starred: r.starred } : v)) ?? null);
+    } catch {
+      setValues((prev) => prev?.map((v) => (facetKey(v.value) === targetKey ? { ...v, starred: !next } : v)) ?? null);
+      setStarError("スターを変更できませんでした。");
+    } finally {
+      busyRef.current.delete(targetKey);
+    }
+  };
+
   const shown = useMemo(() => {
     const key = normalizeSearch(filter);
     const list = (values ?? []).filter((v) => !key || normalizeSearch(v.value).includes(key));
-    return order === "count" ? [...list].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, "ja")) : list;
+    return [...list].sort((a, b) => {
+      const starDiff = Number(Boolean(b.starred)) - Number(Boolean(a.starred));
+      if (starDiff !== 0) return starDiff;
+      return order === "count" ? b.count - a.count || a.value.localeCompare(b.value, "ja") : 0;
+    });
   }, [values, filter, order]);
 
   const title = FACET_TITLES[field];
@@ -50,6 +77,7 @@ export function FacetList({ field }: { field: FacetField }) {
         <h1>{title}</h1>
       </header>
       {error && <div className="notice error" role="alert">{error}</div>}
+      {starError && <div className="notice error" role="alert">{starError}</div>}
       <div className="facet-toolbar">
         <input type="search" aria-label={`${title}を絞り込む`} value={filter}
           onChange={(e) => setFilter(e.target.value)} />
@@ -63,14 +91,27 @@ export function FacetList({ field }: { field: FacetField }) {
       {values && values.length > 0 && shown.length === 0 && <p className="muted">合う{title}がありません。</p>}
       {values && values.length > 0 && <p className="muted facet-count">{shown.length} 件</p>}
       <ul className="facet-list">
-        {shown.map((v) => (
-          <li key={v.value}>
-            <a href={facetWorksHref(field, v.value)}>
-              <span className="facet-value">{v.value}</span>
-              <span className="facet-n">{v.count} 作品</span>
-            </a>
-          </li>
-        ))}
+        {shown.map((v) => {
+          const starred = Boolean(v.starred);
+          return (
+            <li key={v.value} className={`facet-item${starred ? " starred" : ""}`}>
+              <a className="facet-link" href={facetWorksHref(field, v.value)}>
+                <span className="facet-value">{v.value}</span>
+                <span className="facet-n">{v.count} 作品</span>
+              </a>
+              <button
+                type="button"
+                className={`facet-star${starred ? " on" : ""}`}
+                aria-pressed={starred}
+                aria-label={`${v.value} にスターを付ける`}
+                title={starred ? "スターを外す" : "スターを付ける"}
+                onClick={() => void toggleStar(v.value, !starred)}
+              >
+                <span aria-hidden="true">{starred ? "★" : "☆"}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
