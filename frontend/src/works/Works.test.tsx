@@ -12,6 +12,7 @@ let backend: ReturnType<typeof createMockBackend>;
 
 beforeEach(() => {
   backend = createMockBackend();
+  localStorage.clear();
   window.location.hash = "";
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
@@ -42,13 +43,22 @@ describe("ルートと文言", () => {
 });
 
 describe("作品の一覧", () => {
-  it("作品カードに欠け・重複・統合済み・提案が出て、タイトル一覧へのリンクになる", async () => {
+  it("作品カードに巻数タグ・欠け・提案が出て、重複・統合済み・種別・ジャンルは出ない", async () => {
+    backend.handle("PATCH", "/api/works/1", JSON.stringify({ publisher: "集英社" }));
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    expect(within(card).getByText("全4巻(〜4巻)")).toBeTruthy();
     expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
-    expect(within(card).getByText("重複 1")).toBeTruthy();
-    expect(within(card).getByText("統合済み")).toBeTruthy();
+    expect(within(card).queryByText(/重複/)).toBeNull();
+    expect(within(card).queryByText("統合済み")).toBeNull();
+    // 種別・ジャンルはカードに出さない(出版社だけ残す)
+    expect(within(card).getByText("集英社")).toBeTruthy();
+    expect(within(card).queryByText("漫画")).toBeNull();
+    const other = (await screen.findByText("外付けの作品")).closest("li")!;
+    expect(within(other).getByText("全1巻")).toBeTruthy();
+    expect(within(other).queryByText(/ファンタジー/)).toBeNull();
+    expect(within((await screen.findByText("別の読み物")).closest("li")!).queryByText("小説")).toBeNull();
     // 別名は作品ページで見る(一覧のカードには出さない)
     expect(within(card).queryByText(/別名/)).toBeNull();
     expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1/titles");
