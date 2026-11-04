@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tokagemushi/manga-viewer": "github:tokagemushi999/manga-viewer#db5d7c8174c00db839795e3cf8b477a0d6431430",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

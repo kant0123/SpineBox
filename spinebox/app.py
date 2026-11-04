@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import bookmarks, db, follows, linking, search, stats, works
+from . import bookmarks, db, follows, linking, page_marks, search, stats, works
 from .analysis import compute_findings
 from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
 from .duplicates import CandidateNotFound, candidate_counts, dismiss
@@ -857,6 +857,74 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.delete("/api/bookmarks/volumes/{volume_id}")
     def remove_volume_bookmark(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         return bookmarks.set_volume(conn, volume_id, False)
+
+    # --- しおり(#136)。漫画リーダー(manga-viewer)の bookmarkApi の形に合わせる。work_id = 巻の id(文字列で来る) ---
+
+    def _mark_error(status: int, message: str) -> JSONResponse:
+        return JSONResponse({"success": False, "error": message}, status_code=status)
+
+    def _mark_volume_id(value) -> int | None:
+        """整数か整数の文字列だけ受ける(bool・小数・空文字は断る)。"""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.strip().isascii() and value.strip().isdigit():
+            return int(value.strip())
+        return None
+
+    async def _mark_body(request: Request):
+        """本文を (巻 id, ページ番号) に。形が違えば (None, エラーの応答)。"""
+        try:
+            body = await request.json()
+        except ValueError:
+            return None, _mark_error(422, "本文は JSON で指定してください")
+        if not isinstance(body, dict):
+            return None, _mark_error(422, "本文は JSON のオブジェクトで指定してください")
+        volume_id = _mark_volume_id(body.get("work_id"))
+        if volume_id is None:
+            return None, _mark_error(422, "work_id は巻の id(整数)で指定してください")
+        page_number = body.get("page_number")
+        if not isinstance(page_number, int) or isinstance(page_number, bool):
+            return None, _mark_error(422, "page_number は整数で指定してください")
+        return (volume_id, page_number), None
+
+    @app.get("/api/page-marks")
+    def list_page_marks(work_id: str = "", conn: sqlite3.Connection = Depends(get_conn)):
+        volume_id = _mark_volume_id(work_id)
+        if volume_id is None:
+            return _mark_error(422, "work_id は巻の id(整数)で指定してください")
+        try:
+            marks = page_marks.list_marks(conn, volume_id)
+        except VolumeNotFound:
+            return _mark_error(404, "巻が見つかりません")
+        return {"success": True, "bookmarks": marks}
+
+    @app.post("/api/page-marks")
+    async def add_page_mark(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+        parsed, error = await _mark_body(request)
+        if error is not None:
+            return error
+        try:
+            page_marks.add(conn, *parsed)
+        except VolumeNotFound:
+            return _mark_error(404, "巻が見つかりません")
+        except page_marks.MarkOutOfRange:
+            return _mark_error(422, "ページ番号が範囲外です")
+        except page_marks.TooManyMarks:
+            return _mark_error(409, f"しおりは{page_marks.MAX_MARKS}個までです")
+        return {"success": True}
+
+    @app.delete("/api/page-marks")
+    async def remove_page_mark(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+        parsed, error = await _mark_body(request)
+        if error is not None:
+            return error
+        try:
+            page_marks.remove(conn, *parsed)
+        except VolumeNotFound:
+            return _mark_error(404, "巻が見つかりません")
+        return {"success": True}
 
     @app.get("/api/volumes/{volume_id}/pages/{index}")
     def get_page(volume_id: int, index: int, request: Request, conn: sqlite3.Connection = Depends(get_conn)):

@@ -1,14 +1,14 @@
 // 端末ごとの表示設定。localStorage はプライベートモード等で使えないことがあるので、失敗しても既定値で動く。
 
-export type SpreadMode = "auto" | "single";
-
+// 漫画リーダー(manga-viewer)は横長で見開き・縦長で単ページを自動で選ぶので、見開きの設定は持たない。
+// 以前の版が保存した spreadMode が残っていても読み飛ばす。
 export interface ReaderSettings {
+  /** 1 ページ目(表紙)を単独で表示する。巻を開くときに効く */
   coverAlone: boolean;
-  spreadMode: SpreadMode;
 }
 
 const KEY = "spinebox.reader";
-export const DEFAULT_SETTINGS: ReaderSettings = { coverAlone: true, spreadMode: "auto" };
+export const DEFAULT_SETTINGS: ReaderSettings = { coverAlone: true };
 
 export function loadSettings(): ReaderSettings {
   try {
@@ -16,7 +16,6 @@ export function loadSettings(): ReaderSettings {
     const v = raw ? JSON.parse(raw) : {};
     return {
       coverAlone: typeof v.coverAlone === "boolean" ? v.coverAlone : DEFAULT_SETTINGS.coverAlone,
-      spreadMode: v.spreadMode === "single" ? "single" : "auto",
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

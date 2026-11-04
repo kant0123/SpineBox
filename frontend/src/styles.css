@@ -336,16 +336,8 @@ button.small::after {
 
 /* リーダー */
 .reader { position: fixed; inset: 0; background: #000; color: #eee; overflow: hidden; }
-.stage {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: row-reverse; /* 右綴じ: 若い番号を右に置く */
-  align-items: center; justify-content: center;
-  touch-action: pinch-zoom; /* 1 本指の払いはページ送りに使う */
-  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-}
-.stage .page { display: block; max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
-.stage.is-spread .page { max-width: 50%; }
-.stage .page-broken { display: flex; align-items: center; justify-content: center; width: 50%; height: 60%; color: #ccc; border: 1px dashed #888; }
+/* 漫画リーダー(manga-viewer)の置き場。中身は Shadow DOM が全画面で描く */
+.manga-host { position: absolute; inset: 0; height: 100vh; height: 100dvh; }
 .reader-message {
   position: absolute; inset: 0; padding: 24px 16px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
@@ -371,7 +363,7 @@ button.small::after {
 @keyframes fade-in { to { opacity: 1; } }
 .reader-notice {
   position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.85); padding: 8px 16px; border-radius: 999px; pointer-events: none;
+  background: rgba(0, 0, 0, 0.85); padding: 8px 16px; border-radius: 999px; pointer-events: none; z-index: 20;
 }
 .reader-bar {
   position: absolute; left: 0; right: 0;

@@ -1,5 +1,5 @@
 // 管理の好みタブ(#85)。項目ごとに置き場所を決めている:
-// - 表示のテーマ・リーダーの既定(見開き・表紙単独・小説の文字サイズ): 端末ごと(localStorage)。
+// - 表示のテーマ・リーダーの既定(表紙単独・小説の文字サイズ): 端末ごと(localStorage)。
 //   スマホと PC で好みが違うことが多く、リーダーの中で変えたものと同じ場所に置く(リーダーの中で変えても、ここで変えても同じ値)
 // - 未翻訳のジャンル・タグを出すか・キャッシュの上限・取得元: サーバーの設定ファイル(読み取りだけ)。
 //   DB に入る値や容量が変わる設定なので、画面からは変えない
@@ -49,21 +49,10 @@ export function Preferences() {
       </fieldset>
 
       <h2>リーダーの既定</h2>
-      <p className="muted prefs-note">この端末のブラウザに記憶します。リーダーの中で変えたものと同じ設定です。</p>
-      <fieldset className="prefs-group">
-        <legend>見開き</legend>
-        <label className="prefs-choice">
-          <input type="radio" name="spread" checked={reader.spreadMode === "auto"} onChange={() => updateReader({ spreadMode: "auto" })} />
-          横長の画面では見開き
-        </label>
-        <label className="prefs-choice">
-          <input type="radio" name="spread" checked={reader.spreadMode === "single"} onChange={() => updateReader({ spreadMode: "single" })} />
-          いつも 1 ページ
-        </label>
-      </fieldset>
+      <p className="muted prefs-note">この端末のブラウザに記憶します。</p>
       <label className="prefs-choice prefs-check">
         <input type="checkbox" checked={reader.coverAlone} onChange={(e) => updateReader({ coverAlone: e.target.checked })} />
-        表紙を単独で表示する(見開きの組み方)
+        表紙を単独で表示する(次に巻を開くときから)
       </label>
       <label className="prefs-field">
         小説の文字サイズ

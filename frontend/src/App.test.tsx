@@ -19,14 +19,24 @@ async function navigate(hash: string) {
   });
 }
 
-const press = (key: string) => fireEvent.keyDown(window, { key });
-const shownPages = () => screen.queryAllByRole("img").map((i) => i.getAttribute("alt"));
+// manga-viewer は実ブラウザで確かめる外部ライブラリ。ここでは渡した設定と destroy だけを記録する偽物にする
+const viewers = vi.hoisted(() => [] as { opts: any; destroy: () => void }[]);
+vi.mock("@tokagemushi/manga-viewer", () => ({
+  default: class {
+    destroy = vi.fn();
+    goToPage = vi.fn();
+    constructor(public opts: any) {
+      viewers.push(this);
+    }
+  },
+}));
 const puts = () => backend.log.filter((l) => l.method === "PUT").map((l) => ({ path: l.path, body: l.body }));
 
 beforeEach(() => {
   backend = createMockBackend();
   window.location.hash = volumesHref; // 巻の一覧(ホームは作品一覧 #85)
   localStorage.clear();
+  viewers.length = 0;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
     return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
@@ -142,85 +152,35 @@ describe("一覧", () => {
   });
 });
 
-describe("リーダー(スマホ縦 375px)", () => {
+describe("リーダー(漫画)", () => {
   beforeEach(() => setViewport(375, 812));
 
-  it("保存位置から再開し、最終ページまで読むと既読で保存され、一覧に反映される", async () => {
+  it("一覧から巻を開くと manga-viewer に保存位置とページを渡し、位置の保存が一覧に反映される", async () => {
     render(<App />);
     await screen.findByText("サンプル漫画 第02巻");
     expect(screen.getByText("サンプル漫画 第02巻").closest("a")!.getAttribute("href")).toBe(readHref(2));
     await navigate(readHref(2));
 
-    // progress.page = 3 (0 始まり) から開く。スマホ縦は単ページ
-    await waitFor(() => expect(shownPages()).toEqual(["4 ページ"]));
+    await waitFor(() => expect(viewers).toHaveLength(1));
+    const opts = viewers[0].opts;
+    expect(opts.pages).toHaveLength(8);
+    expect(JSON.parse(localStorage.getItem("spinebox.progress.2")!)).toMatchObject({ pageIndex: 3 }); // 保存位置から再開
 
-    press("ArrowLeft"); // 右綴じ: ← が次
-    expect(shownPages()).toEqual(["5 ページ"]);
-    await waitFor(() => expect(puts()).toEqual([{ path: "/api/volumes/2/progress", body: { page: 4, finished: false } }]), {
-      timeout: 2000,
+    act(() => {
+      opts.onPageChange(8, 8);
+      opts.onComplete();
     });
-
-    press("ArrowRight"); // → が前
-    expect(shownPages()).toEqual(["4 ページ"]);
-    for (let i = 0; i < 4; i++) press("ArrowLeft");
-    expect(shownPages()).toEqual(["8 ページ"]);
-    press("ArrowLeft"); // 最終ページからさらに進むと次巻(読了済みの巻)へ
-    await waitFor(() => expect(window.location.hash).toBe(readHref(3)));
-    await waitFor(() => expect(shownPages()).toEqual(["5 ページ"])); // 次巻は保存位置(最終ページ)から開く
-
-    // 移る前に、今の巻の最後の位置が既読で送られている
-    await waitFor(() =>
-      expect(puts()).toContainEqual({ path: "/api/volumes/2/progress", body: { page: 7, finished: true } }),
-    );
-    await navigate(volumesHref);
-    expect(puts().at(-1)).toEqual({ path: "/api/volumes/2/progress", body: { page: 7, finished: true } });
+    await navigate(volumesHref); // 離れるときに待たず送る
+    expect(viewers[0].destroy).toHaveBeenCalled();
+    expect(puts()).toEqual([{ path: "/api/volumes/2/progress", body: { page: 7, finished: true } }]);
     const card = (await screen.findByText("サンプル漫画 第02巻")).closest("li")!;
     await waitFor(() => expect(within(card).getByText("既読")).toBeTruthy());
-
-    // 再開すると最終ページから。前へ戻っても既読のまま
-    await navigate(readHref(2));
-    await waitFor(() => expect(shownPages()).toEqual(["8 ページ"]));
-    press("ArrowRight");
-    await navigate(volumesHref);
-    expect(puts().at(-1)?.body).toEqual({ page: 6, finished: true });
   });
 
   it("開けない巻はメッセージを出す", async () => {
     window.location.hash = readHref(4);
     render(<App />);
     expect((await screen.findByRole("alert")).textContent).toContain("開けませんでした");
-  });
-
-  it("中央でメニューが開き、ページ数と一覧へのリンクが出る", async () => {
-    window.location.hash = readHref(1);
-    render(<App />);
-    await waitFor(() => expect(shownPages()).toEqual(["1 ページ"]));
-    press("Escape");
-    expect(screen.getByTestId("page-label").textContent).toBe("1 / 9");
-    expect(screen.getByRole("link", { name: /一覧へ/ }).getAttribute("href")).toBe("#/");
-  });
-});
-
-describe("リーダー(横長画面の見開き)", () => {
-  beforeEach(() => setViewport(1024, 768));
-
-  it("表紙だけ単独で、以降は 2 ページずつ。表紙単独を切ると組み直す", async () => {
-    window.location.hash = readHref(1); // 9 ページ・未読
-    render(<App />);
-    await waitFor(() => expect(shownPages()).toEqual(["1 ページ"]));
-
-    press("ArrowLeft");
-    // DOM は若い順。CSS の row-reverse で 2 ページ目が右に来る
-    expect(shownPages()).toEqual(["2 ページ", "3 ページ"]);
-    expect(screen.getByTestId("stage").className).toContain("is-spread");
-
-    press("Escape");
-    fireEvent.click(screen.getByLabelText("表紙を単独で表示"));
-    expect(shownPages()).toEqual(["1 ページ", "2 ページ"]);
-    expect(JSON.parse(localStorage.getItem("spinebox.reader")!)).toMatchObject({ coverAlone: false });
-
-    fireEvent.click(screen.getByLabelText("横長画面で見開き"));
-    expect(shownPages()).toEqual(["2 ページ"]);
   });
 });
 

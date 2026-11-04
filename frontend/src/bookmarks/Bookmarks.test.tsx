@@ -1,9 +1,8 @@
-// モック API を相手に、ブックマーク(#86)の付け外し(巻の一覧・作品のページ・リーダーのメニュー)と一覧を確かめる
+// モック API を相手に、ブックマーク(#86)の付け外し(巻の一覧・作品のページ。リーダーのボタンは reader/Reader.test.tsx)と一覧を確かめる
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
-import { Reader } from "../reader/Reader";
 import { parseRoute } from "../route";
 import { WorkPage } from "../works/WorkPage";
 import { Bookmarks } from "./Bookmarks";
@@ -79,16 +78,6 @@ describe("付け外し", () => {
     fireEvent.click(button);
     expect(await within(card).findByRole("alert")).toBeTruthy();
     expect(button.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("リーダーのメニューから付けられる", async () => {
-    render(<Reader id="1" />);
-    await screen.findByRole("img");
-    fireEvent.keyDown(window, { key: "Escape" }); // メニューを開く
-    const button = screen.getByRole("button", { name: "サンプル漫画 第01巻 をブックマーク" });
-    fireEvent.click(button);
-    await waitFor(() => expect(button.getAttribute("aria-pressed")).toBe("true"));
-    expect(backend.log.at(-1)).toMatchObject({ method: "PUT", path: "/api/bookmarks/volumes/1" });
   });
 });
 

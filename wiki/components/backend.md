@@ -1,8 +1,8 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-03
-related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
+updated: 2026-11-05
+related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
 # バックエンド
@@ -82,6 +82,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/volumes/{id}/thumbnail` | 巻の表紙(1 ページ目の縮小 JPEG)。`ETag` + `Cache-Control: private, no-cache`、一致で 304。取り出し・7-Zip が要る巻でまだ作っていなければ 404 `{"detail", "pending": true}`、小説・1 ページ目が画像でない巻は 404 `{"pending": false}`(どちらも `no-store`)。オフラインは 409。何も展開しない([[cover-thumbnails]]) |
 | `GET /api/thumbnails` / `POST /api/thumbnails/build?wait` | 表紙の作成(明示操作)の状態 `{running, started_at, finished_at, done, total, summary: {total, made, existing, skipped}, error}` / 作品の表紙の巻のうち無いものを、内側アーカイブを取り出してでも作る(既定は待ち行列に入れて 202、`wait=true` は同期でほかのジョブが動いていれば 409。[[data-jobs]]) |
 | `GET /api/bookmarks?sort=added\|title` | `{"sort", "items": [{"kind": "work", "created_at", "work": <GET /api/works の 1 件と同じ形>} \| {"kind": "volume", "created_at", "volume": {"id", "title", "parent_title", "format", "page_count", "offline", "progress", "volume_number", "work_id", "work_title"}}]}`。`added` は付けた新しい順、`title` は作品名の順。オフラインの巻も出る。他の `sort` は 422([[bookmarks]]) |
+| `GET /api/page-marks?work_id=<巻 id>`、`POST` / `DELETE /api/page-marks` body `{"work_id", "page_number"}` | しおり(#136。[[manga-reader]])。漫画リーダー(manga-viewer)の `bookmarkApi` の形そのままで、`work_id` は**巻 id**(文字列の数字も受ける)、`page_number` は 1 始まり。GET は `{"success": true, "bookmarks": [{"page_number", "title"}]}`(ページ順、`title` は「ページN」を作って返す)、POST / DELETE は `{"success": true}`(既にある・無いものも 200)。失敗も `{"success": false, "error"}` で返す(ライブラリが `success` / `error` を読むため、FastAPI の `detail` にしない): 無い巻 404、範囲外のページ 422、1 巻 20 個を超える 409、形の違う本文・`work_id` 422。オフラインの巻でも読み書きできる |
 | `PUT` / `DELETE /api/bookmarks/works/{id}`・`.../volumes/{id}` | 印を付ける / 外す。`{"work_id" か "volume_id", "bookmarked", "created_at"}`。付け直しても日時は変わらない。統合された作品の id は吸収先が対象。無い作品・巻は 404。オフラインの巻でも 200 |
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool, "position"?: 0〜1}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422。小説は page が区切りの番号、`position` が区切りの中の割合で、`progress` にも `position` が付く。画像の巻の `position` は捨てる |
@@ -158,6 +159,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 ## 経緯
 
+- #136 で漫画リーダーのしおりを足した([[manga-reader]])。マイグレーション 16(`page_marks`。巻 id とページ(0 始まり)で 1 行、題は持たない)。整理では移し、巻への分解では子へ写す。蔵書がオフラインでも行は消さない
 - #117 で著者・タグ・出版社などの一覧の値ごとにスター(お気に入り)を付け外しできるようにした。マイグレーション 15(`facet_stars`。#83 のマイグレーション 14 の後ろ)。キーは `search._facet_key(name, value)` で正規化し、表記揺れのまとめと同じ単位で持つ。蔵書がオフラインになってもレコードは消さない
 - #87 でフォロー([[follow]])を足した。マイグレーション 13(`follows` / `follow_releases`。#86 のマイグレーション 12 の後ろ)。設定 `[follow]`(`background` 既定は無効・`interval_hours`・`background_interval_seconds`・`response_ttl_days`)。
   続刊の確認は #83 のジョブ(`follow_check`)として 1 本ずつ動く(下)
