@@ -15,7 +15,7 @@
 
   -Remove を付けると、ジャンクション（ReparsePoint）をリンク先の中身を辿らずに解除し、ReadOnly を
   外してから `git worktree remove` を実行する。未追跡ファイル等でディレクトリが残った場合も、
-  -RemoveDirs を併せて付けておけば後段の残骸掃除でディレクトリごと削除する。
+  -RemoveDirs を併せて付けておけば後段の残骸掃除でディレクトリごと削除し、孤立メタデータも prune する。
   引数なしで実行すると、既に取り残されている孤立エントリの掃除と残骸ディレクトリの検出を行う。
 
   このファイルは UTF-8 (BOM 付き) で保存すること。BOM が無いと Windows PowerShell 5.1 が
@@ -120,7 +120,7 @@ foreach ($line in (& git worktree list --porcelain)) {
   }
 }
 if (-not $mainRoot) {
-  Write-Error '??????????????????'
+  Write-Error 'メインツリーの位置を特定できません。'
   exit 1
 }
 
@@ -159,7 +159,10 @@ if ($Remove) {
       Remove-ReparsePointsRecurse -Path $target
       Clear-ReadOnlyRecurse -Path $target
       if ($metaDir) { Clear-ReadOnlyRecurse -Path $metaDir }
-      & git worktree remove $target
+      $removeArgs = @('worktree', 'remove')
+      if ($RemoveDirs) { $removeArgs += '--force' }
+      $removeArgs += $target
+      & git @removeArgs
       $live = @($live | Where-Object { $_ -ne $target })
       if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $target)) {
         Write-Warning 'git worktree remove でディレクトリが残った。残骸は下の掃除で拾う。'
@@ -172,44 +175,9 @@ if ($Remove) {
   Write-Host ''
 }
 
-# --- 1. .git/worktrees/ の孤立エントリ --------------------------------------
-Write-Host '== .git/worktrees/ の孤立エントリ =='
-$orphans = @()
-if (Test-Path -LiteralPath $worktreesDir) {
-  foreach ($entry in Get-ChildItem -LiteralPath $worktreesDir -Force -Directory) {
-    $gitdirFile = Join-Path $entry.FullName 'gitdir'
-    $target = ''
-    if (Test-Path -LiteralPath $gitdirFile) { $target = (Get-Content -LiteralPath $gitdirFile -Raw).Trim() }
-    # gitdir が無い / 指す先が無い = git prune が消したがるエントリ。判定条件は git 本体と同じ。
-    if (-not $target -or -not (Test-Path -LiteralPath $target)) { $orphans += $entry }
-  }
-}
-
-if ($orphans.Count -eq 0) {
-  Write-Host '  なし'
-} else {
-  foreach ($entry in $orphans) { Write-Host "  $($entry.Name)" }
-  if ($DryRun) {
-    Write-Host '  (DryRun) ReadOnly の解除と prune は行わない'
-  } else {
-    foreach ($entry in $orphans) { Clear-ReadOnlyRecurse -Path $entry.FullName }
-    & git worktree prune -v
-    $left = @()
-    if (Test-Path -LiteralPath $worktreesDir) {
-      $left = @(Get-ChildItem -LiteralPath $worktreesDir -Force -Directory |
-        Where-Object { $orphans.Name -contains $_.Name })
-    }
-    if ($left.Count -gt 0) {
-      Write-Warning "prune 後も残ったエントリ: $($left.Name -join ', ')"
-      $failed = $true
-    } else {
-      Write-Host "  $($orphans.Count) 件を削除した"
-    }
-  }
-}
-
-# --- 2. 作業ディレクトリ側の残骸 --------------------------------------------
-Write-Host ''
+# --- 1. 作業ディレクトリ側の残骸 --------------------------------------------
+# 先に残骸ディレクトリを掃除してから .git/worktrees/ の孤立エントリを prune する
+# (.git ファイルが残っていた残骸を -RemoveDirs で消したとき、そのメタデータも続けて prune できるようにするため)。
 Write-Host '== git が把握していない作業ディレクトリの残骸 =='
 
 # メインツリー直下の項目名（.git を除く）。git worktree remove が途中で失敗して
@@ -270,6 +238,43 @@ if ($stale.Count -eq 0) {
       $failed = $true
     } else {
       Write-Host "  削除した: $($dir.FullName)"
+    }
+  }
+}
+
+# --- 2. .git/worktrees/ の孤立エントリ --------------------------------------
+Write-Host ''
+Write-Host '== .git/worktrees/ の孤立エントリ =='
+$orphans = @()
+if (Test-Path -LiteralPath $worktreesDir) {
+  foreach ($entry in Get-ChildItem -LiteralPath $worktreesDir -Force -Directory) {
+    $gitdirFile = Join-Path $entry.FullName 'gitdir'
+    $target = ''
+    if (Test-Path -LiteralPath $gitdirFile) { $target = (Get-Content -LiteralPath $gitdirFile -Raw).Trim() }
+    # gitdir が無い / 指す先が無い = git prune が消したがるエントリ。判定条件は git 本体と同じ。
+    if (-not $target -or -not (Test-Path -LiteralPath $target)) { $orphans += $entry }
+  }
+}
+
+if ($orphans.Count -eq 0) {
+  Write-Host '  なし'
+} else {
+  foreach ($entry in $orphans) { Write-Host "  $($entry.Name)" }
+  if ($DryRun) {
+    Write-Host '  (DryRun) ReadOnly の解除と prune は行わない'
+  } else {
+    foreach ($entry in $orphans) { Clear-ReadOnlyRecurse -Path $entry.FullName }
+    & git worktree prune -v
+    $left = @()
+    if (Test-Path -LiteralPath $worktreesDir) {
+      $left = @(Get-ChildItem -LiteralPath $worktreesDir -Force -Directory |
+        Where-Object { $orphans.Name -contains $_.Name })
+    }
+    if ($left.Count -gt 0) {
+      Write-Warning "prune 後も残ったエントリ: $($left.Name -join ', ')"
+      $failed = $true
+    } else {
+      Write-Host "  $($orphans.Count) 件を削除した"
     }
   }
 }
