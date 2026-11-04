@@ -1,19 +1,18 @@
 ---
 type: component
-summary: 蔵書一覧と右綴じ・見開きリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、見開き計算の規則、読書位置の保存の仕方、最終ページからの次巻への移動、読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
+summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
 updated: 2026-11-05
-related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs]
+related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
 # フロントエンド(`frontend/`)
 
-蔵書一覧と、右綴じ・見開きのリーダー。React + Vite + TypeScript。`npm run build` の出力 `frontend/dist` を
+蔵書一覧と、リーダー(漫画は外部ライブラリの manga-viewer を組み込んだもの。[[manga-reader]])。React + Vite + TypeScript。`npm run build` の出力 `frontend/dist` を
 バックエンドが `/` で配信する。
 
 ## 責務
 
-- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・作品の一覧 / 作品ページ / 統合の提案の画面([[work-grouping]])・リーダー(ページ画像の表示・先読み・
-  読書位置の保存と再開)・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す・範囲指定の整理(テンプレートの入力・パラメーターのチップ・パスの例・CBZ 化もまとめて行う・プレビュー → 実行 → まとめて元に戻す)([[organize]])。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
+- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・作品の一覧 / 作品ページ / 統合の提案の画面([[work-grouping]])・リーダー(巻情報の取得・読み込み待ち・取得失敗の表示と、読書位置の保存と再開の結線。表示は [[manga-reader]] / [[novel-reader]])・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す・範囲指定の整理(テンプレートの入力・パラメーターのチップ・パスの例・CBZ 化もまとめて行う・プレビュー → 実行 → まとめて元に戻す)([[organize]])。表示設定(表紙単独)は端末ごとに `localStorage` へ
 - しない: ページの並び順・ページ数・オフライン判定・巻番号と食い違いの判定。どれもバックエンドが決めた `pages[]`・`offline`・`findings` をそのまま使う
 
 ## 入口となるファイル
@@ -25,8 +24,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
 | `frontend/src/admin/Admin.tsx:29 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
-| `frontend/src/reader/layout.ts:15 buildSpreads()` | 見開きの組み方。ページ送り `stepPage()`・タップ/スワイプ/キーの判定もこのファイルの純粋関数 |
-| `frontend/src/reader/Reader.tsx:49 Reader()` | リーダー画面。位置の保存・先読み・操作の結線 |
+| `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
+| `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
 | `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
@@ -38,7 +37,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:18 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
-| `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
+| `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
 | `frontend/src/api.ts:917 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
@@ -50,20 +49,14 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 - **ページ番号は 0 始まり。** `progress.page` も `pages[].index` と同じ番号で送る(画面の表示だけ +1)。
   #14 と同時に作ったため、契約の文面に始まりの番号が無かった。バックエンドと食い違ったら API 契約側を正にして合わせる
-- **位置は「画面」ではなく「ページ」で持つ。** 回転や表紙単独の切替で見開きの組み方が変わっても、読んでいたページを
-  含む画面から再開できる(`spreadIndexOf()` で範囲外のページも端に寄せるので、ページ数が減った巻も開ける)
-- **見開きは表紙単独 ON が既定。** ON なら `[0] [1,2] [3,4] …`、OFF なら `[0,1] [2,3] …`。端数の 1 ページは最後に単独。
-  DOM 上は若い番号が先で、CSS の `flex-direction: row-reverse` で右に置く(右綴じ)。見開きにするのは横長かつ幅 600px 以上のときだけ
-- **操作の向き(右綴じ):** 左 1/3 タップ・`←` キーが次、右 1/3・`→` が前、中央がメニュー。スワイプは**右へ払う(指を左から右へ)と次**。
-  Issue #15 の文面は「左スワイプ = 次」だったが、右綴じでは次のページが左から来るので、それを引き寄せる向きにした。
-  逆が良ければ `swipeAction()` の符号だけを変える
+- **位置は「画面」ではなく「ページ」で持つ。** 回転で見開きの組み方が変わっても、読んでいたページを含む画面から再開できる。
+  漫画の表示・見開き・操作はライブラリ([[manga-reader]])に任せた(#136 までの自前の見開きの組み方・タップの向きの規則は廃止。タップ/スワイプ/キーの判定 `layout.ts` は小説のリーダーが使う)
 - **一度既読になった巻は、前のページへ戻っても `finished=true` のまま送る。** 読み返しで既読が消えないようにするため
 - **保存は 800ms のデバウンスで最後の位置だけ。** 一覧へ戻る・タブが裏に回る(`pagehide`/`visibilitychange`)ときは待たずに
   `fetch(..., {keepalive: true})` で送る。スマホはタブを閉じずに切り替えることが多く、デバウンス中の位置が失われるため
-- **最終ページからさらに進むと、同じ作品の次の巻へ移る(#113)。** 次の巻はバックエンドが作品の一覧の並び
-  (番号順 → 番号なしは名前順)から決める。同じ番号の重複は同じ巻として飛ばし、次の番号に重複があれば
-  その並びの 1 つ目を開く。次の巻がオフラインのときは移動せず「次の巻「<名前>」はオフラインです」を出す。
-  移動の前に今の巻の位置(既読を含む)は後始末の `flush()` が送る。次巻は通常どおり保存位置(未読なら先頭)から開く。
+- **次の巻へ移れる(#113)。** 次の巻はバックエンドが作品の一覧の並び(番号順 → 番号なしは名前順)から決める。同じ番号の重複は同じ巻として飛ばし、
+  次の番号に重複があればその並びの 1 つ目を開く。次の巻がオフラインのときは移動せず「次の巻「<名前>」はオフラインです」を出す。
+  小説は最終ページからさらに進むと移り、漫画はヘッダーの「次の巻へ」のボタンで移る([[manga-reader]])。移動の前に今の巻の位置(既読を含む)は後始末の `flush()` が送る。
   漫画と小説の両方が `frontend/src/reader/nextVolume.ts:10 nextVolumeStep()` を使う
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
@@ -97,17 +90,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   (文字が少ない作品は下に余白が出る)。入れ子の巻の表紙は管理のデータ管理タブの「表紙のみ補完」(明示操作)で作る。
   表紙の URL は `ETag` + `Cache-Control: private, no-cache` なので、画面を開き直すと取り直す(以前の「表紙を作る」の後に `?rev=` を変える仕組みは、作成を画面から起動しなくなったので廃止した)。
   巻の一覧のカードには出していない(要望は作品の一覧。同じ `api.thumbnailUrl()` で足せる)
-- **読み込み待ちは 2 段で見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
+- **巻情報の読み込み待ちを見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
   取り出す間(実測 3〜8 秒)何も出ず、黒い画面のままで読み込み中と分からなかった。巻情報の取得中はリーダーの黒い枠の中央に
   スピナーと「一覧へ戻る」を出し、1.5 秒(`SLOW_HINT_MS`)を超えたら「初めて開く巻は展開に数秒かかる」と補足する。
-  巻情報が来た後は、表示中のページ画像が `load` / `error` になるまで画面中央に小さく「読み込み中」を重ねる。
-  先読み済みのページで一瞬ちらつかないよう、重ね表示は CSS で 0.3 秒遅れて現れる
-- **先読みで読み終わっていた画像は、表示ページが変わったときに `useLayoutEffect` で一度だけ調べる(#51)。** 描画前に
-  読み終わった画像には `load` が来ないので、`complete && naturalWidth > 0` を見て読み込み済みにする。当初(#26)は `<img>` の
-  インラインの `ref` コールバックの中でこれを行い `setLoaded` していたが、実ブラウザでは見開きで 2 回目のページ送り(次の見開きが
-  先読み済みで complete)から更新が繰り返され、React #185(Maximum update depth exceeded)で描画が止まって真っ黒になった。
-  **ref コールバックの中で state を更新しない**(描画のたびに付け直される)。jsdom ではこのループは再現しなかったので、
-  確認は実ブラウザで見開き・単ページとも数十ページ送って行った
+  巻情報が来た後のページ画像の読み込みは、漫画はライブラリ任せ(#136 までの「読み込み中」の重ね表示と、それに伴う #51 の React #185 の対処は自前のリーダーごと無くなった)
 - **取得失敗の文言は HTTP ステータスで分ける。** 404 は「蔵書から無くなった」、409 は「オフライン」、422(壊れたアーカイブ・
   展開上限超過)はバックエンドの `detail` をそのまま出す。理由はバックエンドしか知らないため。どの失敗でも一覧へ戻るリンクを出す
 - **重複候補の画面は何も消さない。** 見比べて「重複ではない」を付けるだけで、削除・移動のボタンは置かない(重複の解消は CBZ 化の整理の役目)。2 巻の表紙は 1 ページ目の画像(`api.pageUrl(id, 0)`)で、
@@ -156,7 +142,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   リンク・テキスト・ボタンに使う `--accent`(`#1b52b8` / ダーク `#70a5ff`)・`--done`(`#197a4b` / ダーク `#5fc48d`)・`--muted`・`--warn`・`--error` は `--bg`・`--card`・`--sidebar-active` 上で 4.5:1 以上を満たし、フォームの入力欄・選択欄の枠線は `--border-strong`(`#666666` / ダーク `#8e8e98`)で 3:1 以上を満たす。`:focus-visible` は黒 4px + オフセット 2px + 黄(`#ffd43d`) 2px の二重リングに統一し、最小フォントサイズは 14px(`0.875rem`)、小ボタン(`button.small` / `button.bookmark-button`)は `::after` 疑似要素で 44×44px のタッチターゲットを確保する。入力欄に `placeholder` は使わず、サポートテキストと `aria-describedby` / `aria-invalid` で示す。ブレークポイントは `768px` の 1 つに統一する
 - **蔵書の切り替えは端末ごとに記憶し(`spinebox.library`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
   設定からルートを外しても、端末に残った id で一覧が空になり続けないように。オフラインのルートも候補に出す(巻はオフラインとして残る)
-- **好みタブの各項目の置き場所:** テーマ・リーダーの既定(見開き・表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。リーダーの中で変えたものと同じ鍵)。
+- **好みタブの各項目の置き場所:** テーマ・リーダーの既定(表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。小説の文字サイズはリーダーの中で変えたものと同じ鍵)。表紙単独は次に巻を開くときから効く。見開きの切替は #136 で廃止した([[manga-reader]])。
   スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
   画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため
 - **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)
@@ -169,17 +155,15 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   実行中・待ちがある間だけ 1.5 秒ごとに状態を見に行き、全部終わったら対象の件数を取り直す。依頼済みの種類のボタンは「依頼済み」で押せない。
   ジョブの依頼の失敗はサーバーの `detail`(ほかのジョブの実行中など)をそのまま出す。
   #83 では一覧の「作品 / 巻 / データ管理」のタブから辿っていたが、サイドバーが入ったので外した(巻の一覧のヘッダーの「ファイル名の整理」「整理の履歴」も、データ管理のタブに同じ入口があるので外した)。
-- **作品の一覧(ホーム)と巻の一覧(`#/volumes`)は別画面。** 巻の一覧のカード・リーダーは変えていない
+- **作品の一覧(ホーム)と巻の一覧(`#/volumes`)は別画面。** 巻の一覧のカードは変えていない
 
 ## 落とし穴
 
-- `.stage` の `touch-action: pinch-zoom` は、1 本指の横の払いをブラウザのスクロールに取られないためのもの。消すとスマホでスワイプが効かない
 - モック(`src/mock/`)は `vite.config.ts` からだけ読む。アプリ側から import すると本番のバンドルに入る
-- jsdom の画像は読み込まれず `load` も来ないので、ページ画像の読み込み待ちのテストは `fireEvent.load` / `fireEvent.error` で進める
-  (`src/reader/Reader.test.tsx`)。先読み済み(complete)の画像の分岐は `HTMLImageElement.prototype` の `complete` / `naturalWidth` を差し替えて通す
-- 単体テストの jsdom には `PointerEvent` が無いので、タップ・スワイプは判定関数の単体テストと実ブラウザで確かめる
-  (結線のテスト `src/App.test.tsx` はキーボードで操作している)
-- リーダーの紙面画像用の `.page` スタイルは `.stage .page` にスコープを絞る(#99)。画面共通コンテナ枠 `<div className="page admin">` や `<div className="page facets">` とセレクタが衝突すると、`pointer-events: none` が画面全体に漏れてタブやリンクがクリックできなくなる。jsdom は CSS のポインターイベントを解釈しないため単体テストでは見逃されやすい
+- 単体テストの jsdom には `PointerEvent` が無いので、小説のタップ・スワイプは判定関数の単体テストと実ブラウザで確かめる
+- 漫画のリーダーのテストはライブラリをモックする(本物は jsdom の `matchMedia` が無くて組めない。[[manga-reader]])
+- CSS で `.page` のような汎用のクラス名に紙面用のスタイル(`pointer-events: none` など)を付けない(#99)。画面共通のコンテナ枠 `<div className="page admin">` と衝突して、
+  画面全体のタブやリンクがクリックできなくなった。jsdom は CSS のポインターイベントを解釈しないため単体テストでは見逃されやすい
 
 ## CI への組み込み
 

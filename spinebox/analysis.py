@@ -83,6 +83,7 @@ def register_units(conn: sqlite3.Connection, parent, units: list[Unit],
                          len(u.page_names), *numbers, now, now)).lastrowid
                 seen[u.key] = vid
             _carry_progress(c, parent_id, units, seen, page_order, now)
+            _carry_page_marks(c, parent_id, units, seen, page_order, now)
         for vid in set(existing.values()) - set(seen.values()):
             c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))
         c.execute("UPDATE volumes SET analyzed_version = ?, analysis_error = NULL, updated_at = ? WHERE id = ?",
@@ -116,6 +117,25 @@ def _carry_progress(c, parent_id: int, units: list[Unit], ids: dict[UnitKey, int
             continue
         c.execute("INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, ?, ?, ?)",
                   (vid, page, int(finished), now))
+
+
+def _carry_page_marks(c, parent_id: int, units: list[Unit], ids: dict[UnitKey, int],
+                      page_order: list[tuple[UnitKey, str]], now: str) -> None:
+    """分解前に親で挟んだしおり(#136)を、そのページを持つ子へ写す。親の記録は消さない(読書位置と同じ)。
+
+    親のページ p は `page_order[p]` で (単位, ページ名) に引け、子ではそのページ名の位置にしおりを置く。
+    子に既にあるしおりは触らない(INSERT OR IGNORE)。範囲外のページは飛ばす。
+    """
+    by_key = {u.key: u for u in units}
+    for r in c.execute("SELECT page FROM page_marks WHERE volume_id = ?", (parent_id,)).fetchall():
+        if not 0 <= r["page"] < len(page_order):
+            continue
+        key, name = page_order[r["page"]]
+        u = by_key.get(key)
+        if u is None or name not in u.page_names:
+            continue
+        c.execute("INSERT OR IGNORE INTO page_marks (volume_id, page, created_at) VALUES (?, ?, ?)",
+                  (ids[key], u.page_names.index(name), now))
 
 
 def record_error(conn: sqlite3.Connection, volume_id: int, reason: str) -> None:

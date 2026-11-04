@@ -6,6 +6,18 @@ import { createMockBackend } from "../mock/mockBackend";
 import { loadSettings } from "../settings";
 import { applyTheme, loadTheme } from "./theme";
 
+// リーダーの manga-viewer は実ブラウザで確かめる外部ライブラリ。ここでは作られたことだけ見る偽物にする
+const viewers = vi.hoisted(() => [] as unknown[]);
+vi.mock("@tokagemushi/manga-viewer", () => ({
+  default: class {
+    destroy() {}
+    goToPage() {}
+    constructor() {
+      viewers.push(this);
+    }
+  },
+}));
+
 let backend: ReturnType<typeof createMockBackend>;
 let darkListeners: ((e: { matches: boolean }) => void)[] = [];
 let osDark = false;
@@ -39,6 +51,7 @@ beforeEach(() => {
   backend = createMockBackend();
   window.location.hash = "";
   localStorage.clear();
+  viewers.length = 0;
   delete document.documentElement.dataset.theme;
   osDark = false;
   stubMatchMedia();
@@ -71,7 +84,7 @@ describe("サイドバー", () => {
   it("リーダーはサイドバーを出さず全画面、直リンクも開ける", async () => {
     window.location.hash = "#/read/2";
     render(<App />);
-    await screen.findByRole("img", { name: "4 ページ" });
+    await waitFor(() => expect(viewers).toHaveLength(1));
     expect(screen.queryByRole("complementary", { name: "サイドバー" })).toBeNull();
     await navigate("#/");
     expect(sidebar()).toBeTruthy();
@@ -325,9 +338,8 @@ describe("管理", () => {
   it("好みのリーダーの既定は端末に記憶し、サーバーの設定は読み取りだけで出す", async () => {
     window.location.hash = "#/admin/preferences";
     render(<App />);
-    fireEvent.click(screen.getByLabelText("いつも 1 ページ"));
     fireEvent.click(screen.getByLabelText(/表紙を単独で表示する/));
-    expect(loadSettings()).toEqual({ coverAlone: false, spreadMode: "single" });
+    expect(loadSettings()).toEqual({ coverAlone: false });
     fireEvent.change(screen.getByLabelText("小説の文字サイズ"), { target: { value: "24" } });
     expect(JSON.parse(localStorage.getItem("spinebox.novel")!)).toEqual({ fontSize: 24 });
     expect(await screen.findByText("出さない(hide)")).toBeTruthy();
