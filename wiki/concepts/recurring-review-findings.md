@@ -213,6 +213,7 @@ push 前に確かめること:
 - PR #40 — `spinebox/duplicates.py DuplicateScanner.run()` — 指紋を 1 巻作るたびに `pending()`(全巻の SELECT と作成済みの巻すべての `stat()`)を呼んでいた。`pending` の呼び出し回数を数えて再現し、1 巡ごとに直した
 - PR #91 — `spinebox/organize/organizer.py name_values()` — 範囲指定が蔵書ルート全体の巻を渡すのに、巻ごとに 3 回 SELECT していた(20000 巻で 1.1 秒。10 万巻規模で効く)。文の数を数えるテストを足して `IN` でまとめて引くようにした
 - PR #94 — `spinebox/stats.py collect()` — 全作品の表紙の有無を見るのに、作品ごとに `is_built()`(巻の行を 1 件 SELECT)を呼んでいた。`get_volume_rows()` で 500 件ずつ IN でまとめて引く `Thumbnails.are_built()` にし、文の数が巻の数に比例しないことを `set_trace_callback` で確かめるテストを足した
+- PR #135 — `spinebox/organize/organizer.py _plan_range_cbz()` — `include_cbz` の計画で 1 巻 = 1 CBZ の巻ごとに `_classify_renames([r], ...)` を呼び、その中の `sources`・画像フォルダの SELECT が巻数ぶん出た。1 回の `_classify_renames` にまとめ、`folder_sources` / `source_paths` のキャッシュを渡すようにした。計画の SELECT 数が巻数に比例しないことを `set_trace_callback` で確かめるテストを足した
 
 ### 共有すべき状態を、呼び出しごとに作るインスタンスに持たせている
 

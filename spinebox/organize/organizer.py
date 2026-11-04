@@ -857,13 +857,21 @@ class Organizer:
                                                                                *folder]
             return "/".join([*dirs, file_stem + ext]), changes
 
+        # 1 巻 = 1 CBZ の巻はまとめて振り分ける(巻ごとに _classify_renames を呼ぶと、その中の
+        # sources のキャッシュが効かず、同じ SELECT を巻数ぶん発行してしまう)
+        folder_sources: dict[int, set[str]] = {}
+        source_paths: dict[int, set[str]] = {}
+        single_rows = [r for r in rows
+                       if self._single_file(r) and r["rel_path"].lower().endswith(".cbz")]
+        single_items = self._classify_renames(single_rows, excluded_ids, self._range_ineligible, move_target,
+                                              folder_sources=folder_sources, source_paths=source_paths)
+        for it in single_items:
+            it["conversion"] = False
+        single_by_id = {it["volume_id"]: it for it in single_items}
+
         for r in rows:
-            if self._single_file(r) and r["rel_path"].lower().endswith(".cbz"):
-                it = self._classify_renames([r], set(), self._range_ineligible, move_target)[0]
-                it["conversion"] = False
-                items.append(it)
-                if r["id"] in excluded_ids:
-                    it.update(status=ITEM_SKIPPED, reason="外しました")
+            if r["id"] in single_by_id:
+                items.append(single_by_id[r["id"]])
                 continue
             it = self._range_item(r)
             it["conversion"] = True
@@ -894,7 +902,7 @@ class Organizer:
                 continue
             it["output_rel_path"] = rel
             it["changes"] = changes
-            problem = self._range_cbz_target_problem(r, root, base, rel, source_path)
+            problem = self._range_cbz_target_problem(r, root, base, rel, source_path, folder_sources)
             if problem:
                 it.update(status=ITEM_CONFLICT, reason=problem)
 
@@ -978,17 +986,22 @@ class Organizer:
         dirs = (parent.split("/") if parent else []) if folder is None else [*(sub.split("/") if sub else []), *folder]
         return "/".join([*dirs, file_stem + ".cbz"]), changes
 
-    def _range_cbz_target_problem(self, r: dict, root: Path, base: Path, rel: str, source_path: Path) -> str | None:
+    def _range_cbz_target_problem(self, r: dict, root: Path, base: Path, rel: str, source_path: Path,
+                                  folder_sources: dict[int, set[str]]) -> str | None:
         reason = self._target_problem(root, base, rel, source_path)
         if reason:
             return reason
         # 出力先に missing の sources 行が残っていてもよい。CBZ 化の実行は _upsert_source でその行を
         # 再利用する(改名・移動は sources.rel_path を直接 UPDATE するので、別の行があると衝突する)。
-        folder_sources = {f["rel_path"] for f in self.conn.execute(
-            "SELECT rel_path FROM sources WHERE root_id = ? AND kind = 'folder' AND missing = 0", (r["root_id"],))}
+        folders = folder_sources.get(r["root_id"])
+        if folders is None:
+            folders = {f["rel_path"] for f in self.conn.execute(
+                "SELECT rel_path FROM sources WHERE root_id = ? AND kind = 'folder' AND missing = 0",
+                (r["root_id"],))}
+            folder_sources[r["root_id"]] = folders
         parts = rel.split("/")[:-1]
         inside = next((a for a in ("/".join(parts[:i]) for i in range(1, len(parts) + 1))
-                       if a in folder_sources), None)
+                       if a in folders), None)
         if inside is not None:
             return f"画像フォルダの巻「{inside}」の中になります"
         return None
@@ -1114,10 +1127,17 @@ class Organizer:
             raise RangeError(f"フォルダを読めません: {e}") from e
         return {"root_id": root_id, "path": sub, "parent": sub.rpartition("/")[0] if sub else None, "folders": names}
 
-    def _classify_renames(self, rows: list[dict], excluded_ids: set[int], ineligible, target) -> list[dict]:
-        """各巻を move / unchanged / excluded / conflict / skipped に振り分ける。target(r) は (出力の相対パス, 整理の説明)。"""
+    def _classify_renames(self, rows: list[dict], excluded_ids: set[int], ineligible, target, *,
+                          folder_sources: dict[int, set[str]] | None = None,
+                          source_paths: dict[int, set[str]] | None = None) -> list[dict]:
+        """各巻を move / unchanged / excluded / conflict / skipped に振り分ける。target(r) は (出力の相対パス, 整理の説明)。
+
+        folder_sources / source_paths は同じ計画の中で使い回すキャッシュ。範囲の全巻を渡すときは
+        呼び出し側で用意して、巻ごとに同じ SELECT を発行しないようにする。
+        """
         items: list[dict] = []
-        folder_sources: dict[int, set[str]] = {}
+        folder_sources = {} if folder_sources is None else folder_sources
+        source_paths = {} if source_paths is None else source_paths
         for r in rows:
             root = Path(r["root_path"])
             item = {"volume_id": r["id"], "title": r["title"], "page_count": r["page_count"],
@@ -1149,9 +1169,14 @@ class Organizer:
             else:
                 source_path = resolve_source_path(root, r["rel_path"])
                 problem = self._target_problem(root, self.settings.organize_base(root), rel, source_path)
-                if problem is None and self.conn.execute(
-                        "SELECT 1 FROM sources WHERE root_id = ? AND rel_path = ?", (r["root_id"], rel)).fetchone():
-                    problem = "この場所にあったファイルの記録が残っています(同じ名前のファイルを以前スキャンしました)"
+                if problem is None:
+                    paths = source_paths.get(r["root_id"])
+                    if paths is None:
+                        paths = {row["rel_path"] for row in self.conn.execute(
+                            "SELECT rel_path FROM sources WHERE root_id = ?", (r["root_id"],))}
+                        source_paths[r["root_id"]] = paths
+                    if rel in paths:
+                        problem = "この場所にあったファイルの記録が残っています(同じ名前のファイルを以前スキャンしました)"
                 if problem is None:
                     if r["root_id"] not in folder_sources:
                         folder_sources[r["root_id"]] = {f["rel_path"] for f in self.conn.execute(

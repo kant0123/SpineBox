@@ -657,6 +657,28 @@ def test_range_path_with_different_case_on_a_case_insensitive_filesystem(env):
     assert item["status"] == "move" and item["output_rel_path"].startswith("Manga/Sub/")
 
 
+def test_include_cbz_plan_does_not_query_per_volume(env):
+    """include_cbz の計画で、1 巻 = 1 CBZ の巻ごとに同じ sources の SELECT を発行しない(agy レビュー)。"""
+    statements: list[str] = []
+
+    def count_statements() -> int:
+        statements.clear()
+        plan_range(env, "漫画", include_cbz=True)
+        return sum(s.lstrip().upper().startswith("SELECT") for s in statements)
+
+    env.conn.set_trace_callback(statements.append)
+    try:
+        before = count_statements()
+        for i in range(10, 20):
+            cbz(env.root / "漫画" / "多" / f"{TITLE}　{i}巻.cbz", f"many{i}")
+        Scanner(env.conn, env.settings).scan()
+        works.sync(env.conn)
+        after = count_statements()
+    finally:
+        env.conn.set_trace_callback(None)
+    assert after <= before + 2, (before, after)
+
+
 def test_name_values_does_not_query_per_volume(env):
     """範囲は蔵書全体の巻をまとめて渡すので、巻の数に比例して SQL を発行しない(agy レビュー。N+1 の禁止)。
     作品ごとの項目は作品の数だけ・巻の行と書誌は 500 件ずつまとめて引く。"""
