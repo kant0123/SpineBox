@@ -5,7 +5,7 @@ import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
-import { WorkCover } from "./WorkCover";
+import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
 const SEARCH_DELAY_MS = 250;
@@ -174,7 +174,11 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           return (
             <li key={w.id} className="work-card">
               <a className="work-link" href={workTitlesHref(w.id)}>
-                {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} />}
+                {w.cover_volume_id !== null ? (
+                  <WorkCover volumeId={w.cover_volume_id} placeholder />
+                ) : (
+                  <WorkCoverPlaceholder />
+                )}
                 <span className="work-text">
                   <span className="volume-title">{w.title}</span>
                   {w.author && <span className="volume-meta">{w.author}</span>}
