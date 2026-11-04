@@ -105,7 +105,7 @@ gh pr merge <PR番号> --merge
 git push origin --delete <branch>
 cd <メインツリー>                          # worktree の中からは削除できない
 powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../<repo>-<名前> -RemoveDirs
-git branch -d <branch>
+git branch -D <branch>
 ```
 
 - **main へ直接 push・直接マージしない。** 必ず PR を経由する。

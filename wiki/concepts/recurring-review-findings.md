@@ -66,7 +66,7 @@ push 前に確かめること:
 - PR #97 — `deploy/update_spinebox.ps1 Get-HealthUrl` — `--print-bind` の出力を `2>&1` で読み、設定の警告(使われなくなったキー)が stderr に出ると host を読み違えた。直したら今度は Windows PowerShell 5.1 が stderr を例外にして止まった(警告の出る偽の spinebox で再現・修正)
 - PR #97 — `deploy/update_spinebox.ps1` 起動前のコミット取得 — `git` が失敗すると同じく例外で止まり、「途中で失敗しても起動し直す」に届かなかった(git リポジトリでない場所で再現)。比べる短縮 SHA もアプリ(7 文字固定)と git の既定(環境で長くなる)で長さがずれていた。さらに `/healthz` が `commit: null`(git が見えない環境)を返すと照合の前に null のメソッドを呼んで例外になり、正常起動でもタイムアウトしていた(偽の /healthz で再現・修正)
 - 導入先 MeltKelp PR #16 — `.claude/hooks/command_match.mjs` ヒアドキュメントの終端行 — CRLF の入力だと終端行が `EOF\r` になって区切り語と一致せず、後ろのマージのコマンドまで本文として読み飛ばして素通ししていた(agy レビューで発覚。`\r` を除いて再現・修正)
-- PR #128 — `scripts/worktree-cleanup.ps1` — `.gitignore` 外の未追跡ファイルがある worktree に対して `--force` 無しで `git worktree remove` を呼び、失敗して `.git` ファイルが残ったままの状態で先に `git worktree prune` を走らせてから作業ディレクトリだけ `Remove-Item` していたため、`.git/worktrees/<id>` が残って後続の `git branch -d` が失敗した(agy レビューの WARNING。`-RemoveDirs` 指定時は `--force` を付け、さらに残骸ディレクトリ削除の後に `git worktree prune` を走らせる順序に修正)
+- PR #128 — `scripts/worktree-cleanup.ps1` — `.gitignore` 外の未追跡ファイルがある worktree に対して `--force` 無しで `git worktree remove` を呼び、失敗して `.git` ファイルが残ったままの状態で先に `git worktree prune` を走らせてから作業ディレクトリだけ `Remove-Item` していたため、`.git/worktrees/<id>` が残って後続のブランチ削除が失敗した(agy レビューの WARNING。`-RemoveDirs` 指定時は `--force` を付け、残骸削除の後に `git worktree prune` を走らせる順序に修正。また PR マージ直後のローカル `main` はリモートのマージコミットを未取得で `git push origin --delete` により追跡ブランチも消えているため、後始末のローカルブランチ削除は `-d` ではなく `git branch -D` にした)
 
 ### 新しく足した分岐・関数にテストが無い
 
@@ -85,7 +85,7 @@ push 前に確かめること:
 - PR #61 — `spinebox/app.py background_metadata()` — 設定で有効にしたときに常駐する裏のスレッドにテストが無かった(既存の裏の解析は `tests/test_analysis.py` に有る。足したら同じ形で足す)
 - PR #97 — `deploy/update_spinebox.ps1` — 「途中の手順が失敗しても起動し直す」「止められなければ何もしない」の分岐にテストが無かった(止める・起動するを `-TaskRunner` で差し替えられるようにしてテストを足した)
 - PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
-- PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えて `git branch -d` が通ることも assert していなかった(agy レビューの WARNING)
+- PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えてコミットを持つ作業ブランチに対する `git branch -D` が通ることも assert していなかった(agy レビューの WARNING)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 

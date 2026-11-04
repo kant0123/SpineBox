@@ -515,6 +515,9 @@ def test_worktree_cleanup_removes_live_worktree_with_junction_and_readonly(tmp_p
 
     wt = tmp_path / "repo-wt1"
     subprocess.run(["git", "worktree", "add", str(wt), "-b", "feature/wt1"], cwd=repo, check=True, capture_output=True)
+    (wt / "committed.txt").write_text("work", encoding="utf-8")
+    subprocess.run(["git", "add", "committed.txt"], cwd=wt, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "feat: work on branch"], cwd=wt, check=True, capture_output=True)
     make_junction(wt / "frontend" / "node_modules", shared_nm)
     # ReadOnly 属性付きのファイル、.gitignore 対象の成果物、.gitignore 外の未追跡ファイルを置く
     ro_file = wt / "spinebox" / "__init__.py"
@@ -528,8 +531,8 @@ def test_worktree_cleanup_removes_live_worktree_with_junction_and_readonly(tmp_p
     assert r.returncode == 0, out + r.stderr.decode("cp932", "replace")
     assert not wt.exists(), "worktree ディレクトリが残った"
     assert pkg_file.read_text(encoding="utf-8") == "keep-me", "ジャンクションのリンク先が壊れた"
-    # .git/worktrees/<id> メタデータも消え、後続の git branch -d が成功することを確認する
-    r_branch = subprocess.run(["git", "branch", "-d", "feature/wt1"], cwd=repo, capture_output=True)
+    # .git/worktrees/<id> メタデータも消え、コミットを持つ作業ブランチの git branch -D が成功することを確認する
+    r_branch = subprocess.run(["git", "branch", "-D", "feature/wt1"], cwd=repo, capture_output=True)
     assert r_branch.returncode == 0, "worktree メタデータが残りブランチ削除に失敗した: " + r_branch.stderr.decode("utf-8", "replace")
 
 

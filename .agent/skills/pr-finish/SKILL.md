@@ -146,7 +146,7 @@ gh pr view <PR番号> --json state,mergedAt
 git push origin --delete <branch>
 cd C:/Users/kntat/Documents/Git/SpineBox   # メインツリー
 powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs
-git branch -d <branch>
+git branch -D <branch>
 ```
 
 **worktree の削除はメインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` で実行する。**
