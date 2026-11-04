@@ -145,26 +145,21 @@ gh pr view <PR番号> --json state,mergedAt
 ```bash
 git push origin --delete <branch>
 cd C:/Users/kntat/Documents/Git/SpineBox   # メインツリー
-git worktree remove ../SpineBox-<作業名>
+powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs
+git branch -D <branch>
 ```
 
-**`git worktree remove` はメインツリーに `cd` してから実行する。** シェルの作業ディレクトリが
-削除対象の中にあると、Windows はプロセスのカレントディレクトリを削除できず必ず失敗する。
-`../SpineBox-<作業名>` は **worktree の中からでも自分自身に解決してしまう**ので、
-パスを見ただけでは気づけない。
+**worktree の削除はメインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` で実行する。**
 
-失敗したら**手で `rm -rf` / `Remove-Item` しない。** 一度失敗すると git はその worktree を
-working tree と認識しなくなり、`--force` でも `fatal: ... is not a working tree` で回復しない。
-掃除スクリプトを使う(Windows):
-
-```bash
-powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1
-```
-
-`-RemoveDirs` は**未コミットの変更ごと消える**ので、中身を確認してから付ける。
-ディレクトリに ReadOnly 属性が付く環境(クラウドストレージのミラー同期・バックアップ
-ツールが親ディレクトリを掴んでいる場合など)では、素の `git worktree remove` は
-Permission denied で失敗し、以後 `git worktree prune` も同じ場所で失敗し続ける。
+- シェルの作業ディレクトリが削除対象の中にあると、Windows はプロセスのカレントディレクトリを削除できず必ず失敗する。
+  `../SpineBox-<作業名>` は **worktree の中からでも自分自身に解決してしまう**ので、パスを見ただけでは気づけない。
+- **`-Remove ../SpineBox-<作業名>` を必ず付ける。** `-Remove` を省いて `-RemoveDirs` だけ実行すると、稼働中の worktree は
+  残骸ではないためスキップされ、何も消えないまま exit 0 で終わる。
+- 素の `git worktree remove` は、ReadOnly 属性で失敗したり、`frontend/node_modules` 等のジャンクション(`ReparsePoint`)や
+  未追跡ディレクトリがあると `.git` ファイルだけ消して親ディレクトリを残したりする。`worktree-cleanup.ps1` は
+  ジャンクションをリンク先の中身を辿らずに解除し、ReadOnly を外してから削除し、残ったディレクトリも `-RemoveDirs` で掃除する。
+- 失敗しても**手で `rm -rf` / `Remove-Item` しない**(ジャンクションのリンク先を巻き込む恐れがあり、git も working tree と
+  認識しなくなって回復しない)。マージ前の worktree が絡むときは `-RemoveDirs` を外して中身を確かめてから実行する。
 
 ## 7. Issue をクローズする
 

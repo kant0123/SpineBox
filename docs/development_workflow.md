@@ -104,7 +104,8 @@ gh pr checks <PR番号> --watch             # CI を導入している場合、�
 gh pr merge <PR番号> --merge
 git push origin --delete <branch>
 cd <メインツリー>                          # worktree の中からは削除できない
-git worktree remove ../<repo>-<名前>
+powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../<repo>-<名前> -RemoveDirs
+git branch -D <branch>
 ```
 
 - **main へ直接 push・直接マージしない。** 必ず PR を経由する。
@@ -312,7 +313,7 @@ GitHub Issues / Projects 連携を使う場合の補助ワークフロー。Issu
 | 症状 | 確認すること |
 | --- | --- |
 | `git worktree remove` が必ず失敗する | シェルの作業ディレクトリが削除対象の中にある。`../<repo>-<名前>` は **worktree の中からでも自分自身に解決する**ので、パスを見ただけでは気づけない。メインツリーに `cd` してから実行する |
-| `Permission denied` で削除できない | ディレクトリに ReadOnly 属性が付いている(クラウドストレージのミラー同期・バックアップツールが親を掴んでいる場合など)。`scripts/worktree-cleanup.ps1` で属性を外してから git に削除させる |
+| `Permission denied` で削除できない / ジャンクション(`node_modules` 等)や未追跡ファイルでディレクトリが残る | `scripts/worktree-cleanup.ps1 -Remove ../<repo>-<名前> -RemoveDirs` を使う(ジャンクションをリンク先を辿らずに解除し、ReadOnly を外してから削除する) |
 | `fatal: ... is not a working tree` で `--force` も効かない | 一度削除に失敗した後の状態。手で消さず `scripts/worktree-cleanup.ps1`(引数なし)で孤立エントリを掃除する |
 | `git worktree list` に出ないディレクトリが残っている | 削除失敗の残骸。`-RemoveDirs` で消せるが**未コミットの変更ごと消える**ので中身を確認してから |
 
