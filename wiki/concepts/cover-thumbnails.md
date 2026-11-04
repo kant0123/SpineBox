@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品カードの表紙(#75)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のデータ管理タブの「表紙のみ補完」)で作る理由と、却下した代替案
-updated: 2026-11-03
+updated: 2026-11-04
 related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection, data-jobs]
 ---
 
@@ -9,7 +9,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
 入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:876 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:897 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:9 WorkCover()`。
+`spinebox/app.py:897 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:18 WorkCover()`。
 
 ## 内容
 
@@ -26,7 +26,9 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。小説・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の
   「表紙のみ補完」(管理のデータ管理タブのジョブ `thumbnails`。表紙の巻のうちまだ無いものを 1 巻ずつ、取り出してでも作る。進み具合はタスクセンター。ほかのジョブの実行中は待ち行列に入る。旧 `POST /api/thumbnails/build` も同じジョブ)。#102 で作品一覧のヘッダーの「表紙を作る」は外した
-- **画面は「無ければ文字だけのカード」。** `<img loading="lazy">` で、読み込めたら見せ、404 などのエラーなら要素ごと消す。
+- **作品カードは「無ければ表紙なしの枠」。** `<img loading="lazy">` で、読み込めたら見せ、404 などのエラーなら
+  `WorkCoverPlaceholder`(2:3、`aria-hidden`、中央に「表紙なし」)を出して枠を残す(#132)。表紙の有無でカードの高さが
+  変わらないので、同じ行のタイトル位置がそろう。タイトル一覧・ブックマークの表紙は今までどおり何も出さない。
   サーバーは `ETag` + `Cache-Control: private, no-cache` なので、表紙を作った後に画面を開き直すと取り直す
   (以前は「表紙を作る」の後に `?rev=` を付けて同じ画面で取り直していたが、作成を画面から起動しなくなったので廃止した)
 
@@ -50,7 +52,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 | 1 ページ目をそのまま `<img>` に出す(`/pages/0`) | 表紙 1 枚が数 MB の原寸で、一覧が重い。入れ子の巻は同じく取り出しが走る |
 | 表紙の画像をネットから取る(公開 DB の書影) | GOAL.md「作らないもの」 |
 | 裏で少しずつ作る常駐処理 | 明示操作と「開いた後に作れる」で足りると判断した。必要になれば `background_analysis` と同じ形で `Thumbnails.build()` を 1 巻ずつ呼べばよい |
-| 表紙の有無を `GET /api/works` に載せる | 一覧のたびに全作品の元ファイルを `stat()` することになる。`<img>` の 404 で文字だけのカードに戻す方が安い |
+| 表紙の有無を `GET /api/works` に載せる | 一覧のたびに全作品の元ファイルを `stat()` することになる。`<img>` の 404 で表紙なしの枠に戻す方が安い |
 
 ## 落とし穴
 

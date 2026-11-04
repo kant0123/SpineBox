@@ -470,7 +470,8 @@ button.small::after {
   background: var(--accent-subtle);
   color: var(--accent-hover);
 }
-.work-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+/* 全カードの大きさを揃える。表紙の無い作品も枠を持つので、タイトルの位置もそろう(#132) */
+.work-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 1fr; align-items: stretch; }
 .work-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
 .work-link { display: flex; gap: 12px; padding: 12px; color: inherit; text-decoration: none; }
 /* 作品カードは表紙を横幅いっぱいに置き、文字をその下に続ける */
@@ -482,6 +483,9 @@ button.small::after {
 .work-cover { flex: none; width: 64px; aspect-ratio: 2 / 3; height: auto; align-self: flex-start; object-fit: cover; border-radius: 4px; background: var(--surface-divider); opacity: 0; transition: opacity 0.2s; }
 .work-card .work-cover { width: 100%; align-self: stretch; border-radius: 12px 12px 0 0; }
 .work-cover.loaded { opacity: 1; }
+/* 表紙の無い作品も同じ高さの枠を出し、タイトルの位置をそろえる(#132) */
+.work-cover-placeholder { display: flex; align-items: center; justify-content: center; opacity: 1; }
+.work-cover-placeholder-text { color: var(--muted); font-size: 0.875rem; }
 .work-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .work-badges .volume-count-badge { border-color: var(--border-strong); color: var(--fg); }
 button.secondary {
