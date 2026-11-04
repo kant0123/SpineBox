@@ -1,8 +1,8 @@
 ---
 type: component
 summary: ブックマーク(#86)。作品・巻に付ける印と一覧(付けた順・作品名順)。整理で巻が置き換わると印を移し(写さない)元に戻すと戻す、作品の統合では吸収先へ移す、オフライン・分解済みの親の印も一覧から落とさない理由
-updated: 2026-11-03
-related: [backend, frontend, organize, work-grouping, volume-split, overview]
+updated: 2026-11-05
+related: [backend, frontend, organize, work-grouping, volume-split, overview, manga-reader]
 ---
 
 # ブックマーク
@@ -23,7 +23,7 @@ related: [backend, frontend, organize, work-grouping, volume-split, overview]
 | `spinebox/bookmarks.py:85 transfer_volume()` | 整理での引き継ぎ。`spinebox/organize/organizer.py:1184 transfer_volume_state()`(読書位置・作品の割り当て・巻の書誌と同じ場所)から呼ぶ |
 | `spinebox/works.py:379 _merge_bookmarks()` | 統合で吸収先へ移す(`merge_works()` から) |
 | `spinebox/db.py:40 MIGRATIONS` | 版 12 の `bookmarks`。作品か巻のどちらか一方(CHECK)、それぞれ部分一意索引で 1 つにつき 1 行 |
-| `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` | 付け外しのボタン。巻の一覧・作品ページ(作品と各巻)・リーダー / 小説リーダーのメニューに置く |
+| `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` | 付け外しのボタン。巻の一覧・作品ページ(作品と各巻)・小説リーダーのメニューに置く。漫画のリーダーでは manga-viewer のヘッダーの ★ が同じ API を呼ぶ([[manga-reader]]) |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | 一覧の画面。入口は `frontend/src/route.ts:114 bookmarksHref` |
 
 ## 決めたこと
@@ -33,6 +33,7 @@ related: [backend, frontend, organize, work-grouping, volume-split, overview]
 - **受け入れ(`kind="intake"`)を元に戻しても印は写し戻さない。** 読書位置と同じく `_record_undone` が写し戻さないため、
   書庫で付けた印は missing になった巻に残る(行は消えず、一覧に出ないだけ)。受け入れフォルダの巻は一覧に出ないので、そこへ戻しても見えない
 - **改名・移動は巻 id を変えないので、何もしなくても印はそのまま**([[organize]])
+- **巻の中のページに挟む「しおり」(#136)は別の機能で、別の表(`page_marks`)に置く。** 漫画リーダーのライブラリは自分のページの印を「ブックマーク」と呼ぶが、画面では「しおり」と呼び分けた。整理での扱い(移す・受け入れの元に戻すでは戻さない)はこのページの印と同じ([[manga-reader]])
 - **統合で両方に印があれば、早い方の日時で 1 つにする。** 統合された作品の id で付け外しすると吸収先が対象になる(`works.root_of()`)
 - **一覧に出す巻の条件は `LISTED_VOLUMES_WHERE` と少し違う。** 「中の巻に分解済みの親」も出す。分解は開いたついでに起きるので
   ([[volume-split]])、分解の前に付けた印が一覧から黙って消えないようにするため(親はそのまま開ける)。

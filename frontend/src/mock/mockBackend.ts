@@ -290,6 +290,23 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   // ブックマーク(#86)。付けた日時は呼び出しごとに 1 秒ずつ進める(並び順を確かめられるように)
   let markClock = Date.parse("2026-11-02T00:00:00Z");
   const marks = { work: new Map<number, string>(), volume: new Map<number, string>() };
+  // ページのしおり(manga-viewer の bookmarkApi)。巻ごとにメモリへ持つ
+  const pageMarks = new Map<string, { page_number: number; title: string }[]>();
+  function handlePageMarks(method: string, path: string, query: string, body: any): MockResponse | null {
+    if (path !== "/api/page-marks") return null;
+    const workId = method === "GET" ? (new URLSearchParams(query).get("work_id") ?? "") : String(body?.work_id ?? "");
+    if (!volumes.some((v) => String(v.id) === workId)) return json(404, { success: false, error: "巻が見つかりません" });
+    const list = pageMarks.get(workId) ?? [];
+    if (method === "GET") return json(200, { success: true, bookmarks: list });
+    const n = Number(body?.page_number);
+    if (!Number.isInteger(n) || n < 1) return json(422, { success: false, error: "ページ番号が正しくありません" });
+    const rest = list.filter((m) => m.page_number !== n);
+    if (method === "POST") rest.push({ page_number: n, title: String(body?.title ?? `${n} ページ`) });
+    else if (method !== "DELETE") return null;
+    pageMarks.set(workId, rest.sort((a, b) => a.page_number - b.page_number));
+    return json(200, { success: true });
+  }
+
   function handleBookmarks(method: string, path: string, query: string): MockResponse | null {
     if (method === "GET" && path === "/api/bookmarks") {
       const sort = new URLSearchParams(query).get("sort") ?? "added";
@@ -336,6 +353,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     const parsed = body ? JSON.parse(body) : undefined;
     log.push({ method, path, body: parsed });
 
+    const pm = handlePageMarks(method, path, rawPath.split("?")[1] ?? "", parsed);
+    if (pm) return pm;
     const b = handleBookmarks(method, path, rawPath.split("?")[1] ?? "");
     if (b) return b;
     const w = mockWorks.handle(method, path, rawPath.split("?")[1] ?? "", parsed);

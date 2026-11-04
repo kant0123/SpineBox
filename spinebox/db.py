@@ -441,6 +441,18 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 16: しおり(#136)。漫画リーダーで巻のページに挟む印(ブックマーク #86 とは別物)。page は 0 始まり。
+    #     利用者の記録なので、蔵書がオフラインでも巻が見えなくなっても消さない(整理・巻への分解では引き継ぐ)
+    [
+        """
+        CREATE TABLE page_marks (
+            volume_id INTEGER NOT NULL REFERENCES volumes(id),
+            page INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (volume_id, page)
+        )
+        """,
+    ],
 ]
 
 

@@ -1,10 +1,42 @@
-// リーダーの読み込み待ち・取得失敗の表示(#26)。結線の通しは App.test.tsx
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+// リーダーの読み込み待ち・取得失敗の表示(#26)と、漫画リーダー(manga-viewer)への結線。結線の通しは App.test.tsx
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HeaderButton, MangaViewerOptions } from "@tokagemushi/manga-viewer";
 import { ApiError } from "../api";
 import { createMockBackend, defaultVolumes, type MockOptions } from "../mock/mockBackend";
+import { saveSettings } from "../settings";
 import { volumeErrorMessage } from "./loadError";
+import { progressKey } from "./MangaReader";
 import { Reader, SLOW_HINT_MS } from "./Reader";
+
+// manga-viewer は Shadow DOM に実描画する外部ライブラリ。ここでは渡した設定の記録と、
+// ヘッダーのボタン・destroy・goToPage だけを持つ偽物に差し替える(実物の挙動は実ブラウザで確かめる)
+const fake = vi.hoisted(() => ({
+  instances: [] as any[],
+  /** 構築中に呼ぶ処理(実物が構築中に onPageChange を呼ぶ・確認を出す、の再現用) */
+  duringConstruct: null as null | ((opts: any, root: ShadowRoot) => void),
+}));
+vi.mock("@tokagemushi/manga-viewer", () => ({
+  default: class {
+    opts: any;
+    destroy = vi.fn();
+    goToPage = vi.fn();
+    constructor(opts: any) {
+      this.opts = opts;
+      const root = (opts.container as HTMLElement).attachShadow({ mode: "open" });
+      for (const b of opts.headerButtons as (string | HeaderButton)[]) {
+        if (typeof b === "string") continue;
+        const btn = document.createElement("button");
+        btn.className = `mv-header-btn ${b.className ?? ""}`;
+        btn.title = b.label;
+        btn.addEventListener("click", (e) => b.onClick(e, this as never));
+        root.appendChild(btn);
+      }
+      fake.duringConstruct?.(opts, root);
+      fake.instances.push(this);
+    }
+  },
+}));
 
 let backend: ReturnType<typeof createMockBackend>;
 
@@ -24,6 +56,8 @@ beforeEach(() => {
   Object.defineProperty(window, "innerHeight", { configurable: true, value: 812 });
   window.location.hash = "";
   localStorage.clear();
+  fake.instances.length = 0;
+  fake.duringConstruct = null;
 });
 
 afterEach(() => {
@@ -46,7 +80,7 @@ describe("巻情報の取得待ち", () => {
     expect(screen.getByText(/展開に数秒/)).toBeTruthy();
 
     await act(async () => vi.advanceTimersByTime(5000));
-    expect(screen.getByRole("img").getAttribute("alt")).toBe("1 ページ");
+    expect(fake.instances).toHaveLength(1);
     expect(screen.queryByText(/展開に数秒/)).toBeNull();
   });
 
@@ -54,32 +88,7 @@ describe("巻情報の取得待ち", () => {
     useBackend({ firstOpenDelayMs: 5000 });
     backend.handle("GET", "/api/volumes/5"); // 1 回目は済んだことにする
     render(<Reader id="5" />);
-    expect(await screen.findByRole("img")).toBeTruthy();
-  });
-});
-
-describe("ページ画像の読み込み待ち", () => {
-  it("画像が読み終わるまで読み込み中を出し、load で消す", async () => {
-    useBackend();
-    render(<Reader id="1" />);
-    const img = await screen.findByRole("img");
-    expect(screen.getByRole("status").textContent).toContain("読み込み中");
-
-    fireEvent.load(img);
-    expect(screen.queryByRole("status")).toBeNull();
-
-    // 次のページはまた待つ。読み込めなかったページは待ち続けずに理由を出す
-    fireEvent.keyDown(window, { key: "ArrowLeft" });
-    const next = screen.getByRole("img");
-    expect(next.getAttribute("alt")).toBe("2 ページ");
-    expect(screen.getByRole("status").textContent).toContain("読み込み中");
-    fireEvent.error(next);
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByText("2 ページ目を読み込めませんでした")).toBeTruthy();
-
-    // 読み終えたページへ戻ったときは出さない
-    fireEvent.keyDown(window, { key: "ArrowRight" });
-    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(() => expect(fake.instances).toHaveLength(1));
   });
 });
 
@@ -94,6 +103,7 @@ describe("取得失敗", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(text);
     expect(backLink()).toBe("#/");
     expect(screen.queryByRole("status")).toBeNull();
+    expect(fake.instances).toHaveLength(0);
   });
 
   it("サーバーに繋がらないときも一覧へ戻れる", async () => {
@@ -121,64 +131,218 @@ describe("volumeErrorMessage", () => {
   });
 });
 
-describe("最終ページから次巻へ(#113)", () => {
-  const toLastPage = () => {
-    for (let i = 0; i < 4; i++) fireEvent.keyDown(window, { key: "ArrowLeft" });
-    expect(screen.getByRole("img").getAttribute("alt")).toBe("8 ページ");
-  };
+// ---- 漫画リーダー(manga-viewer)への結線 ----
 
-  it("最終ページからさらに進むと、同じ作品の次の巻のリーダーへ移る", async () => {
-    useBackend();
-    render(<Reader id="2" />); // 8 ページ・4 ページ目から再開
-    await screen.findByRole("img");
-    toLastPage();
-    fireEvent.keyDown(window, { key: "ArrowLeft" });
+const opened = async (id: string, options?: MockOptions, volumes?: ReturnType<typeof defaultVolumes>) => {
+  useBackend(options, volumes);
+  const r = render(<Reader id={id} />);
+  await waitFor(() => expect(fake.instances).toHaveLength(1));
+  const viewer = fake.instances[0];
+  const opts = viewer.opts as MangaViewerOptions;
+  const shadow = (opts.container as HTMLElement).shadowRoot!;
+  return { viewer, opts, shadow, ...r };
+};
+const custom = (opts: MangaViewerOptions) => (opts.headerButtons ?? []).filter((b): b is HeaderButton => typeof b !== "string");
+const puts = () => backend.log.filter((l) => l.method === "PUT" && l.path.endsWith("/progress")).map((l) => ({ path: l.path, body: l.body }));
+const nameOf = (b: string | HeaderButton) => (typeof b === "string" ? b : b.className);
+
+describe("manga-viewer に渡す設定", () => {
+  it("ページ画像・右綴じ・タイトル・しおり API・テーマを渡す", async () => {
+    const { opts } = await opened("2");
+    expect(opts.pages).toEqual(Array.from({ length: 8 }, (_, i) => `/api/volumes/2/pages/${i}`));
+    expect(opts.direction).toBe("rtl");
+    expect(opts.title).toBe("サンプル漫画 第02巻");
+    expect(opts.bookmarks).toBe(true);
+    expect(opts.bookmarkId).toBe("2");
+    expect(opts.bookmarkApi).toBe("/api/page-marks");
+    expect(opts.messages?.bookmarkAdd).toContain("しおり");
+    expect(["light", "dark"]).toContain(opts.theme);
+  });
+
+  it.each([true, false])("表紙を単独で表示する設定(%s)が firstPageSingle になる", async (coverAlone) => {
+    saveSettings({ coverAlone });
+    const { opts } = await opened("1");
+    expect(opts.firstPageSingle).toBe(coverAlone);
+  });
+
+  it("以前の版が保存した spreadMode が残っていても読み飛ばす", async () => {
+    localStorage.setItem("spinebox.reader", JSON.stringify({ coverAlone: false, spreadMode: "single" }));
+    const { opts } = await opened("1");
+    expect(opts.firstPageSingle).toBe(false);
+  });
+
+  it("ヘッダーのボタンは共有・リンクコピーを含めない", async () => {
+    const { opts } = await opened("3"); // 次巻なし
+    expect(opts.headerButtons!.map(nameOf)).toEqual(["back", "bookmark", "spinebox-volume-bookmark", "fullscreen", "help"]);
+  });
+
+  it("戻るは一覧へ移る", async () => {
+    const { opts, viewer } = await opened("1");
+    window.location.hash = "#/read/1";
+    opts.onBack!(new Event("click"), viewer);
+    expect(window.location.hash).toBe("#/");
+  });
+
+  it("アンマウントで destroy する", async () => {
+    const { viewer, unmount } = await opened("1");
+    expect(viewer.destroy).not.toHaveBeenCalled();
+    unmount();
+    expect(viewer.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("次の巻へのボタン(#113)", () => {
+  it("次巻があれば「次の巻へ」で次巻のリーダーへ移る", async () => {
+    const { opts, shadow } = await opened("2");
+    expect(custom(opts).map((b) => b.label)).toContain("次の巻へ");
+    fireEvent.click(shadow.querySelector(".spinebox-next-volume")!);
     expect(window.location.hash).toBe("#/read/3");
   });
 
-  it("次巻が無い巻では従来どおり「最後のページです」", async () => {
-    useBackend();
-    render(<Reader id="3" />); // 読了済み(最終ページ)・次巻なし
-    await screen.findByRole("img");
-    fireEvent.keyDown(window, { key: "ArrowLeft" });
-    expect(screen.getByText("最後のページです")).toBeTruthy();
-    expect(window.location.hash).toBe("");
+  it("次巻が無ければボタンを出さない", async () => {
+    const { opts } = await opened("3");
+    expect(custom(opts).map((b) => b.label)).not.toContain("次の巻へ");
   });
 
-  it("次巻がオフラインなら移動せず、オフラインであることを出す", async () => {
-    useBackend({}, defaultVolumes().map((v) => (v.id === 3 ? { ...v, offline: true } : v)));
-    render(<Reader id="2" />);
-    await screen.findByRole("img");
-    toLastPage();
-    fireEvent.keyDown(window, { key: "ArrowLeft" });
-    expect(screen.getByText("次の巻「読了済みの巻」はオフラインです")).toBeTruthy();
+  it("次巻がオフラインならボタンは出すが、移動せずオフラインであることを出す", async () => {
+    const { shadow } = await opened("2", {}, defaultVolumes().map((v) => (v.id === 3 ? { ...v, offline: true } : v)));
+    fireEvent.click(shadow.querySelector(".spinebox-next-volume")!);
+    expect(await screen.findByText("次の巻「読了済みの巻」はオフラインです")).toBeTruthy();
     expect(window.location.hash).toBe("");
   });
 });
 
-describe("先読み済み(complete)の画像でのページ送り(#51)", () => {
-  // 実ブラウザでの無限更新(React #185)は jsdom では再現しない。ここでは load が来ない先読み済みの画像が
-  // 読み込み済みとして扱われ、ページを送っても表示が続くことを確かめる
-  it("load が来なくても読み込み済みとして扱い、見開きで何度ページを送っても表示が続く", async () => {
-    // 先読みで読み終わった画像を再現する: 描画した時点で complete・naturalWidth > 0
-    const complete = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "complete");
-    const natural = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "naturalWidth");
-    Object.defineProperty(HTMLImageElement.prototype, "complete", { configurable: true, get: () => true });
-    Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", { configurable: true, get: () => 800 });
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
-    try {
-      useBackend();
-      render(<Reader id="1" />);
-      await screen.findAllByRole("img");
-      for (let k = 0; k < 4; k++) {
-        fireEvent.keyDown(window, { key: "ArrowLeft" });
-        expect(screen.getAllByRole("img").length).toBeGreaterThan(0);
-      }
-      expect(screen.queryByRole("status")).toBeNull(); // 読み込み済みとして扱われる
-    } finally {
-      if (complete) Object.defineProperty(HTMLImageElement.prototype, "complete", complete);
-      if (natural) Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", natural);
-    }
+describe("再開位置の受け渡し", () => {
+  it("サーバーの位置(0 始まり)を manga-viewer の保存形式で置く", async () => {
+    await opened("2"); // progress.page = 3
+    const saved = JSON.parse(localStorage.getItem(progressKey("2"))!);
+    expect(saved).toMatchObject({ slotIndex: 0, pageIndex: 3 });
+    expect(Date.now() - saved.timestamp).toBeLessThan(5000);
+  });
+
+  it("位置が無い巻では、前に残っていた値を消す", async () => {
+    localStorage.setItem(progressKey("1"), JSON.stringify({ slotIndex: 0, pageIndex: 5, timestamp: Date.now() }));
+    await opened("1");
+    expect(localStorage.getItem(progressKey("1"))).toBeNull();
+  });
+
+  it("位置が 0 ページ目でも消す", async () => {
+    localStorage.setItem(progressKey("9"), "x");
+    await opened("9", {}, [{ ...defaultVolumes()[0], id: 9, progress: { page: 0, finished: false } }]);
+    expect(localStorage.getItem(progressKey("9"))).toBeNull();
+  });
+});
+
+describe("読書位置のサーバー保存", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
+
+  const open = async (id: string) => {
+    useBackend();
+    const r = render(<Reader id={id} />);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(fake.instances).toHaveLength(1);
+    const opts = fake.instances[0].opts as MangaViewerOptions;
+    return { opts, shadow: (opts.container as HTMLElement).shadowRoot!, ...r };
+  };
+  const wait = (ms: number) => act(async () => vi.advanceTimersByTimeAsync(ms));
+
+  it("構築中の通知では保存しない(サーバーの位置を 1 ページ目で上書きしない)", async () => {
+    // 実物は構築中に onPageChange(1) を呼ぶ
+    fake.duringConstruct = (o) => {
+      o.onPageChange(1, 8);
+      o.onComplete();
+    };
+    await open("2");
+    await wait(2000);
+    expect(puts()).toEqual([]);
+  });
+
+  it("ページが変わると 0 始まりで、まとめて 1 回だけ送る(デバウンス)", async () => {
+    const { opts } = await open("2");
+    act(() => opts.onPageChange!(5, 8));
+    act(() => opts.onPageChange!(6, 8));
+    await wait(500);
+    expect(puts()).toEqual([]);
+    act(() => opts.onPageChange!(7, 8));
+    await wait(800);
+    expect(puts()).toEqual([{ path: "/api/volumes/2/progress", body: { page: 6, finished: false } }]);
+  });
+
+  it("最終ページ(onComplete)で既読になり、前へ戻っても既読のまま", async () => {
+    const { opts } = await open("2");
+    act(() => {
+      opts.onPageChange!(8, 8);
+      opts.onComplete!();
+    });
+    await wait(800);
+    expect(puts().at(-1)).toEqual({ path: "/api/volumes/2/progress", body: { page: 7, finished: true } });
+    act(() => opts.onPageChange!(7, 8));
+    await wait(800);
+    expect(puts().at(-1)).toEqual({ path: "/api/volumes/2/progress", body: { page: 6, finished: true } });
+  });
+
+  it("続きから読むかの確認が出ている間は保存しない", async () => {
+    const { opts, shadow } = await open("2");
+    const dialog = document.createElement("div");
+    dialog.className = "mv-resume-dialog";
+    shadow.appendChild(dialog);
+    act(() => opts.onPageChange!(1, 8));
+    act(() => opts.onComplete!());
+    await wait(2000);
+    expect(puts()).toEqual([]);
+    dialog.remove(); // 選び終えた後は保存する
+    act(() => opts.onPageChange!(6, 8));
+    await wait(800);
+    expect(puts()).toEqual([{ path: "/api/volumes/2/progress", body: { page: 5, finished: false } }]);
+  });
+
+  it("待っている値は、画面を離れる(アンマウント)ときに即座に送る", async () => {
+    const { opts, unmount } = await open("2");
+    act(() => opts.onPageChange!(6, 8));
+    expect(puts()).toEqual([]);
+    unmount();
+    await wait(0);
+    expect(puts()).toEqual([{ path: "/api/volumes/2/progress", body: { page: 5, finished: false } }]);
+  });
+});
+
+describe("巻のブックマーク(#86)", () => {
+  it("押すとサーバーへ付け外しし、ボタンの表示を切り替える", async () => {
+    const { shadow } = await opened("1");
+    const btn = shadow.querySelector<HTMLElement>(".spinebox-volume-bookmark")!;
+    await waitFor(() => expect(btn.getAttribute("aria-pressed")).toBe("false"));
+    expect(btn.title).toBe("ブックマークに追加");
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-pressed")).toBe("true"));
+    expect(btn.title).toBe("ブックマークを外す");
+    expect(backend.log.filter((l) => l.method === "PUT" && l.path.includes("bookmark"))).toHaveLength(1);
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-pressed")).toBe("false"));
+    expect(btn.getAttribute("aria-label")).toBe("ブックマークに追加");
+  });
+
+  it("失敗したら元に戻して理由を出す", async () => {
+    const { shadow } = await opened("1");
+    vi.stubGlobal("fetch", async () => new Response("", { status: 500 }));
+    const btn = shadow.querySelector<HTMLElement>(".spinebox-volume-bookmark")!;
+    fireEvent.click(btn);
+    expect(await screen.findByText("ブックマークを変更できませんでした")).toBeTruthy();
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+  });
+});
+
+describe("小説・ページが無い巻", () => {
+  it("小説は manga-viewer を使わず NovelReader で開く", async () => {
+    useBackend();
+    render(<Reader id="7" />);
+    expect(await screen.findByTestId("novel-text")).toBeTruthy();
+    expect(fake.instances).toHaveLength(0);
+  });
+
+  it("ページが 0 件なら理由を出す", async () => {
+    useBackend({}, [{ ...defaultVolumes()[0], id: 10, page_count: 0 }]);
+    render(<Reader id="10" />);
+    expect((await screen.findByRole("alert")).textContent).toContain("ページがありません");
+    expect(fake.instances).toHaveLength(0);
   });
 });

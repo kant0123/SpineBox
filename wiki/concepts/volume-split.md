@@ -1,8 +1,8 @@
 ---
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
-updated: 2026-11-03
-related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks, data-jobs]
+updated: 2026-11-05
+related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks, data-jobs, manga-reader]
 ---
 
 # 巻への分解と巻範囲の食い違い
@@ -40,6 +40,11 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - オフラインのルートでは解析しない(409)。裏の解析は記録せずに飛ばし、再接続後にまた候補にする。読めなかった巻は `analysis_error` に理由を残し、
   `analyzed_version = 'error'` にして裏の解析が同じ巻を繰り返さないようにする(明示操作ならやり直せる)
 
+### 分解前に親で挟んだしおり
+
+読書位置と同じく、親の行を残したまま、そのページを持つ子の巻のそのページへ写す(`spinebox/analysis.py:122 _carry_page_marks()`。#136、[[manga-reader]])。
+子に既にあるしおりは触らない。題は持たないので、ページ番号が変わっても「ページN」がずれない
+
 ### 分解前に親で付けた読書位置
 
 `spinebox/analysis.py:93 _carry_progress()`。親の記録は消さない。位置を持たない子にだけ写す。
@@ -51,7 +56,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 食い違い
 
-`spinebox/analysis.py:186 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
+`spinebox/analysis.py:206 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
 
 - `volume`: 分解した親の名前の範囲 ⇔ 子の巻番号。親と各子に付ける
 - `source`: 外側アーカイブ(スキャンのソース)の名前の範囲 ⇔ その中の巻(分解済みなら子、未解析の内側アーカイブはその名前の範囲)。

@@ -36,7 +36,7 @@ from ..pages import is_image, natural_key
 from ..naming import parse_number
 from ..scanner import (LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, SCAN_VERSION, Scanner, VolumeSpec, _fs_name_bytes,
                        resolve_source_path, root_is_accessible)
-from .. import bookmarks
+from .. import bookmarks, page_marks
 from ..works import WorkNotFound, root_of, transfer_assignment, transfer_volume_fields
 from . import cbz, fs
 from .cleanup import clean_stem, split_ext
@@ -1190,6 +1190,7 @@ def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_
     transfer_assignment(c, from_id, to_id)
     transfer_volume_fields(c, from_id, to_id)  # 手動で直した出版社・ISBN などを、整理しても失わない
     bookmarks.transfer_volume(c, from_id, to_id)  # 印は写さず移す(元に戻すと元の巻へ戻る)
+    page_marks.transfer_volume(c, from_id, to_id, page_count)  # しおり(#136)も移す(元に戻すと戻る)
     row = c.execute("SELECT page, finished FROM reading_progress WHERE volume_id = ?", (from_id,)).fetchone()
     if row is None:
         return
