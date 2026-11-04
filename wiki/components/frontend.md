@@ -36,7 +36,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 巻の番号 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
 | `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
-| `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
+| `frontend/src/works/WorkCover.tsx:18 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
 | `frontend/src/api.ts:917 api` | API 契約(#14 と共有)の型と呼び出し |
@@ -88,10 +88,13 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   種別(漫画/小説)とジャンルはカードから外す(漫画・小説はナビで分かれ、ジャンルは作品ページで見る)。重複と統合済みは
   一覧の判断には使わず、カードが情報過多になるためバッジから外す(統合の提案・候補の確認待ち・欠け・オフライン・読書状態は残す)。
   巻数は独立した行ではなく `.work-badges` の先頭のタグにし、文言を「全8巻(〜6巻)」(最高巻数が無ければ「全8巻」)にした。
-- **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** カードの横幅いっぱい(`.work-card .work-cover` で幅 100%・上角丸)に置き、
+- **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** カードの横幅いっぱい(`.work-card .work-cover` で幅 100%・2:3 の縦横比・上角丸)に置き、
   文字は表紙の下へ続ける(#129)。`cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
-  読み込めたら見せ、404(入れ子の巻でまだ作っていない・小説・1 ページ目が画像でない)なら要素ごと消して文字だけのカードのまま。
-  読み込み中は枠だけ(透明)で、消えたときだけカードの高さが変わる。入れ子の巻の表紙は管理のデータ管理タブの「表紙のみ補完」(明示操作)で作る。
+  読み込めたら見せる。表紙が無い・404(入れ子の巻でまだ作っていない・小説・1 ページ目が画像でない)なら
+  「表紙なし」の枠(`WorkCoverPlaceholder`)を同じ 2:3 で残す(#132)。枠を残すのは作品カードだけで、
+  タイトル一覧・ブックマークの表紙は今までどおり何も出さない。表紙の有無で高さが変わらないので、
+  `.work-grid` の `grid-auto-rows: 1fr` と `align-items: stretch` で全カードの大きさを揃え、タイトルの開始位置もそろう
+  (文字が少ない作品は下に余白が出る)。入れ子の巻の表紙は管理のデータ管理タブの「表紙のみ補完」(明示操作)で作る。
   表紙の URL は `ETag` + `Cache-Control: private, no-cache` なので、画面を開き直すと取り直す(以前の「表紙を作る」の後に `?rev=` を変える仕組みは、作成を画面から起動しなくなったので廃止した)。
   巻の一覧のカードには出していない(要望は作品の一覧。同じ `api.thumbnailUrl()` で足せる)
 - **読み込み待ちは 2 段で見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を

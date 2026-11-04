@@ -161,7 +161,7 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
 });
 
 describe("作品カードの表紙(#75)", () => {
-  it("表紙の巻のサムネイルを出し、読み込めたら見せ、404 なら文字だけのカードに戻る", async () => {
+  it("表紙の巻のサムネイルを出し、読み込めたら見せ、404 なら表紙なしの枠を残す", async () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
@@ -173,7 +173,23 @@ describe("作品カードの表紙(#75)", () => {
     expect(img.classList.contains("loaded")).toBe(true);
     fireEvent.error(img);
     expect(card.querySelector("img")).toBeNull();
+    expect(card.querySelector(".work-cover-placeholder")!.textContent).toBe("表紙なし");
     expect(within(card).getByText("サンプル漫画")).toBeTruthy();
+  });
+
+  it("表紙を読み込めない作品も表紙の枠を出し、タイトルを表示する", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("別の読み物")).closest("li")!;
+    const img = card.querySelector("img.work-cover") as HTMLImageElement;
+    fireEvent.error(img);
+    expect(card.querySelector("img.work-cover")).toBeNull();
+    expect(card.querySelector(".work-cover-placeholder")!.textContent).toBe("表紙なし");
+    expect(within(card).getByText("別の読み物")).toBeTruthy();
+    // すべてのカードが表紙か表紙なしの枠を持ち、タイトルの開始位置がずれない
+    for (const item of document.querySelectorAll(".work-card")) {
+      expect(item.querySelector("img.work-cover, .work-cover-placeholder")).toBeTruthy();
+    }
   });
 
   it("モック: 入れ子の巻の表紙は、開くか作るまで 404 pending", () => {
