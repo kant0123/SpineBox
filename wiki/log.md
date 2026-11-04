@@ -347,5 +347,5 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-05] ingest | PR #PRNUM 漫画リーダーを manga-viewer に置き換え、しおりをサーバー保存にする
 - 新規: [[manga-reader]]
-- 更新: [[frontend]], [[backend]], [[bookmarks]], [[organize]], [[volume-split]], [[novel-reader]]
+- 更新: [[frontend]], [[backend]], [[bookmarks]], [[organize]], [[volume-split]], [[novel-reader]]、[[inbox]] / [[cover-thumbnails]](コード参照の行番号のずれのみ)
 - 備考: #136。漫画の巻のリーダーを自作から tokagemushi 氏の manga-viewer(MIT。作者へは利用者が通知済み)に置き換えた。npm の 0.6.0 は「続きから読みますか?」が出ない(初期化中の表示更新が保存済みの進捗を 1 ページ目で上書きする)ので、修正入りの GitHub のコミット `db5d7c8` に固定した。再開位置はサーバーの読書位置を `localStorage` 経由で渡し、構築中・確認に答える前の位置はサーバーへ送らない。しおりは利用者と決めてサーバーに置き(マイグレーション 16 `page_marks`、`/api/page-marks`)、整理では移し、巻への分解では子へ写す。「横長画面で見開き」の切替はライブラリに単ページ固定が無いので利用者と決めて廃止した。実装はサブエージェント(バックエンド・フロント)に分けた。開発機の一時サンプル蔵書で実バックエンドを起動し、375px と 1280×800 で再開の確認・位置の保存・しおり・★・次の巻・見開き・戻るを確認した。
