@@ -178,17 +178,12 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                 <span className="work-text">
                   <span className="volume-title">{w.title}</span>
                   {w.author && <span className="volume-meta">{w.author}</span>}
-                  {(w.kind || w.publisher) && (
-                    <span className="volume-meta">{[w.kind ? KIND_TEXT[w.kind] : "", w.publisher ?? ""].filter(Boolean).join(" / ")}</span>
-                  )}
-                  {w.genres.length > 0 && <span className="volume-meta">{w.genres.slice(0, 4).join(" / ")}</span>}
-                  <span className="volume-meta">
-                    {w.volume_count} 巻{w.max_volume ? `(〜${w.max_volume} 巻)` : ""}
-                  </span>
+                  {w.publisher && <span className="volume-meta">{w.publisher}</span>}
                   <span className="work-badges">
+                    <span className="badge volume-count-badge">
+                      全{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
+                    </span>
                     {missing && <span className="badge">欠け {missing}</span>}
-                    {w.duplicate_slots > 0 && <span className="badge dup-badge">重複 {w.duplicate_slots}</span>}
-                    {w.merged && <span className="badge dup-badge">統合済み</span>}
                     {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
                     {w.link_pending > 0 && <span className="badge">候補の確認待ち</span>}
                     {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
