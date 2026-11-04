@@ -470,6 +470,13 @@ def test_include_cbz_roundtrip_creates_cbz_and_restores_everything(env):
     assert progress(env, old_multi[0]) == 0 and progress(env, old_zip) == 0
     assert env.conn.execute("SELECT organized_op_id FROM volumes WHERE id = ?",
                             (old_image,)).fetchone()[0] is None
+    # 元に戻した後、同じ範囲をもう一度 CBZ 化できる(出力先に残った missing の sources 行を再利用する)
+    again = o.plan_range(env.root_id, "漫画", include_cbz=True)
+    assert again["state"] == "planned" and not again["problems"]
+    assert any(it["status"] == "cbz" and it["from_rel_path"] == "漫画/まとめ.zip" for it in again["items"])
+    o.execute(again["op_id"])
+    o.undo(again["op_id"])
+    assert full_snapshot(root) == before
 
 
 def test_include_cbz_conflicting_source_is_excluded_as_a_whole(env):

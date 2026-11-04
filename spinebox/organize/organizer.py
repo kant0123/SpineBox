@@ -982,9 +982,8 @@ class Organizer:
         reason = self._target_problem(root, base, rel, source_path)
         if reason:
             return reason
-        if self.conn.execute("SELECT 1 FROM sources WHERE root_id = ? AND rel_path = ?",
-                             (r["root_id"], rel)).fetchone():
-            return "この場所にあったファイルの記録が残っています(同じ名前のファイルを以前スキャンしました)"
+        # 出力先に missing の sources 行が残っていてもよい。CBZ 化の実行は _upsert_source でその行を
+        # 再利用する(改名・移動は sources.rel_path を直接 UPDATE するので、別の行があると衝突する)。
         folder_sources = {f["rel_path"] for f in self.conn.execute(
             "SELECT rel_path FROM sources WHERE root_id = ? AND kind = 'folder' AND missing = 0", (r["root_id"],))}
         parts = rel.split("/")[:-1]
@@ -1465,9 +1464,8 @@ class Organizer:
         if (row is None or row["missing"] or row["organized_op_id"] is not None
                 or row["rel_path"] != it["from_rel_path"] or row["title"] != it["before"]["title"]):
             raise OrganizeError(f"巻が変わりました。計画を作り直してください: {it['title']}")
-        if self.conn.execute("SELECT 1 FROM sources WHERE root_id = ? AND rel_path = ?",
-                             (it["root_id"], it["output_rel_path"])).fetchone():
-            raise OrganizeError(f"出力先の記録が既にあります。計画を作り直してください: {it['output_rel_path']}")
+        # 出力先に missing の sources 行が残っていてもよい(実行の _upsert_source が再利用する)。
+        # ディスク上にファイルがある場合は上の lexists で止まる。
 
     def _check_cbz_source(self, src: dict) -> None:
         """CBZ 化する元(1 つのファイル・フォルダ)が計画のときのままか。"""
