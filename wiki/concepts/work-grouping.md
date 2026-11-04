@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
-updated: 2026-11-02
+updated: 2026-11-05
 related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
 
@@ -52,7 +52,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - 作品名・著者を手で直すと `manual = 1`。再計算は触らない。直す前の作品名は別名(`previous_title`・手動)に残す
 - 別名は外した(`dismissed_at`)ものを再計算で戻さない
 - 巻の付け替えは手動の割り当て(`manual = 1`)で、再計算で動かさない。分解された巻([[volume-split]])の子は親の手動の割り当てを引き継ぐ
-- 整理処理([[organize]])が作る CBZ の巻へは、`spinebox/organize/organizer.py:1184 transfer_volume_state()` が元の巻の作品の割り当て
+- 整理処理([[organize]])が作る CBZ の巻へは、`spinebox/organize/organizer.py:1701 transfer_volume_state()` が元の巻の作品の割り当て
   (手動かどうかも)を写し、元に戻すと逆向きに写す。そうしないと整理しただけで作品から外れる。
   テンプレートどおりの改名・移動は巻 id を変えないので、割り当てはそのまま残る。命名テンプレートの `<作品名>`・`<著者>` は
   この作品の項目(統合されていれば吸収先)から取る

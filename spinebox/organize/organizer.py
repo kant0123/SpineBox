@@ -12,6 +12,9 @@
 - 出力名は巻の表示名(naming="title")か命名テンプレート(naming="template"。template.py)
 - 改名・移動だけの整理(kind="rename"): 既に 1 巻 = 1 CBZ の巻を、作品単位でテンプレートの名前へ移す。
   巻 id を変えずにソースのパスを付け替えるので、読書位置・作品の割り当て・指紋・重複の却下はそのまま残る
+- 範囲指定の整理(kind="range"): 1 巻 = 1 CBZ は改名・移動するだけ。include_cbz=True なら、それ以外の元
+  (複数巻のアーカイブ・入れ子・画像フォルダ・CBZ でない 1 巻のアーカイブ)も読める巻ごとにテンプレートの
+  名前の CBZ にする(#133)。CBZ 化する元は全巻を作業場で作って検証してから確定し、元は退避フォルダへ移す
 """
 from __future__ import annotations
 
@@ -46,9 +49,9 @@ NAMINGS = ("title", "template")
 KIND_LABELS = {"manga": "漫画", "novel": "小説"}
 # 改名・移動だけの整理の種類。rename = 作品単位(name_template)、range = 範囲指定(整理画面のテンプレート・ファイル名の整理)
 RENAME_KINDS = ("rename", "range")
-# 改名・移動の計画の各巻の扱い
-ITEM_MOVE, ITEM_UNCHANGED, ITEM_EXCLUDED, ITEM_CONFLICT, ITEM_SKIPPED = (
-    "move", "unchanged", "excluded", "conflict", "skipped")
+# 改名・移動の計画の各巻の扱い。cbz = CBZ 化する(範囲指定の整理で include_cbz=True のとき)
+ITEM_MOVE, ITEM_UNCHANGED, ITEM_EXCLUDED, ITEM_CONFLICT, ITEM_SKIPPED, ITEM_CBZ = (
+    "move", "unchanged", "excluded", "conflict", "skipped", "cbz")
 
 
 class OrganizeError(Exception):
@@ -401,6 +404,8 @@ class Organizer:
         if op["state"] != "planned":
             raise OrganizeError(f"この操作は実行できる状態ではありません({op['state']})", self.get(op_id))
         if plan.get("kind") in RENAME_KINDS:
+            if plan.get("include_cbz"):
+                return self._execute_range_cbz(op_id, plan)
             return self._execute_rename(op_id, plan)
         root, base, out_root, out_base = self._roots_of(plan)
         move_only = plan.get("mode") == "move"
@@ -541,6 +546,8 @@ class Organizer:
         if op["state"] != "done":
             raise OrganizeError(f"この操作は元に戻せる状態ではありません({op['state']})", self.get(op_id))
         if plan.get("kind") in RENAME_KINDS:
+            if plan.get("include_cbz"):
+                return self._undo_range_cbz(op_id, plan)
             return self._undo_rename(op_id, plan)
         root, base, out_root, out_base = self._roots_of(plan)
         if plan.get("mode") == "move":
@@ -771,13 +778,13 @@ class Organizer:
         return self._save_rename_plan(plan, items, "この作品には一覧に出ている巻がありません")
 
     def plan_range(self, root_id: int, path: str = "", *, file_template: str = "", folder_template: str = "",
-                   exclude_volume_ids: tuple[int, ...] | list[int] = ()) -> dict:
+                   exclude_volume_ids: tuple[int, ...] | list[int] = (), include_cbz: bool = False) -> dict:
         """蔵書ルートの中の範囲(path。空ならルート全体、サブフォルダも含む)の巻を、整理画面のテンプレートで
         改名・移動する計画(#84)。蔵書には何も書かない。
 
         ファイル名テンプレートが空なら今の名前を整理した名前(cleanup.py)、フォルダーテンプレートが空なら元と同じフォルダ。
-        フォルダーテンプレートは範囲のパスを起点にする。対象は 1 巻 = 1 ファイル(CBZ・zip などのアーカイブ・小説)だけで、
-        拡張子は元のものを保つ。CBZ 化はしない(複数巻のまとめ・入れ子・画像フォルダは対象外にして CBZ 化の画面へ案内する)。
+        フォルダーテンプレートは範囲のパスを起点にする。CBZ 化はしない(複数巻のまとめ・入れ子・画像フォルダは対象外にして
+        CBZ 化の画面へ案内する)。include_cbz=True なら、それらの元も読める巻ごとにテンプレートの名前の CBZ にする(#133)。
         振り分け・実行・元に戻すは作品単位の改名・移動(plan_rename)と同じ。
         """
         template = RangeTemplate(file_template, folder_template)
@@ -787,9 +794,12 @@ class Organizer:
             raise RangeNotFound(f"蔵書フォルダが見つかりません: {root_id}")
         root = Path(root_row["path"])
         plan = {"kind": "range", "naming": "template", "template": None, "work_id": None,
+                "include_cbz": bool(include_cbz), "cbz_sources": [],
                 "scope": {"root_id": root_id, "root_path": str(root), "path": "", "file_template": template.file_text,
                           "folder_template": template.folder_text}}
         if not root_row["online"] or not root_is_accessible(root):
+            if include_cbz:
+                return self._save_range_plan(plan, [], [], "蔵書フォルダが今オフラインです")
             return self._save_rename_plan(plan, [], "蔵書フォルダが今オフラインです")
         sub = self.range_path(root, path)
         plan["scope"]["path"] = sub
@@ -799,6 +809,8 @@ class Organizer:
             if r["rel_path"].startswith(prefix)]
         rows.sort(key=lambda r: (natural_key(r["rel_path"]), natural_key(r["entry_prefix"] or "")))
         values = self.name_values([r["id"] for r in rows])
+        if include_cbz:
+            return self._plan_range_cbz(root, sub, rows, values, template, set(exclude_volume_ids), plan)
 
         def target(r: dict) -> tuple[str, list[str]]:
             parent, _, name = r["rel_path"].rpartition("/")
@@ -815,6 +827,244 @@ class Organizer:
 
         items = self._classify_renames(rows, set(exclude_volume_ids), self._range_ineligible, target)
         return self._save_rename_plan(plan, items, "範囲の中に一覧に出ている巻がありません")
+
+    def _plan_range_cbz(self, root: Path, sub: str, rows: list[dict], values: dict, template: RangeTemplate,
+                        excluded_ids: set[int], plan: dict) -> dict:
+        """範囲指定の整理で、1 巻 = 1 CBZ でない元も CBZ にする計画(#133)。
+
+        1 巻 = 1 CBZ の巻は従来どおり改名・移動する。それ以外は読める巻ごとに CBZ にし、元(1 つのファイル・
+        フォルダ)は全巻を作って検証してから退避フォルダへ移す。元の一部の巻だけを CBZ にすると、退避した元に
+        残る巻の読めない状態ができるので、元の全巻を CBZ にできるときだけ対象にする(1 巻でも駄目なら元全体を衝突にする)。
+        """
+        base = self.settings.organize_base(root)
+        problems: list[str] = []
+        warnings: list[str] = []
+        plan["needs_analysis"] = self._unanalyzed(rows, problems)
+        items: list[dict] = []
+        by_source: dict[int, list[dict]] = {}
+        source_rows: dict[int, dict] = {}
+
+        def move_target(r: dict) -> tuple[str, list[str]]:
+            parent, _, name = r["rel_path"].rpartition("/")
+            stem, ext = split_ext(name)
+            changes: list[str] = []
+            file_stem = template.render_file(values[r["id"]])
+            if file_stem is None:
+                cleaned = clean_stem(stem)
+                file_stem, changes = cleaned.name, list(cleaned.changes)
+            folder = template.render_folder(values[r["id"]])
+            dirs = (parent.split("/") if parent else []) if folder is None else [*(sub.split("/") if sub else []),
+                                                                               *folder]
+            return "/".join([*dirs, file_stem + ext]), changes
+
+        # 1 巻 = 1 CBZ の巻はまとめて振り分ける(巻ごとに _classify_renames を呼ぶと、その中の
+        # sources のキャッシュが効かず、同じ SELECT を巻数ぶん発行してしまう)
+        folder_sources: dict[int, set[str]] = {}
+        source_paths: dict[int, set[str]] = {}
+        single_rows = [r for r in rows
+                       if self._single_file(r) and r["rel_path"].lower().endswith(".cbz")]
+        single_items = self._classify_renames(single_rows, excluded_ids, self._range_ineligible, move_target,
+                                              folder_sources=folder_sources, source_paths=source_paths)
+        for it in single_items:
+            it["conversion"] = False
+        single_by_id = {it["volume_id"]: it for it in single_items}
+
+        for r in rows:
+            if r["id"] in single_by_id:
+                items.append(single_by_id[r["id"]])
+                continue
+            it = self._range_item(r)
+            it["conversion"] = True
+            items.append(it)
+            if r["id"] in excluded_ids:
+                it.update(status=ITEM_SKIPPED, reason="外しました")
+                by_source.setdefault(r["source_id"], []).append(it)
+                source_rows.setdefault(r["source_id"], r)
+                continue
+            if r["format"]:
+                it.update(status=ITEM_EXCLUDED, reason="小説(EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                continue
+            by_source.setdefault(r["source_id"], []).append(it)
+            source_rows.setdefault(r["source_id"], r)
+            try:
+                source_path = resolve_source_path(root, r["rel_path"])
+            except ValueError:
+                it.update(status=ITEM_EXCLUDED, reason="元のファイル・フォルダが見つかりません(再スキャンしてください)")
+                continue
+            if not source_path.exists():
+                it.update(status=ITEM_EXCLUDED, reason="元のファイル・フォルダが見つかりません(再スキャンしてください)")
+                continue
+            try:
+                rel, changes = self._range_cbz_target(r, template, values, sub)
+                check_path_length(root, rel)
+            except ValueMissing as e:
+                it.update(status=ITEM_EXCLUDED, reason=str(e))
+                continue
+            it["output_rel_path"] = rel
+            it["changes"] = changes
+            problem = self._range_cbz_target_problem(r, root, base, rel, source_path, folder_sources)
+            if problem:
+                it.update(status=ITEM_CONFLICT, reason=problem)
+
+        # 元(1 つのファイル・フォルダ)は全巻まとめて CBZ にする。1 巻でも外した・対象外・衝突なら元全体を止める
+        for source_id, src_items in by_source.items():
+            r = source_rows[source_id]
+            if any(it["status"] == ITEM_SKIPPED for it in src_items):
+                for it in src_items:
+                    it.update(status=ITEM_SKIPPED, reason="外しました(同じ元の巻を外したため、元全体を外します)",
+                              output_rel_path=None)
+                continue
+            bad = next((it for it in src_items if it["status"] != ITEM_CBZ), None)
+            if bad is not None:
+                reason = bad["reason"] or "CBZ 化できません"
+                for it in src_items:
+                    it.update(status=ITEM_CONFLICT,
+                              reason=f"同じ元の巻を CBZ 化できないため、この元全体を CBZ 化しません: {reason}")
+                continue
+            source_path = resolve_source_path(root, r["rel_path"])
+            try:
+                if r["source_kind"] == "folder":
+                    problem, more = self._folder_cbz_problem(r["root_id"], r["rel_path"], source_path)
+                else:
+                    more = []
+                    found: list[str] = []
+                    self._inspect_archive(source_path, [row for row in rows if row["source_id"] == source_id],
+                                          found, more)
+                    problem = found[0] if found else None
+            except OSError as e:
+                problem, more = f"元を読めません: {e}", []
+            if problem:
+                for it in src_items:
+                    it.update(status=ITEM_CONFLICT, reason=problem)
+                continue
+            warnings.extend(f"「{r['rel_path']}」: {w}" for w in more)
+            try:
+                source_fingerprint = fingerprint(source_path)
+            except OSError as e:
+                for it in src_items:
+                    it.update(status=ITEM_CONFLICT, reason=f"元を読めません: {e}")
+                continue
+            plan["cbz_sources"].append({
+                "source_id": source_id, "rel_path": r["rel_path"], "root_id": r["root_id"],
+                "root_path": r["root_path"], "source_kind": r["source_kind"],
+                "fingerprint": source_fingerprint,
+                "volume_ids": [it["volume_id"] for it in src_items],
+                "volumes": [{"volume_id": it["volume_id"], "title": it["title"],
+                             "before_title": it["before"]["title"]} for it in src_items],
+            })
+
+        self._mark_duplicate_range_outputs(items)
+        # 名前の衝突で 1 巻だけ衝突にした場合も、その元全体を CBZ 化しない(全巻そろわないと元を退避できない)
+        for src_items in by_source.values():
+            if all(it["status"] in (ITEM_CBZ, ITEM_SKIPPED) for it in src_items):
+                continue
+            for it in src_items:
+                if it["status"] in (ITEM_CBZ, ITEM_EXCLUDED):
+                    it.update(status=ITEM_CONFLICT,
+                              reason="同じ元の別の巻と出力先が衝突するため、この元全体を CBZ 化しません")
+        still = {it["volume_id"] for it in items if it["status"] == ITEM_CBZ}
+        plan["cbz_sources"] = [s for s in plan["cbz_sources"] if all(v in still for v in s["volume_ids"])]
+        return self._save_range_plan(plan, items, plan["cbz_sources"],
+                                     "範囲の中に一覧に出ている巻がありません", problems, warnings)
+
+    def _range_item(self, r: dict) -> dict:
+        return {"volume_id": r["id"], "title": r["title"], "page_count": r["page_count"],
+                "from_rel_path": r["rel_path"], "output_rel_path": None, "status": ITEM_CBZ, "reason": None,
+                "cbz_volume_id": None, "source_id": r["source_id"], "root_id": r["root_id"],
+                "root_path": str(Path(r["root_path"])), "entry_prefix": r["entry_prefix"], "changes": [],
+                "conversion": True, "before": {"title": r["title"]}}
+
+    def _range_cbz_target(self, r: dict, template: RangeTemplate, values: dict, sub: str) -> tuple[str, list[str]]:
+        """CBZ 化の出力先。ファイル名テンプレートが空なら巻の表示名を整理したもの。"""
+        parent, _, _ = r["rel_path"].rpartition("/")
+        changes: list[str] = []
+        file_stem = template.render_file(values[r["id"]])
+        if file_stem is None:
+            cleaned = clean_stem(r["title"])
+            file_stem, changes = cleaned.name, list(cleaned.changes)
+        folder = template.render_folder(values[r["id"]])
+        dirs = (parent.split("/") if parent else []) if folder is None else [*(sub.split("/") if sub else []), *folder]
+        return "/".join([*dirs, file_stem + ".cbz"]), changes
+
+    def _range_cbz_target_problem(self, r: dict, root: Path, base: Path, rel: str, source_path: Path,
+                                  folder_sources: dict[int, set[str]]) -> str | None:
+        reason = self._target_problem(root, base, rel, source_path)
+        if reason:
+            return reason
+        # 出力先に missing の sources 行が残っていてもよい。CBZ 化の実行は _upsert_source でその行を
+        # 再利用する(改名・移動は sources.rel_path を直接 UPDATE するので、別の行があると衝突する)。
+        folders = folder_sources.get(r["root_id"])
+        if folders is None:
+            folders = {f["rel_path"] for f in self.conn.execute(
+                "SELECT rel_path FROM sources WHERE root_id = ? AND kind = 'folder' AND missing = 0",
+                (r["root_id"],))}
+            folder_sources[r["root_id"]] = folders
+        parts = rel.split("/")[:-1]
+        inside = next((a for a in ("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+                       if a in folders), None)
+        if inside is not None:
+            return f"画像フォルダの巻「{inside}」の中になります"
+        return None
+
+    def _folder_cbz_problem(self, root_id: int, rel_path: str, path: Path) -> tuple[str | None, list[str]]:
+        """画像フォルダを CBZ にできるか。フォルダごと退避するので、中の別の本・サブフォルダは動かせない。"""
+        try:
+            entries = list(os.scandir(path))
+        except OSError as e:
+            return f"元のフォルダを読めません: {e}", []
+        subdirs = [e.name for e in entries if e.is_dir(follow_symlinks=False)]
+        if subdirs:
+            return f"サブフォルダを含む画像フォルダは CBZ にできません: {', '.join(sorted(subdirs)[:5])}", []
+        prefix = rel_path + "/"
+        nested = self.conn.execute(
+            "SELECT rel_path FROM sources WHERE root_id = ? AND missing = 0 AND substr(rel_path, 1, ?) = ?",
+            (root_id, len(prefix), prefix)).fetchall()
+        if nested:
+            return "このフォルダの中に別の本があるため、フォルダごと CBZ にできません", []
+        others = [e.name for e in entries if not e.is_dir(follow_symlinks=False) and not is_image(e.name)]
+        return None, ([f"画像以外のファイル {len(others)} 件は CBZ に入らず、元のフォルダごと退避フォルダへ移ります"]
+                      if others else [])
+
+    @staticmethod
+    def _mark_duplicate_range_outputs(items: list[dict]) -> None:
+        groups: dict[tuple[int, str], list[dict]] = {}
+        for it in items:
+            if it["status"] in (ITEM_MOVE, ITEM_UNCHANGED, ITEM_CBZ) and it["output_rel_path"]:
+                groups.setdefault((it["root_id"], it["output_rel_path"].casefold()), []).append(it)
+        for group in groups.values():
+            if len(group) < 2:
+                continue
+            for it in group:
+                if it["status"] == ITEM_UNCHANGED:
+                    continue  # 既にその名前の巻はそのまま。変更する側だけを衝突にする
+                others = "・".join(f"「{o['title']}」" for o in group if o is not it)
+                it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。どれかを外してください")
+
+    def _save_range_plan(self, head: dict, items: list[dict], cbz_sources: list[dict], empty_problem: str,
+                         problems: list[str] | None = None, warnings: list[str] | None = None) -> dict:
+        moving = [it for it in items if it["status"] == ITEM_MOVE]
+        converting = [it for it in items if it["status"] == ITEM_CBZ]
+        first = moving[0] if moving else (converting[0] if converting else (items[0] if items else None))
+        problems = list(problems or [])
+        warnings = list(warnings or [])
+        if not moving and not converting:
+            problems.append("改名・移動・CBZ 化する巻がありません" if items else empty_problem)
+        plan = {
+            **head,
+            "source_id": first["source_id"] if first else None, "root_id": first["root_id"] if first else None,
+            "root_path": first["root_path"] if first else None, "source_rel_path": "", "source_kind": "archive",
+            "organize_base": str(self.settings.organize_base(Path(first["root_path"]))) if first else None,
+            "fingerprint": None, "needs_analysis": head.get("needs_analysis", []),
+            "items": items, "warnings": warnings, "problems": problems, "cbz_sources": cbz_sources,
+            "volumes": [{"volume_id": it["volume_id"], "title": it["title"], "page_count": it["page_count"],
+                         "output_rel_path": it["output_rel_path"]} for it in [*moving, *converting]],
+        }
+        if not problems and any(it["status"] == ITEM_CONFLICT for it in items):
+            plan["warnings"].append("衝突している巻は改名・CBZ 化しません(外すか、作品・巻の情報を直して計画を作り直してください)")
+        if not problems and converting:
+            plan["warnings"].append(
+                "CBZ 化する元は、全巻を作って検証してから確定します。元は退避フォルダへ移します(削除しません)")
+        return self._save_plan(plan)
 
     def range_path(self, root: Path, path: str) -> str:
         """範囲のパスを蔵書ルートからの相対(`/` 区切り。ルート全体は "")にする。ルートの絶対パスで書いてもよい。"""
@@ -877,10 +1127,17 @@ class Organizer:
             raise RangeError(f"フォルダを読めません: {e}") from e
         return {"root_id": root_id, "path": sub, "parent": sub.rpartition("/")[0] if sub else None, "folders": names}
 
-    def _classify_renames(self, rows: list[dict], excluded_ids: set[int], ineligible, target) -> list[dict]:
-        """各巻を move / unchanged / excluded / conflict / skipped に振り分ける。target(r) は (出力の相対パス, 整理の説明)。"""
+    def _classify_renames(self, rows: list[dict], excluded_ids: set[int], ineligible, target, *,
+                          folder_sources: dict[int, set[str]] | None = None,
+                          source_paths: dict[int, set[str]] | None = None) -> list[dict]:
+        """各巻を move / unchanged / excluded / conflict / skipped に振り分ける。target(r) は (出力の相対パス, 整理の説明)。
+
+        folder_sources / source_paths は同じ計画の中で使い回すキャッシュ。範囲の全巻を渡すときは
+        呼び出し側で用意して、巻ごとに同じ SELECT を発行しないようにする。
+        """
         items: list[dict] = []
-        folder_sources: dict[int, set[str]] = {}
+        folder_sources = {} if folder_sources is None else folder_sources
+        source_paths = {} if source_paths is None else source_paths
         for r in rows:
             root = Path(r["root_path"])
             item = {"volume_id": r["id"], "title": r["title"], "page_count": r["page_count"],
@@ -912,9 +1169,14 @@ class Organizer:
             else:
                 source_path = resolve_source_path(root, r["rel_path"])
                 problem = self._target_problem(root, self.settings.organize_base(root), rel, source_path)
-                if problem is None and self.conn.execute(
-                        "SELECT 1 FROM sources WHERE root_id = ? AND rel_path = ?", (r["root_id"], rel)).fetchone():
-                    problem = "この場所にあったファイルの記録が残っています(同じ名前のファイルを以前スキャンしました)"
+                if problem is None:
+                    paths = source_paths.get(r["root_id"])
+                    if paths is None:
+                        paths = {row["rel_path"] for row in self.conn.execute(
+                            "SELECT rel_path FROM sources WHERE root_id = ?", (r["root_id"],))}
+                        source_paths[r["root_id"]] = paths
+                    if rel in paths:
+                        problem = "この場所にあったファイルの記録が残っています(同じ名前のファイルを以前スキャンしました)"
                 if problem is None:
                     if r["root_id"] not in folder_sources:
                         folder_sources[r["root_id"]] = {f["rel_path"] for f in self.conn.execute(
@@ -1139,12 +1401,262 @@ class Organizer:
             raise
         return self.get(op_id)
 
+    # --- 範囲指定の整理で CBZ 化もまとめて行う(#133) --------------------------------
+
+    def _execute_range_cbz(self, op_id: str, plan: dict) -> dict:
+        """1 巻 = 1 CBZ の改名・移動と、CBZ 化を 1 つの操作として実行する。
+
+        先に CBZ 化する全巻を作業場で作って検証し、その後に改名で確定 → 元のファイル・フォルダを退避、の順に進む。
+        途中で失敗したら、この操作で動かしたすべてを逆順に戻す。
+        """
+        moving = [it for it in plan["items"] if it["status"] == ITEM_MOVE]
+        converting = [it for it in plan["items"] if it["status"] == ITEM_CBZ]
+        sources = plan.get("cbz_sources") or []
+        try:
+            for it in moving:
+                self._check_rename_item(it)
+            for it in converting:
+                self._check_range_cbz_item(it)
+            for src in sources:
+                self._check_cbz_source(src)
+        except OrganizeError as e:
+            self._set_state(op_id, "failed", error=str(e))
+            raise OrganizeError(str(e), self.get(op_id)) from e
+        self._set_state(op_id, "running")
+        root = Path(plan["scope"]["root_path"])
+        base = self.settings.organize_base(root)
+        work_dir = base / "work" / op_id
+        done_steps: list[_Step] = []
+        built: list[_Built] = []
+        try:
+            work_dir.mkdir(parents=True, exist_ok=False)
+            # 1. CBZ 化する全巻を作業場に作る(元にも出力先にもまだ触らない)
+            for i, it in enumerate(converting):
+                b = _Built(it, work_dir / f"{i + 1:04d}.cbz", root / it["output_rel_path"],
+                           page_count=it["page_count"])
+                built.append(b)
+                with self.library.open(self.conn, it["volume_id"]) as opened:
+                    if not opened.page_names:
+                        raise OrganizeError(f"ページの無い巻は CBZ 化できません: {it['title']}")
+                    b.records = cbz.write_cbz(b.work_path, opened.page_names, opened.read_page)
+            # 2. 全巻を読み直して検証する
+            for b in built:
+                cbz.verify_cbz(b.work_path, b.records)
+            # 3. 改名で確定する
+            for b in built:
+                self._mkdir_steps(op_id, "execute", root, base, b.output_path, done_steps)
+                self._move_step(op_id, "execute", "commit", b.work_path, b.output_path, done_steps)
+            for it in moving:
+                src, dst = root / it["from_rel_path"], root / it["output_rel_path"]
+                self._mkdir_steps(op_id, "execute", root, base, dst, done_steps)
+                self._move_step(op_id, "execute", "rename", src, dst, done_steps)
+            # 4. CBZ 化した元を退避フォルダへ移す(削除しない)
+            for src in sources:
+                original = resolve_source_path(root, src["rel_path"])
+                trashed = base / "trash" / op_id / "original" / src["rel_path"]
+                self._move_step(op_id, "execute", "trash_original", original, trashed, done_steps)
+            # 5. DB: 新しい CBZ の巻を登録し、読書位置・作品の割り当てを引き継ぐ
+            self._record_range_executed(op_id, plan, root, moving, built, sources)
+        except BaseException as e:
+            ok = self._revert(done_steps)
+            for b in built:
+                if b.work_path.is_file():
+                    _unlink_quietly(b.work_path)
+            _rmdir_quietly(work_dir)
+            message = _describe(e)
+            self._set_state(op_id, "failed" if ok else "rollback_failed",
+                            error=message if ok else f"{message}(巻き戻しに失敗した手順があります。ジャーナルを確認してください)")
+            if isinstance(e, Exception):
+                raise OrganizeError(message, self.get(op_id)) from e
+            raise
+        _rmdir_quietly(work_dir)
+        return self.get(op_id)
+
+    def _check_range_cbz_item(self, it: dict) -> None:
+        """CBZ 化する巻を始める前の確認。出力先・巻の記録・ドライブを見る。"""
+        root = Path(it["root_path"])
+        if not root_is_accessible(root):
+            raise OrganizeError("蔵書フォルダが今オフラインです")
+        target = root / it["output_rel_path"]
+        original = root / it["from_rel_path"]
+        if os.path.lexists(target):
+            raise OrganizeError(f"出力先に既にファイルがあります: {it['output_rel_path']}")
+        if not self.same_drive(original, target):
+            raise OrganizeError(f"出力先が元と別のドライブです: {it['output_rel_path']}")
+        row = self.conn.execute(
+            """SELECT v.title, v.missing, v.organized_op_id, s.rel_path FROM volumes v
+               JOIN sources s ON s.id = v.source_id WHERE v.id = ?""", (it["volume_id"],)).fetchone()
+        if (row is None or row["missing"] or row["organized_op_id"] is not None
+                or row["rel_path"] != it["from_rel_path"] or row["title"] != it["before"]["title"]):
+            raise OrganizeError(f"巻が変わりました。計画を作り直してください: {it['title']}")
+        # 出力先に missing の sources 行が残っていてもよい(実行の _upsert_source が再利用する)。
+        # ディスク上にファイルがある場合は上の lexists で止まる。
+
+    def _check_cbz_source(self, src: dict) -> None:
+        """CBZ 化する元(1 つのファイル・フォルダ)が計画のときのままか。"""
+        root = Path(src["root_path"])
+        if not root_is_accessible(root):
+            raise OrganizeError("蔵書フォルダが今オフラインです")
+        try:
+            original = resolve_source_path(root, src["rel_path"])
+        except ValueError as e:
+            raise OrganizeError(f"元のファイル・フォルダが見つかりません: {src['rel_path']}") from e
+        if not original.exists():
+            raise OrganizeError(f"元のファイル・フォルダが見つかりません: {src['rel_path']}")
+        if fingerprint(original) != src["fingerprint"]:
+            raise OrganizeError(f"計画を作った後に元が変わりました。計画を作り直してください: {src['rel_path']}")
+
+    def _record_range_executed(self, op_id: str, plan: dict, root: Path, moving: list[dict],
+                               built: list[_Built], sources: list[dict]) -> None:
+        scanner = Scanner(self.conn, self.settings)
+        now = db.now()
+        with db.transaction(self.conn) as c:
+            for b in built:
+                rel = _rel_posix(root, b.output_path)
+                st = b.output_path.stat()
+                pages = len(b.records) if b.records else b.page_count
+                src = scanner._upsert_source(c, plan["scope"]["root_id"], rel, "archive")
+                scanner._replace_volumes(c, src["id"], [VolumeSpec(
+                    None, "", b.output_path.stem, _fs_name_bytes(b.output_path.name), "filesystem", pages, None)])
+                c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                          (st.st_size, st.st_mtime_ns, SCAN_VERSION, now, src["id"]))
+                new_vid = c.execute("""SELECT id FROM volumes WHERE source_id = ? AND container_path IS NULL
+                                       AND entry_prefix = ''""", (src["id"],)).fetchone()["id"]
+                old_vid = b.volume["volume_id"]
+                transfer_volume_state(c, old_vid, new_vid, pages)
+                c.execute("UPDATE volumes SET organized_op_id = ?, page_count = ?, updated_at = ? WHERE id = ?",
+                          (op_id, pages, now, old_vid))
+                c.execute("""UPDATE organize_volumes SET new_volume_id = ?, page_count = ?
+                             WHERE op_id = ? AND old_volume_id = ?""", (new_vid, pages, op_id, old_vid))
+            for it in moving:
+                self._relocate(c, it, it["output_rel_path"], None)
+                c.execute("""UPDATE organize_volumes SET new_volume_id = old_volume_id
+                             WHERE op_id = ? AND old_volume_id = ?""", (op_id, it["volume_id"]))
+            # CBZ 化した元は退避フォルダへ移ったので、スキャンが見るのと同じく missing にする(行は消さない)
+            for src in sources:
+                c.execute("UPDATE sources SET missing = 1 WHERE id = ?", (src["source_id"],))
+            c.execute("UPDATE organize_ops SET state = 'done', error = NULL, executed_at = ?, updated_at = ? WHERE id = ?",
+                      (now, now, op_id))
+
+    def _undo_range_cbz(self, op_id: str, plan: dict) -> dict:
+        """CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は退避の created/ へ、元は元の場所へ戻す。"""
+        root = Path(plan["scope"]["root_path"])
+        base = self.settings.organize_base(root)
+        moving = [it for it in plan["items"] if it["status"] == ITEM_MOVE]
+        converting = [it for it in plan["items"] if it["status"] == ITEM_CBZ]
+        sources = plan.get("cbz_sources") or []
+        steps = self.conn.execute(
+            "SELECT * FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND state = 'done'",
+            (op_id,)).fetchall()
+        commits = {s["to_path"]: s for s in steps if s["action"] == "commit"}
+        renames = {s["to_path"]: s for s in steps if s["action"] == "rename"}
+        trashes = {s["from_path"]: s for s in steps if s["action"] == "trash_original"}
+        problem = None
+        if not root_is_accessible(root):
+            problem = "蔵書フォルダが今オフラインです"
+        else:
+            for it in moving:
+                src, dst = root / it["from_rel_path"], root / it["output_rel_path"]
+                if os.path.lexists(src):
+                    problem = f"元の場所に別のファイル・フォルダがあるので戻しません: {it['from_rel_path']}"
+                elif str(dst) not in renames:
+                    problem = f"改名の記録が見つかりません: {it['output_rel_path']}"
+                elif not dst.is_file():
+                    problem = f"改名したファイルが見つかりません(移動・改名された?): {it['output_rel_path']}"
+                elif fingerprint(dst) != it["fingerprint"]:
+                    problem = f"改名した後にファイルが変わったので戻しません: {it['output_rel_path']}"
+                else:
+                    row = self.conn.execute("SELECT id FROM sources WHERE root_id = ? AND rel_path = ?",
+                                             (it["root_id"], it["from_rel_path"])).fetchone()
+                    if row is not None and row["id"] != it["source_id"]:
+                        problem = f"元の場所の記録が別にできています(再スキャンした?): {it['from_rel_path']}"
+                if problem:
+                    break
+        if problem is None:
+            for it in converting:
+                dst = root / it["output_rel_path"]
+                if str(dst) not in commits:
+                    problem = f"CBZ 化の記録が見つかりません: {it['output_rel_path']}"
+                elif not dst.is_file():
+                    problem = f"作った CBZ が見つかりません(移動・改名された?): {it['output_rel_path']}"
+                if problem:
+                    break
+        if problem is None:
+            for src in sources:
+                original = resolve_source_path(root, src["rel_path"])
+                step = trashes.get(str(original))
+                if os.path.lexists(original):
+                    problem = f"元の場所に別のファイル・フォルダがあるので戻しません: {src['rel_path']}"
+                elif step is None:
+                    problem = f"退避の記録が見つかりません: {src['rel_path']}"
+                elif not Path(step["to_path"]).exists():
+                    problem = f"退避した元が見つかりません: {step['to_path']}"
+                elif fingerprint(Path(step["to_path"])) != src["fingerprint"]:
+                    problem = f"退避した元が変わったので戻しません: {src['rel_path']}"
+                if problem:
+                    break
+        if problem:
+            raise OrganizeError(problem, self.get(op_id))
+
+        self._set_state(op_id, "undoing")
+        created_dir = base / "trash" / op_id / "created"
+        done_steps: list[_Step] = []
+        try:
+            for it in converting:
+                out = root / it["output_rel_path"]
+                self._move_step(op_id, "undo", "trash_created", out, created_dir / _rel_posix(root, out),
+                                done_steps)
+            for src in sources:
+                original = resolve_source_path(root, src["rel_path"])
+                self._move_step(op_id, "undo", "restore_original", Path(trashes[str(original)]["to_path"]), original,
+                                done_steps)
+            for it in reversed(moving):
+                self._move_step(op_id, "undo", "restore", root / it["output_rel_path"], root / it["from_rel_path"],
+                                done_steps)
+            self._rmdir_created(op_id, done_steps)
+            self._record_range_undone(op_id, plan, root, moving, converting, sources)
+        except BaseException as e:
+            ok = self._revert(done_steps)
+            message = _describe(e)
+            if ok:
+                self._set_state(op_id, "done", error=f"元に戻せませんでした: {message}")
+            else:
+                self._set_state(op_id, "undo_failed",
+                                error=f"{message}(巻き戻しに失敗した手順があります。ジャーナルを確認してください)")
+            if isinstance(e, Exception):
+                raise OrganizeError(message, self.get(op_id)) from e
+            raise
+        return self.get(op_id)
+
+    def _record_range_undone(self, op_id: str, plan: dict, root: Path, moving: list[dict],
+                             converting: list[dict], sources: list[dict]) -> None:
+        now = db.now()
+        with db.transaction(self.conn) as c:
+            mapping = {m["old_volume_id"]: m for m in c.execute(
+                "SELECT * FROM organize_volumes WHERE op_id = ?", (op_id,))}
+            for it in converting:
+                m = mapping.get(it["volume_id"])
+                if m is not None and m["new_volume_id"] is not None:
+                    transfer_volume_state(c, m["new_volume_id"], it["volume_id"], m["page_count"])
+                c.execute("UPDATE volumes SET organized_op_id = NULL, updated_at = ? WHERE id = ?",
+                          (now, it["volume_id"]))
+            for it in moving:
+                self._relocate(c, it, it["from_rel_path"], it["before"])
+            for src in sources:
+                c.execute("UPDATE sources SET missing = 0 WHERE id = ?", (src["source_id"],))
+            # 作った CBZ は退避フォルダへ移ったので、そのソースは missing にする(行・読書位置は消さない)
+            c.executemany("UPDATE sources SET missing = 1 WHERE root_id = ? AND rel_path = ?",
+                          [(plan["scope"]["root_id"], _rel_posix(root, root / it["output_rel_path"]))
+                           for it in converting])
+            c.execute("UPDATE organize_ops SET state = 'undone', error = NULL, undone_at = ?, updated_at = ? WHERE id = ?",
+                      (now, now, op_id))
+
     # --- 参照 ---------------------------------------------------------------
 
     @staticmethod
     def _view_plan(plan: dict) -> dict:
         view = {"kind": plan.get("kind", "cbz"), "naming": plan.get("naming", "title"),
-                "template": plan.get("template"),
+                "template": plan.get("template"), "include_cbz": bool(plan.get("include_cbz", False)),
                 "source_id": plan["source_id"], "source_rel_path": plan["source_rel_path"],
                 "source_kind": plan["source_kind"], "volumes": plan["volumes"],
                 "warnings": plan["warnings"], "problems": plan["problems"],
@@ -1155,10 +1667,15 @@ class Organizer:
         if plan.get("kind") in RENAME_KINDS:
             view["work_id"] = plan.get("work_id")
             view["items"] = [{**{k: it[k] for k in ("volume_id", "title", "from_rel_path", "output_rel_path", "status",
-                                                    "reason", "cbz_volume_id")}, "changes": it.get("changes", [])}
+                                                    "reason", "cbz_volume_id")},
+                              "changes": it.get("changes", []), "conversion": bool(it.get("conversion", False))}
                              for it in plan["items"]]
         if plan.get("kind") == "range":
             view["scope"] = plan["scope"]
+            view["cbz_sources"] = [{"source_id": s["source_id"], "rel_path": s["rel_path"],
+                                    "volume_ids": list(s.get("volume_ids", [])),
+                                    "source_kind": s.get("source_kind")}
+                                   for s in plan.get("cbz_sources", [])]
         return view
 
     def get(self, op_id: str) -> dict:

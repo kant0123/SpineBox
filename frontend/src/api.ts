@@ -628,8 +628,8 @@ export interface OrganizeVolume {
   new_volume_id?: number | null;
 }
 
-/** 改名・移動の計画での各巻の扱い */
-export type OrganizeItemStatus = "move" | "unchanged" | "excluded" | "conflict" | "skipped";
+/** 改名・移動の計画での各巻の扱い。cbz = 元を CBZ 化する(範囲指定の整理の include_cbz) */
+export type OrganizeItemStatus = "move" | "cbz" | "unchanged" | "excluded" | "conflict" | "skipped";
 
 export interface OrganizeItem {
   volume_id: number;
@@ -643,6 +643,16 @@ export interface OrganizeItem {
   cbz_volume_id: number | null;
   /** ファイル名の整理で何を直したか(範囲指定の整理でテンプレートを空にしたとき) */
   changes?: string[];
+  /** 元(1 つのファイル・フォルダ)を CBZ 化する巻(include_cbz=True のとき) */
+  conversion?: boolean;
+}
+
+/** include_cbz で CBZ 化する元(1 つのファイル・フォルダ)。元の全巻をまとめて CBZ にする単位 */
+export interface RangeCbzSource {
+  source_id: number;
+  rel_path: string;
+  volume_ids: number[];
+  source_kind: "folder" | "archive";
 }
 
 /** cbz: 1 ソース → 巻ごとの CBZ / rename: 1 巻 = 1 CBZ の巻をテンプレートの名前へ改名・移動するだけ /
@@ -661,6 +671,10 @@ export interface OrganizeOp {
   items?: OrganizeItem[];
   /** 範囲指定の整理(kind が range)のとき */
   scope?: OrganizeScope;
+  /** 範囲指定の整理で、1 巻 = 1 CBZ でない元も CBZ 化したか(#133) */
+  include_cbz?: boolean;
+  /** include_cbz で CBZ 化する元 */
+  cbz_sources?: RangeCbzSource[];
   /** 受け入れ(kind が intake)のとき */
   mode?: "cbz" | "move" | null;
   work?: { kind: string; work_id: number | null; title: string; decided: boolean } | null;
@@ -720,6 +734,8 @@ export interface RangePlanRequest {
   file_template: string;
   folder_template: string;
   exclude_volume_ids: number[];
+  /** 1 巻 = 1 CBZ でない元も CBZ にする。省略は false */
+  include_cbz?: boolean;
 }
 
 // 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ。spinebox/organize/intake.py)

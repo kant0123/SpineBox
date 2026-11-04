@@ -258,6 +258,7 @@ input[type="radio"] {
   border: 1px solid var(--border);
 }
 .organize-badge.move { border-color: var(--accent); color: var(--accent); }
+.organize-badge.cbz { border-color: var(--done); color: var(--done); }
 .organize-badge.conflict { border-color: var(--error); color: var(--error); }
 .organize-badge.excluded, .organize-badge.skipped, .organize-badge.unchanged { color: var(--muted); }
 .notice.warn { border-color: var(--warn); }
@@ -265,6 +266,10 @@ input[type="radio"] {
 .organize-field { margin: 12px 0; display: grid; gap: 4px; }
 .organize-field label, .organize-label { font-size: 1rem; font-weight: 700; }
 .organize-field input, .organize-field select { width: 100%; }
+.organize-field label.organize-check {
+  display: inline-flex; gap: 8px; align-items: center; min-height: 44px; font-size: 1rem; font-weight: 400; cursor: pointer;
+}
+.organize-field label.organize-check input { width: auto; flex: none; }
 .organize-inline { display: flex; gap: 8px; flex-wrap: wrap; }
 .organize-inline input { flex: 1 1 12em; }
 .organize-inline button { flex: none; }

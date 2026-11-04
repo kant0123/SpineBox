@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-04
+updated: 2026-11-05
 related: [overview]
 ---
 
@@ -112,6 +112,7 @@ push 前に確かめること:
 - PR #61 — `spinebox/linking.py reset_link()` / `_store()` — 連携を決める通常の経路(`fetch_work`)には「種別が未決なら保留」「作品の種別と食い違う候補は除く」があるのに、手動の選択を解除する経路と、自動連携を保つ近道は通らず、規則を飛ばして連携した(同じ判定を `decide()` へ集める。近道は判定の前提を満たすときだけ)
 - PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
 - PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
+- PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
@@ -212,6 +213,7 @@ push 前に確かめること:
 - PR #40 — `spinebox/duplicates.py DuplicateScanner.run()` — 指紋を 1 巻作るたびに `pending()`(全巻の SELECT と作成済みの巻すべての `stat()`)を呼んでいた。`pending` の呼び出し回数を数えて再現し、1 巡ごとに直した
 - PR #91 — `spinebox/organize/organizer.py name_values()` — 範囲指定が蔵書ルート全体の巻を渡すのに、巻ごとに 3 回 SELECT していた(20000 巻で 1.1 秒。10 万巻規模で効く)。文の数を数えるテストを足して `IN` でまとめて引くようにした
 - PR #94 — `spinebox/stats.py collect()` — 全作品の表紙の有無を見るのに、作品ごとに `is_built()`(巻の行を 1 件 SELECT)を呼んでいた。`get_volume_rows()` で 500 件ずつ IN でまとめて引く `Thumbnails.are_built()` にし、文の数が巻の数に比例しないことを `set_trace_callback` で確かめるテストを足した
+- PR #135 — `spinebox/organize/organizer.py _plan_range_cbz()` — `include_cbz` の計画で 1 巻 = 1 CBZ の巻ごとに `_classify_renames([r], ...)` を呼び、その中の `sources`・画像フォルダの SELECT が巻数ぶん出た。1 回の `_classify_renames` にまとめ、`folder_sources` / `source_paths` のキャッシュを渡すようにした。計画の SELECT 数が巻数に比例しないことを `set_trace_callback` で確かめるテストを足した
 
 ### 共有すべき状態を、呼び出しごとに作るインスタンスに持たせている
 

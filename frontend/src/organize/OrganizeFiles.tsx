@@ -18,13 +18,14 @@ import { organizeHistoryHref, organizeTemplateHref } from "../route";
 import { ITEM_LABELS, STATE_LABELS } from "./Organize";
 
 const STORAGE_KEY = "spinebox.organizeFiles";
-const STATUS_ORDER: OrganizeItemStatus[] = ["move", "conflict", "skipped", "excluded", "unchanged"];
+const STATUS_ORDER: OrganizeItemStatus[] = ["move", "cbz", "conflict", "skipped", "excluded", "unchanged"];
 
 interface Saved {
   rootId?: number;
   path?: string;
   fileTemplate?: string;
   folderTemplate?: string;
+  includeCbz?: boolean;
 }
 
 function loadSaved(): Saved {
@@ -53,19 +54,19 @@ function RangeItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (vo
       <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span> {item.title}
       <div className="organize-paths">
         <code>{item.from_rel_path}</code>
-        {(item.status === "move" || item.status === "conflict") && item.output_rel_path && (
+        {(item.status === "move" || item.status === "cbz" || item.status === "conflict") && item.output_rel_path && (
           <>
             {" "}→ <code>{item.output_rel_path}</code>
           </>
         )}
       </div>
       {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
-      {item.reason && item.status !== "move" && <div className="muted">{item.reason}</div>}
-      {onExclude && (item.status === "conflict" || item.status === "move" || item.cbz_volume_id !== null) && (
+      {item.reason && item.status !== "move" && item.status !== "cbz" && <div className="muted">{item.reason}</div>}
+      {onExclude && (item.status === "conflict" || item.status === "move" || item.status === "cbz" || item.cbz_volume_id !== null) && (
         <div className="organize-item-actions">
-          {(item.status === "conflict" || item.status === "move") && (
+          {(item.status === "conflict" || item.status === "move" || item.status === "cbz") && (
             <button type="button" className="small secondary" onClick={() => onExclude(item.volume_id)}>
-              この巻を外す
+              {item.conversion ? "この元を外す" : "この巻を外す"}
             </button>
           )}
           {item.cbz_volume_id !== null && <a href={organizeTemplateHref(item.cbz_volume_id)}>テンプレートの名前で CBZ に整理</a>}
@@ -182,6 +183,7 @@ export function OrganizeFilesSection() {
   const [path, setPath] = useState(saved.path ?? "");
   const [fileTemplate, setFileTemplate] = useState(saved.fileTemplate ?? "");
   const [folderTemplate, setFolderTemplate] = useState(saved.folderTemplate ?? "");
+  const [includeCbz, setIncludeCbz] = useState(saved.includeCbz ?? false);
   const [focused, setFocused] = useState<"file" | "folder">("file");
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -205,14 +207,14 @@ export function OrganizeFilesSection() {
   }, []);
 
   useEffect(() => {
-    save({ rootId: rootId ?? undefined, path, fileTemplate, folderTemplate });
-  }, [rootId, path, fileTemplate, folderTemplate]);
+    save({ rootId: rootId ?? undefined, path, fileTemplate, folderTemplate, includeCbz });
+  }, [rootId, path, fileTemplate, folderTemplate, includeCbz]);
 
   // 入力を変えたら前のプレビューは使えない(実行させない)
   useEffect(() => {
     setOp(null);
     setExcluded([]);
-  }, [rootId, path, fileTemplate, folderTemplate]);
+  }, [rootId, path, fileTemplate, folderTemplate, includeCbz]);
 
   // パスの例とテンプレートの誤り。打つたびに呼ばないよう少し待つ
   useEffect(() => {
@@ -247,7 +249,15 @@ export function OrganizeFilesSection() {
     setBusy("plan");
     setError(null);
     try {
-      setOp(await api.planRange({ root_id: rootId, path, file_template: fileTemplate, folder_template: folderTemplate, exclude_volume_ids: exclude }));
+      setOp(await api.planRange({
+        root_id: rootId,
+        path,
+        file_template: fileTemplate,
+        folder_template: folderTemplate,
+        exclude_volume_ids: exclude,
+        // false のときは今までと同じ形の要求にする(このオプションを足す前と API の使い方を変えない)
+        ...(includeCbz ? { include_cbz: true } : {}),
+      }));
       setExcluded(exclude);
     } catch (e) {
       setOp(null);
@@ -285,7 +295,8 @@ export function OrganizeFilesSection() {
     <div className="organize-files">
       <p className="muted">
         ファイル名の特殊記号・全角と半角の揺れ・文字化けを整理します。テンプレートでの名前の変更とフォルダーへの振り分けもできます。
-        まずプレビューで確認してから実行します。実行した 1 回分はまとめて元に戻せます(元のファイルは消さず、中身も変えません)。
+        まずプレビューで確認してから実行します。実行した 1 回分はまとめて元に戻せます(
+        {includeCbz ? "元のファイルは消さず、退避フォルダへ移します。" : "元のファイルは消さず、中身も変えません。"})。
       </p>
 
       <div className="organize-field">
@@ -350,6 +361,23 @@ export function OrganizeFilesSection() {
           disabled={!editable}
         />
 
+      </div>
+      <div className="organize-field">
+        <label className="organize-check" htmlFor="organize-include-cbz">
+          <input
+            id="organize-include-cbz"
+            type="checkbox"
+            checked={includeCbz}
+            onChange={(e) => setIncludeCbz(e.target.checked)}
+            aria-describedby="organize-include-cbz-hint"
+            disabled={!editable}
+          />
+          <span>CBZ 化もまとめて行う</span>
+        </label>
+        <p id="organize-include-cbz-hint" className="muted organize-hint">
+          1 巻 = 1 CBZ でない元(複数巻のまとめ・入れ子の巻・画像フォルダ・CBZ でないアーカイブ)も、読める巻ごとにテンプレートの名前の .cbz にします。
+          小説(EPUB・テキスト)は対象外です。
+        </p>
       </div>
 
       {options && editable && (
@@ -435,7 +463,9 @@ export function OrganizeFilesSection() {
           <p>
             状態: <strong>{STATE_LABELS[op.state]}</strong>
           </p>
-          {planned && <p className="muted">「改名・移動」の巻だけを同じドライブの中で動かします。衝突・対象外の巻は動かしません。</p>}
+          {planned && <p className="muted">
+            「改名・移動」と「CBZ 化」の巻を同じドライブの中で処理します。衝突・対象外の巻は動かしません。
+          </p>}
           {op.problems.map((p) => (
             <div key={p} className="notice error" role="alert">
               {p}
