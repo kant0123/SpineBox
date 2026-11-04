@@ -126,9 +126,8 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
   `chore/` / `docs/` を前置し、**ローカル `main` ではなく `origin/main` から切る**。
 - **`git add` はファイルを明示指定する**(`-A` / `.` は使わない)。他セッションの未コミット変更が
   混ざりうるため、`git diff --cached` で確認してからコミットする。
-- **worktree は使い終わったら、メインツリーに `cd` してから `git worktree remove` で消す。**
-  失敗しても手で `rm -rf` / `Remove-Item` しない(git が working tree と認識しなくなり回復しない)。
-  復旧は `scripts/worktree-cleanup.ps1`。
+- **worktree は使い終わったら、メインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` で消す。**
+  失敗しても手で `rm -rf` / `Remove-Item` しない(ジャンクションのリンク先を巻き込む恐れがあり、git が working tree と認識しなくなり回復しない)。
 - **push・PR 作成・マージ・ブランチ削除・worktree 削除は事前承認済み。** `git status` で意図しない
   変更が混ざっていないか確認してから実行する。CI 成功と agy レビューの完了まで
   確認したら、マージしてよいかを改めて聞かない。

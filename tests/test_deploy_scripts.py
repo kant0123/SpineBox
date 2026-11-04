@@ -465,3 +465,130 @@ def test_restart_succeeds_when_healthz_answers_with_or_without_a_commit(tmp_path
     finally:
         proc.kill()
 
+
+
+# --- worktree-cleanup.ps1 (#121) -----------------------------------------------------
+
+WORKTREE_CLEANUP = ROOT / "scripts" / "worktree-cleanup.ps1"
+
+
+def test_worktree_cleanup_is_utf8_with_bom():
+    assert WORKTREE_CLEANUP.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.skipif(PARSER_SHELL is None, reason="PowerShell が無い")
+def test_worktree_cleanup_has_no_syntax_errors():
+    path = str(WORKTREE_CLEANUP).replace("'", "''")
+    cmd = (f"$e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile('{path}', [ref]$null, [ref]$e); "
+           "if ($e.Count -gt 0) { $e | ForEach-Object { $_.Message }; exit 1 }")
+    r = subprocess.run([PARSER_SHELL, "-NoProfile", "-Command", cmd], capture_output=True, timeout=60)
+    assert r.returncode == 0, r.stdout.decode("utf-8", "replace")
+
+
+def init_git_repo(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "spinebox").mkdir(parents=True)
+    (repo / "frontend").mkdir(parents=True)
+    (repo / ".gitignore").write_text("frontend/node_modules/\nfrontend/dist/\n", encoding="utf-8")
+    (repo / "spinebox" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "frontend" / "package.json").write_text("{}", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "add", ".gitignore", "spinebox/__init__.py", "frontend/package.json"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    return repo
+
+
+def make_junction(link: Path, target: Path):
+    link.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], check=True, capture_output=True)
+
+
+@needs_windows_ps
+def test_worktree_cleanup_removes_live_worktree_with_junction_and_readonly(tmp_path):
+    repo = init_git_repo(tmp_path)
+    shared_nm = tmp_path / "shared_node_modules"
+    shared_nm.mkdir()
+    pkg_file = shared_nm / "pkg.js"
+    pkg_file.write_text("keep-me", encoding="utf-8")
+
+    wt = tmp_path / "repo-wt1"
+    subprocess.run(["git", "worktree", "add", str(wt), "-b", "feature/wt1"], cwd=repo, check=True, capture_output=True)
+    make_junction(wt / "frontend" / "node_modules", shared_nm)
+    # ReadOnly 属性付きのファイルと未追跡のビルド成果物を置く
+    ro_file = wt / "spinebox" / "__init__.py"
+    os.chmod(ro_file, 0o444)
+    (wt / "frontend" / "dist").mkdir(parents=True)
+    (wt / "frontend" / "dist" / "bundle.js").write_text("built", encoding="utf-8")
+
+    r = run_ps(["-File", str(WORKTREE_CLEANUP), "-Remove", str(wt), "-RemoveDirs"], cwd=repo)
+    out = r.stdout.decode("cp932", "replace") + r.stdout.decode("utf-8", "replace")
+    assert r.returncode == 0, out + r.stderr.decode("cp932", "replace")
+    assert not wt.exists(), "worktree ディレクトリが残った"
+    assert pkg_file.read_text(encoding="utf-8") == "keep-me", "ジャンクションのリンク先が壊れた"
+
+
+@needs_windows_ps
+def test_worktree_cleanup_detects_and_removes_stale_dirs_without_dotgit(tmp_path):
+    repo = init_git_repo(tmp_path)
+    shared_nm = tmp_path / "shared_node_modules"
+    shared_nm.mkdir()
+    pkg_file = shared_nm / "pkg.js"
+    pkg_file.write_text("keep-me", encoding="utf-8")
+
+    # 1. .git ファイルが残っている孤立ディレクトリ
+    stale_with_git = tmp_path / "repo-stale-git"
+    stale_with_git.mkdir()
+    (stale_with_git / ".git").write_text("gitdir: C:/nonexistent", encoding="utf-8")
+
+    # 2. .git ファイルが消え、frontend/node_modules ジャンクションだけ残った残骸ディレクトリ
+    stale_no_git = tmp_path / "repo-stale-nogit"
+    make_junction(stale_no_git / "frontend" / "node_modules", shared_nm)
+
+    # 3. .git ファイルが消えて空になった残骸ディレクトリ
+    stale_empty = tmp_path / "repo-stale-empty"
+    stale_empty.mkdir()
+
+    # 4. 無関係な同名 prefix の手動ディレクトリ(メインツリー直下の項目名を含まない)
+    unrelated = tmp_path / "repo-notes"
+    unrelated.mkdir()
+    (unrelated / "memo.txt").write_text("keep", encoding="utf-8")
+
+    # 5. .git がディレクトリである独立した通常の git クローン
+    clone_dir = tmp_path / "repo-clone"
+    subprocess.run(["git", "clone", str(repo), str(clone_dir)], check=True, capture_output=True)
+
+    # -RemoveDirs 無し: 1, 2, 3 だけが残骸候補として表示され、4, 5 は出ず、どれも削除されない
+    r1 = run_ps(["-File", str(WORKTREE_CLEANUP)], cwd=repo)
+    out1 = r1.stdout.decode("cp932", "replace") + r1.stdout.decode("utf-8", "replace")
+    assert r1.returncode == 0, out1
+    assert "repo-stale-git" in out1 and "repo-stale-nogit" in out1 and "repo-stale-empty" in out1
+    assert "repo-notes" not in out1 and "repo-clone" not in out1
+    assert stale_with_git.exists() and stale_no_git.exists() and stale_empty.exists()
+
+    # -RemoveDirs 付き: 1, 2, 3 が削除され、ジャンクションのリンク先と 4, 5 は無傷で残る
+    r2 = run_ps(["-File", str(WORKTREE_CLEANUP), "-RemoveDirs"], cwd=repo)
+    out2 = r2.stdout.decode("cp932", "replace") + r2.stdout.decode("utf-8", "replace")
+    assert r2.returncode == 0, out2
+    assert not stale_with_git.exists() and not stale_no_git.exists() and not stale_empty.exists()
+    assert pkg_file.read_text(encoding="utf-8") == "keep-me"
+    assert (unrelated / "memo.txt").read_text(encoding="utf-8") == "keep"
+    assert (clone_dir / ".git").is_dir()
+
+
+@needs_windows_ps
+def test_worktree_cleanup_remove_handles_already_detached_dir_with_removedirs(tmp_path):
+    repo = init_git_repo(tmp_path)
+    detached = tmp_path / "repo-detached"
+    (detached / "spinebox").mkdir(parents=True)
+
+    # -RemoveDirs 無しで既に git worktree list から外れたディレクトリを -Remove に渡すとエラー(exit 1)
+    r1 = run_ps(["-File", str(WORKTREE_CLEANUP), "-Remove", str(detached)], cwd=repo)
+    assert r1.returncode != 0
+    assert detached.exists()
+
+    # -Remove と -RemoveDirs を併せて渡せば、既に外れていても残骸掃除で削除される
+    r2 = run_ps(["-File", str(WORKTREE_CLEANUP), "-Remove", str(detached), "-RemoveDirs"], cwd=repo)
+    assert r2.returncode == 0
+    assert not detached.exists()
