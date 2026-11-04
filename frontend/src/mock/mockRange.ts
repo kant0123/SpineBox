@@ -41,13 +41,14 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
     ],
   };
 
-  function plan(body: { root_id?: number; path?: string; file_template?: string; folder_template?: string; exclude_volume_ids?: number[] }): OrganizeOp | { templateError: string } {
+  function plan(body: { root_id?: number; path?: string; file_template?: string; folder_template?: string; exclude_volume_ids?: number[]; include_cbz?: boolean }): OrganizeOp | { templateError: string } {
     const fileT = (body.file_template ?? "").trim();
     const folderT = (body.folder_template ?? "").trim();
     const err = templateError(fileT, folderT);
     if (err) return { templateError: err };
     const sub = (body.path ?? "").replace(/^\/+|\/+$/g, "");
     const exclude = body.exclude_volume_ids ?? [];
+    const includeCbz = Boolean(body.include_cbz);
     const target = (from: string, cleaned: string, n: number) => {
       const dir = folderT ? [sub, render(folderT, n)].filter(Boolean).join("/") : from.split("/").slice(0, -1).join("/");
       return [dir, `${fileT ? render(fileT, n) : cleaned}.cbz`].filter(Boolean).join("/");
@@ -72,27 +73,40 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
         Object.assign(it, { status: "skipped", reason: "外しました" });
         continue;
       }
+      if (it.volume_id === 14) {
+        if (!includeCbz) continue;
+        Object.assign(it, { status: "cbz", reason: null, conversion: true, cbz_volume_id: null });
+      }
       if (it.status === "excluded") continue;
-      const [name, changes] = cleaned[it.volume_id];
-      it.output_rel_path = target(it.from_rel_path, name, numbers[it.volume_id]);
+      const [name, changes] = cleaned[it.volume_id] ?? ["まとめ", []];
+      it.output_rel_path = target(it.from_rel_path, name, numbers[it.volume_id] ?? 1);
       it.changes = fileT ? [] : changes;
       if (it.output_rel_path === it.from_rel_path) Object.assign(it, { status: "unchanged", reason: "既にテンプレートどおりの名前です" });
     }
+    const isMoving = (it: OrganizeItem) => it.status === "move" || it.status === "cbz";
     for (const it of all) {
-      const same = all.filter((o) => o !== it && o.status === "move" && it.status === "move" && o.output_rel_path === it.output_rel_path);
+      const same = all.filter((o) => o !== it && isMoving(o) && isMoving(it) && o.output_rel_path === it.output_rel_path);
       if (same.length) it.reason = `${same.map((o) => `「${o.title}」`).join("・")}と同じ名前になります。どれかを外してください`;
     }
-    for (const it of all) if (it.reason && it.status === "move") it.status = "conflict";
-    const moving = all.filter((it) => it.status === "move");
+    for (const it of all) if (it.reason && isMoving(it)) it.status = "conflict";
+    const moving = all.filter(isMoving);
     return {
       op_id: moving.length ? nextId() : null,
       state: moving.length ? "planned" : "blocked",
       kind: "range", naming: "template", template: null, work_id: null, items: all,
       scope: { root_id: 1, root_path: "E:/漫画", path: sub, file_template: fileT, folder_template: folderT },
+      include_cbz: includeCbz,
+      cbz_sources: includeCbz && all.some((it) => it.status === "cbz" && it.volume_id === 14)
+        ? [{ source_id: 0, rel_path: "作者A/まとめ.zip", volume_ids: [14], source_kind: "archive" as const }]
+        : [],
       source_id: 0, source_rel_path: "", source_kind: "archive",
       volumes: moving.map((it) => ({ volume_id: it.volume_id, title: it.title, page_count: 8, output_rel_path: it.output_rel_path })),
-      warnings: all.some((it) => it.status === "conflict") ? ["衝突している巻は改名しません(外すか、作品・巻の情報を直して計画を作り直してください)"] : [],
-      problems: moving.length ? [] : ["改名・移動する巻がありません"],
+      warnings: all.some((it) => it.status === "conflict")
+        ? ["衝突している巻は改名・CBZ 化しません(外すか、作品・巻の情報を直して計画を作り直してください)"]
+        : includeCbz && moving.some((it) => it.status === "cbz")
+          ? ["CBZ 化する元は、全巻を作って検証してから確定します。元は退避フォルダへ移します(削除しません)"]
+          : [],
+      problems: moving.length ? [] : ["改名・移動・CBZ 化する巻がありません"],
       needs_analysis: [], created_at: "2026-11-02T00:00:00+00:00", executed_at: null, undone_at: null, error: null,
     };
   }

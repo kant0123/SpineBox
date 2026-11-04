@@ -53,6 +53,25 @@ describe("範囲指定の整理", () => {
     expect(posts().slice(1)).toEqual([expect.stringMatching(/^\/api\/organize\/op-\d+\/execute$/), expect.stringMatching(/^\/api\/organize\/op-\d+\/undo$/)]);
   });
 
+  it("CBZ 化もまとめて行うにチェックすると、対象外の元も CBZ 化の計画に入る", async () => {
+    render(<App />);
+    await screen.findByRole("option", { name: "E:/漫画" });
+    const check = screen.getByLabelText("CBZ 化もまとめて行う") as HTMLInputElement;
+    expect(check.checked).toBe(false);
+    expect(check.getAttribute("aria-describedby")).toBe("organize-include-cbz-hint");
+    fireEvent.click(check);
+    fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
+    const section = (await screen.findByRole("heading", { name: "CBZ 化(1 巻)" })).closest("section")!;
+    expect(within(section).getByText("作者A/まとめ.cbz")).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "この元を外す" })).toBeTruthy();
+    expect(lastPlan()).toMatchObject({ include_cbz: true });
+    expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "テンプレートの名前で CBZ に整理" })).toBeNull();
+    // チェックを外すと前のプレビューは使えない
+    fireEvent.click(check);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^実行/ })).toBeNull());
+  });
+
   it("パラメーターはカーソル位置に入り、選択した文字は置き換える。プリセットは両方のテンプレートを入れる", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "作品名" });

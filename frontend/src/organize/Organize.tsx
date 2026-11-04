@@ -22,6 +22,7 @@ function errorText(e: unknown, fallback: string): string {
 
 export const ITEM_LABELS: Record<OrganizeItemStatus, string> = {
   move: "改名・移動",
+  cbz: "CBZ 化",
   unchanged: "そのまま",
   excluded: "対象外",
   conflict: "衝突",

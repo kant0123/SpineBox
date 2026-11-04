@@ -2,6 +2,7 @@
 範囲(ルート全体 / サブフォルダ)の改名・移動の計画 → 実行 → まとめて元に戻す。蔵書は一時ディレクトリに動的生成する。"""
 import os
 import unicodedata
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ from spinebox.app import create_app
 from spinebox.cache import ExtractionCache
 from spinebox.library import Library
 from spinebox.organize.cleanup import clean_name, clean_stem, fix_mojibake
+from spinebox.organize.fs import move_no_overwrite
 from spinebox.organize.organizer import OrganizeError, Organizer, RangeError, RangeNotFound
 from spinebox.organize.template import (DEFAULT_NAME_TEMPLATE, PRESETS, NameTemplate, NameValues, RangeTemplate,
                                         TemplateError, ValueMissing, range_examples)
@@ -230,9 +232,9 @@ def progress(env, volume_id):
     return None if r is None else r["page"]
 
 
-def plan_range(env, path="", file_t="", folder_t="", exclude=(), **kw):
+def plan_range(env, path="", file_t="", folder_t="", exclude=(), include_cbz=False, **kw):
     return organizer(env, **kw).plan_range(env.root_id, path, file_template=file_t, folder_template=folder_t,
-                                           exclude_volume_ids=exclude)
+                                           exclude_volume_ids=exclude, include_cbz=include_cbz)
 
 
 def test_preview_writes_nothing_for_root_and_subfolder(env):
@@ -390,6 +392,125 @@ def test_range_roundtrip_multiple_works_restores_everything(env):
     assert vid_of(env, "小説/ある小説 第1巻.txt") == novel and work_of(env, v1) == work
 
 
+def test_include_cbz_plan_classifies_and_writes_nothing(env):
+    before = full_snapshot(env.root)
+    plan = plan_range(env, "漫画", include_cbz=True)
+    assert plan["state"] == "planned" and plan["include_cbz"] is True
+    assert not plan["problems"]
+    by_source: dict[str, list[dict]] = {}
+    for it in plan["items"]:
+        by_source.setdefault(it["from_rel_path"], []).append(it)
+    # 1 巻 = 1 CBZ の巻は中身を作り直さず、改名・移動するだけ
+    v1 = by_source[f"漫画/作者A/{TITLE} 1巻.cbz"][0]
+    assert v1["status"] == "unchanged" and v1["conversion"] is False
+    # CBZ でない 1 巻の zip・複数巻のまとめ・画像フォルダは CBZ 化する
+    single = by_source[f"漫画/作者A/{TITLE} 2巻.zip"]
+    assert len(single) == 1 and single[0]["status"] == "cbz" and single[0]["conversion"] is True
+    assert single[0]["output_rel_path"] == f"漫画/作者A/{TITLE} 2巻.cbz"
+    multi = by_source["漫画/まとめ.zip"]
+    assert len(multi) == 2 and all(it["status"] == "cbz" and it["conversion"] for it in multi)
+    assert sorted(it["output_rel_path"] for it in multi) == ["漫画/v1.cbz", "漫画/v2.cbz"]
+    image = by_source["漫画/画像の巻"][0]
+    assert image["status"] == "cbz" and image["output_rel_path"] == "漫画/画像の巻.cbz"
+    assert {s["rel_path"] for s in plan["cbz_sources"]} == {
+        f"漫画/作者A/{TITLE} 2巻.zip", "漫画/まとめ.zip", "漫画/画像の巻"}
+    # ファイル名・フォルダーテンプレートは CBZ 化にも同じように効く
+    templated = plan_range(env, "漫画/作者A", "{title} 第{number:2}{unit}", "{title}", include_cbz=True)
+    converted = [it for it in templated["items"] if it["from_rel_path"] == f"漫画/作者A/{TITLE} 2巻.zip"][0]
+    assert converted["status"] == "cbz" and \
+        converted["output_rel_path"] == f"漫画/作者A/{TITLE}/{TITLE} 第02巻.cbz"
+    assert full_snapshot(env.root) == before
+
+    # include_cbz=False は従来どおり、これらを対象外にする
+    plain = plan_range(env, "漫画")
+    assert plain["include_cbz"] is False and plain["cbz_sources"] == []
+    assert all(it["status"] == "excluded" for it in plain["items"] if it["from_rel_path"] == "漫画/まとめ.zip")
+
+
+def test_include_cbz_roundtrip_creates_cbz_and_restores_everything(env):
+    root = env.root
+    before = full_snapshot(root)
+    old_zip = vid_of(env, f"漫画/作者A/{TITLE} 2巻.zip")
+    old_multi = [r["id"] for r in env.conn.execute(
+        """SELECT v.id FROM volumes v JOIN sources s ON s.id = v.source_id
+           WHERE s.rel_path = '漫画/まとめ.zip' AND v.missing = 0 ORDER BY v.entry_prefix""")]
+    old_image = vid_of(env, "漫画/画像の巻")
+    assert len(old_multi) == 2
+    work_before = work_of(env, old_multi[0])
+    set_progress(env, old_multi[0], 0)
+    set_progress(env, old_zip, 0)
+    o = organizer(env)
+    plan = o.plan_range(env.root_id, "漫画", include_cbz=True)
+    done = o.execute(plan["op_id"])
+    assert done["state"] == "done"
+    with zipfile.ZipFile(root / "漫画" / "v1.cbz") as z:
+        assert z.namelist() == ["0001.jpg"] and z.read("0001.jpg") == page_bytes("m1")
+    with zipfile.ZipFile(root / "漫画" / "v2.cbz") as z:
+        assert z.read("0001.jpg") == page_bytes("m2")
+    with zipfile.ZipFile(root / "漫画" / "画像の巻.cbz") as z:
+        assert z.read("0001.jpg") == page_bytes("img")
+    with zipfile.ZipFile(root / f"漫画/作者A/{TITLE} 2巻.cbz") as z:
+        assert z.read("0001.jpg") == page_bytes("v2/1")
+    # 元は削除せず、退避フォルダへ移す
+    trash = root / ".spinebox" / "trash" / plan["op_id"] / "original" / "漫画"
+    assert (trash / "まとめ.zip").is_file() and (trash / "画像の巻").is_dir()
+    assert not (root / "漫画" / "まとめ.zip").exists()
+    # 新しい巻に読書位置・作品の割り当てが移り、元の巻は「整理済み」になる
+    new_multi = vid_of(env, "漫画/v1.cbz")
+    assert progress(env, new_multi) == 0
+    assert env.conn.execute("SELECT organized_op_id FROM volumes WHERE id = ?",
+                            (old_multi[0],)).fetchone()[0] == plan["op_id"]
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    assert work_of(env, new_multi) == work_before
+    # 1 回の操作で、改名と CBZ 化をまとめて元に戻せる
+    undone = o.undo(plan["op_id"])
+    assert undone["state"] == "undone"
+    assert full_snapshot(root) == before
+    assert progress(env, old_multi[0]) == 0 and progress(env, old_zip) == 0
+    assert env.conn.execute("SELECT organized_op_id FROM volumes WHERE id = ?",
+                            (old_image,)).fetchone()[0] is None
+
+
+def test_include_cbz_conflicting_source_is_excluded_as_a_whole(env):
+    # 同じフォルダ名の 2 巻を持つ zip。ファイル名テンプレートが空だと同じ名前になる
+    write_zip(env.root / "漫画" / "同名.zip",
+              [("a/vol/001.jpg", page_bytes("same/1")), ("b/vol/001.jpg", page_bytes("same/2"))])
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    plan = plan_range(env, "漫画", include_cbz=True)
+    same = [it for it in plan["items"] if it["from_rel_path"] == "漫画/同名.zip"]
+    assert len(same) == 2 and all(it["status"] == "conflict" and "同じ名前" in it["reason"] for it in same)
+    # 片方の巻を外すと、その元全体を外す(元の一部だけ CBZ 化しない)
+    again = plan_range(env, "漫画", include_cbz=True, exclude=[same[0]["volume_id"]])
+    same_again = [it for it in again["items"] if it["from_rel_path"] == "漫画/同名.zip"]
+    assert all(it["status"] == "skipped" and "元全体" in it["reason"] for it in same_again), \
+        [(it["status"], it["reason"]) for it in same_again]
+    assert not any(s["rel_path"] == "漫画/同名.zip" for s in again["cbz_sources"])
+    # 外した状態なら、他の元は CBZ 化できる
+    assert any(it["status"] == "cbz" for it in again["items"])
+
+
+def test_include_cbz_failure_rolls_back_rename_and_cbz(env):
+    before = full_snapshot(env.root)
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(Path(dst))
+        if "trash" in Path(dst).parts and "original" in Path(dst).parts and \
+                sum("trash" in p.parts and "original" in p.parts for p in calls) == 2:
+            raise OSError("ディスクが外れた")
+        move_no_overwrite(src, dst)
+
+    o = organizer(env, move=flaky)
+    plan = o.plan_range(env.root_id, "漫画", include_cbz=True)
+    with pytest.raises(OrganizeError, match="ディスクが外れた"):
+        o.execute(plan["op_id"])
+    assert o.get(plan["op_id"])["state"] == "failed"
+    assert full_snapshot(env.root) == before
+    assert not (env.root / ".spinebox" / "work" / plan["op_id"]).exists()
+
+
 def test_cleanup_roundtrip_and_failure_midway(env):
     before = full_snapshot(env.root)
     calls = []
@@ -445,6 +566,19 @@ def test_api_range_options_example_folders_plan_execute_undo(make_settings, lib)
     assert bad.status_code == 422 and "閉じていません" in bad.json()["detail"]
     assert c.post("/api/organize/range-plan", json={"root_id": root_id, "path": "無い"}).status_code == 422
     assert c.post("/api/organize/range-plan", json={"root_id": 999}).status_code == 404
+
+
+def test_api_range_plan_include_cbz_execute_and_undo(make_settings, lib):
+    c = TestClient(create_app(make_settings(lib), frontend_dist=None))
+    c.post("/api/scan")
+    before = full_snapshot(lib)
+    root_id = c.get("/api/organize/range/options").json()["roots"][0]["id"]
+    plan = c.post("/api/organize/range-plan", json={"root_id": root_id, "path": "漫画", "include_cbz": True}).json()
+    assert plan["state"] == "planned" and plan["include_cbz"] is True
+    assert plan["cbz_sources"] and any(it["status"] == "cbz" and it["conversion"] for it in plan["items"])
+    assert c.post(f"/api/organize/{plan['op_id']}/execute").json()["state"] == "done"
+    assert c.post(f"/api/organize/{plan['op_id']}/undo").json()["state"] == "undone"
+    assert full_snapshot(lib) == before
 
 
 def test_range_folders_hide_workspace_and_hidden_and_refuse_offline(env):

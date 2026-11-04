@@ -13,7 +13,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 ## 責務
 
 - する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・作品の一覧 / 作品ページ / 統合の提案の画面([[work-grouping]])・リーダー(ページ画像の表示・先読み・
-  読書位置の保存と再開)・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す・範囲指定の整理(テンプレートの入力・パラメーターのチップ・パスの例・プレビュー → 実行 → まとめて元に戻す)([[organize]])。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
+  読書位置の保存と再開)・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す・範囲指定の整理(テンプレートの入力・パラメーターのチップ・パスの例・CBZ 化もまとめて行う・プレビュー → 実行 → まとめて元に戻す)([[organize]])。表示設定(見開き・表紙単独)は端末ごとに `localStorage` へ
 - しない: ページの並び順・ページ数・オフライン判定・巻番号と食い違いの判定。どれもバックエンドが決めた `pages[]`・`offline`・`findings` をそのまま使う
 
 ## 入口となるファイル
@@ -39,7 +39,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:9 WorkCover()` | 作品カードの表紙。無ければ何も出さない([[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページ・リーダーのメニューにある([[bookmarks]]) |
-| `frontend/src/api.ts:901 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:917 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
