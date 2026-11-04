@@ -491,6 +491,48 @@ def test_include_cbz_conflicting_source_is_excluded_as_a_whole(env):
     assert any(it["status"] == "cbz" for it in again["items"])
 
 
+def test_include_cbz_image_folder_with_subfolders_is_a_conflict(env):
+    (env.root / "漫画" / "画像の親" / "子").mkdir(parents=True)
+    (env.root / "漫画" / "画像の親" / "001.jpg").write_bytes(page_bytes("parent"))
+    (env.root / "漫画" / "画像の親" / "子" / "001.jpg").write_bytes(page_bytes("child"))
+    Scanner(env.conn, env.settings).scan()
+    plan = plan_range(env, "漫画", include_cbz=True)
+    parent = [it for it in plan["items"] if it["from_rel_path"] == "漫画/画像の親"]
+    assert len(parent) == 1 and parent[0]["status"] == "conflict"
+    assert "サブフォルダ" in parent[0]["reason"]
+    assert not any(s["rel_path"] == "漫画/画像の親" for s in plan["cbz_sources"])
+
+
+def test_include_cbz_stale_source_or_target_is_refused_without_writing(env):
+    o = organizer(env)
+    plan = o.plan_range(env.root_id, "漫画", include_cbz=True)
+    # 計画の後に元が変わる
+    os.utime(env.root / "漫画" / "まとめ.zip", None)
+    changed = full_snapshot(env.root)
+    with pytest.raises(OrganizeError, match="元が変わりました"):
+        o.execute(plan["op_id"])
+    assert o.get(plan["op_id"])["state"] == "failed"
+    assert full_snapshot(env.root) == changed
+    # 作り直して、計画の後に出力先が埋まる
+    plan = o.plan_range(env.root_id, "漫画", include_cbz=True)
+    (env.root / "漫画" / "v1.cbz").write_bytes(page_bytes("taken"))
+    with pytest.raises(OrganizeError, match="出力先に既にファイル"):
+        o.execute(plan["op_id"])
+    assert o.get(plan["op_id"])["state"] == "failed"
+    assert not (env.root / ".spinebox" / "work" / plan["op_id"]).exists()
+    assert not (env.root / ".spinebox" / "trash" / plan["op_id"]).exists()
+
+
+def test_include_cbz_undo_refuses_when_created_cbz_is_gone(env):
+    o = organizer(env)
+    plan = o.plan_range(env.root_id, "漫画", include_cbz=True)
+    o.execute(plan["op_id"])
+    (env.root / "漫画" / "v1.cbz").unlink()
+    with pytest.raises(OrganizeError, match="作った CBZ が見つかりません"):
+        o.undo(plan["op_id"])
+    assert o.get(plan["op_id"])["state"] == "done"
+
+
 def test_include_cbz_failure_rolls_back_rename_and_cbz(env):
     before = full_snapshot(env.root)
     calls = []
