@@ -68,10 +68,10 @@ def _smaller_than_top(group: list[dict]) -> list[tuple[dict, list[dict]]]:
 
 
 def _mark_superseded(item: dict, top: list[dict]) -> None:
-    """ファイル数の多い巻に譲って外す。superseded_by が「こちらを残す」(最多の巻を外して計画を作り直す)の手がかり。"""
+    """ファイル数の多い巻に譲って外す。superseded_by が「残す方を選び直す」の手がかり。"""
     names = "・".join(f"「{t['title']}」" for t in top)
     item.update(status=ITEM_SKIPPED, superseded_by=[t["volume_id"] for t in top],
-                reason=f"同じ名前の{names}({top[0]['page_count']} ファイル)のほうがファイル数が多いため外しました"
+                reason=f"同じ名前の{names}({top[0]['page_count']} ファイル)のほうがファイル数が多いため、整理しません"
                        f"(この巻は {item['page_count']} ファイル)")
 
 
@@ -900,7 +900,7 @@ class Organizer:
             it["conversion"] = True
             items.append(it)
             if r["id"] in excluded_ids:
-                it.update(status=ITEM_SKIPPED, reason="外しました")
+                it.update(status=ITEM_SKIPPED, reason="利用者が整理しない巻にしました")
                 by_source.setdefault(r["source_id"], []).append(it)
                 source_rows.setdefault(r["source_id"], r)
                 continue
@@ -939,7 +939,7 @@ class Organizer:
                 for it in src_items:
                     if it.get("superseded_by"):
                         continue  # ファイル数で譲った巻は、理由と出力名を残す(画面の衝突の組に出す)
-                    it.update(status=ITEM_SKIPPED, reason="外しました(同じ元の巻を外したため、元全体を外します)",
+                    it.update(status=ITEM_SKIPPED, reason="整理しません(同じ元の別の巻を整理しないため、元全体を整理しません)",
                               output_rel_path=None)
                 continue
             bad = next((it for it in src_items if it["status"] != ITEM_CBZ), None)
@@ -989,7 +989,7 @@ class Organizer:
             for it in src_items:
                 if it["status"] in (ITEM_CBZ, ITEM_EXCLUDED):
                     it.update(status=ITEM_CONFLICT,
-                              reason="同じ元の別の巻と出力先が衝突するため、この元全体を CBZ 化しません")
+                              reason="同じ元の別の巻と出力先が競合するため、この元全体を CBZ 化しません")
         still = {it["volume_id"] for it in items if it["status"] == ITEM_CBZ}
         plan["cbz_sources"] = [s for s in plan["cbz_sources"] if all(v in still for v in s["volume_ids"])]
         return self._save_range_plan(plan, items, plan["cbz_sources"],
@@ -1077,7 +1077,7 @@ class Organizer:
                 for sibling in by_source.get(loser["source_id"], []):
                     if sibling["status"] != ITEM_SKIPPED:
                         sibling.update(status=ITEM_SKIPPED, output_rel_path=None,
-                                       reason="外しました(同じ元の巻を外したため、元全体を外します)")
+                                       reason="整理しません(同じ元の別の巻を整理しないため、元全体を整理しません)")
 
     @staticmethod
     def _mark_duplicate_range_outputs(items: list[dict]) -> None:
@@ -1092,7 +1092,7 @@ class Organizer:
                 if it["status"] == ITEM_UNCHANGED:
                     continue  # 既にその名前の巻はそのまま。変更する側だけを衝突にする
                 others = "・".join(f"「{o['title']}」" for o in group if o is not it)
-                it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。どれかを外してください")
+                it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。残す方を選んでください")
 
     def _save_range_plan(self, head: dict, items: list[dict], cbz_sources: list[dict], empty_problem: str,
                          problems: list[str] | None = None, warnings: list[str] | None = None) -> dict:
@@ -1114,7 +1114,7 @@ class Organizer:
                          "output_rel_path": it["output_rel_path"]} for it in [*moving, *converting]],
         }
         if not problems and any(it["status"] == ITEM_CONFLICT for it in items):
-            plan["warnings"].append("衝突している巻は改名・CBZ 化しません(外すか、作品・巻の情報を直して計画を作り直してください)")
+            plan["warnings"].append("競合している巻は改名・CBZ 化しません(残す方を選ぶか、作品・巻の情報を直して計画を作り直してください)")
         if not problems and converting:
             plan["warnings"].append(
                 "CBZ 化する元は、全巻を作って検証してから確定します。元は退避フォルダへ移します(削除しません)")
@@ -1203,7 +1203,7 @@ class Organizer:
                     "root_path": str(root), "entry_prefix": r["entry_prefix"], "changes": []}
             items.append(item)
             if r["id"] in excluded_ids:
-                item.update(status=ITEM_SKIPPED, reason="外しました")
+                item.update(status=ITEM_SKIPPED, reason="利用者が整理しない巻にしました")
                 continue
             reason = ineligible(r, root)
             if reason:
@@ -1269,7 +1269,7 @@ class Organizer:
                     if it["status"] == ITEM_UNCHANGED:
                         continue  # 既にその名前の巻はそのまま。改名してくる側だけを衝突にする
                     others = "・".join(f"「{o['title']}」" for o in group if o is not it)
-                    it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。どれかを外してください")
+                    it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。残す方を選んでください")
         return items
 
     def _save_rename_plan(self, head: dict, items: list[dict], empty_problem: str) -> dict:
@@ -1288,7 +1288,7 @@ class Organizer:
                          "output_rel_path": it["output_rel_path"]} for it in moving],
         }
         if not problems and any(it["status"] == ITEM_CONFLICT for it in items):
-            plan["warnings"].append("衝突している巻は改名しません(外すか、作品・巻の情報を直して計画を作り直してください)")
+            plan["warnings"].append("競合している巻は改名しません(残す方を選ぶか、作品・巻の情報を直して計画を作り直してください)")
         if not problems and any(it["entry_prefix"] for it in moving):
             plan["warnings"].append("CBZ の中のフォルダ名を巻の名前にしている巻は、一覧の名前は変わりません")
         return self._save_plan(plan)

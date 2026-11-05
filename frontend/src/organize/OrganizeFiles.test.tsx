@@ -48,7 +48,11 @@ describe("範囲指定の整理", () => {
     const heading = await screen.findByRole("heading", { name: "プレビュー結果" });
     // 結果はボタンの下に出るだけにせず、見出しへフォーカスとスクロールを移す
     await waitFor(() => expect(document.activeElement).toBe(heading));
-    expect(screen.getByText("1 巻を改名・移動、1 巻は対象外、2 巻はそのまま。")).toBeTruthy();
+    expect(screen.getByText("1 巻を整理します。実行するまで蔵書は変わりません。")).toBeTruthy();
+    const facts = screen.getByText("実行する").closest("dl")!;
+    expect(within(facts).getByText("改名・移動 1 巻")).toBeTruthy();
+    expect(within(facts).getByText("対象外")).toBeTruthy();
+    expect(within(facts).getByText("そのまま")).toBeTruthy();
     expect(await screen.findByText("半角カナを全角にしました・空白を整えました(全角の空白・続いた空白)")).toBeTruthy();
     expect(screen.getByText("作者A/サンプル漫画 第1巻.cbz")).toBeTruthy();
     // CBZ 化が要る巻は対象外にして、CBZ 化の画面へ案内する
@@ -74,9 +78,9 @@ describe("範囲指定の整理", () => {
     expect(check.getAttribute("aria-describedby")).toBe("organize-include-cbz-hint");
     fireEvent.click(check);
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
-    const section = (await screen.findByRole("heading", { name: "CBZ 化(1 巻)" })).closest("section")!;
-    expect(within(section).getByText("作者A/まとめ.cbz")).toBeTruthy();
-    expect(within(section).getByRole("button", { name: "この元を外す" })).toBeTruthy();
+    const row = (await screen.findByText("作者A/まとめ.zip")).closest("li")!;
+    expect(within(row).getByText("作者A/まとめ.cbz")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "この本を整理しない" })).toBeTruthy();
     expect(lastPlan()).toMatchObject({ include_cbz: true });
     expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "テンプレートの名前で CBZ に整理" })).toBeNull();
@@ -136,47 +140,50 @@ describe("範囲指定の整理", () => {
     expect(posts()).not.toContain("/api/organize/range-plan");
   });
 
-  it("同じ名前の巻はファイル数の多い方を残し、整理後の名前ごとのツリーで出す。「こちらを残す」で逆にできる", async () => {
+  it("競合は既定でファイル数の多い方を残し、行のチェックで少ない方を残す方に変えられる", async () => {
     render(<App />);
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.change(fileInput(), { target: { value: "{title} 第{number:2}{unit}" } });
     fireEvent.change(folderInput(), { target: { value: "{title}" } });
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
-    const clash = (await screen.findByRole("heading", { name: "衝突(1 組)" })).closest("section")!;
-    // 見出しは整理後の名前。その下に、同じ名前になる元のファイル名が並ぶ
-    const group = within(clash).getByText("サンプル漫画/サンプル漫画 第02巻.cbz").closest("li")!;
-    const rows = within(group).getAllByRole("listitem");
-    expect(rows).toHaveLength(2);
-    // ファイル数の少ない方(6)は既定で外れ、多い方(8)が動く
-    const small = rows.find((r) => r.textContent?.includes("作者A/サンプル漫画 2巻.cbz"))!;
-    const large = rows.find((r) => r.textContent?.includes("スキャン/サンプル漫画 第2巻.cbz"))!;
-    expect(within(small).getByText("外した")).toBeTruthy();
-    expect(within(small).getByText(/ファイル数が多いため外しました/)).toBeTruthy();
-    expect(within(small).getByText("(6 ファイル)")).toBeTruthy();
-    expect(within(large).getByText("改名・移動")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy(); // 衝突を残さず、動く巻が決まっている
+    const heading = await screen.findByRole("heading", { name: "競合（1 組）" });
+    const group = within(heading.closest("section")!).getByRole("group", { name: /サンプル漫画\/サンプル漫画 第02巻/ });
+    const large = within(group).getByRole("radio", { name: /スキャン\/サンプル漫画 第2巻\.cbz/ }) as HTMLInputElement;
+    const small = within(group).getByRole("radio", { name: /作者A\/サンプル漫画 2巻\.cbz/ }) as HTMLInputElement;
+    expect(large.checked).toBe(true);
+    expect(small.checked).toBe(false);
+    expect(within(group).getByText("残す")).toBeTruthy();
+    expect(within(group).getByText("整理しない")).toBeTruthy();
+    expect(within(group).getByText(/ファイル数が多いため、整理しません/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy(); // 競合を残さず、動く巻が決まっている
+    const initialFacts = screen.getByText("実行する").closest("dl")!;
+    expect(within(initialFacts).getByText("競合")).toBeTruthy();
+    expect(within(initialFacts).queryByText("整理しない")).toBeNull(); // 競合の中の「整理しない」は二重に数えない
 
-    // 「こちらを残す」: ファイル数の多い方を外して作り直すと、少ない方が動く
-    fireEvent.click(within(small).getByRole("button", { name: "こちらを残す" }));
-    await screen.findByRole("heading", { name: "外した(1 巻)" });
-    expect(lastPlan()).toMatchObject({ exclude_volume_ids: [13], folder_template: "{title}" });
-    expect(screen.queryByRole("heading", { name: /^衝突/ })).toBeNull();
+    // 少ない方を残す方に変える: 多い方(13)を外して作り直す
+    fireEvent.click(small);
+    await waitFor(() => expect(lastPlan()).toMatchObject({ exclude_volume_ids: [13], folder_template: "{title}" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /^競合（/ })).toBeNull());
+    const facts = screen.getByText("実行する").closest("dl")!;
+    expect(within(facts).getByText("改名・移動 2 巻")).toBeTruthy();
+    expect(within(facts).getByText("整理しない")).toBeTruthy();
+    // 組が消えたときもフォーカスは結果の見出しに残る
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "プレビュー結果" })));
 
     // 入力を変えると前のプレビューは消え、そのことを知らせる
     fireEvent.change(fileInput(), { target: { value: "{title}" } });
-    await waitFor(() => expect(screen.queryByRole("heading", { name: /^外した/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/競合/)).toBeNull());
     expect(screen.getByText(/前のプレビューを取り消しました/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^実行/ })).toBeNull();
   });
 
-  it("CBZ 化は整理後の名前の下に元のファイル名を出す", async () => {
+  it("CBZ 化は元と先のパスをリストで出す", async () => {
     render(<App />);
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.click(screen.getByLabelText("CBZ 化もまとめて行う"));
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
-    const section = (await screen.findByRole("heading", { name: "CBZ 化(1 巻)" })).closest("section")!;
-    const group = within(section).getByText("作者A/まとめ.cbz").closest("li")!;
-    expect(within(group).getByText("作者A/まとめ.zip")).toBeTruthy();
+    const row = (await screen.findByText("作者A/まとめ.zip")).closest("li")!;
+    expect(within(row).getByText("作者A/まとめ.cbz")).toBeTruthy();
   });
 
   it("フォルダーを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {
@@ -262,51 +269,67 @@ const baseItem: OrganizeItem = {
 };
 const opWith = (items: OrganizeItem[]) => ({ op_id: "op-1", state: "planned", items, volumes: [], warnings: [], problems: [] }) as unknown as OrganizeOp;
 
-describe("衝突の表示", () => {
+describe("競合の表示", () => {
   afterEach(cleanup);
 
-  it("ファイル数が同じ巻は衝突のまま整理後の名前の下にまとめ、どちらかを外させる。名前の大文字小文字は同じ組", () => {
+  it("同じ名前になる組は見出しで分け、同数は残す方を選ばせる。1 つだけの競合は整理しないにできる。名前の大文字小文字は同じ組", () => {
     const onExclude = vi.fn();
+    const onChoose = vi.fn();
     const op = opWith([
-      { ...baseItem, volume_id: 1, from_rel_path: "A/第1巻.cbz", reason: "「B」と同じ名前になります。どれかを外してください" },
+      { ...baseItem, volume_id: 1, from_rel_path: "A/第1巻.cbz", reason: "「B」と同じ名前になります。残す方を選んでください" },
       { ...baseItem, volume_id: 2, from_rel_path: "B/第1巻.cbz", output_rel_path: "出力/x.CBZ" },
       { ...baseItem, volume_id: 3, from_rel_path: "C/単独.cbz", output_rel_path: "出力/Y.cbz", reason: "この場所にあったファイルの記録が残っています" },
     ]);
-    render(<RangeItems op={op} onExclude={onExclude} />);
-    expect(screen.getByRole("heading", { name: "衝突(2 組)" })).toBeTruthy();
-    const group = screen.getByText("出力/X.cbz").closest("li")!;
-    expect(within(group).getAllByRole("listitem")).toHaveLength(2);
-    // 1 つで衝突している巻も、同じ形(名前の下に元のファイル名)で出す
-    expect(within(screen.getByText("出力/Y.cbz").closest("li")!).getByText("C/単独.cbz")).toBeTruthy();
-    fireEvent.click(within(group).getAllByRole("button", { name: "この巻を外す" })[1]);
-    expect(onExclude).toHaveBeenCalledWith(2);
-    expect(screen.queryByRole("button", { name: "こちらを残す" })).toBeNull();
+    render(<RangeItems op={op} onExclude={onExclude} onChoose={onChoose} />);
+    expect(screen.getByRole("heading", { name: "競合（2 組）" })).toBeTruthy();
+    const group = screen.getByRole("group", { name: /出力\/X\.cbz/i });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios).toHaveLength(2);
+    expect(radios.every((r) => !(r as HTMLInputElement).checked)).toBe(true);
+    expect(within(group).getAllByText(/残す方を選んでください/).length).toBeGreaterThan(0);
+    fireEvent.click(within(group).getByRole("radio", { name: /B\/第1巻\.cbz/ }));
+    expect(onChoose).toHaveBeenCalledWith([1], expect.objectContaining({ volume_id: 2 }));
+    // 1 つだけの競合は、残す/外すの選択ではなく「整理しない」にできる
+    const single = screen.getByRole("group", { name: /出力\/Y\.cbz/ });
+    fireEvent.click(within(single).getByRole("button", { name: "この巻を整理しない" }));
+    expect(onExclude).toHaveBeenCalledWith(3);
   });
 
-  it("自動で外した巻の「こちらを残す」は、組のほかの巻(自動で外した巻も)をすべて外す。利用者が外した巻は数えない", () => {
-    const onKeep = vi.fn();
+  it("自動で整理しないにした巻は、別の行を選ぶと組のほかの巻(自動で整理しない巻も)を外す。利用者が整理しないにした巻は数えない", () => {
+    const onChoose = vi.fn();
     const op = opWith([
       { ...baseItem, volume_id: 1, status: "move", page_count: 10 },
-      { ...baseItem, volume_id: 2, status: "skipped", page_count: 8, superseded_by: [1], reason: "ファイル数が多いため外しました" },
-      { ...baseItem, volume_id: 3, status: "skipped", page_count: 5, superseded_by: [1], reason: "ファイル数が多いため外しました" },
-      { ...baseItem, volume_id: 4, status: "skipped", page_count: 9, output_rel_path: "出力/x.cbz", superseded_by: [], reason: "外しました" },
+      { ...baseItem, volume_id: 2, status: "skipped", page_count: 8, superseded_by: [1], reason: "ファイル数が多いため、整理しません" },
+      { ...baseItem, volume_id: 3, status: "skipped", page_count: 5, superseded_by: [1], reason: "ファイル数が多いため、整理しません" },
+      { ...baseItem, volume_id: 4, status: "skipped", page_count: 9, output_rel_path: "出力/x.cbz", superseded_by: [], reason: "利用者が整理しないにしました" },
     ]);
-    render(<RangeItems op={op} onExclude={() => undefined} onKeep={onKeep} />);
-    const row = screen.getByText("(5 ファイル)").closest("li")!;
-    fireEvent.click(within(row).getByRole("button", { name: "こちらを残す" }));
-    expect(onKeep).toHaveBeenCalledWith([1, 2]);
+    render(<RangeItems op={op} onChoose={onChoose} />);
+    const group = screen.getByRole("group", { name: /出力\/X\.cbz/i });
+    // 利用者が整理しないにした巻(9 ファイル)は行だけ残し、選択肢にはしない
+    expect(within(group).getAllByRole("radio")).toHaveLength(3);
+    const userRow = within(group).getByText(/利用者が整理しないにしました/).closest("li")!;
+    expect(within(userRow).queryByRole("radio")).toBeNull();
+    const row = within(group).getByText("5 ファイル").closest("li")!;
+    fireEvent.click(within(row).getByRole("radio"));
+    expect(onChoose).toHaveBeenCalledWith([1, 2], expect.objectContaining({ volume_id: 3 }));
   });
 
-  it("CBZ 化する元が譲って外れたときは「この元を残す」と出す。履歴(操作なし)にはボタンを出さない", () => {
+  it("CBZ 化する元が譲って整理しないになったときも、行を選んで残す方を変えられる。操作なしの履歴にはチェックを出さない", () => {
+    const onChoose = vi.fn();
     const items: OrganizeItem[] = [
-      { ...baseItem, volume_id: 1, status: "cbz", conversion: true },
-      { ...baseItem, volume_id: 2, status: "skipped", conversion: true, page_count: 2, superseded_by: [1], reason: "ファイル数が多いため外しました" },
+      { ...baseItem, volume_id: 1, status: "cbz", conversion: true, page_count: 8 },
+      { ...baseItem, volume_id: 2, status: "skipped", conversion: true, page_count: 2, superseded_by: [1], reason: "ファイル数が多いため、整理しません" },
     ];
-    const { unmount } = render(<RangeItems op={opWith(items)} onExclude={() => undefined} onKeep={() => undefined} />);
-    expect(screen.getByRole("button", { name: "この元を残す" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "この元を外す" })).toBeTruthy();
+    const { unmount } = render(<RangeItems op={opWith(items)} onChoose={onChoose} />);
+    const group = screen.getByRole("group", { name: /出力\/X\.cbz/i });
+    const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios[0].checked).toBe(true); // 8 ファイルの方を既定で残す
+    const small = within(group).getByText("2 ファイル").closest("li")!;
+    fireEvent.click(within(small).getByRole("radio"));
+    expect(onChoose).toHaveBeenCalledWith([1], expect.objectContaining({ volume_id: 2 }));
     unmount();
     render(<RangeItems op={opWith(items)} />);
+    expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
   });
 });

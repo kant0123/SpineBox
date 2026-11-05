@@ -210,7 +210,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     const name = (n: number) => `サンプル漫画/サンプル漫画 第0${n}巻.cbz`;
     const conflictIds = [1, 6].filter((id) => !exclude.includes(id));
     const item = (id: number, from: string, n: number | null): OrganizeItem => {
-      if (exclude.includes(id)) return { volume_id: id, title: volumes.find((v) => v.id === id)!.title, from_rel_path: from, output_rel_path: null, status: "skipped", reason: "外しました", cbz_volume_id: null };
+      if (exclude.includes(id)) return { volume_id: id, title: volumes.find((v) => v.id === id)!.title, from_rel_path: from, output_rel_path: null, status: "skipped", reason: "利用者が整理しない巻にしました", cbz_volume_id: null };
       const base = { volume_id: id, title: volumes.find((v) => v.id === id)!.title, from_rel_path: from, cbz_volume_id: null };
       if (n === null) return { ...base, output_rel_path: null, status: "excluded", reason: "1 巻 = 1 CBZ ではありません(先に「CBZ に整理」をテンプレートの名前で実行してください)", cbz_volume_id: id };
       if (conflictIds.length > 1 && conflictIds.includes(id))
@@ -227,7 +227,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       kind: "rename", naming: "template", template: "<作品名>/<作品名> 第NN巻.cbz", work_id: workId, items,
       source_id: 0, source_rel_path: "", source_kind: "archive",
       volumes: moving.map((i) => ({ volume_id: i.volume_id, title: i.title, page_count: 8, output_rel_path: i.output_rel_path })),
-      warnings: items.some((i) => i.status === "conflict") ? ["衝突している巻は改名しません(外すか、作品・巻の情報を直して計画を作り直してください)"] : [],
+      warnings: items.some((i) => i.status === "conflict") ? ["競合している巻は改名しません(残す方を選ぶか、作品・巻の情報を直して計画を作り直してください)"] : [],
       problems: moving.length ? [] : ["改名・移動する巻がありません"],
       needs_analysis: [], created_at: "2026-11-01T00:00:00+00:00", executed_at: null, undone_at: null, error: null,
     };

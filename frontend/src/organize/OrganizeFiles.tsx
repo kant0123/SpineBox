@@ -22,7 +22,6 @@ import { organizeHistoryHref, organizeTemplateHref } from "../route";
 import { ITEM_LABELS, STATE_LABELS } from "./Organize";
 
 const STORAGE_KEY = "spinebox.organizeFiles";
-const STATUS_ORDER: OrganizeItemStatus[] = ["move", "cbz", "conflict", "skipped", "excluded", "unchanged"];
 
 interface Saved {
   rootId?: number;
@@ -56,50 +55,112 @@ function pagesText(item: OrganizeItem): string | null {
   return item.page_count === null || item.page_count === undefined ? null : `${item.page_count} ファイル`;
 }
 
-/** 実行前の計画の内訳を 1 文にする */
-function countsText(op: OrganizeOp): string {
-  const items = op.items ?? [];
-  const n = (s: OrganizeItemStatus) => items.filter((it) => it.status === s).length;
-  const parts: string[] = [];
-  if (n("move")) parts.push(`${n("move")} 巻を改名・移動`);
-  if (n("cbz")) parts.push(`${n("cbz")} 巻を CBZ 化`);
-  if (n("conflict")) parts.push(`${n("conflict")} 巻は名前が衝突`);
-  if (n("excluded")) parts.push(`${n("excluded")} 巻は対象外`);
-  if (n("skipped")) parts.push(`${n("skipped")} 巻は外した`);
-  if (n("unchanged")) parts.push(`${n("unchanged")} 巻はそのまま`);
-  return parts.join("、");
+/** 計画の内訳。画面に出す件数をまとめたもの */
+export interface ResultSummary {
+  move: number;
+  cbz: number;
+  skipped: number;
+  excluded: number;
+  unchanged: number;
+  clashes: number;
+  /** 実行する巻が 1 つも残らない競合の組(実行しない) */
+  clashNoAction: number;
+  /** まだ残す方が選ばれていない競合の組 */
+  needsChoice: number;
 }
 
-function RangeItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeId: number) => void }) {
+export function summarizeResult(op: OrganizeOp): ResultSummary {
+  const items = op.items ?? [];
+  const n = (s: OrganizeItemStatus) => items.filter((it) => it.status === s).length;
+  const clashes = clashGroupsOf(op);
+  // 競合の組の中の「整理しない」「そのまま」は、競合の欄で見せる(要約では二重に数えない)
+  const inClash = new Set(clashes.flatMap((g) => g.items.map((it) => it.volume_id)));
+  const nRest = (s: OrganizeItemStatus) => items.filter((it) => it.status === s && !inClash.has(it.volume_id)).length;
+  const noAction = clashes.filter((g) => !g.items.some((it) => it.status === "move" || it.status === "cbz"));
+  const needsChoice = noAction.filter((g) => {
+    if (g.items.some((it) => it.status === "unchanged")) return false;
+    // 選べる候補は、実行する巻・競合・ファイル数で自動的に譲った巻。利用者が整理しないにした巻は選ばない
+    const candidates = g.items.filter(
+      (it) =>
+        it.status === "move" ||
+        it.status === "cbz" ||
+        it.status === "conflict" ||
+        (it.status === "skipped" && (it.superseded_by?.length ?? 0) > 0),
+    ).length;
+    return candidates > 1;
+  });
+  return {
+    move: n("move"),
+    cbz: n("cbz"),
+    skipped: nRest("skipped"),
+    excluded: nRest("excluded"),
+    unchanged: nRest("unchanged"),
+    clashes: clashes.length,
+    clashNoAction: noAction.length,
+    needsChoice: needsChoice.length,
+  };
+}
+
+function resultLead(op: OrganizeOp, s: ResultSummary): string {
+  if (op.state === "planned") {
+    if (s.move + s.cbz === 0) return "整理する巻がありません。条件を変えてください。";
+    return `${s.move + s.cbz} 巻を整理します。実行するまで蔵書は変わりません。`;
+  }
+  if (op.state === "blocked") return "この条件では実行できません。下の問題を確認してください。";
+  if (op.state === "done") return "整理しました。元に戻すと元の場所と名前に戻ります。";
+  if (op.state === "undone") return "元に戻しました。";
+  if (op.state === "running") return "整理しています…";
+  if (op.state === "undoing") return "元に戻しています…";
+  return "実行できませんでした。理由を確認してください。";
+}
+
+function ResultFacts({ op, summary }: { op: OrganizeOp; summary: ResultSummary }) {
+  const action = summary.move + summary.cbz;
+  const done = op.state !== "planned" && op.state !== "blocked" && op.state !== "running";
   return (
-    <li className={`organize-item ${item.status}`}>
-      <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span> {item.title}
-      <div className="organize-paths">
-        <code>{item.from_rel_path}</code>
-        {(item.status === "move" || item.status === "cbz" || item.status === "conflict") && item.output_rel_path && (
-          <>
-            {" "}→ <code>{item.output_rel_path}</code>
-          </>
-        )}
-      </div>
-      {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
-      {item.reason && item.status !== "move" && item.status !== "cbz" && <div className="muted">{item.reason}</div>}
-      {onExclude && (item.status === "conflict" || item.status === "move" || item.status === "cbz" || item.cbz_volume_id !== null) && (
-        <div className="organize-item-actions">
-          {(item.status === "conflict" || item.status === "move" || item.status === "cbz") && (
-            <button type="button" className="small secondary" onClick={() => onExclude(item.volume_id)}>
-              {item.conversion ? "この元を外す" : "この巻を外す"}
-            </button>
-          )}
-          {item.cbz_volume_id !== null && <a href={organizeTemplateHref(item.cbz_volume_id)}>テンプレートの名前で CBZ に整理</a>}
+    <dl className="organize-result-facts">
+      {action > 0 && (
+        <div>
+          <dt>{done ? "実行した" : "実行する"}</dt>
+          <dd>
+            {[summary.move ? `改名・移動 ${summary.move} 巻` : "", summary.cbz ? `CBZ 化 ${summary.cbz} 巻` : ""]
+              .filter(Boolean)
+              .join(" / ")}
+          </dd>
         </div>
       )}
-    </li>
+      {summary.clashes > 0 && (
+        <div>
+          <dt>競合</dt>
+          <dd>
+            {summary.clashes} 組{summary.needsChoice > 0 ? `（未選択 ${summary.needsChoice} 組）` : ""}
+          </dd>
+        </div>
+      )}
+      {summary.skipped > 0 && (
+        <div>
+          <dt>整理しない</dt>
+          <dd>{summary.skipped} 巻</dd>
+        </div>
+      )}
+      {summary.excluded > 0 && (
+        <div>
+          <dt>対象外</dt>
+          <dd>{summary.excluded} 巻</dd>
+        </div>
+      )}
+      {summary.unchanged > 0 && (
+        <div>
+          <dt>そのまま</dt>
+          <dd>{summary.unchanged} 巻</dd>
+        </div>
+      )}
+    </dl>
   );
 }
 
-/** 整理後の名前(正規化した名前)の組。同じ名前になる巻が複数あれば衝突の組 */
-interface NameGroup {
+/** 整理後の名前(正規化した名前)の組。同じ名前になる巻が複数あれば競合の組 */
+export interface NameGroup {
   name: string;
   items: OrganizeItem[];
 }
@@ -117,147 +178,350 @@ function groupByOutputName(items: OrganizeItem[]): NameGroup[] {
   return [...groups.values()];
 }
 
-/** 整理後の名前の下に、元のファイル名を並べる */
-function NameTree({
-  groups,
-  onExclude,
-  onKeep,
-}: {
-  groups: NameGroup[];
-  onExclude?: (volumeId: number) => void;
-  onKeep?: (dropIds: number[]) => void;
-}) {
+/** 競合の組。同じ整理後の名前になる候補(実行する巻・競合・整理しない巻・そのまま)をまとめる */
+export function clashGroupsOf(op: OrganizeOp): NameGroup[] {
+  const items = op.items ?? [];
+  const keys = new Set(
+    items.filter((it) => it.status === "conflict" || (it.superseded_by?.length ?? 0) > 0).map(nameKey),
+  );
+  return groupByOutputName(items.filter((it) => keys.has(nameKey(it)) && it.status !== "excluded"));
+}
+
+function choiceLabel(item: OrganizeItem): string {
+  return item.conversion ? "この本" : "この巻";
+}
+
+/** 元と先のパス。リストの行の中で 2 行に分ける */
+function RowPaths({ item }: { item: OrganizeItem }) {
   return (
-    <ul className="organize-groups">
-      {groups.map((group) => (
-        <li key={group.name} className="organize-group">
-          <div className="organize-group-name">{group.name}</div>
-          <ul className="organize-tree">
-            {group.items.map((item) => {
-              const pages = pagesText(item);
-              const superseded = (item.superseded_by?.length ?? 0) > 0;
-              const active = item.status === "conflict" || item.status === "move" || item.status === "cbz";
-              return (
-                <li key={item.volume_id} className={`organize-item ${item.status}`}>
-                  <div className="organize-tree-body">
-                    <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span>{" "}
-                    <code>{item.from_rel_path}</code>
-                    {pages && <span className="muted"> ({pages})</span>}
-                    {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
-                    {item.reason && item.status !== "move" && item.status !== "cbz" && <div className="muted">{item.reason}</div>}
-                    {onExclude && (active || superseded) && (
-                      <div className="organize-item-actions">
-                        {active && (
-                          <button type="button" className="small secondary" onClick={() => onExclude(item.volume_id)}>
-                            {item.conversion ? "この元を外す" : "この巻を外す"}
-                          </button>
-                        )}
-                        {superseded && onKeep && (
-                          <button
-                            type="button"
-                            className="small secondary"
-                            onClick={() =>
-                              // 組のほかの巻をすべて外す(自動で外した巻も。ファイル数の多い別の巻に、また譲らないように)
-                              onKeep(
-                                group.items
-                                  .filter((o) => o.volume_id !== item.volume_id && !(o.status === "skipped" && !o.superseded_by?.length))
-                                  .map((o) => o.volume_id),
-                              )
-                            }
-                          >
-                            {item.conversion ? "この元を残す" : "こちらを残す"}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </li>
-      ))}
-    </ul>
+    <dl className="organize-path-list">
+      <div>
+        <dt>元</dt>
+        <dd>
+          <code>{item.from_rel_path}</code>
+        </dd>
+      </div>
+      {item.output_rel_path && (
+        <div>
+          <dt>先</dt>
+          <dd>
+            <code>{item.output_rel_path}</code>
+          </dd>
+        </div>
+      )}
+    </dl>
   );
 }
 
-/** 計画の各巻を扱いごとに分けて出す。動かす・衝突・外したは開いておき、対象外・そのままは畳む。
- *  同じ名前になる巻の組(衝突と、ファイル数の多い方に譲って外した巻)は「衝突」に、CBZ 化は、
- *  整理後の名前ごとに元のファイル名をぶら下げて出す(#143) */
-export function RangeItems({
-  op,
+/** 実行する内容の 1 行(改名・移動 / CBZ 化) */
+function WorkRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeId: number) => void }) {
+  const pages = pagesText(item);
+  return (
+    <li className={`organize-result-row ${item.status}`}>
+      <div className="organize-row-head">
+        <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span>
+        <span className="organize-row-title">{item.title}</span>
+        {pages && <span className="organize-row-meta">{pages}</span>}
+        {onExclude && (
+          <button type="button" className="link-button organize-row-action" onClick={() => onExclude(item.volume_id)}>
+            {choiceLabel(item)}を整理しない
+          </button>
+        )}
+        {item.cbz_volume_id !== null && (
+          <a className="organize-row-action" href={organizeTemplateHref(item.cbz_volume_id)}>
+            {choiceLabel(item)}をテンプレートの名前で CBZ に整理
+          </a>
+        )}
+      </div>
+      <RowPaths item={item} />
+      {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
+      {item.reason && <div className="muted">{item.reason}</div>}
+    </li>
+  );
+}
+
+/** 整理しない内容(対象外・そのまま・利用者が整理しないにした巻)の 1 行 */
+function RestRow({ item }: { item: OrganizeItem }) {
+  return (
+    <li className={`organize-result-row ${item.status}`}>
+      <div className="organize-row-head">
+        <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span>
+        <span className="organize-row-title">{item.title}</span>
+      </div>
+      <div className="organize-paths">
+        <code>{item.from_rel_path}</code>
+      </div>
+      {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
+      {item.reason && <div className="muted">{item.reason}</div>}
+      {item.cbz_volume_id !== null && (
+        <div className="organize-item-actions">
+          <a className="organize-row-action" href={organizeTemplateHref(item.cbz_volume_id)}>テンプレートの名前で CBZ に整理</a>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** 競合の候補 1 行。チェックが入っている行が残す巻 */
+function ClashRow({
+  item,
+  checked,
+  selectable,
+  name,
+  onChoose,
+}: {
+  item: OrganizeItem;
+  checked: boolean;
+  selectable: boolean;
+  name: string;
+  onChoose?: () => void;
+}) {
+  const pages = pagesText(item);
+  const status =
+    item.status === "unchanged"
+      ? ITEM_LABELS.unchanged
+      : checked
+        ? "残す"
+        : ITEM_LABELS[item.status];
+  const badgeClass =
+    item.status === "conflict" && !checked ? "conflict" : checked && item.status !== "unchanged" ? "keep" : "drop";
+  const body = (
+    <>
+      <span className={`organize-choice-mark ${checked ? "on" : ""}`} aria-hidden="true">
+        {checked ? "✓" : ""}
+      </span>
+      <span className={`organize-badge ${badgeClass}`}>{status}</span>
+      <span className="organize-row-title">{item.title}</span>
+      {pages && <span className="organize-row-meta">{pages}</span>}
+      <span className="organize-row-path">
+        <code>{item.from_rel_path}</code>
+      </span>
+      {item.reason && <span className="organize-row-reason">{item.reason}</span>}
+    </>
+  );
+  return (
+    <li className={`organize-result-row organize-clash-row ${checked ? "on" : ""}`}>
+      {selectable ? (
+        <label className="organize-choice-row">
+          <input
+            type="radio"
+            name={name}
+            checked={checked}
+            onChange={onChoose}
+            className="organize-choice-input"
+            data-keep-volume={item.volume_id}
+          />
+          {body}
+        </label>
+      ) : (
+        <div className="organize-choice-row">{body}</div>
+      )}
+      {item.cbz_volume_id !== null && (
+        <a className="organize-row-action" href={organizeTemplateHref(item.cbz_volume_id)}>{choiceLabel(item)}をテンプレートの名前で CBZ に整理</a>
+      )}
+    </li>
+  );
+}
+
+function ClashGroup({
+  group,
+  index,
+  onChoose,
   onExclude,
-  onKeep,
+}: {
+  group: NameGroup;
+  index: number;
+  onChoose?: (dropIds: number[], chosen: OrganizeItem) => void;
+  onExclude?: (volumeId: number) => void;
+}) {
+  const executable = group.items.filter((it) => it.status === "move" || it.status === "cbz");
+  const unchanged = group.items.filter((it) => it.status === "unchanged");
+  const choices = group.items
+    .filter(
+      (it) =>
+        it.status === "move" ||
+        it.status === "cbz" ||
+        it.status === "conflict" ||
+        (it.status === "skipped" && (it.superseded_by?.length ?? 0) > 0),
+    )
+    .sort((a, b) => (b.page_count ?? -1) - (a.page_count ?? -1));
+  // 利用者が明示的に整理しないにした巻は、選び直しの候補にはしない(実行されないため)。行だけ残す
+  const userSkipped = group.items.filter((it) => it.status === "skipped" && (it.superseded_by?.length ?? 0) === 0);
+  const editable = onChoose !== undefined;
+  const defaultKeep = executable.length === 1 && unchanged.length === 0 ? executable[0] : null;
+  const selectable = editable && unchanged.length === 0 && choices.length > 1;
+  const hintId = `organize-clash-hint-${index}`;
+  const singleConflict = !selectable && choices.length === 1 && choices[0].status === "conflict";
+  const choose = (item: OrganizeItem) => {
+    const drop = group.items
+      .filter((o) => o.volume_id !== item.volume_id)
+      .filter((o) => o.status !== "unchanged" && o.status !== "excluded")
+      .filter((o) => !(o.status === "skipped" && !o.superseded_by?.length))
+      .map((o) => o.volume_id);
+    onChoose?.(drop, item);
+  };
+  return (
+    <fieldset className="organize-clash" aria-describedby={hintId}>
+      <legend>
+        整理後の名前: <code>{group.name}</code>
+      </legend>
+      <p id={hintId} className="organize-clash-hint">
+        {defaultKeep
+          ? editable && selectable
+            ? "ファイル数が多い方を既定で残しています。別の行を選ぶと入れ替わります。"
+            : "ファイル数が多い方を残しました。"
+          : selectable
+            ? "同じ名前になるため、残す方を選んでください。"
+            : !editable && choices.length > 1
+              ? "同じ名前になるため、この組は整理していません。"
+              : "この名前は既に使われているため、この巻は整理しません。"}
+      </p>
+      <ul className="organize-result-list">
+        {choices.map((item) => (
+          <ClashRow
+            key={item.volume_id}
+            item={item}
+            checked={item.volume_id === defaultKeep?.volume_id}
+            selectable={selectable}
+            name={`organize-keep-${index}`}
+            onChoose={() => choose(item)}
+          />
+        ))}
+        {unchanged.map((item) => (
+          <ClashRow key={item.volume_id} item={item} checked selectable={false} name={`organize-keep-${index}`} />
+        ))}
+        {userSkipped.map((item) => (
+          <ClashRow key={item.volume_id} item={item} checked={false} selectable={false} name={`organize-keep-${index}`} />
+        ))}
+      </ul>
+      {singleConflict && onExclude && (
+        <button type="button" className="link-button" onClick={() => onExclude(choices[0].volume_id)}>
+          {choiceLabel(choices[0])}を整理しない
+        </button>
+      )}
+    </fieldset>
+  );
+}
+
+/** 競合の組。同じ整理後の名前になる候補をリストで出し、残す方を選べる */
+export function ClashGroups({
+  op,
+  onChoose,
+  onExclude,
+  busy,
 }: {
   op: OrganizeOp;
+  onChoose?: (dropIds: number[], chosen: OrganizeItem) => void;
   onExclude?: (volumeId: number) => void;
-  /** 「こちらを残す」: 同じ名前の組のほかの巻を外して計画を作り直す */
-  onKeep?: (dropIds: number[]) => void;
+  busy?: boolean;
 }) {
-  const items = op.items ?? [];
-  const clashNames = new Set(
-    items.filter((it) => it.status === "conflict" || (it.superseded_by?.length ?? 0) > 0).map(nameKey),
+  const groups = clashGroupsOf(op);
+  if (groups.length === 0) return null;
+  return (
+    <section className="organize-clashes" aria-labelledby="organize-clashes-title">
+      <h4 id="organize-clashes-title">競合（{groups.length} 組）</h4>
+      <p className="organize-clashes-lead">
+        同じ整理後の名前になる組です。残す方を 1 つ選んでください。ファイル数が多い方を既定で選んでいます。
+      </p>
+      {busy && (
+        <p className="muted" role="status">
+          選び直しています…
+        </p>
+      )}
+      <div className="organize-clash-list">
+        {groups.map((group, index) => (
+          <ClashGroup key={group.name} group={group} index={index} onChoose={onChoose} onExclude={onExclude} />
+        ))}
+      </div>
+    </section>
   );
-  // 衝突の組には、名前が重なった相手(残す巻・そのままの巻)も入れる
-  const clashItems = items.filter((it) => clashNames.has(nameKey(it)) && it.status !== "excluded");
-  const clashGroups = groupByOutputName(clashItems);
-  const inClash = new Set(clashItems.map((it) => it.volume_id));
-  const rest = items.filter((it) => !inClash.has(it.volume_id));
+}
+
+/** 実行する内容(改名・移動 / CBZ 化)。競合で残した巻もここに出る */
+export function RangeWork({ op, onExclude }: { op: OrganizeOp; onExclude?: (volumeId: number) => void }) {
+  const items = op.items ?? [];
+  const move = items.filter((it) => it.status === "move");
+  const cbz = items.filter((it) => it.status === "cbz");
+  if (!move.length && !cbz.length) return null;
+  const done = op.state !== "planned" && op.state !== "blocked" && op.state !== "running";
+  return (
+    <section className="organize-result-work" aria-labelledby="organize-work-title">
+      <h4 id="organize-work-title">{done ? "実行した内容" : "実行する内容"}</h4>
+      {move.length > 0 && (
+        <div className="organize-work-group">
+          <h5>改名・移動（{move.length} 巻）</h5>
+          <ul className="organize-result-list">
+            {move.map((it) => (
+              <WorkRow key={it.volume_id} item={it} onExclude={onExclude} />
+            ))}
+          </ul>
+        </div>
+      )}
+      {cbz.length > 0 && (
+        <div className="organize-work-group">
+          <h5>CBZ 化（{cbz.length} 巻）</h5>
+          <ul className="organize-result-list">
+            {cbz.map((it) => (
+              <WorkRow key={it.volume_id} item={it} onExclude={onExclude} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 実行しない内容(整理しない / 対象外 / そのまま)。競合の組は上で出すので除く */
+export function RangeRest({ op }: { op: OrganizeOp }) {
+  const inClash = new Set(clashGroupsOf(op).flatMap((g) => g.items.map((it) => it.volume_id)));
+  const rest = (op.items ?? []).filter((it) => !inClash.has(it.volume_id));
+  const groups = [
+    { key: "skipped", label: ITEM_LABELS.skipped, items: rest.filter((it) => it.status === "skipped") },
+    { key: "excluded", label: ITEM_LABELS.excluded, items: rest.filter((it) => it.status === "excluded") },
+    { key: "unchanged", label: ITEM_LABELS.unchanged, items: rest.filter((it) => it.status === "unchanged") },
+  ].filter((g) => g.items.length > 0);
+  if (groups.length === 0) return null;
+  const summary = groups.map((g) => `${g.label} ${g.items.length} 巻`).join("・");
+  return (
+    <details className="organize-result-rest">
+      <summary>整理しない内容（{summary}）</summary>
+      {groups.map((g) => (
+        <section key={g.key}>
+          <h5>
+            {g.label}（{g.items.length} 巻）
+          </h5>
+          <ul className="organize-result-list">
+            {g.items.map((it) => (
+              <RestRow key={it.volume_id} item={it} />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </details>
+  );
+}
+
+/** 結果の中身。テストと、結果の外側だけ差し替えたいとき用 */
+export function RangeItems({
+  op,
+  onChoose,
+  onExclude,
+  busy,
+}: {
+  op: OrganizeOp;
+  onChoose?: (dropIds: number[], chosen: OrganizeItem) => void;
+  onExclude?: (volumeId: number) => void;
+  busy?: boolean;
+}) {
   return (
     <>
-      <p className="organize-counts">
-        {STATUS_ORDER.map((s) => {
-          const n = items.filter((it) => it.status === s).length;
-          return n ? (
-            <span key={s} className={`organize-badge ${s}`}>
-              {ITEM_LABELS[s]} {n}
-            </span>
-          ) : null;
-        })}
-      </p>
-      {STATUS_ORDER.map((s) => {
-        if (s === "conflict") {
-          return clashGroups.length ? (
-            <section key={s} className="organize-list-section">
-              <h4 className="organize-subhead">衝突({clashGroups.length} 組)</h4>
-              <p className="muted organize-hint">
-                同じ名前になる巻です。ファイル数の多い方を残し、少ない方は外しました。同数の巻は衝突のままなので、どちらかを外してください。
-              </p>
-              <NameTree groups={clashGroups} onExclude={onExclude} onKeep={onKeep} />
-            </section>
-          ) : null;
-        }
-        const list = rest.filter((it) => it.status === s);
-        if (!list.length) return null;
-        const rows =
-          s === "cbz" ? (
-            <NameTree groups={groupByOutputName(list)} onExclude={onExclude} />
-          ) : (
-            <ul className="organize-volumes">
-              {list.map((it) => (
-                <RangeItemRow key={it.volume_id} item={it} onExclude={onExclude} />
-              ))}
-            </ul>
-          );
-        return s === "excluded" || s === "unchanged" ? (
-          <details key={s} className="organize-fold">
-            <summary>
-              {ITEM_LABELS[s]}({list.length} 巻)
-            </summary>
-            {rows}
-          </details>
-        ) : (
-          <section key={s} className="organize-list-section">
-            <h4 className="organize-subhead">
-              {ITEM_LABELS[s]}({list.length} 巻)
-            </h4>
-            {rows}
-          </section>
-        );
-      })}
+      <ClashGroups op={op} onChoose={onChoose} onExclude={onExclude} busy={busy} />
+      <RangeWork op={op} onExclude={onExclude} />
+      <RangeRest op={op} />
     </>
   );
 }
+
 
 /** 入力欄の直下に置く「項目を差し込む」。押した欄へ入る(最後のフォーカスに依存しない) */
 function ParameterChips({
@@ -494,6 +758,7 @@ export function OrganizeFilesSection() {
   const resultRef = useRef<HTMLDivElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusResult = useRef(false);
+  const keepFocus = useRef<number | null>(null);
   const opRef = useRef<OrganizeOp | null>(null);
   const exampleSeq = useRef(0);
   const [examples, setExamples] = useState<RangeExample[]>([]);
@@ -596,7 +861,7 @@ export function OrganizeFilesSection() {
       setExcluded(exclude);
       if (focus) focusResult.current = true;
     } catch (e) {
-      setOp(null);
+      // 選び直しに失敗したときは、直前のプレビューを消さずに理由だけ出す
       setError(errorText(e, "プレビューを作れませんでした。"));
     } finally {
       setBusy(null);
@@ -629,6 +894,16 @@ export function OrganizeFilesSection() {
     focusResult.current = false;
     resultRef.current?.scrollIntoView?.({ block: "start" });
     resultHeadingRef.current?.focus?.({ preventScroll: true });
+  }, [op]);
+
+  // 競合の残す方を選び直したら、選んだ行へフォーカスを戻す(計画の作り直しで行方不明にしない)
+  useEffect(() => {
+    const id = keepFocus.current;
+    if (id === null || !op) return;
+    keepFocus.current = null;
+    const input = document.querySelector<HTMLInputElement>(`input[data-keep-volume="${id}"]`);
+    if (input) input.focus({ preventScroll: true });
+    else resultHeadingRef.current?.focus?.({ preventScroll: true });
   }, [op]);
 
   const preview = () => {
@@ -679,6 +954,16 @@ export function OrganizeFilesSection() {
   const root = options.roots.find((r) => r.id === rootId) ?? options.roots[0];
   const planned = op?.state === "planned";
   const canEditPlan = planned || op?.state === "blocked";
+  const summary = op ? summarizeResult(op) : null;
+  const excludeOne = canEditPlan
+    ? (id: number) => void plan([...new Set([...excluded, id])], false)
+    : undefined;
+  const chooseKeep = canEditPlan
+    ? (drop: number[], chosen: OrganizeItem) => {
+        keepFocus.current = chosen.volume_id;
+        void plan([...new Set([...excluded, ...drop])], false);
+      }
+    : undefined;
   const previewLabel = busy === "plan" ? "プレビューを作っています…" : "プレビュー";
 
   return (
@@ -911,48 +1196,50 @@ export function OrganizeFilesSection() {
         </div>
       )}
 
-      {op && (
+      {op && summary && (
         <div ref={resultRef} className={`organize-result ${op.state}`}>
           <div className="organize-result-head">
             <h3 ref={resultHeadingRef} tabIndex={-1}>
               {op.state === "planned" || op.state === "blocked" ? "プレビュー結果" : "実行結果"}
             </h3>
-            <span className={`organize-state ${op.state}`}>{STATE_LABELS[op.state]}</span>
+            {op.state !== "planned" && <span className={`organize-state ${op.state}`}>{STATE_LABELS[op.state]}</span>}
           </div>
-          {countsText(op) && <p className="organize-result-summary">{countsText(op)}。</p>}
-          {op.state === "done" && (
-            <div className="notice success" role="status">
-              整理しました。元に戻すと元の場所と名前に戻ります。
-            </div>
-          )}
-          {op.state === "undone" && (
-            <div className="notice" role="status">
-              元に戻しました。
-            </div>
-          )}
+          <p className="organize-result-lead">{resultLead(op, summary)}</p>
+          <ResultFacts op={op} summary={summary} />
           {op.problems.map((p) => (
             <div key={p} className="notice error" role="alert">
               {p}
             </div>
           ))}
-          {op.warnings.map((w) => (
-            <div key={w} className="notice warn">
-              {w}
-            </div>
-          ))}
+          {op.warnings
+            .filter((w) => !(summary.clashes > 0 && w.startsWith("競合している巻は")))
+            .map((w) => (
+              <div key={w} className="notice warn">
+                {w}
+              </div>
+            ))}
           {op.error && (
             <div className="notice error" role="alert">
               {op.error}
             </div>
+          )}
+          <ClashGroups op={op} onChoose={chooseKeep} onExclude={excludeOne} busy={busy === "plan"} />
+          {summary.needsChoice > 0 && (
+            <p className="organize-result-note">
+              競合 {summary.needsChoice} 組はまだ選ばれていません。残す方の行を選ぶと実行に含まれます。
+            </p>
+          )}
+          {summary.clashNoAction > 0 && summary.needsChoice === 0 && (
+            <p className="organize-result-note">競合 {summary.clashNoAction} 組は整理しません。</p>
           )}
           <div className="organize-result-actions">
             <button type="button" className="link-button" onClick={scrollToForm}>
               条件を変える
             </button>
             {op.state !== "planned" && op.state !== "blocked" && <a href={organizeHistoryHref}>整理の履歴へ</a>}
-            {excluded.length > 0 && (op.state === "planned" || op.state === "blocked") && (
+            {excluded.length > 0 && canEditPlan && (
               <button type="button" className="secondary" onClick={() => void plan([], false)} disabled={busy !== null}>
-                外した巻を戻す
+                整理しない巻を戻す
               </button>
             )}
             {op.state === "done" && (
@@ -960,20 +1247,20 @@ export function OrganizeFilesSection() {
                 {busy === "undo" ? "元に戻し中…" : "まとめて元に戻す"}
               </button>
             )}
-            {planned && (
+            {planned && op.volumes.length > 0 && (
               <button type="button" className="organize-commit" onClick={() => void run("execute")} disabled={busy !== null}>
-                {busy === "execute" ? "実行中…" : `実行(${op.volumes.length} 巻)`}
+                {busy === "execute"
+                  ? "実行中…"
+                  : summary.clashNoAction > 0
+                    ? `競合を除いて実行(${op.volumes.length} 巻)`
+                    : `実行(${op.volumes.length} 巻)`}
               </button>
             )}
           </div>
-          <RangeItems
-            op={op}
-            onExclude={canEditPlan ? (id) => void plan([...new Set([...excluded, id])], false) : undefined}
-            onKeep={canEditPlan ? (drop) => void plan([...new Set([...excluded, ...drop])], false) : undefined}
-          />
+          <RangeWork op={op} onExclude={excludeOne} />
+          <RangeRest op={op} />
         </div>
       )}
-
       {picker && rootId !== null && (
         <FolderPicker
           rootId={rootId}

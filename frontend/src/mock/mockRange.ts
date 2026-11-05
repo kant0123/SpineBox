@@ -72,7 +72,7 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
     };
     for (const it of all) {
       if (exclude.includes(it.volume_id)) {
-        Object.assign(it, { status: "skipped", reason: "外しました" });
+        Object.assign(it, { status: "skipped", reason: "利用者が整理しない巻にしました" });
         continue;
       }
       if (it.volume_id === 14) {
@@ -96,13 +96,13 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
         Object.assign(it, {
           status: "skipped",
           superseded_by: top.map((o) => o.volume_id),
-          reason: `同じ名前の${top.map((o) => `「${o.title}」`).join("・")}(${most} ファイル)のほうがファイル数が多いため外しました(この巻は ${it.page_count} ファイル)`,
+          reason: `同じ名前の${top.map((o) => `「${o.title}」`).join("・")}(${most} ファイル)のほうがファイル数が多いため、整理しません(この巻は ${it.page_count} ファイル)`,
         });
       }
     }
     for (const it of all) {
       const same = all.filter((o) => o !== it && isMoving(o) && isMoving(it) && o.output_rel_path === it.output_rel_path);
-      if (same.length) it.reason = `${same.map((o) => `「${o.title}」`).join("・")}と同じ名前になります。どれかを外してください`;
+      if (same.length) it.reason = `${same.map((o) => `「${o.title}」`).join("・")}と同じ名前になります。残す方を選んでください`;
     }
     for (const it of all) if (it.reason && isMoving(it)) it.status = "conflict";
     const moving = all.filter(isMoving);
@@ -118,7 +118,7 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
       source_id: 0, source_rel_path: "", source_kind: "archive",
       volumes: moving.map((it) => ({ volume_id: it.volume_id, title: it.title, page_count: 8, output_rel_path: it.output_rel_path })),
       warnings: all.some((it) => it.status === "conflict")
-        ? ["衝突している巻は改名・CBZ 化しません(外すか、作品・巻の情報を直して計画を作り直してください)"]
+        ? ["競合している巻は改名・CBZ 化しません(残す方を選ぶか、作品・巻の情報を直して計画を作り直してください)"]
         : includeCbz && moving.some((it) => it.status === "cbz")
           ? ["CBZ 化する元は、全巻を作って検証してから確定します。元は退避フォルダへ移します(削除しません)"]
           : [],

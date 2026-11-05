@@ -25,8 +25,8 @@ export const ITEM_LABELS: Record<OrganizeItemStatus, string> = {
   cbz: "CBZ 化",
   unchanged: "そのまま",
   excluded: "対象外",
-  conflict: "衝突",
-  skipped: "外した",
+  conflict: "競合",
+  skipped: "整理しない",
 };
 
 function ItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeId: number) => void }) {
@@ -48,7 +48,7 @@ function ItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeI
         <div className="organize-item-actions">
           {item.status === "conflict" && (
             <button type="button" onClick={() => onExclude(item.volume_id)}>
-              この巻を外す
+              この巻を整理しない
             </button>
           )}
           {item.cbz_volume_id !== null && <a href={organizeTemplateHref(item.cbz_volume_id)}>テンプレートの名前で CBZ に整理</a>}
@@ -256,7 +256,7 @@ export function WorkOrganize({ workId }: { workId: string }) {
           {planned && (
             <p className="muted">
               「改名・移動」の巻だけを同じドライブの中で改名・移動します(中身はそのまま。読書位置などは引き継がれます)。
-              衝突・対象外の巻は動かしません。履歴から元に戻せます。
+              競合・対象外の巻は整理しません。履歴から元に戻せます。
             </p>
           )}
           <OpBody op={op} onExclude={exclude} />
@@ -270,7 +270,7 @@ export function WorkOrganize({ workId }: { workId: string }) {
       <div className="organize-actions">
         {excluded.length > 0 && (op?.state === "planned" || op?.state === "blocked") && (
           <button type="button" onClick={() => setExcluded([])} disabled={busy}>
-            外した巻を戻す
+            整理しない巻を戻す
           </button>
         )}
         {planned && (
