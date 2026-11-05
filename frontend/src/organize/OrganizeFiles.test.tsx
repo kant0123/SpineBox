@@ -1,9 +1,11 @@
 // 範囲指定の整理(#84)。プレビュー → 実行 → まとめて元に戻す、パラメーターの挿入、プリセット、外す、フォルダを選ぶ
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OrganizeItem, OrganizeOp } from "../api";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { organizeFilesHref, parseRoute } from "../route";
+import { RangeItems } from "./OrganizeFiles";
 
 let backend: ReturnType<typeof createMockBackend>;
 const posts = () => backend.log.filter((l) => l.method === "POST" && l.path !== "/api/organize/range/example").map((l) => l.path);
@@ -119,22 +121,49 @@ describe("範囲指定の整理", () => {
     expect((screen.getByRole("button", { name: "プレビュー" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("衝突した巻を外して作り直し、入力を変えると前のプレビューは消える", async () => {
+  it("同じ名前の巻はファイル数の多い方を残し、整理後の名前ごとのツリーで出す。「こちらを残す」で逆にできる", async () => {
     render(<App />);
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.change(fileInput(), { target: { value: "{title} 第{number:2}{unit}" } });
     fireEvent.change(folderInput(), { target: { value: "{title}" } });
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
-    const conflicts = (await screen.findByRole("heading", { name: "衝突(2 巻)" })).closest("section")!;
-    expect(within(conflicts).getAllByText(/と同じ名前になります/)).toHaveLength(2);
-    fireEvent.click(within(conflicts).getAllByRole("button", { name: "この巻を外す" })[0]);
+    const clash = (await screen.findByRole("heading", { name: "衝突(1 組)" })).closest("section")!;
+    // 見出しは整理後の名前。その下に、同じ名前になる元のファイル名が枝で並ぶ
+    const group = within(clash).getByText("サンプル漫画/サンプル漫画 第02巻.cbz").closest("li")!;
+    const rows = within(group).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain("├─");
+    expect(rows[1].textContent).toContain("└─");
+    // ファイル数の少ない方(6)は既定で外れ、多い方(8)が動く
+    const small = rows.find((r) => r.textContent?.includes("作者A/サンプル漫画 2巻.cbz"))!;
+    const large = rows.find((r) => r.textContent?.includes("スキャン/サンプル漫画 第2巻.cbz"))!;
+    expect(within(small).getByText("外した")).toBeTruthy();
+    expect(within(small).getByText(/ファイル数が多いため外しました/)).toBeTruthy();
+    expect(within(small).getByText("(6 ファイル)")).toBeTruthy();
+    expect(within(large).getByText("改名・移動")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy(); // 衝突を残さず、動く巻が決まっている
+
+    // 「こちらを残す」: ファイル数の多い方を外して作り直すと、少ない方が動く
+    fireEvent.click(within(small).getByRole("button", { name: "こちらを残す" }));
     await screen.findByRole("heading", { name: "外した(1 巻)" });
-    expect(lastPlan()).toMatchObject({ exclude_volume_ids: [12], folder_template: "{title}" });
+    expect(lastPlan()).toMatchObject({ exclude_volume_ids: [13], folder_template: "{title}" });
     expect(screen.queryByRole("heading", { name: /^衝突/ })).toBeNull();
 
+    // 入力を変えると前のプレビューは消える
     fireEvent.change(fileInput(), { target: { value: "{title}" } });
     await waitFor(() => expect(screen.queryByRole("heading", { name: /^外した/ })).toBeNull());
     expect(screen.queryByRole("button", { name: /^実行/ })).toBeNull();
+  });
+
+  it("CBZ 化は整理後の名前の下に元のファイル名を出す", async () => {
+    render(<App />);
+    await screen.findByRole("option", { name: "E:/漫画" });
+    fireEvent.click(screen.getByLabelText("CBZ 化もまとめて行う"));
+    fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
+    const section = (await screen.findByRole("heading", { name: "CBZ 化(1 巻)" })).closest("section")!;
+    const group = within(section).getByText("作者A/まとめ.cbz").closest("li")!;
+    expect(within(group).getByText("作者A/まとめ.zip")).toBeTruthy();
+    expect(within(group).getByText("└─")).toBeTruthy();
   });
 
   it("フォルダを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {
@@ -151,5 +180,60 @@ describe("範囲指定の整理", () => {
     await screen.findByText("状態:", { exact: false });
     expect(lastPlan()).toMatchObject({ path: "スキャン" });
     expect(screen.queryByText("作者A/サンプル漫画 2巻.cbz")).toBeNull();
+  });
+});
+
+const baseItem: OrganizeItem = {
+  volume_id: 1, title: "巻", from_rel_path: "a.cbz", output_rel_path: "出力/X.cbz", status: "conflict",
+  reason: null, cbz_volume_id: null, changes: [], page_count: 5, superseded_by: [],
+};
+const opWith = (items: OrganizeItem[]) => ({ op_id: "op-1", state: "planned", items, volumes: [], warnings: [], problems: [] }) as unknown as OrganizeOp;
+
+describe("衝突の表示", () => {
+  afterEach(cleanup);
+
+  it("ファイル数が同じ巻は衝突のまま整理後の名前の下にまとめ、どちらかを外させる。名前の大文字小文字は同じ組", () => {
+    const onExclude = vi.fn();
+    const op = opWith([
+      { ...baseItem, volume_id: 1, from_rel_path: "A/第1巻.cbz", reason: "「B」と同じ名前になります。どれかを外してください" },
+      { ...baseItem, volume_id: 2, from_rel_path: "B/第1巻.cbz", output_rel_path: "出力/x.CBZ" },
+      { ...baseItem, volume_id: 3, from_rel_path: "C/単独.cbz", output_rel_path: "出力/Y.cbz", reason: "この場所にあったファイルの記録が残っています" },
+    ]);
+    render(<RangeItems op={op} onExclude={onExclude} />);
+    expect(screen.getByRole("heading", { name: "衝突(2 組)" })).toBeTruthy();
+    const group = screen.getByText("出力/X.cbz").closest("li")!;
+    expect(within(group).getAllByRole("listitem")).toHaveLength(2);
+    // 1 つで衝突している巻も、同じ形(名前の下に元のファイル名)で出す
+    expect(within(screen.getByText("出力/Y.cbz").closest("li")!).getByText("C/単独.cbz")).toBeTruthy();
+    fireEvent.click(within(group).getAllByRole("button", { name: "この巻を外す" })[1]);
+    expect(onExclude).toHaveBeenCalledWith(2);
+    expect(screen.queryByRole("button", { name: "こちらを残す" })).toBeNull();
+  });
+
+  it("自動で外した巻の「こちらを残す」は、組のほかの巻(自動で外した巻も)をすべて外す。利用者が外した巻は数えない", () => {
+    const onKeep = vi.fn();
+    const op = opWith([
+      { ...baseItem, volume_id: 1, status: "move", page_count: 10 },
+      { ...baseItem, volume_id: 2, status: "skipped", page_count: 8, superseded_by: [1], reason: "ファイル数が多いため外しました" },
+      { ...baseItem, volume_id: 3, status: "skipped", page_count: 5, superseded_by: [1], reason: "ファイル数が多いため外しました" },
+      { ...baseItem, volume_id: 4, status: "skipped", page_count: 9, output_rel_path: "出力/x.cbz", superseded_by: [], reason: "外しました" },
+    ]);
+    render(<RangeItems op={op} onExclude={() => undefined} onKeep={onKeep} />);
+    const row = screen.getByText("(5 ファイル)").closest("li")!;
+    fireEvent.click(within(row).getByRole("button", { name: "こちらを残す" }));
+    expect(onKeep).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("CBZ 化する元が譲って外れたときは「この元を残す」と出す。履歴(操作なし)にはボタンを出さない", () => {
+    const items: OrganizeItem[] = [
+      { ...baseItem, volume_id: 1, status: "cbz", conversion: true },
+      { ...baseItem, volume_id: 2, status: "skipped", conversion: true, page_count: 2, superseded_by: [1], reason: "ファイル数が多いため外しました" },
+    ];
+    const { unmount } = render(<RangeItems op={opWith(items)} onExclude={() => undefined} onKeep={() => undefined} />);
+    expect(screen.getByRole("button", { name: "この元を残す" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "この元を外す" })).toBeTruthy();
+    unmount();
+    render(<RangeItems op={opWith(items)} />);
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

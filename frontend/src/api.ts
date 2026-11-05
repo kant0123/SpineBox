@@ -645,6 +645,10 @@ export interface OrganizeItem {
   changes?: string[];
   /** 元(1 つのファイル・フォルダ)を CBZ 化する巻(include_cbz=True のとき) */
   conversion?: boolean;
+  /** ファイル数(ページ数)。未確定は null */
+  page_count?: number | null;
+  /** 同じ名前の巻のうちファイル数が多い方に譲って外した巻の、残した側の巻 id(#143)。外していない巻は空 */
+  superseded_by?: number[];
 }
 
 /** include_cbz で CBZ 化する元(1 つのファイル・フォルダ)。元の全巻をまとめて CBZ にする単位 */

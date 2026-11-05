@@ -54,6 +54,27 @@ ITEM_MOVE, ITEM_UNCHANGED, ITEM_EXCLUDED, ITEM_CONFLICT, ITEM_SKIPPED, ITEM_CBZ 
     "move", "unchanged", "excluded", "conflict", "skipped", "cbz")
 
 
+def _smaller_than_top(group: list[dict]) -> list[tuple[dict, list[dict]]]:
+    """同じ出力名になる巻の組から、ファイル数(ページ数)が最多より少ない巻を (その巻, 最多の巻たち) で返す(#143)。
+
+    既定では多い方を残す。最多が同数ならそれらは自動では決めない(衝突のまま利用者に選ばせる)。ページ数が不明な巻が
+    いる組も決めない。既にその名前で置かれている巻(unchanged)は動かせないので、外す側には入れない。
+    """
+    if len(group) < 2 or any(it["page_count"] is None for it in group):
+        return []
+    most = max(it["page_count"] for it in group)
+    top = [it for it in group if it["page_count"] == most]
+    return [(it, top) for it in group if it["page_count"] < most and it["status"] != ITEM_UNCHANGED]
+
+
+def _mark_superseded(item: dict, top: list[dict]) -> None:
+    """ファイル数の多い巻に譲って外す。superseded_by が「こちらを残す」(最多の巻を外して計画を作り直す)の手がかり。"""
+    names = "・".join(f"「{t['title']}」" for t in top)
+    item.update(status=ITEM_SKIPPED, superseded_by=[t["volume_id"] for t in top],
+                reason=f"同じ名前の{names}({top[0]['page_count']} ファイル)のほうがファイル数が多いため外しました"
+                       f"(この巻は {item['page_count']} ファイル)")
+
+
 class OrganizeError(Exception):
     """整理処理を始められない・失敗した(失敗時は巻き戻し済み)。"""
 
@@ -906,11 +927,16 @@ class Organizer:
             if problem:
                 it.update(status=ITEM_CONFLICT, reason=problem)
 
+        # 同じ名前になる巻はファイル数の多い方を残す(#143)。外すのは 1 巻でも元全体なので、先に済ませる
+        self._supersede_smaller_outputs(items, by_source)
+
         # 元(1 つのファイル・フォルダ)は全巻まとめて CBZ にする。1 巻でも外した・対象外・衝突なら元全体を止める
         for source_id, src_items in by_source.items():
             r = source_rows[source_id]
             if any(it["status"] == ITEM_SKIPPED for it in src_items):
                 for it in src_items:
+                    if it.get("superseded_by"):
+                        continue  # ファイル数で譲った巻は、理由と出力名を残す(画面の衝突の組に出す)
                     it.update(status=ITEM_SKIPPED, reason="外しました(同じ元の巻を外したため、元全体を外します)",
                               output_rel_path=None)
                 continue
@@ -1024,6 +1050,32 @@ class Organizer:
         others = [e.name for e in entries if not e.is_dir(follow_symlinks=False) and not is_image(e.name)]
         return None, ([f"画像以外のファイル {len(others)} 件は CBZ に入らず、元のフォルダごと退避フォルダへ移ります"]
                       if others else [])
+
+    @staticmethod
+    def _supersede_smaller_outputs(items: list[dict], by_source: dict[int, list[dict]]) -> None:
+        """同じ出力名の巻のうちファイル数の少ない方を外す(#143)。CBZ 化する巻は元全体を外す。
+
+        元を外すと、その元の別の巻が持っていた名前も空くので、変化がなくなるまで組み直す。
+        """
+        while True:
+            groups: dict[tuple[int, str], list[dict]] = {}
+            for it in items:
+                if it["status"] in (ITEM_MOVE, ITEM_UNCHANGED, ITEM_CBZ) and it["output_rel_path"]:
+                    groups.setdefault((it["root_id"], it["output_rel_path"].casefold()), []).append(it)
+            # 同じ元の中の名前の重複は、片方を外すと元全体を外すことになり、勝つ側も巻き込む。決めずに衝突のまま残す
+            losers = [(loser, top) for group in groups.values() for loser, top in _smaller_than_top(group)
+                      if not (loser.get("conversion") and any(t["source_id"] == loser["source_id"] for t in top))]
+            if not losers:
+                return
+            for loser, top in losers:
+                _mark_superseded(loser, top)
+            for loser, _ in losers:
+                if not loser.get("conversion"):
+                    continue
+                for sibling in by_source.get(loser["source_id"], []):
+                    if sibling["status"] != ITEM_SKIPPED:
+                        sibling.update(status=ITEM_SKIPPED, output_rel_path=None,
+                                       reason="外しました(同じ元の巻を外したため、元全体を外します)")
 
     @staticmethod
     def _mark_duplicate_range_outputs(items: list[dict]) -> None:
@@ -1201,6 +1253,10 @@ class Organizer:
             if it["status"] in (ITEM_MOVE, ITEM_UNCHANGED):
                 groups.setdefault((it["root_id"], it["output_rel_path"].casefold()), []).append(it)
         for group in groups.values():
+            # ファイル数の多い方を残す(#143)。同数・不明は従来どおり衝突として利用者に選ばせる
+            for loser, top in _smaller_than_top(group):
+                _mark_superseded(loser, top)
+            group = [it for it in group if it["status"] != ITEM_SKIPPED]
             if len(group) > 1:
                 for it in group:
                     if it["status"] == ITEM_UNCHANGED:
@@ -1668,7 +1724,8 @@ class Organizer:
             view["work_id"] = plan.get("work_id")
             view["items"] = [{**{k: it[k] for k in ("volume_id", "title", "from_rel_path", "output_rel_path", "status",
                                                     "reason", "cbz_volume_id")},
-                              "changes": it.get("changes", []), "conversion": bool(it.get("conversion", False))}
+                              "changes": it.get("changes", []), "conversion": bool(it.get("conversion", False)),
+                              "page_count": it.get("page_count"), "superseded_by": list(it.get("superseded_by", []))}
                              for it in plan["items"]]
         if plan.get("kind") == "range":
             view["scope"] = plan["scope"]

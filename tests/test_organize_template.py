@@ -184,14 +184,16 @@ def test_rename_plan_writes_nothing_and_explains_each_volume(env):
     items = items_by_title(plan)
     assert items[f"{TITLE} 1巻"]["status"] == "move"
     assert items[f"{TITLE} 1巻"]["output_rel_path"] == f"{TITLE}/{TITLE} 第01巻.cbz"
-    # 同じ名前になる別スキャンの重複は、自動で連番にせず両方を衝突として出す
-    for t in (f"{TITLE} 2巻", f"{TITLE} 第2巻"):
-        assert items[t]["status"] == "conflict" and "同じ名前" in items[t]["reason"]
+    # 同じ名前になる別スキャンの重複は、自動で連番にせず、ファイル数の多い方(3)を残して少ない方(2)を外す
+    assert items[f"{TITLE} 第2巻"]["status"] == "move"
+    small = items[f"{TITLE} 2巻"]
+    assert small["status"] == "skipped" and small["superseded_by"] == [items[f"{TITLE} 第2巻"]["volume_id"]]
+    assert "ファイル数が多い" in small["reason"]
     assert items[f"{TITLE} 3巻"]["status"] == "excluded" and "1 巻 = 1 CBZ ではありません" in items[f"{TITLE} 3巻"]["reason"]
     assert items[f"{TITLE} 3巻"]["cbz_volume_id"] == vid_of(env, f"{TITLE} 3巻.zip")
     assert items[f"{TITLE} 第04巻"]["status"] == "unchanged"
-    assert [v["title"] for v in plan["volumes"]] == [f"{TITLE} 1巻"]  # 実行で動くのは move だけ
-    assert any("衝突" in w for w in plan["warnings"])
+    assert sorted(v["title"] for v in plan["volumes"]) == sorted([f"{TITLE} 1巻", f"{TITLE} 第2巻"])  # 実行で動くのは move だけ
+    assert not any("衝突" in w for w in plan["warnings"])  # 衝突はファイル数で決まったので残らない
 
 
 def test_rename_plan_reasons_for_missing_values(env):
