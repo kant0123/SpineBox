@@ -223,22 +223,22 @@ describe("整理(CBZ 化)", () => {
       { volume_id: 2, naming: "title" }, { volume_id: 2, naming: "template" }]);
   });
 
-  it("作品ページ → テンプレートどおりに整理: 衝突を外して実行 → 履歴から元に戻す", async () => {
+  it("作品ページ → テンプレートどおりに整理: 競合を外して実行 → 履歴から元に戻す", async () => {
     window.location.hash = workHref(1);
     render(<App />);
     const link = await screen.findByRole("link", { name: "この作品をテンプレートどおりに整理" });
     expect(link.getAttribute("href")).toBe(workOrganizeHref(1));
     await navigate(workOrganizeHref(1));
-    // 変更前 → 変更後・衝突・対象外を理由つきで出す
+    // 変更前 → 変更後・競合・対象外を理由つきで出す
     expect(await screen.findByText("sample_v02.cbz")).toBeTruthy();
-    expect(screen.getAllByText("衝突")).toHaveLength(2);
+    expect(screen.getAllByText("競合")).toHaveLength(2);
     expect(screen.getByText(/1 巻 = 1 CBZ ではありません/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "テンプレートの名前で CBZ に整理" }).getAttribute("href")).toBe(organizeTemplateHref(3));
     expect(posts()).toEqual(["/api/organize/rename-plan"]); // プレビューだけでは実行しない
 
-    fireEvent.click(screen.getAllByRole("button", { name: "この巻を外す" })[1]);
-    await waitFor(() => expect(screen.queryAllByText("衝突")).toHaveLength(0));
-    expect(screen.getByText("外した")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "この巻を整理しない" })[1]);
+    await waitFor(() => expect(screen.queryAllByText("競合")).toHaveLength(0));
+    expect(screen.getByText("整理しない")).toBeTruthy();
     expect(backend.log.filter((l) => l.path === "/api/organize/rename-plan").at(-1)?.body).toEqual({ work_id: 1, exclude_volume_ids: [6] });
 
     fireEvent.click(screen.getByRole("button", { name: "実行" }));
