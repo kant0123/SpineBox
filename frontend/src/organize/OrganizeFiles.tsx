@@ -302,7 +302,7 @@ function ClashRow({
   return (
     <li className={`organize-result-row organize-clash-row ${checked ? "on" : ""}`}>
       {selectable ? (
-        <label className="organize-choice-row">
+        <label className="organize-choice-row selectable">
           <input
             type="radio"
             name={name}

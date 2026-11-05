@@ -447,6 +447,8 @@ button.chip:hover:not(:disabled) {
   border-radius: 8px;
 }
 .organize-choice-row .organize-row-path, .organize-choice-row .organize-row-reason { grid-column: 2 / -1; }
+.organize-choice-row.selectable { cursor: pointer; }
+.organize-choice-row.selectable:hover { background: var(--accent-subtle); }
 .organize-choice-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .organize-choice-row:focus-within { outline: 4px solid var(--focus-outline); outline-offset: 2px; box-shadow: 0 0 0 2px var(--focus-ring); }
 .organize-choice-mark {
