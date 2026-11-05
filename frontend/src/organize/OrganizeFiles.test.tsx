@@ -128,12 +128,10 @@ describe("範囲指定の整理", () => {
     fireEvent.change(folderInput(), { target: { value: "{title}" } });
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
     const clash = (await screen.findByRole("heading", { name: "衝突(1 組)" })).closest("section")!;
-    // 見出しは整理後の名前。その下に、同じ名前になる元のファイル名が枝で並ぶ
+    // 見出しは整理後の名前。その下に、同じ名前になる元のファイル名が並ぶ
     const group = within(clash).getByText("サンプル漫画/サンプル漫画 第02巻.cbz").closest("li")!;
     const rows = within(group).getAllByRole("listitem");
     expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toContain("├─");
-    expect(rows[1].textContent).toContain("└─");
     // ファイル数の少ない方(6)は既定で外れ、多い方(8)が動く
     const small = rows.find((r) => r.textContent?.includes("作者A/サンプル漫画 2巻.cbz"))!;
     const large = rows.find((r) => r.textContent?.includes("スキャン/サンプル漫画 第2巻.cbz"))!;
@@ -163,7 +161,6 @@ describe("範囲指定の整理", () => {
     const section = (await screen.findByRole("heading", { name: "CBZ 化(1 巻)" })).closest("section")!;
     const group = within(section).getByText("作者A/まとめ.cbz").closest("li")!;
     expect(within(group).getByText("作者A/まとめ.zip")).toBeTruthy();
-    expect(within(group).getByText("└─")).toBeTruthy();
   });
 
   it("フォルダを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {

@@ -115,15 +115,12 @@ function NameTree({
         <li key={group.name} className="organize-group">
           <div className="organize-group-name">{group.name}</div>
           <ul className="organize-tree">
-            {group.items.map((item, i) => {
+            {group.items.map((item) => {
               const pages = pagesText(item);
               const superseded = (item.superseded_by?.length ?? 0) > 0;
               const active = item.status === "conflict" || item.status === "move" || item.status === "cbz";
               return (
                 <li key={item.volume_id} className={`organize-item ${item.status}`}>
-                  <span className="organize-branch" aria-hidden="true">
-                    {i === group.items.length - 1 ? "└─" : "├─"}
-                  </span>
                   <div className="organize-tree-body">
                     <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span>{" "}
                     <code>{item.from_rel_path}</code>
