@@ -22,11 +22,12 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from .. import db, works
@@ -41,6 +42,7 @@ from ..scanner import (LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, SCAN_VERSION, 
                        resolve_source_path, root_is_accessible)
 from .. import bookmarks, page_marks
 from ..works import WorkNotFound, root_of, transfer_assignment, transfer_volume_fields
+from ..novel import epub
 from . import cbz, fs
 from .cleanup import clean_stem, split_ext
 from .template import NameTemplate, NameValues, RangeTemplate, TemplateError, ValueMissing, check_path_length
@@ -73,6 +75,31 @@ def _mark_superseded(item: dict, top: list[dict]) -> None:
     item.update(status=ITEM_SKIPPED, superseded_by=[t["volume_id"] for t in top],
                 reason=f"同じ名前の{names}({top[0]['page_count']} ファイル)のほうがファイル数が多いため、整理しません"
                        f"(この巻は {item['page_count']} ファイル)")
+
+
+USER_SKIPPED = "利用者が整理しない巻にしました"
+
+
+def _mark_kept_peers(items: list[dict]) -> None:
+    """利用者が整理しないにした巻のうち、同じ名前で残る巻(実行する・そのまま)がある巻は「その巻に譲った」にする。
+
+    競合で別の行を選んだ結果なので、自動で譲った巻と同じく superseded_by を付ける。画面は競合の組を出し続け、
+    選び直せる。CBZ 化する元の中のこうした巻は、元のほかの巻を CBZ 化する妨げにしない(_plan_range_cbz)。
+    """
+    kept: dict[tuple[int, str], list[dict]] = {}
+    for it in items:
+        if it["status"] in (ITEM_MOVE, ITEM_UNCHANGED, ITEM_CBZ) and it["output_rel_path"]:
+            kept.setdefault((it["root_id"], it["output_rel_path"].casefold()), []).append(it)
+    for it in items:
+        if not it.get("user_excluded") or it["status"] != ITEM_SKIPPED:
+            continue
+        peers = kept.get((it["root_id"], it["output_rel_path"].casefold())) if it["output_rel_path"] else None
+        if peers:
+            names = "・".join(f"「{t['title']}」" for t in peers)
+            it.update(superseded_by=[t["volume_id"] for t in peers],
+                      reason=f"同じ名前の{names}を残すため、整理しません(利用者の選択)")
+        else:
+            it.update(superseded_by=[], reason=USER_SKIPPED)
 
 
 class OrganizeError(Exception):
@@ -370,7 +397,8 @@ class Organizer:
         if others:
             warnings.append(f"画像以外のファイル {len(others)} 件は CBZ に入らず、元のフォルダごと退避フォルダへ移ります")
 
-    def _inspect_archive(self, path: Path, vols: list[dict], problems: list[str], warnings: list[str]) -> None:
+    def _inspect_archive(self, path: Path, vols: list[dict], problems: list[str], warnings: list[str],
+                         *, delete: bool = False) -> None:
         sevenzip = self.settings.sevenzip_path
         if not file_reader_available(path, sevenzip):
             problems.append("この形式は今読めません(7-Zip が見つからない、または未対応)")
@@ -396,7 +424,9 @@ class Organizer:
         dropped = [e.name for e in listing.entries
                    if not ((is_image(e.name) and e.parent in prefixes) or e.name in containers)]
         if dropped:
-            warnings.append(f"CBZ に入らないエントリが {len(dropped)} 件あります(元のアーカイブごと退避フォルダに残ります)")
+            names = "、".join(PurePosixPath(n).name for n in dropped[:5]) + (" ほか" if len(dropped) > 5 else "")
+            warnings.append(f"画像以外のファイル {len(dropped)} 件({names})は CBZ に入れません(元のアーカイブといっしょに"
+                            f"{'削除します' if delete else '退避フォルダへ移ります'})")
         if listing.skipped:
             warnings.append(f"危険な名前のため読まなかったエントリが {len(listing.skipped)} 件あります")
 
@@ -801,7 +831,8 @@ class Organizer:
         return self._save_rename_plan(plan, items, "この作品には一覧に出ている巻がありません")
 
     def plan_range(self, root_id: int, path: str = "", *, file_template: str = "", folder_template: str = "",
-                   exclude_volume_ids: tuple[int, ...] | list[int] = (), include_cbz: bool = False) -> dict:
+                   exclude_volume_ids: tuple[int, ...] | list[int] = (), include_cbz: bool = False,
+                   delete_originals: bool = False) -> dict:
         """蔵書ルートの中の範囲(path。空ならルート全体、サブフォルダも含む)の巻を、整理画面のテンプレートで
         改名・移動する計画(#84)。蔵書には何も書かない。
 
@@ -817,7 +848,8 @@ class Organizer:
             raise RangeNotFound(f"蔵書フォルダが見つかりません: {root_id}")
         root = Path(root_row["path"])
         plan = {"kind": "range", "naming": "template", "template": None, "work_id": None,
-                "include_cbz": bool(include_cbz), "cbz_sources": [],
+                "include_cbz": bool(include_cbz), "delete_originals": bool(include_cbz and delete_originals),
+                "cbz_sources": [],
                 "scope": {"root_id": root_id, "root_path": str(root), "path": "", "file_template": template.file_text,
                           "folder_template": template.folder_text}}
         if not root_row["online"] or not root_is_accessible(root):
@@ -899,101 +931,153 @@ class Organizer:
             it = self._range_item(r)
             it["conversion"] = True
             items.append(it)
-            if r["id"] in excluded_ids:
-                it.update(status=ITEM_SKIPPED, reason="利用者が整理しない巻にしました")
-                by_source.setdefault(r["source_id"], []).append(it)
-                source_rows.setdefault(r["source_id"], r)
-                continue
             if r["format"]:
-                it.update(status=ITEM_EXCLUDED, reason="小説(EPUB・テキスト)は CBZ にできません(名前は変えません)")
-                continue
+                # 画像だけの EPUB(漫画)は、画像を取り出して CBZ にする(#153)。文字のある EPUB・テキストは小説
+                pages = self._epub_image_pages(root, r) if r["format"] == "epub" else None
+                if pages is None:
+                    it.update(status=ITEM_EXCLUDED, reason="小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                    continue
+                it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages],
+                          epub_sections=[i for i, _ in pages])
             by_source.setdefault(r["source_id"], []).append(it)
             source_rows.setdefault(r["source_id"], r)
             try:
                 source_path = resolve_source_path(root, r["rel_path"])
             except ValueError:
-                it.update(status=ITEM_EXCLUDED, reason="元のファイル・フォルダが見つかりません(再スキャンしてください)")
-                continue
-            if not source_path.exists():
+                source_path = None
+            if source_path is None or not source_path.exists():
                 it.update(status=ITEM_EXCLUDED, reason="元のファイル・フォルダが見つかりません(再スキャンしてください)")
                 continue
             try:
                 rel, changes = self._range_cbz_target(r, template, values, sub)
                 check_path_length(root, rel)
             except ValueMissing as e:
-                it.update(status=ITEM_EXCLUDED, reason=str(e))
+                if r["id"] in excluded_ids:
+                    it.update(status=ITEM_SKIPPED, reason=USER_SKIPPED, user_excluded=True)
+                else:
+                    it.update(status=ITEM_EXCLUDED, reason=str(e))
                 continue
             it["output_rel_path"] = rel
             it["changes"] = changes
+            if r["id"] in excluded_ids:
+                it.update(status=ITEM_SKIPPED, reason=USER_SKIPPED, user_excluded=True)
+                continue
             problem = self._range_cbz_target_problem(r, root, base, rel, source_path, folder_sources)
             if problem:
                 it.update(status=ITEM_CONFLICT, reason=problem)
 
-        # 同じ名前になる巻はファイル数の多い方を残す(#143)。外すのは 1 巻でも元全体なので、先に済ませる
-        self._supersede_smaller_outputs(items, by_source)
+        # 元(1 つのファイル・フォルダ)ごとの検査(中身の読み出し)は 1 回だけ
+        inspected: dict[int, tuple[str | None, list[str]]] = {}
 
-        # 元(1 つのファイル・フォルダ)は全巻まとめて CBZ にする。1 巻でも外した・対象外・衝突なら元全体を止める
-        for source_id, src_items in by_source.items():
-            r = source_rows[source_id]
-            if any(it["status"] == ITEM_SKIPPED for it in src_items):
-                for it in src_items:
-                    if it.get("superseded_by"):
-                        continue  # ファイル数で譲った巻は、理由と出力名を残す(画面の衝突の組に出す)
-                    it.update(status=ITEM_SKIPPED, reason="整理しません(同じ元の別の巻を整理しないため、元全体を整理しません)",
-                              output_rel_path=None)
-                continue
-            bad = next((it for it in src_items if it["status"] != ITEM_CBZ), None)
-            if bad is not None:
-                reason = bad["reason"] or "CBZ 化できません"
-                for it in src_items:
-                    it.update(status=ITEM_CONFLICT,
-                              reason=f"同じ元の巻を CBZ 化できないため、この元全体を CBZ 化しません: {reason}")
-                continue
-            source_path = resolve_source_path(root, r["rel_path"])
-            try:
-                if r["source_kind"] == "folder":
-                    problem, more = self._folder_cbz_problem(r["root_id"], r["rel_path"], source_path)
+        def inspect(source_id: int) -> tuple[str | None, list[str]]:
+            if source_id not in inspected:
+                r = source_rows[source_id]
+                source_path = resolve_source_path(root, r["rel_path"])
+                try:
+                    if r["format"] == "epub":
+                        problem, more = None, []  # 中身は計画で読んだ(画像だけの EPUB。本文の XHTML・CSS は入れない)
+                    elif r["source_kind"] == "folder":
+                        problem, more = self._folder_cbz_problem(r["root_id"], r["rel_path"], source_path,
+                                                                 delete=bool(plan.get("delete_originals")))
+                    else:
+                        more, found = [], []
+                        self._inspect_archive(source_path, [row for row in rows if row["source_id"] == source_id],
+                                              found, more, delete=bool(plan.get("delete_originals")))
+                        problem = found[0] if found else None
+                    if problem is None:
+                        r["_fingerprint"] = fingerprint(source_path)
+                except OSError as e:
+                    problem, more = f"元を読めません: {e}", []
+                inspected[source_id] = (problem, more)
+            return inspected[source_id]
+
+        # 同じ名前になる巻はファイル数の多い方を残す(#143)。負けた巻は、CBZ 化する元の中にあってもその巻だけを外し、
+        # 元のほかの巻は CBZ 化する(元ごと退避するので、外した巻も元に戻すで戻る)。元全体を止めるのは、
+        # 外せない理由(テンプレートの値が無い・出力先が使えない・同数の競合など)の巻があるときだけ。
+        # 元を止めると別の組の勝者が消え、負けた巻が勝ちうるので、止める元が増えなくなるまで最初から組み直す。
+        # 同数の競合(利用者が選ぶまで決まらない)を含む元は「選択待ち」。止めずに勝ち負けの比較に残し、
+        # 最後に実行しない印だけを付ける。止めた元のように比較から外すと、その元が勝っていた組まで
+        # ファイル数の少ない側が勝ってしまい、既定の選択が入れ替わる(#153)。
+        initial = {id(it): (it["status"], it["reason"], it["output_rel_path"]) for it in items}
+        blocked: dict[int, tuple[str, str]] = {}
+        while True:
+            for it in items:
+                it["status"], it["reason"], it["output_rel_path"] = initial[id(it)]
+                for key in ("superseded_by", "tie", "waiting_for"):
+                    it.pop(key, None)
+            for source_id, (status, reason) in blocked.items():
+                for it in by_source[source_id]:
+                    if it["status"] == ITEM_CBZ:
+                        it.update(status=status, reason=reason)
+            self._supersede_smaller_outputs(items)
+            self._mark_duplicate_range_outputs(items)
+            _mark_kept_peers(items)
+            more_blocked: dict[int, tuple[str, str]] = {}
+            waiting: dict[int, list[dict]] = {}
+            for source_id, src_items in by_source.items():
+                if source_id in blocked or not any(it["status"] == ITEM_CBZ for it in src_items):
+                    continue
+                bad = next((it for it in src_items
+                            if it["status"] != ITEM_CBZ and not it.get("tie")
+                            and not (it["status"] == ITEM_SKIPPED and it.get("superseded_by"))), None)
+                ties = [it for it in src_items if it.get("tie")]
+                if bad is None and ties:
+                    waiting[source_id] = ties
+                    continue
+                if bad is not None and bad["status"] == ITEM_SKIPPED:
+                    more_blocked[source_id] = (
+                        ITEM_SKIPPED, "整理しません(同じ元の別の巻を整理しないため、元全体を整理しません)")
+                elif bad is not None:
+                    more_blocked[source_id] = (
+                        ITEM_CONFLICT,
+                        f"同じ元の巻を CBZ 化できないため、この元全体を CBZ 化しません: {bad['reason'] or 'CBZ 化できません'}")
                 else:
-                    more = []
-                    found: list[str] = []
-                    self._inspect_archive(source_path, [row for row in rows if row["source_id"] == source_id],
-                                          found, more)
-                    problem = found[0] if found else None
-            except OSError as e:
-                problem, more = f"元を読めません: {e}", []
-            if problem:
-                for it in src_items:
-                    it.update(status=ITEM_CONFLICT, reason=problem)
+                    problem, _ = inspect(source_id)
+                    if problem:
+                        more_blocked[source_id] = (ITEM_CONFLICT, problem)
+            if not more_blocked:
+                break
+            blocked.update(more_blocked)
+        for source_id, ties in waiting.items():
+            names = "・".join(f"「{t['title']}」" for t in ties)
+            for it in by_source[source_id]:
+                if it["status"] == ITEM_CBZ:
+                    it.update(status=ITEM_CONFLICT, waiting_for=[t["volume_id"] for t in ties],
+                              reason=f"同じ元の{names}の競合で残す方を選ぶと CBZ 化します")
+
+        for source_id, src_items in by_source.items():
+            converting = [it for it in src_items if it["status"] == ITEM_CBZ]
+            if not converting:
                 continue
+            r = source_rows[source_id]
+            _, more = inspect(source_id)
             warnings.extend(f"「{r['rel_path']}」: {w}" for w in more)
-            try:
-                source_fingerprint = fingerprint(source_path)
-            except OSError as e:
-                for it in src_items:
-                    it.update(status=ITEM_CONFLICT, reason=f"元を読めません: {e}")
-                continue
+            dropped = [it for it in src_items if it["status"] != ITEM_CBZ]
+            if dropped:
+                where = "削除します" if plan.get("delete_originals") else "退避フォルダへ移ります"
+                warnings.append(f"「{r['rel_path']}」: {len(src_items)} 巻のうち {len(dropped)} 巻は、同じ名前で残す巻が"
+                                f"ほかにあるため CBZ にしません(元といっしょに{where})")
             plan["cbz_sources"].append({
                 "source_id": source_id, "rel_path": r["rel_path"], "root_id": r["root_id"],
                 "root_path": r["root_path"], "source_kind": r["source_kind"],
-                "fingerprint": source_fingerprint,
-                "volume_ids": [it["volume_id"] for it in src_items],
+                "fingerprint": r["_fingerprint"],
+                "volume_ids": [it["volume_id"] for it in converting],
+                "dropped_volume_ids": [it["volume_id"] for it in dropped],
                 "volumes": [{"volume_id": it["volume_id"], "title": it["title"],
-                             "before_title": it["before"]["title"]} for it in src_items],
+                             "before_title": it["before"]["title"]} for it in converting],
             })
-
-        self._mark_duplicate_range_outputs(items)
-        # 名前の衝突で 1 巻だけ衝突にした場合も、その元全体を CBZ 化しない(全巻そろわないと元を退避できない)
-        for src_items in by_source.values():
-            if all(it["status"] in (ITEM_CBZ, ITEM_SKIPPED) for it in src_items):
-                continue
-            for it in src_items:
-                if it["status"] in (ITEM_CBZ, ITEM_EXCLUDED):
-                    it.update(status=ITEM_CONFLICT,
-                              reason="同じ元の別の巻と出力先が競合するため、この元全体を CBZ 化しません")
-        still = {it["volume_id"] for it in items if it["status"] == ITEM_CBZ}
-        plan["cbz_sources"] = [s for s in plan["cbz_sources"] if all(v in still for v in s["volume_ids"])]
         return self._save_range_plan(plan, items, plan["cbz_sources"],
                                      "範囲の中に一覧に出ている巻がありません", problems, warnings)
+
+    def _epub_image_pages(self, root: Path, r: dict) -> list | None:
+        """画像だけの EPUB のページ(区切りの番号, 画像のエントリ)。小説・読めない EPUB は None。"""
+        try:
+            path = resolve_source_path(root, r["rel_path"])
+            with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
+                book = epub.open_book(reader, self.settings.limits)
+                return epub.image_pages(reader, book, self.settings.limits)
+        except (ArchiveError, OSError, ValueError):
+            return None
 
     def _range_item(self, r: dict) -> dict:
         return {"volume_id": r["id"], "title": r["title"], "page_count": r["page_count"],
@@ -1034,7 +1118,8 @@ class Organizer:
             return f"画像フォルダの巻「{inside}」の中になります"
         return None
 
-    def _folder_cbz_problem(self, root_id: int, rel_path: str, path: Path) -> tuple[str | None, list[str]]:
+    def _folder_cbz_problem(self, root_id: int, rel_path: str, path: Path,
+                            *, delete: bool = False) -> tuple[str | None, list[str]]:
         """画像フォルダを CBZ にできるか。フォルダごと退避するので、中の別の本・サブフォルダは動かせない。"""
         try:
             entries = list(os.scandir(path))
@@ -1050,34 +1135,22 @@ class Organizer:
         if nested:
             return "このフォルダの中に別の本があるため、フォルダごと CBZ にできません", []
         others = [e.name for e in entries if not e.is_dir(follow_symlinks=False) and not is_image(e.name)]
-        return None, ([f"画像以外のファイル {len(others)} 件は CBZ に入らず、元のフォルダごと退避フォルダへ移ります"]
-                      if others else [])
+        if not others:
+            return None, []
+        names = "、".join(sorted(others)[:5]) + (" ほか" if len(others) > 5 else "")
+        return None, [f"画像以外のファイル {len(others)} 件({names})は CBZ に入れません(元のフォルダといっしょに"
+                      f"{'削除します' if delete else '退避フォルダへ移ります'})"]
 
     @staticmethod
-    def _supersede_smaller_outputs(items: list[dict], by_source: dict[int, list[dict]]) -> None:
-        """同じ出力名の巻のうちファイル数の少ない方を外す(#143)。CBZ 化する巻は元全体を外す。
-
-        元を外すと、その元の別の巻が持っていた名前も空くので、変化がなくなるまで組み直す。
-        """
-        while True:
-            groups: dict[tuple[int, str], list[dict]] = {}
-            for it in items:
-                if it["status"] in (ITEM_MOVE, ITEM_UNCHANGED, ITEM_CBZ) and it["output_rel_path"]:
-                    groups.setdefault((it["root_id"], it["output_rel_path"].casefold()), []).append(it)
-            # 同じ元の中の名前の重複は、片方を外すと元全体を外すことになり、勝つ側も巻き込む。決めずに衝突のまま残す
-            losers = [(loser, top) for group in groups.values() for loser, top in _smaller_than_top(group)
-                      if not (loser.get("conversion") and any(t["source_id"] == loser["source_id"] for t in top))]
-            if not losers:
-                return
-            for loser, top in losers:
+    def _supersede_smaller_outputs(items: list[dict]) -> None:
+        """同じ出力名の巻のうちファイル数の少ない方を外す(#143)。CBZ 化する元の中の巻も、その巻だけを外す。"""
+        groups: dict[tuple[int, str], list[dict]] = {}
+        for it in items:
+            if it["status"] in (ITEM_MOVE, ITEM_UNCHANGED, ITEM_CBZ) and it["output_rel_path"]:
+                groups.setdefault((it["root_id"], it["output_rel_path"].casefold()), []).append(it)
+        for group in groups.values():
+            for loser, top in _smaller_than_top(group):
                 _mark_superseded(loser, top)
-            for loser, _ in losers:
-                if not loser.get("conversion"):
-                    continue
-                for sibling in by_source.get(loser["source_id"], []):
-                    if sibling["status"] != ITEM_SKIPPED:
-                        sibling.update(status=ITEM_SKIPPED, output_rel_path=None,
-                                       reason="整理しません(同じ元の別の巻を整理しないため、元全体を整理しません)")
 
     @staticmethod
     def _mark_duplicate_range_outputs(items: list[dict]) -> None:
@@ -1092,7 +1165,7 @@ class Organizer:
                 if it["status"] == ITEM_UNCHANGED:
                     continue  # 既にその名前の巻はそのまま。変更する側だけを衝突にする
                 others = "・".join(f"「{o['title']}」" for o in group if o is not it)
-                it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。残す方を選んでください")
+                it.update(status=ITEM_CONFLICT, tie=True, reason=f"{others}と同じ名前になります。残す方を選んでください")
 
     def _save_range_plan(self, head: dict, items: list[dict], cbz_sources: list[dict], empty_problem: str,
                          problems: list[str] | None = None, warnings: list[str] | None = None) -> dict:
@@ -1117,6 +1190,8 @@ class Organizer:
             plan["warnings"].append("競合している巻は改名・CBZ 化しません(残す方を選ぶか、作品・巻の情報を直して計画を作り直してください)")
         if not problems and converting:
             plan["warnings"].append(
+                "CBZ 化する元は、全巻を作って検証してから確定し、そのあとで削除します。この整理は元に戻せません"
+                if head.get("delete_originals") else
                 "CBZ 化する元は、全巻を作って検証してから確定します。元は退避フォルダへ移します(削除しません)")
         return self._save_plan(plan)
 
@@ -1203,7 +1278,13 @@ class Organizer:
                     "root_path": str(root), "entry_prefix": r["entry_prefix"], "changes": []}
             items.append(item)
             if r["id"] in excluded_ids:
-                item.update(status=ITEM_SKIPPED, reason="利用者が整理しない巻にしました")
+                item.update(status=ITEM_SKIPPED, reason=USER_SKIPPED, user_excluded=True)
+                # 名前だけは出しておく。同じ名前の別の巻を残す選択(競合の選び直し)だったと分かるように
+                if ineligible(r, root) is None:
+                    try:
+                        item["output_rel_path"] = target(r)[0]
+                    except ValueMissing:
+                        pass
                 continue
             reason = ineligible(r, root)
             if reason:
@@ -1270,6 +1351,7 @@ class Organizer:
                         continue  # 既にその名前の巻はそのまま。改名してくる側だけを衝突にする
                     others = "・".join(f"「{o['title']}」" for o in group if o is not it)
                     it.update(status=ITEM_CONFLICT, reason=f"{others}と同じ名前になります。残す方を選んでください")
+        _mark_kept_peers(items)
         return items
 
     def _save_rename_plan(self, head: dict, items: list[dict], empty_problem: str) -> dict:
@@ -1498,6 +1580,9 @@ class Organizer:
                 b = _Built(it, work_dir / f"{i + 1:04d}.cbz", root / it["output_rel_path"],
                            page_count=it["page_count"])
                 built.append(b)
+                if it.get("epub_pages"):
+                    b.records = self._write_epub_cbz(root, it, b.work_path)
+                    continue
                 with self.library.open(self.conn, it["volume_id"]) as opened:
                     if not opened.page_names:
                         raise OrganizeError(f"ページの無い巻は CBZ 化できません: {it['title']}")
@@ -1513,7 +1598,7 @@ class Organizer:
                 src, dst = root / it["from_rel_path"], root / it["output_rel_path"]
                 self._mkdir_steps(op_id, "execute", root, base, dst, done_steps)
                 self._move_step(op_id, "execute", "rename", src, dst, done_steps)
-            # 4. CBZ 化した元を退避フォルダへ移す(削除しない)
+            # 4. CBZ 化した元を退避フォルダへ移す(削除は、利用者が選んだときだけ確定後に _delete_trashed_originals で)
             for src in sources:
                 original = resolve_source_path(root, src["rel_path"])
                 trashed = base / "trash" / op_id / "original" / src["rel_path"]
@@ -1533,7 +1618,62 @@ class Organizer:
                 raise OrganizeError(message, self.get(op_id)) from e
             raise
         _rmdir_quietly(work_dir)
+        if plan.get("delete_originals") and sources:
+            self._delete_trashed_originals(op_id, base)
         return self.get(op_id)
+
+    def _write_epub_cbz(self, root: Path, it: dict, work_path: Path) -> list:
+        """画像だけの EPUB の画像を、計画で読んだ spine の順に CBZ へ入れる。エントリは名前で引き直す
+        (元は計画のときのまま。_check_cbz_source が指紋で確かめ済み)。"""
+        path = resolve_source_path(root, it["from_rel_path"])
+        with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
+            by_name = {}
+            for e in list_entries(reader, self.settings.limits).entries:
+                by_name.setdefault(e.name, e)
+            missing = [n for n in it["epub_pages"] if n not in by_name]
+            if missing:
+                raise OrganizeError(f"EPUB の画像が見つかりません: {missing[0]}")
+            entries = [by_name[n] for n in it["epub_pages"]]
+            return cbz.write_cbz(work_path, it["epub_pages"],
+                                 lambda i: reader.read_entry(entries[i], self.settings.limits))
+
+    def _delete_trashed_originals(self, op_id: str, base: Path) -> None:
+        """利用者が選んだときだけ、確定して DB にも記録した後で、退避した元を削除する(#153)。
+
+        確定の後なので、削除に失敗しても整理は済んでいる。消せなかった元は退避フォルダに残ると記録する。
+        1 つでも削除した操作は元に戻せない(_undo_range_cbz が断る)。消すのはこの操作の退避フォルダの中だけ。
+        """
+        trash_dir = base / "trash" / op_id / "original"
+        failed: list[str] = []
+        steps = self.conn.execute(
+            """SELECT id, to_path FROM organize_steps WHERE op_id = ? AND phase = 'execute'
+               AND action = 'trash_original' AND state = 'done'""", (op_id,)).fetchall()
+        for step in steps:
+            trashed = Path(step["to_path"])
+            if not _inside(trashed, trash_dir):
+                failed.append(str(trashed))
+                continue
+            # 消す前に pending で書く(途中で落ちても「消したかもしれない」操作を元に戻させない)
+            delete_id = self._journal(op_id, "execute", "delete_original", str(trashed), "")
+            try:
+                if trashed.is_dir() and not trashed.is_symlink():
+                    shutil.rmtree(trashed)
+                elif os.path.lexists(trashed):
+                    trashed.unlink()
+            except OSError:
+                failed.append(str(trashed))
+                continue
+            self._set_step(delete_id, "done")
+        if trash_dir.is_dir():
+            # 元の相対パスの分だけ作ったフォルダを、空なら消す
+            for d in sorted((p for p in trash_dir.rglob("*") if p.is_dir()), key=lambda p: len(p.parts),
+                            reverse=True):
+                _rmdir_quietly(d)
+            _rmdir_quietly(trash_dir)
+            _rmdir_quietly(trash_dir.parent)
+        if failed:
+            self._set_state(op_id, "done", error="元の一部を削除できませんでした(退避フォルダに残っています): "
+                                                 + "、".join(failed[:5]))
 
     def _check_range_cbz_item(self, it: dict) -> None:
         """CBZ 化する巻を始める前の確認。出力先・巻の記録・ドライブを見る。"""
@@ -1587,8 +1727,15 @@ class Organizer:
                                        AND entry_prefix = ''""", (src["id"],)).fetchone()["id"]
                 old_vid = b.volume["volume_id"]
                 transfer_volume_state(c, old_vid, new_vid, pages)
-                c.execute("UPDATE volumes SET organized_op_id = ?, page_count = ?, updated_at = ? WHERE id = ?",
-                          (op_id, pages, now, old_vid))
+                # EPUB の巻の page_count(区切りの数)は書き換えない。読書位置は区切り → ページへ読み替える
+                epub_sections = b.volume.get("epub_sections")
+                if epub_sections:
+                    _progress_section_to_page(c, old_vid, new_vid, epub_sections)
+                    c.execute("UPDATE volumes SET organized_op_id = ?, updated_at = ? WHERE id = ?",
+                              (op_id, now, old_vid))
+                else:
+                    c.execute("UPDATE volumes SET organized_op_id = ?, page_count = ?, updated_at = ? WHERE id = ?",
+                              (op_id, pages, now, old_vid))
                 c.execute("""UPDATE organize_volumes SET new_volume_id = ?, page_count = ?
                              WHERE op_id = ? AND old_volume_id = ?""", (new_vid, pages, op_id, old_vid))
             for it in moving:
@@ -1615,7 +1762,11 @@ class Organizer:
         renames = {s["to_path"]: s for s in steps if s["action"] == "rename"}
         trashes = {s["from_path"]: s for s in steps if s["action"] == "trash_original"}
         problem = None
-        if not root_is_accessible(root):
+        deleted = self.conn.execute("""SELECT 1 FROM organize_steps WHERE op_id = ? AND action = 'delete_original'
+                                       LIMIT 1""", (op_id,)).fetchone()
+        if deleted is not None:
+            problem = "CBZ 化した元を削除したので、この整理は元に戻せません"
+        elif not root_is_accessible(root):
             problem = "蔵書フォルダが今オフラインです"
         else:
             for it in moving:
@@ -1701,6 +1852,8 @@ class Organizer:
                 m = mapping.get(it["volume_id"])
                 if m is not None and m["new_volume_id"] is not None:
                     transfer_volume_state(c, m["new_volume_id"], it["volume_id"], m["page_count"])
+                    if it.get("epub_sections"):
+                        _progress_page_to_section(c, it["volume_id"], it["epub_sections"])
                 c.execute("UPDATE volumes SET organized_op_id = NULL, updated_at = ? WHERE id = ?",
                           (now, it["volume_id"]))
             for it in moving:
@@ -1720,6 +1873,7 @@ class Organizer:
     def _view_plan(plan: dict) -> dict:
         view = {"kind": plan.get("kind", "cbz"), "naming": plan.get("naming", "title"),
                 "template": plan.get("template"), "include_cbz": bool(plan.get("include_cbz", False)),
+                "delete_originals": bool(plan.get("delete_originals", False)),
                 "source_id": plan["source_id"], "source_rel_path": plan["source_rel_path"],
                 "source_kind": plan["source_kind"], "volumes": plan["volumes"],
                 "warnings": plan["warnings"], "problems": plan["problems"],
@@ -1732,12 +1886,14 @@ class Organizer:
             view["items"] = [{**{k: it[k] for k in ("volume_id", "title", "from_rel_path", "output_rel_path", "status",
                                                     "reason", "cbz_volume_id")},
                               "changes": it.get("changes", []), "conversion": bool(it.get("conversion", False)),
-                              "page_count": it.get("page_count"), "superseded_by": list(it.get("superseded_by", []))}
+                              "page_count": it.get("page_count"), "superseded_by": list(it.get("superseded_by", [])),
+                              "waiting_for": list(it.get("waiting_for", []))}
                              for it in plan["items"]]
         if plan.get("kind") == "range":
             view["scope"] = plan["scope"]
             view["cbz_sources"] = [{"source_id": s["source_id"], "rel_path": s["rel_path"],
                                     "volume_ids": list(s.get("volume_ids", [])),
+                                    "dropped_volume_ids": list(s.get("dropped_volume_ids", [])),
                                     "source_kind": s.get("source_kind")}
                                    for s in plan.get("cbz_sources", [])]
         return view
@@ -1781,6 +1937,24 @@ def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_
                  updated_at = excluded.updated_at""", (to_id, page, row["finished"], db.now()))
 
 
+def _progress_section_to_page(c: sqlite3.Connection, epub_id: int, cbz_id: int, sections: list[int]) -> None:
+    """EPUB の読書位置(区切りの番号)を、CBZ のページ番号(その区切り以降の最初の画像)に読み替える。"""
+    row = c.execute("SELECT page FROM reading_progress WHERE volume_id = ?", (epub_id,)).fetchone()
+    if row is None or not sections:
+        return
+    page = next((i for i, s in enumerate(sections) if s >= row["page"]), len(sections) - 1)
+    c.execute("UPDATE reading_progress SET page = ?, position = NULL WHERE volume_id = ?", (page, cbz_id))
+
+
+def _progress_page_to_section(c: sqlite3.Connection, epub_id: int, sections: list[int]) -> None:
+    """元に戻すとき、CBZ のページ番号を EPUB の区切りの番号(その区切りの先頭)へ戻す。"""
+    row = c.execute("SELECT page FROM reading_progress WHERE volume_id = ?", (epub_id,)).fetchone()
+    if row is None or not sections:
+        return
+    section = sections[min(max(row["page"], 0), len(sections) - 1)]
+    c.execute("UPDATE reading_progress SET page = ?, position = 0 WHERE volume_id = ?", (section, epub_id))
+
+
 def _describe(e: BaseException) -> str:
     if isinstance(e, (OrganizeError, cbz.VerificationFailed)):
         return str(e)
@@ -1798,6 +1972,15 @@ def _unlink_quietly(path: Path) -> None:
         path.unlink()
     except OSError:
         pass
+
+
+def _inside(path: Path, parent: Path) -> bool:
+    """path が parent の中(parent 自身は含まない)か。"""
+    a, b = os.path.abspath(path), os.path.abspath(parent)
+    try:
+        return a != b and os.path.commonpath([a, b]) == b
+    except ValueError:
+        return False
 
 
 def _rmdir_quietly(path: Path) -> None:

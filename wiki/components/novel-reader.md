@@ -15,7 +15,7 @@ related: [overview, backend, frontend, archive-reading, manga-reader]
 - する: スキャンでの登録(EPUB は目次だけ、テキストは中身を読まない)、開いたときの EPUB の解析(container.xml → OPF → spine)と
   テキストの文字コード判定・分割、本文の無害化、縦書きのページ割り、区切り+割合の読書位置
 - しない: アーカイブの中の `.epub` / `.txt`(下の「決めたこと」)、PDF、横書き表示、EPUB の CSS・目次(nav)・リンク、
-  CBZ への整理([[organize]] は小説を `blocked` にする)、重複候補の指紋([[duplicate-detection]] は小説を対象にしない)
+  CBZ への整理([[organize]] は小説を `blocked` にする。ただし文字の無い画像だけの EPUB は、範囲指定の CBZ 化で漫画として CBZ にできる。#153)、重複候補の指紋([[duplicate-detection]] は小説を対象にしない)
 
 ## 入口となるファイル
 

@@ -649,6 +649,8 @@ export interface OrganizeItem {
   page_count?: number | null;
   /** 同じ名前の巻のうちファイル数が多い方に譲って外した巻の、残した側の巻 id(#143)。外していない巻は空 */
   superseded_by?: number[];
+  /** CBZ 化する元が、同じ元の別の巻の同数の競合(waiting_for の巻)で残す方が選ばれるのを待っている(#153)。選ぶまで実行しない */
+  waiting_for?: number[];
 }
 
 /** include_cbz で CBZ 化する元(1 つのファイル・フォルダ)。元の全巻をまとめて CBZ にする単位 */
@@ -656,6 +658,8 @@ export interface RangeCbzSource {
   source_id: number;
   rel_path: string;
   volume_ids: number[];
+  /** 同じ名前で残す巻がほかにあるため CBZ にしない巻(元といっしょに退避・削除される。#153) */
+  dropped_volume_ids?: number[];
   source_kind: "folder" | "archive";
 }
 
@@ -679,6 +683,8 @@ export interface OrganizeOp {
   include_cbz?: boolean;
   /** include_cbz で CBZ 化する元 */
   cbz_sources?: RangeCbzSource[];
+  /** CBZ 化した元を、確定・検証の後で削除する(退避しない。元に戻せない。#153) */
+  delete_originals?: boolean;
   /** 受け入れ(kind が intake)のとき */
   mode?: "cbz" | "move" | null;
   work?: { kind: string; work_id: number | null; title: string; decided: boolean } | null;
@@ -740,6 +746,8 @@ export interface RangePlanRequest {
   exclude_volume_ids: number[];
   /** 1 巻 = 1 CBZ でない元も CBZ にする。省略は false */
   include_cbz?: boolean;
+  /** CBZ 化した元を削除する(include_cbz のときだけ効く)。省略は false */
+  delete_originals?: boolean;
 }
 
 // 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ。spinebox/organize/intake.py)

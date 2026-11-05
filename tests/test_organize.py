@@ -80,7 +80,7 @@ def test_plan_writes_nothing(env):
     assert multi["state"] == "planned" and multi["op_id"]
     assert [(v["title"], v["output_rel_path"], v["page_count"]) for v in multi["volumes"]] == [
         ("Vol1", "Vol1.cbz", 2), ("Vol2", "Vol2.cbz", 1)]
-    assert any("CBZ に入らない" in w for w in single["warnings"])  # info.txt
+    assert any("CBZ に入れません" in w and "info.txt" in w for w in single["warnings"])  # 名前を出す
     assert any("画像以外" in w for w in folder["warnings"])  # notes.txt
     # 自分自身と同じ名前は連番で避ける
     assert single["volumes"][0]["output_rel_path"] == "single (2).cbz"

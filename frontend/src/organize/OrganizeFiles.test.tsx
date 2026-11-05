@@ -5,7 +5,7 @@ import type { OrganizeItem, OrganizeOp } from "../api";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { organizeFilesHref, parseRoute } from "../route";
-import { ClashGroups, RangeItems } from "./OrganizeFiles";
+import { ClashGroups, RangeItems, summarizeResult } from "./OrganizeFiles";
 
 let backend: ReturnType<typeof createMockBackend>;
 const posts = () => backend.log.filter((l) => l.method === "POST" && l.path !== "/api/organize/range/example").map((l) => l.path);
@@ -78,9 +78,12 @@ describe("範囲指定の整理", () => {
     expect(check.getAttribute("aria-describedby")).toBe("organize-include-cbz-hint");
     fireEvent.click(check);
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
-    const row = (await screen.findByText("作者A/まとめ.zip")).closest("li")!;
-    expect(within(row).getByText("作者A/まとめ.cbz")).toBeTruthy();
+    // CBZ 化は元ごとにまとめ、元のパスは見出しに 1 回だけ出す
+    const source = (await screen.findByText("作者A/まとめ.zip")).closest(".organize-source") as HTMLElement;
+    const row = within(source).getByText("作者A/まとめ.cbz").closest("li")!;
+    expect(within(row).queryByText("作者A/まとめ.zip")).toBeNull();
     expect(within(row).getByRole("button", { name: "この本を整理しない" })).toBeTruthy();
+    expect(screen.getByText(/全巻を作って確かめた後で退避フォルダへ移します/)).toBeTruthy();
     expect(lastPlan()).toMatchObject({ include_cbz: true });
     expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "テンプレートの名前で CBZ に整理" })).toBeNull();
@@ -160,15 +163,24 @@ describe("範囲指定の整理", () => {
     expect(within(initialFacts).getByText("競合")).toBeTruthy();
     expect(within(initialFacts).queryByText("整理しない")).toBeNull(); // 競合の中の「整理しない」は二重に数えない
 
-    // 少ない方を残す方に変える: 多い方(13)を外して作り直す
+    // 少ない方を残す方に変える: 多い方(13)を外して作り直す。組は残り、選んだ行にチェックが入る
     fireEvent.click(small);
     await waitFor(() => expect(lastPlan()).toMatchObject({ exclude_volume_ids: [13], folder_template: "{title}" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: /^競合（/ })).toBeNull());
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-keep-volume")).toBe("12"));
+    const regroup = () => screen.getByRole("group", { name: /サンプル漫画\/サンプル漫画 第02巻/ });
+    expect((within(regroup()).getByRole("radio", { name: /作者A\/サンプル漫画 2巻\.cbz/ }) as HTMLInputElement).checked).toBe(true);
+    expect(within(regroup()).getByText(/利用者の選択/)).toBeTruthy();
     const facts = screen.getByText("実行する").closest("dl")!;
     expect(within(facts).getByText("改名・移動 2 巻")).toBeTruthy();
-    expect(within(facts).getByText("整理しない")).toBeTruthy();
-    // 組が消えたときもフォーカスは結果の見出しに残る
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "プレビュー結果" })));
+    expect(within(facts).queryByText("整理しない")).toBeNull();
+
+    // 前に外した方を選び直すと、外した記録から抜いて送る(両方とも整理しないにならない。#153)
+    fireEvent.click(within(regroup()).getByRole("radio", { name: /スキャン\/サンプル漫画 第2巻\.cbz/ }));
+    await waitFor(() => expect(lastPlan()).toMatchObject({ exclude_volume_ids: [12] }));
+    await waitFor(() =>
+      expect((within(regroup()).getByRole("radio", { name: /スキャン\/サンプル漫画 第2巻\.cbz/ }) as HTMLInputElement).checked).toBe(true),
+    );
+    expect(screen.getByRole("button", { name: "実行(2 巻)" })).toBeTruthy();
 
     // 入力を変えると前のプレビューは消え、そのことを知らせる
     fireEvent.change(fileInput(), { target: { value: "{title}" } });
@@ -182,8 +194,36 @@ describe("範囲指定の整理", () => {
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.click(screen.getByLabelText("CBZ 化もまとめて行う"));
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
-    const row = (await screen.findByText("作者A/まとめ.zip")).closest("li")!;
-    expect(within(row).getByText("作者A/まとめ.cbz")).toBeTruthy();
+    const source = (await screen.findByText("作者A/まとめ.zip")).closest(".organize-source") as HTMLElement;
+    expect(within(source).getByText("作者A/まとめ.cbz")).toBeTruthy();
+  });
+
+  it("元を削除するオプションは CBZ 化を選んだときだけ出し、実行には確認のチェックが要る", async () => {
+    render(<App />);
+    await screen.findByRole("option", { name: "E:/漫画" });
+    expect(screen.queryByLabelText("CBZ 化した元を削除する")).toBeNull();
+    fireEvent.click(screen.getByLabelText("CBZ 化もまとめて行う"));
+    const del = screen.getByLabelText("CBZ 化した元を削除する") as HTMLInputElement;
+    expect(del.checked).toBe(false); // 既定は退避
+    fireEvent.click(del);
+    fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
+    await screen.findByRole("heading", { name: "プレビュー結果" });
+    expect(lastPlan()).toMatchObject({ include_cbz: true, delete_originals: true });
+    const commit = await screen.findByRole("button", { name: "実行して元を削除(2 巻)" });
+    // 確認のチェックが無ければ実行せず、確認欄へ案内する(ボタンは塞がない)
+    fireEvent.click(commit);
+    const confirm = screen.getByLabelText(/この整理を元に戻せないことを確認しました/) as HTMLInputElement;
+    expect(document.activeElement).toBe(confirm);
+    expect(confirm.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText(/確認のチェックを入れてください/)).toBeTruthy();
+    expect(posts().filter((x) => x.endsWith("/execute"))).toHaveLength(0);
+    fireEvent.click(confirm);
+    await act(async () => {
+      fireEvent.click(commit);
+    });
+    await waitFor(() => expect(posts().some((x) => x.endsWith("/execute"))).toBe(true));
+    expect(await screen.findByText("元を削除したので、元に戻せません。")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "まとめて元に戻す" })).toBeNull();
   });
 
   it("フォルダーを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {
@@ -281,7 +321,7 @@ describe("競合の表示", () => {
       { ...baseItem, volume_id: 3, from_rel_path: "C/単独.cbz", output_rel_path: "出力/Y.cbz", reason: "この場所にあったファイルの記録が残っています" },
     ]);
     render(<RangeItems op={op} onExclude={onExclude} onChoose={onChoose} />);
-    expect(screen.getByRole("heading", { name: "競合（2 組）" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "競合（1 組）" })).toBeTruthy();
     const group = screen.getByRole("group", { name: /出力\/X\.cbz/i });
     const radios = within(group).getAllByRole("radio");
     expect(radios).toHaveLength(2);
@@ -289,10 +329,28 @@ describe("競合の表示", () => {
     expect(within(group).getAllByText(/残す方を選んでください/).length).toBeGreaterThan(0);
     fireEvent.click(within(group).getByRole("radio", { name: /B\/第1巻\.cbz/ }));
     expect(onChoose).toHaveBeenCalledWith([1], expect.objectContaining({ volume_id: 2 }));
-    // 1 つだけの競合は、残す/外すの選択ではなく「整理しない」にできる
-    const single = screen.getByRole("group", { name: /出力\/Y\.cbz/ });
-    fireEvent.click(within(single).getByRole("button", { name: "この巻を整理しない" }));
-    expect(onExclude).toHaveBeenCalledWith(3);
+    // 1 つだけの競合は組にせず、「実行できない」として理由つきで出す(最初から開いておく)
+    expect(screen.queryByRole("group", { name: /出力\/Y\.cbz/ })).toBeNull();
+    const rest = screen.getByText(/整理しない内容/).closest("details")!;
+    expect(rest.open).toBe(true);
+    expect(within(rest).getByRole("heading", { name: "実行できない（1 巻）" })).toBeTruthy();
+    expect(within(rest).getByText("この場所にあったファイルの記録が残っています")).toBeTruthy();
+    expect(onExclude).not.toHaveBeenCalled();
+  });
+
+  it("同じ元の別の巻の選択待ちでも、ファイル数の多い方にチェックを入れ、選ぶと実行に入ると知らせる", () => {
+    const op = opWith([
+      { ...baseItem, volume_id: 1, status: "conflict", conversion: true, page_count: 10, waiting_for: [9],
+        reason: "同じ元の「第04巻」の競合で残す方を選ぶと CBZ 化します" },
+      { ...baseItem, volume_id: 2, status: "skipped", conversion: true, page_count: 7, superseded_by: [1],
+        reason: "ファイル数が多いため、整理しません" },
+    ]);
+    render(<RangeItems op={op} onChoose={() => undefined} />);
+    const group = screen.getByRole("group", { name: /出力\/X\.cbz/i });
+    const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios[0].checked).toBe(true);
+    expect(within(group).getByText(/競合で残す方を選ぶと、実行に入ります/)).toBeTruthy();
+    expect(summarizeResult(op)).toMatchObject({ clashes: 1, needsChoice: 0, clashNoAction: 0 });
   });
 
   it("選び直し中は、通信が返るまで選んだ行のチェックを保つ", () => {

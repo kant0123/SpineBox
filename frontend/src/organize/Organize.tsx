@@ -29,6 +29,11 @@ export const ITEM_LABELS: Record<OrganizeItemStatus, string> = {
   skipped: "整理しない",
 };
 
+/** CBZ 化した元を削除した(元に戻せない)整理か(#153) */
+export function originalsDeleted(op: OrganizeOp): boolean {
+  return Boolean(op.delete_originals) && (op.cbz_sources?.length ?? 0) > 0;
+}
+
 function ItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeId: number) => void }) {
   return (
     <li className={`organize-item ${item.status}`}>
@@ -334,7 +339,10 @@ export function OrganizeHistory() {
               <strong>{STATE_LABELS[op.state]}</strong> <span className="muted">{op.executed_at ?? op.created_at}</span>
             </p>
             <OpBody op={op} />
-            {op.state === "done" && op.op_id && (
+            {op.state === "done" && op.op_id && originalsDeleted(op) && (
+              <p className="muted">CBZ 化した元を削除したので、この整理は元に戻せません。</p>
+            )}
+            {op.state === "done" && op.op_id && !originalsDeleted(op) && (
               <div className="organize-actions">
                 <button type="button" onClick={() => undo(op.op_id!)} disabled={busy !== null}>
                   {busy === op.op_id ? "元に戻し中…" : "元に戻す"}

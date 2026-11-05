@@ -41,7 +41,7 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
     ],
   };
 
-  function plan(body: { root_id?: number; path?: string; file_template?: string; folder_template?: string; exclude_volume_ids?: number[]; include_cbz?: boolean }): OrganizeOp | { templateError: string } {
+  function plan(body: { root_id?: number; path?: string; file_template?: string; folder_template?: string; exclude_volume_ids?: number[]; include_cbz?: boolean; delete_originals?: boolean }): OrganizeOp | { templateError: string } {
     const fileT = (body.file_template ?? "").trim();
     const folderT = (body.folder_template ?? "").trim();
     const err = templateError(fileT, folderT);
@@ -72,6 +72,11 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
     };
     for (const it of all) {
       if (exclude.includes(it.volume_id)) {
+        // 名前は出しておく(競合で別の行を選んだ結果なら、選んだ巻に譲ったと分かるように)
+        if (it.status !== "excluded" && it.volume_id !== 14) {
+          const [name] = cleaned[it.volume_id] ?? ["まとめ", []];
+          it.output_rel_path = target(it.from_rel_path, name, numbers[it.volume_id] ?? 1);
+        }
         Object.assign(it, { status: "skipped", reason: "利用者が整理しない巻にしました" });
         continue;
       }
@@ -105,6 +110,15 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
       if (same.length) it.reason = `${same.map((o) => `「${o.title}」`).join("・")}と同じ名前になります。残す方を選んでください`;
     }
     for (const it of all) if (it.reason && isMoving(it)) it.status = "conflict";
+    // 利用者が整理しないにした巻のうち、同じ名前で残る巻があるものは、その巻に譲ったことにする(本物の _mark_kept_peers)
+    for (const it of all) {
+      if (!exclude.includes(it.volume_id) || !it.output_rel_path) continue;
+      const kept = all.filter((o) => (isMoving(o) || o.status === "unchanged") && o.output_rel_path === it.output_rel_path);
+      if (kept.length) {
+        it.superseded_by = kept.map((o) => o.volume_id);
+        it.reason = `同じ名前の${kept.map((o) => `「${o.title}」`).join("・")}を残すため、整理しません(利用者の選択)`;
+      }
+    }
     const moving = all.filter(isMoving);
     return {
       op_id: moving.length ? nextId() : null,
@@ -112,6 +126,7 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
       kind: "range", naming: "template", template: null, work_id: null, items: all,
       scope: { root_id: 1, root_path: "E:/漫画", path: sub, file_template: fileT, folder_template: folderT },
       include_cbz: includeCbz,
+      delete_originals: includeCbz && Boolean(body.delete_originals),
       cbz_sources: includeCbz && all.some((it) => it.status === "cbz" && it.volume_id === 14)
         ? [{ source_id: 0, rel_path: "作者A/まとめ.zip", volume_ids: [14], source_kind: "archive" as const }]
         : [],
