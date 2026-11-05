@@ -106,12 +106,20 @@ describe("整理の節", () => {
     const section = (await screen.findByRole("heading", { name: "整理" })).closest("section")!;
     expect(within(section).getByLabelText("ファイル名テンプレート")).toBeTruthy();
     expect(screen.getByText("補完待ちの作品を補完")).toBeTruthy(); // 同じページにジョブの一覧もある
+    // 節内リンクは見出しへフォーカスを移す
+    fireEvent.click(screen.getByRole("button", { name: "ジョブ" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "実行中" }));
+    fireEvent.click(screen.getByRole("button", { name: "整理" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "整理" }));
     cleanup();
     window.location.hash = "#/data/organize";
     render(<App />);
     await screen.findByLabelText("ファイル名テンプレート");
     expect(screen.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { name: "実行中" })).toBeTruthy();
+    // 単独の入口では、ジョブの一覧の下でも整理の見出しへフォーカスが移る
+    const organize = screen.getByRole("heading", { name: "整理" });
+    await waitFor(() => expect(document.activeElement).toBe(organize));
   });
 });
 

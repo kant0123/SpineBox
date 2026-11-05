@@ -9,14 +9,16 @@ export function DataPanel({ focus }: { focus?: "organize" }) {
   return (
     <div className="admin-section">
       <DataJobs view="data" focus={focus} />
-      <h2>ほかの画面</h2>
-      <ul className="admin-links">
-        <li><a href={volumesHref}>巻の一覧</a>(中の巻を調べる・CBZ に整理)</li>
-        <li><a href={duplicatesHref}>重複の候補</a></li>
-        <li><a href={workProposalsHref}>統合の提案</a></li>
-        <li><a href={inboxHref}>受け入れ</a>(受け入れフォルダ → 整理案 → 承認で書庫へ)</li>
-        <li><a href={organizeHistoryHref}>整理の履歴</a>(元に戻す)</li>
-      </ul>
+      <section className="admin-links-block" aria-labelledby="admin-links-title">
+        <h2 id="admin-links-title">ほかの画面</h2>
+        <ul className="admin-links">
+          <li><a href={volumesHref}>巻の一覧</a>(中の巻を調べる・CBZ に整理)</li>
+          <li><a href={duplicatesHref}>重複の候補</a></li>
+          <li><a href={workProposalsHref}>統合の提案</a></li>
+          <li><a href={inboxHref}>受け入れ</a>(受け入れフォルダ → 整理案 → 承認で書庫へ)</li>
+          <li><a href={organizeHistoryHref}>整理の履歴</a>(元に戻す)</li>
+        </ul>
+      </section>
     </div>
   );
 }

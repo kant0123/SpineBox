@@ -28,6 +28,9 @@ afterEach(() => {
 
 const fileInput = () => screen.getByLabelText("ファイル名テンプレート") as HTMLInputElement;
 const folderInput = () => screen.getByLabelText("フォルダーテンプレート") as HTMLInputElement;
+/** 入力欄ごとの「項目を差し込む」(フォーカス先に依存しない) */
+const fileChips = () => within(screen.getByRole("group", { name: "ファイル名テンプレートに項目を差し込む" }));
+const folderChips = () => within(screen.getByRole("group", { name: "フォルダーテンプレートに項目を差し込む" }));
 
 describe("範囲指定の整理", () => {
   it("単独のルートで開け、管理のデータ管理タブの整理の節に出る", async () => {
@@ -42,12 +45,20 @@ describe("範囲指定の整理", () => {
     render(<App />);
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
+    const heading = await screen.findByRole("heading", { name: "プレビュー結果" });
+    // 結果はボタンの下に出るだけにせず、見出しへフォーカスとスクロールを移す
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.getByText("1 巻を改名・移動、1 巻は対象外、2 巻はそのまま。")).toBeTruthy();
     expect(await screen.findByText("半角カナを全角にしました・空白を整えました(全角の空白・続いた空白)")).toBeTruthy();
     expect(screen.getByText("作者A/サンプル漫画 第1巻.cbz")).toBeTruthy();
     // CBZ 化が要る巻は対象外にして、CBZ 化の画面へ案内する
     expect(screen.getByRole("link", { name: "テンプレートの名前で CBZ に整理" })).toBeTruthy();
     expect(posts()).toEqual(["/api/organize/range-plan"]); // プレビューだけでは実行しない
     expect(lastPlan()).toEqual({ root_id: 1, path: "", file_template: "", folder_template: "", exclude_volume_ids: [] });
+
+    // 条件を変えると先頭の欄へフォーカスが戻る
+    fireEvent.click(screen.getByRole("button", { name: "条件を変える" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("蔵書フォルダ"));
 
     fireEvent.click(screen.getByRole("button", { name: "実行(1 巻)" }));
     fireEvent.click(await screen.findByRole("button", { name: "まとめて元に戻す" }));
@@ -74,25 +85,25 @@ describe("範囲指定の整理", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /^実行/ })).toBeNull());
   });
 
-  it("パラメーターはカーソル位置に入り、選択した文字は置き換える。プリセットは両方のテンプレートを入れる", async () => {
+  it("パラメーターは入力欄ごとに差し込め、カーソル位置に入り、選択した文字は置き換える。プリセットは両方のテンプレートを入れる", async () => {
     render(<App />);
-    await screen.findByRole("button", { name: "作品名" });
+    await screen.findByRole("group", { name: "ファイル名テンプレートに項目を差し込む" });
     const file = fileInput();
     fireEvent.focus(file);
     fireEvent.change(file, { target: { value: "第 巻" } });
     file.setSelectionRange(1, 1);
-    fireEvent.click(screen.getByRole("button", { name: "巻番号(2 桁)" }));
+    fireEvent.click(fileChips().getByRole("button", { name: "巻番号(2 桁)" }));
     expect(fileInput().value).toBe("第{number:2} 巻");
     fileInput().setSelectionRange(0, 0);
-    fireEvent.click(screen.getByRole("button", { name: "作品名" }));
+    fireEvent.click(fileChips().getByRole("button", { name: "作品名" }));
     expect(fileInput().value).toBe("{title}第{number:2} 巻");
     // 選択中の文字(「 巻」)を置き換える
     fileInput().setSelectionRange(18, 20);
-    fireEvent.click(screen.getByRole("button", { name: "単位(巻 / 話)" }));
+    fireEvent.click(fileChips().getByRole("button", { name: "単位(巻 / 話)" }));
     expect(fileInput().value).toBe("{title}第{number:2}{unit}");
-    // フォルダー欄に移るとそちらへ入る
-    fireEvent.focus(folderInput());
-    fireEvent.click(screen.getByRole("button", { name: "作品名" }));
+    // フォルダーの欄のチップは、フォーカスしていなくてもその欄へ入る
+    fireEvent.click(screen.getByText(/フォルダーへ振り分ける/));
+    fireEvent.click(folderChips().getByRole("button", { name: "作品名" }));
     expect(folderInput().value).toBe("{title}");
 
     fireEvent.click(screen.getByRole("button", { name: "出版社別フォルダー" }));
@@ -103,7 +114,7 @@ describe("範囲指定の整理", () => {
     expect(folderInput().value).toBe("{title}");
   });
 
-  it("テンプレートの誤りはプレビューさせない", async () => {
+  it("テンプレートの誤りがあるときは送信せず、直す欄へフォーカスする(ボタンは塞がない)", async () => {
     render(<App />);
     await screen.findByRole("option", { name: "E:/漫画" });
     fireEvent.change(fileInput(), { target: { value: "{title" } });
@@ -118,7 +129,11 @@ describe("範囲指定の整理", () => {
       const hint = document.getElementById(hintId)!;
       expect(hint.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
-    expect((screen.getByRole("button", { name: "プレビュー" }) as HTMLButtonElement).disabled).toBe(true);
+    const preview = screen.getByRole("button", { name: "プレビュー" }) as HTMLButtonElement;
+    expect(preview.disabled).toBe(false);
+    fireEvent.click(preview);
+    expect(document.activeElement).toBe(fileInput());
+    expect(posts()).not.toContain("/api/organize/range-plan");
   });
 
   it("同じ名前の巻はファイル数の多い方を残し、整理後の名前ごとのツリーで出す。「こちらを残す」で逆にできる", async () => {
@@ -147,9 +162,10 @@ describe("範囲指定の整理", () => {
     expect(lastPlan()).toMatchObject({ exclude_volume_ids: [13], folder_template: "{title}" });
     expect(screen.queryByRole("heading", { name: /^衝突/ })).toBeNull();
 
-    // 入力を変えると前のプレビューは消える
+    // 入力を変えると前のプレビューは消え、そのことを知らせる
     fireEvent.change(fileInput(), { target: { value: "{title}" } });
     await waitFor(() => expect(screen.queryByRole("heading", { name: /^外した/ })).toBeNull());
+    expect(screen.getByText(/前のプレビューを取り消しました/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^実行/ })).toBeNull();
   });
 
@@ -163,20 +179,80 @@ describe("範囲指定の整理", () => {
     expect(within(group).getByText("作者A/まとめ.zip")).toBeTruthy();
   });
 
-  it("フォルダを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {
+  it("フォルダーを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "フォルダを選ぶ" }));
-    const dialog = await screen.findByRole("dialog", { name: "フォルダを選ぶ" });
-    fireEvent.click(await within(dialog).findByRole("button", { name: "スキャン/" }));
-    await within(dialog).findByText("この中にフォルダはありません");
-    fireEvent.click(within(dialog).getByRole("button", { name: "このフォルダにする" }));
+    const opener = await screen.findByRole("button", { name: "フォルダーを選ぶ" });
+    expect(opener.getAttribute("aria-haspopup")).toBe("dialog");
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("heading", { name: "フォルダーを選ぶ" })));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "スキャン" }));
+    await within(dialog).findByText("この中にフォルダーはありません");
+    fireEvent.click(within(dialog).getByRole("button", { name: "このフォルダーにする" }));
     expect((screen.getByLabelText("範囲のパス") as HTMLInputElement).value).toBe("スキャン");
+
+    // 開き直すと今のパスから始まり、1 つ上へ戻れる
+    fireEvent.click(screen.getByRole("button", { name: "フォルダーを選ぶ" }));
+    const again = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await within(again).findByRole("button", { name: "1 つ上へ" });
+    expect(again.querySelector('[aria-current="location"]')?.textContent).toBe("スキャン");
+    fireEvent.click(within(again).getByRole("button", { name: "1 つ上へ" }));
+    await within(again).findByRole("button", { name: "作者A" });
+    expect(again.querySelector('[aria-current="location"]')?.textContent).toBe("蔵書フォルダ全体");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
     });
-    await screen.findByText("状態:", { exact: false });
+    await screen.findByRole("heading", { name: "プレビュー結果" });
     expect(lastPlan()).toMatchObject({ path: "スキャン" });
     expect(screen.queryByText("作者A/サンプル漫画 2巻.cbz")).toBeNull();
+  });
+
+  it("前回の範囲が読めないときは蔵書フォルダ全体を表示する", async () => {
+    render(<App />);
+    await screen.findByLabelText("範囲のパス");
+    fireEvent.change(screen.getByLabelText("範囲のパス"), { target: { value: "missing" } });
+    fireEvent.click(screen.getByRole("button", { name: "フォルダーを選ぶ" }));
+    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    expect(await within(dialog).findByText(/蔵書フォルダ全体を表示しています/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "作者A" })).toBeTruthy();
+    expect(dialog.querySelector('[aria-current="location"]')?.textContent).toBe("蔵書フォルダ全体");
+  });
+
+  it("フォルダー選択の Tab はモーダルの中を回る", async () => {
+    render(<App />);
+    const opener = await screen.findByRole("button", { name: "フォルダーを選ぶ" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await within(dialog).findByRole("button", { name: "作者A" });
+    const buttons = within(dialog).getAllByRole("button");
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    last.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    // 開いた直後(見出し)からの逆順も、モーダルの外へ出さない
+    within(dialog).getByRole("heading", { name: "フォルダーを選ぶ" }).focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    first.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it("フォルダー選択は Esc で閉じ、開いたボタンへフォーカスを戻す", async () => {
+    render(<App />);
+    const opener = await screen.findByRole("button", { name: "フォルダーを選ぶ" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await within(dialog).findByRole("button", { name: "スキャン" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(opener);
   });
 });
 
