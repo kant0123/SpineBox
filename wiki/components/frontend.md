@@ -86,7 +86,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   要約(実行する / 競合 / 整理しない / 対象外 / そのまま)・競合の行選択・実行ボタン・実行内容・整理しない内容を 1 か所にまとめる。フォームは 800px に抑え、スマホの sticky な帯
   (約 53px)に隠れないよう `scroll-margin-top` を付ける。`<form>` にして Enter でもプレビューできる
 - **整理のフォルダー選択はモーダルにする(#149)。** 今のパスから開き、パンくず(蔵書フォルダ全体 / 途中のフォルダ)で移動する。開いたら見出しへ
-  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/organize/OrganizeFiles.tsx:303 FolderPicker`)。
+  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/organize/OrganizeFiles.tsx:581 FolderPicker`)。
   前回のパスが読めないときはエラーを出して蔵書フォルダ全体へ戻す。テンプレートの誤りはプレビューを `disabled` で塞がず、押したら該当欄へ
   フォーカスする(DADS のフォーム)。処理中(プレビュー・実行・元に戻す)だけ入力欄を `disabled` にし、`aria-busy` を付ける
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
