@@ -264,11 +264,13 @@ function ParameterChips({
   target,
   label,
   parameters,
+  disabled,
   onInsert,
 }: {
   target: "file" | "folder";
   label: string;
   parameters: RangeOptions["parameters"];
+  disabled?: boolean;
   onInsert: (token: string, target: "file" | "folder") => void;
 }) {
   return (
@@ -284,6 +286,7 @@ function ParameterChips({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onInsert(p.token, target)}
             title={p.token}
+            disabled={disabled}
           >
             {p.label}
           </button>
@@ -762,13 +765,14 @@ export function OrganizeFilesSection() {
               <span className="organize-label">よく使う設定</span>
               <p className="organize-hint">選ぶと、下の 2 つのテンプレートの欄に入ります。</p>
               <div className="organize-chips">
-                <button type="button" className="small secondary" onClick={() => applyTemplates("", "")}>
+                <button type="button" className="small secondary" onClick={() => applyTemplates("", "")} disabled={busy !== null}>
                   ファイル名の整理だけ
                 </button>
                 <button
                   type="button"
                   className="small secondary"
                   onClick={() => applyTemplates(options.defaults.file_template, options.defaults.folder_template)}
+                  disabled={busy !== null}
                 >
                   設定のテンプレート
                 </button>
@@ -778,6 +782,7 @@ export function OrganizeFilesSection() {
                     type="button"
                     className="small secondary"
                     onClick={() => applyTemplates(p.file_template, p.folder_template)}
+                    disabled={busy !== null}
                   >
                     {p.label}
                   </button>
@@ -801,6 +806,7 @@ export function OrganizeFilesSection() {
                 target="file"
                 label="ファイル名テンプレートに項目を差し込む"
                 parameters={options.parameters}
+                disabled={busy !== null}
                 onInsert={insert}
               />
             </div>
@@ -835,6 +841,7 @@ export function OrganizeFilesSection() {
                     target="folder"
                     label="フォルダーテンプレートに項目を差し込む"
                     parameters={options.parameters}
+                    disabled={busy !== null}
                     onInsert={insert}
                   />
                 </div>

@@ -56,6 +56,10 @@ describe("範囲指定の整理", () => {
     expect(posts()).toEqual(["/api/organize/range-plan"]); // プレビューだけでは実行しない
     expect(lastPlan()).toEqual({ root_id: 1, path: "", file_template: "", folder_template: "", exclude_volume_ids: [] });
 
+    // 条件を変えると先頭の欄へフォーカスが戻る
+    fireEvent.click(screen.getByRole("button", { name: "条件を変える" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("蔵書フォルダ"));
+
     fireEvent.click(screen.getByRole("button", { name: "実行(1 巻)" }));
     fireEvent.click(await screen.findByRole("button", { name: "まとめて元に戻す" }));
     await screen.findByText("元に戻しました");
@@ -158,9 +162,10 @@ describe("範囲指定の整理", () => {
     expect(lastPlan()).toMatchObject({ exclude_volume_ids: [13], folder_template: "{title}" });
     expect(screen.queryByRole("heading", { name: /^衝突/ })).toBeNull();
 
-    // 入力を変えると前のプレビューは消える
+    // 入力を変えると前のプレビューは消え、そのことを知らせる
     fireEvent.change(fileInput(), { target: { value: "{title}" } });
     await waitFor(() => expect(screen.queryByRole("heading", { name: /^外した/ })).toBeNull());
+    expect(screen.getByText(/前のプレビューを取り消しました/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^実行/ })).toBeNull();
   });
 
@@ -176,18 +181,62 @@ describe("範囲指定の整理", () => {
 
   it("フォルダーを選ぶと範囲のパスに入り、プレビューはその範囲だけ", async () => {
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "フォルダーを選ぶ" }));
+    const opener = await screen.findByRole("button", { name: "フォルダーを選ぶ" });
+    expect(opener.getAttribute("aria-haspopup")).toBe("dialog");
+    fireEvent.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("heading", { name: "フォルダーを選ぶ" })));
     fireEvent.click(await within(dialog).findByRole("button", { name: "スキャン" }));
     await within(dialog).findByText("この中にフォルダーはありません");
     fireEvent.click(within(dialog).getByRole("button", { name: "このフォルダーにする" }));
     expect((screen.getByLabelText("範囲のパス") as HTMLInputElement).value).toBe("スキャン");
+
+    // 開き直すと今のパスから始まり、1 つ上へ戻れる
+    fireEvent.click(screen.getByRole("button", { name: "フォルダーを選ぶ" }));
+    const again = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await within(again).findByRole("button", { name: "1 つ上へ" });
+    expect(again.querySelector('[aria-current="location"]')?.textContent).toBe("スキャン");
+    fireEvent.click(within(again).getByRole("button", { name: "1 つ上へ" }));
+    await within(again).findByRole("button", { name: "作者A" });
+    expect(again.querySelector('[aria-current="location"]')?.textContent).toBe("蔵書フォルダ全体");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
     });
     await screen.findByRole("heading", { name: "プレビュー結果" });
     expect(lastPlan()).toMatchObject({ path: "スキャン" });
     expect(screen.queryByText("作者A/サンプル漫画 2巻.cbz")).toBeNull();
+  });
+
+  it("前回の範囲が読めないときは蔵書フォルダ全体を表示する", async () => {
+    render(<App />);
+    await screen.findByLabelText("範囲のパス");
+    fireEvent.change(screen.getByLabelText("範囲のパス"), { target: { value: "missing" } });
+    fireEvent.click(screen.getByRole("button", { name: "フォルダーを選ぶ" }));
+    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    expect(await within(dialog).findByText(/蔵書フォルダ全体を表示しています/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "作者A" })).toBeTruthy();
+    expect(dialog.querySelector('[aria-current="location"]')?.textContent).toBe("蔵書フォルダ全体");
+  });
+
+  it("フォルダー選択の Tab はモーダルの中を回る", async () => {
+    render(<App />);
+    const opener = await screen.findByRole("button", { name: "フォルダーを選ぶ" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
+    await within(dialog).findByRole("button", { name: "作者A" });
+    const buttons = within(dialog).getAllByRole("button");
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    last.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
   });
 
   it("フォルダー選択は Esc で閉じ、開いたボタンへフォーカスを戻す", async () => {

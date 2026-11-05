@@ -106,6 +106,11 @@ describe("整理の節", () => {
     const section = (await screen.findByRole("heading", { name: "整理" })).closest("section")!;
     expect(within(section).getByLabelText("ファイル名テンプレート")).toBeTruthy();
     expect(screen.getByText("補完待ちの作品を補完")).toBeTruthy(); // 同じページにジョブの一覧もある
+    // 節内リンクは見出しへフォーカスを移す
+    fireEvent.click(screen.getByRole("button", { name: "ジョブ" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "実行中" }));
+    fireEvent.click(screen.getByRole("button", { name: "整理" }));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "整理" }));
     cleanup();
     window.location.hash = "#/data/organize";
     render(<App />);
