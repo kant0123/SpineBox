@@ -348,7 +348,7 @@ export interface WorkVolume {
   duplicate_count: number;
   format?: VolumeFormat;
   assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
-  /** 巻の書誌(出版社・出版元・発売日・ISBN など)。項目ごとに出所つき */
+  /** 巻の書誌(出版社・レーベル・発売日・ISBN など)。項目ごとに出所つき */
   metadata?: Partial<Record<VolumeMetaField, FieldInfo<string | null>>>;
   /** ブックマークを付けている(#86) */
   bookmarked?: boolean;

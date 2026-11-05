@@ -22,7 +22,7 @@ from spinebox.organize.template import (DEFAULT_NAME_TEMPLATE, PRESETS, NameTemp
 from spinebox.scanner import Scanner
 
 TITLE = "お気楽領主の楽しい領地防衛"
-FULL = {"title": TITLE, "author": "作者 太郎", "publisher": "出版社X", "label": "出版元Y", "kind": "漫画",
+FULL = {"title": TITLE, "author": "作者 太郎", "publisher": "出版社X", "label": "レーベルY", "kind": "漫画",
         "year": "2020"}
 
 
@@ -40,7 +40,7 @@ def render(file_template="", folder_template="", v=None):
 
 def test_each_parameter_and_width():
     _, name = render("{title}|{author}|{publisher}|{label}|{kind}|{year}|{number}|{number:3}|{unit}".replace("|", " "))
-    assert name == f"{TITLE} 作者 太郎 出版社X 出版元Y 漫画 2020 3 003 巻"
+    assert name == f"{TITLE} 作者 太郎 出版社X レーベルY 漫画 2020 3 003 巻"
     # 日本語の名前・<…> の書き方も同じ変数。NN は 2 桁の略記
     assert render("{作品名} <著者> 第NN巻")[1] == f"{TITLE} 作者 太郎 第03巻"
     # 番号の直後の「巻」は話単位なら「話」に、範囲は 01-03
@@ -50,10 +50,10 @@ def test_each_parameter_and_width():
 
 def test_brackets_are_omitted_when_a_value_is_empty():
     t = "{title}[ ({author})][ - {label} {year}]"
-    assert render(t)[1] == f"{TITLE} (作者 太郎) - 出版元Y 2020"
-    # 著者・出版元・発売年が空なら「〇〇不明」で置き換える(組も省略しない)
-    assert render(t, v=values(author=None))[1] == f"{TITLE} (著者不明) - 出版元Y 2020"
-    assert render(t, v=values(author=" ", year=None, label=None))[1] == f"{TITLE} (著者不明) - 出版元不明 発売年不明"
+    assert render(t)[1] == f"{TITLE} (作者 太郎) - レーベルY 2020"
+    # 著者・レーベル・発売年が空なら「〇〇不明」で置き換える(組も省略しない)
+    assert render(t, v=values(author=None))[1] == f"{TITLE} (著者不明) - レーベルY 2020"
+    assert render(t, v=values(author=" ", year=None, label=None))[1] == f"{TITLE} (著者不明) - レーベル不明 発売年不明"
     # 組の中の値が 1 つでも空なら組ごと省略(置き換えの無い項目)
     assert render("{title}[ ({publisher})]", v=values(publisher=None))[1] == TITLE
     # 組の外の値が空なら対象外(空文字で展開しない)
@@ -67,11 +67,11 @@ def test_brackets_are_omitted_when_a_value_is_empty():
 
 def test_folder_template_segments_and_empty_segment_dropped():
     folder, name = render("{title} 第{number:2}{unit}", "{publisher}/[{label}]/{title}")
-    assert folder == ["出版社X", "出版元Y", TITLE] and name == f"{TITLE} 第03巻"
+    assert folder == ["出版社X", "レーベルY", TITLE] and name == f"{TITLE} 第03巻"
     # 省略で空になった区切りは無くす(空のフォルダ名を作らない)
 
     assert render("", "[{publisher}]/{title}", values(publisher=None))[0] == [TITLE]
-    assert render("", "{publisher}/{label}/{title}", values(label=None))[0] == ["出版社X", "出版元不明", TITLE]
+    assert render("", "{publisher}/{label}/{title}", values(label=None))[0] == ["出版社X", "レーベル不明", TITLE]
     # どちらも空なら None(ファイル名は整理だけ・フォルダはそのまま)
     assert render() == (None, None)
     # 末尾の .cbz は書いても拡張子にしない(拡張子は元のものを保つ)
@@ -109,7 +109,7 @@ def test_name_template_setting_is_kept_and_translated():
     # 設定の name_template は #58 の書き方のまま(角括弧はその文字)。新しい変数も <…> で使える
     legacy = NameTemplate("[<著者>] <作品名>/<作品名> 第NN巻.cbz")
     assert legacy.render(values()) == f"[作者 太郎] {TITLE}/{TITLE} 第03巻.cbz"
-    assert NameTemplate("<レーベル>/<作品名> <発売年>.cbz").render(values()) == f"出版元Y/{TITLE} 2020.cbz"
+    assert NameTemplate("<レーベル>/<作品名> <発売年>.cbz").render(values()) == f"レーベルY/{TITLE} 2020.cbz"
     # 整理画面の書き方へ読み替えても同じ名前になる
     file_t, folder_t = legacy.range_templates()
     assert (file_t, folder_t) == ("{title} 第{number:2}巻", "[[{author}]] {title}")
@@ -122,8 +122,8 @@ def test_presets_and_examples_are_valid():
     for label, file_t, folder_t in PRESETS:
         RangeTemplate(file_t, folder_t)  # 不正なプリセットを出さない
     examples = range_examples("{title} 第{number:2}{unit}[ ({author})]", "[{label}]/{title}", "漫画")
-    assert examples[0]["path"] == f"漫画/出版元Y/{TITLE}/{TITLE} 第03巻 (作者 太郎).cbz"
-    assert examples[1]["path"] == "漫画/出版元不明/ある作品/ある作品 第12話 (著者不明).cbz"
+    assert examples[0]["path"] == f"漫画/レーベルY/{TITLE}/{TITLE} 第03巻 (作者 太郎).cbz"
+    assert examples[1]["path"] == "漫画/レーベル不明/ある作品/ある作品 第12話 (著者不明).cbz"
     assert range_examples("{author}", "")[1]["path"] == "(元のフォルダ)/著者不明.cbz"
     assert range_examples("{publisher}", "")[1]["path"] == "(元のフォルダ)/出版社X.cbz"
     assert range_examples("{title}", "{publisher}/{title}")[1]["path"] is not None
@@ -328,11 +328,11 @@ def test_missing_values_and_brackets(env):
     v1 = vid_of(env, f"漫画/作者A/{TITLE} 1巻.cbz")
     with db.transaction(env.conn) as c:
         c.execute("""INSERT INTO volume_fields (volume_id, field, value, source, manual, updated_at)
-                     VALUES (?, 'label', '出版元Y', 'manual', 1, ?)""", (v1, db.now()))
+                     VALUES (?, 'label', 'レーベルY', 'manual', 1, ?)""", (v1, db.now()))
     items = by_from(plan_range(env, "漫画/作者A", "{title} 第{number:2}{unit}", "[{label}]/{title}"))
-    assert items[f"漫画/作者A/{TITLE} 1巻.cbz"]["output_rel_path"] == f"漫画/作者A/出版元Y/{TITLE}/{TITLE} 第01巻.cbz"
-    # 出版元が空なら「出版元不明」のフォルダになる
-    assert items[f"漫画/作者A/{TITLE} 2巻.zip"]["output_rel_path"] == f"漫画/作者A/出版元不明/{TITLE}/{TITLE} 第02巻.zip"
+    assert items[f"漫画/作者A/{TITLE} 1巻.cbz"]["output_rel_path"] == f"漫画/作者A/レーベルY/{TITLE}/{TITLE} 第01巻.cbz"
+    # レーベルが空なら「レーベル不明」のフォルダになる
+    assert items[f"漫画/作者A/{TITLE} 2巻.zip"]["output_rel_path"] == f"漫画/作者A/レーベル不明/{TITLE}/{TITLE} 第02巻.zip"
     # 組の外で値が無ければ対象外(理由つき)
     blocked = plan_range(env, "そのほか", "{title} {number:2}")
     assert blocked["state"] == "blocked" and blocked["op_id"] is None
