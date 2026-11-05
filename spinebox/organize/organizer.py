@@ -267,7 +267,7 @@ class Organizer:
             rows = self.conn.execute(
                 f"""SELECT v.id, v.number_kind, v.number_start, v.number_end, v.format, wv.work_id FROM volumes v
                     LEFT JOIN work_volumes wv ON wv.volume_id = v.id WHERE v.id IN ({marks})""", chunk).fetchall()
-            # レーベル・発売年は巻の書誌(volume_fields)。発売日は「2020-05-01」「2020」などの先頭の 4 桁
+            # 出版元(label)・発売年は巻の書誌(volume_fields)。発売日は「2020-05-01」「2020」などの先頭の 4 桁
             vfields: dict[int, dict] = {}
             for r in self.conn.execute(
                     f"SELECT volume_id, field, value FROM volume_fields WHERE volume_id IN ({marks}) "

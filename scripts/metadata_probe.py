@@ -66,7 +66,7 @@ def report(outcome, top: int) -> None:
         i = c.item
         print(f"  {c.match.score:.2f} {i.title}" + (f" : {i.subtitle}" if i.subtitle else "")
               + f" | 巻={i.volume_label or i.volume} 著者={'/'.join(i.authors[:3])} 出版社={i.publisher} "
-              f"レーベル={i.label} 発売={i.released} ISBN={i.isbn} 種別={i.kind} 全{i.total_volumes}巻")
+              f"出版元={i.label} 発売={i.released} ISBN={i.isbn} 種別={i.kind} 全{i.total_volumes}巻")
         if i.romaji or i.aliases:
             print(f"       ローマ字={i.romaji} 別名={list(i.aliases[:6])}")
         if i.genres or i.tags:

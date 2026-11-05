@@ -48,8 +48,10 @@ def test_default_template_volume_and_episode():
 def test_missing_values_are_reasons(fields, kind, start, reason):
     with pytest.raises(ValueMissing, match=reason):
         NameTemplate(DEFAULT_NAME_TEMPLATE).render(NameValues(fields, kind, start, start))
-    with pytest.raises(ValueMissing, match="著者が空欄"):
-        render("<著者>/<作品名> NN.cbz")
+    # 著者・出版元・発売年が空なら「〇〇不明」で置き換える
+    assert render("<著者>/<出版元>/<作品名> <発売年>.cbz") == f"著者不明/出版元不明/{TITLE} 発売年不明.cbz"
+    with pytest.raises(ValueMissing, match="出版社が空欄"):
+        render("<出版社>/<作品名> NN.cbz")
     with pytest.raises(ValueMissing, match="巻か話か"):
         NameTemplate("<作品名> <番号><単位>.cbz").render(NameValues({"title": TITLE}, None, 1, 1))
 
@@ -197,11 +199,11 @@ def test_rename_plan_reasons_for_missing_values(env):
     extra = o.plan_rename(work_of(env, vid_of(env, "番外編集.cbz")))
     assert extra["state"] == "blocked" and extra["op_id"] is None
     assert extra["items"][0]["status"] == "excluded" and "番号を読めません" in extra["items"][0]["reason"]
-    # 作品の著者が空欄なら、著者を使うテンプレートでは対象外
+    # 作品の出版社が空欄なら、出版社を使うテンプレートでは対象外(著者・出版元・発売年は「不明」で置き換える)
     env.settings = parse_settings({"library_roots": [str(env.root)], "data_dir": str(env.settings.data_dir),
-                                   "organize": {"name_template": "<著者>/<作品名> NN.cbz"}}, env.root)
+                                   "organize": {"name_template": "<出版社>/<作品名> NN.cbz"}}, env.root)
     plan = organizer(env).plan_rename(work_of(env, vid_of(env, "ある作品 第5話.cbz")))
-    assert plan["items"][0]["status"] == "excluded" and "著者が空欄" in plan["items"][0]["reason"]
+    assert plan["items"][0]["status"] == "excluded" and "出版社が空欄" in plan["items"][0]["reason"]
 
 
 def test_rename_roundtrip_keeps_state_on_same_volume(env):
