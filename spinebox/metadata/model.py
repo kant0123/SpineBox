@@ -62,7 +62,7 @@ class MetadataItem:
     volume_label: str | None = None     # 巻次の表記そのまま(「上」「1-2」など数値にできないものも残す)
     total_volumes: int | None = None
     publisher: str | None = None
-    label: str | None = None            # シリーズ・出版元(「ガルドコミックス」など)
+    label: str | None = None            # シリーズ・レーベル(「ガルドコミックス」など)
     released: str | None = None         # YYYY / YYYY-MM / YYYY-MM-DD
     isbn: str | None = None             # ハイフン無しの 13 桁または 10 桁
     kind: str | None = None             # KIND_MANGA / KIND_NOVEL / None(判断できない)

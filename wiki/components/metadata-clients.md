@@ -29,7 +29,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | --- | --- |
 | `spinebox/metadata/service.py:57 MetadataService` | 入口。`search(query, sources=None)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
 | `spinebox/metadata/model.py:29 SearchQuery` | 入力。`title` だけ必須。`author` `volume` `kind` は確からしさの手がかり、`isbn` は NDL で巻の書誌を直接引く |
-| `spinebox/metadata/model.py:43 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・出版元・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(AniList / MangaUpdates: 作品全体) |
+| `spinebox/metadata/model.py:43 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(AniList / MangaUpdates: 作品全体) |
 | `spinebox/metadata/model.py:82 Match` | 確からしさ。`score`(0〜1)、観点ごとの `components`、根拠 `reasons`(`title:exact` `author:match` `volume:mismatch` など) |
 | `spinebox/metadata/model.py:96 Candidate` | 項目 + `Match` + `response_key`(`metadata_responses.request_key`。生応答を引き直す鍵) |
 | `spinebox/metadata/model.py:123 SearchOutcome` | 取得元ごとの結果。`ok`・`candidates`(確からしさの高い順)・`failure`・`responses`(使った生応答の出所と `from_cache` / `stale`)・`notes` |
