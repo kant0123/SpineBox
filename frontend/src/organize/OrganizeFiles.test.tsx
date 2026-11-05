@@ -5,7 +5,7 @@ import type { OrganizeItem, OrganizeOp } from "../api";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { organizeFilesHref, parseRoute } from "../route";
-import { RangeItems } from "./OrganizeFiles";
+import { ClashGroups, RangeItems } from "./OrganizeFiles";
 
 let backend: ReturnType<typeof createMockBackend>;
 const posts = () => backend.log.filter((l) => l.method === "POST" && l.path !== "/api/organize/range/example").map((l) => l.path);
@@ -293,6 +293,19 @@ describe("競合の表示", () => {
     const single = screen.getByRole("group", { name: /出力\/Y\.cbz/ });
     fireEvent.click(within(single).getByRole("button", { name: "この巻を整理しない" }));
     expect(onExclude).toHaveBeenCalledWith(3);
+  });
+
+  it("選び直し中は、通信が返るまで選んだ行のチェックを保つ", () => {
+    const op = opWith([
+      { ...baseItem, volume_id: 1, page_count: 5 },
+      { ...baseItem, volume_id: 2, page_count: 5 },
+    ]);
+    const { rerender } = render(<ClashGroups op={op} onChoose={() => undefined} />);
+    const group = screen.getByRole("group", { name: /出力\/X\.cbz/i });
+    const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.every((r) => !r.checked)).toBe(true);
+    rerender(<ClashGroups op={op} onChoose={() => undefined} pendingKeep={2} />);
+    expect((within(group).getAllByRole("radio")[1] as HTMLInputElement).checked).toBe(true);
   });
 
   it("自動で整理しないにした巻は、別の行を選ぶと組のほかの巻(自動で整理しない巻も)を外す。利用者が整理しないにした巻は数えない", () => {

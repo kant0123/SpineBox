@@ -328,11 +328,13 @@ function ClashGroup({
   index,
   onChoose,
   onExclude,
+  pendingKeep,
 }: {
   group: NameGroup;
   index: number;
   onChoose?: (dropIds: number[], chosen: OrganizeItem) => void;
   onExclude?: (volumeId: number) => void;
+  pendingKeep?: number | null;
 }) {
   const executable = group.items.filter((it) => it.status === "move" || it.status === "cbz");
   const unchanged = group.items.filter((it) => it.status === "unchanged");
@@ -352,6 +354,9 @@ function ClashGroup({
   const selectable = editable && unchanged.length === 0 && choices.length > 1;
   const hintId = `organize-clash-hint-${index}`;
   const singleConflict = !selectable && choices.length === 1 && choices[0].status === "conflict";
+  // 選び直し中は、その組の選んだ行をチェックしたままにする(ほかの組の既定は変えない)
+  const pendingHere = pendingKeep != null && group.items.some((it) => it.volume_id === pendingKeep);
+  const selectedId = pendingHere ? pendingKeep : defaultKeep?.volume_id;
   const choose = (item: OrganizeItem) => {
     const drop = group.items
       .filter((o) => o.volume_id !== item.volume_id)
@@ -381,7 +386,7 @@ function ClashGroup({
           <ClashRow
             key={item.volume_id}
             item={item}
-            checked={item.volume_id === defaultKeep?.volume_id}
+            checked={item.volume_id === selectedId}
             selectable={selectable}
             name={`organize-keep-${index}`}
             onChoose={() => choose(item)}
@@ -409,11 +414,13 @@ export function ClashGroups({
   onChoose,
   onExclude,
   busy,
+  pendingKeep,
 }: {
   op: OrganizeOp;
   onChoose?: (dropIds: number[], chosen: OrganizeItem) => void;
   onExclude?: (volumeId: number) => void;
   busy?: boolean;
+  pendingKeep?: number | null;
 }) {
   const groups = clashGroupsOf(op);
   if (groups.length === 0) return null;
@@ -430,7 +437,14 @@ export function ClashGroups({
       )}
       <div className="organize-clash-list">
         {groups.map((group, index) => (
-          <ClashGroup key={group.name} group={group} index={index} onChoose={onChoose} onExclude={onExclude} />
+          <ClashGroup
+            key={group.name}
+            group={group}
+            index={index}
+            onChoose={onChoose}
+            onExclude={onExclude}
+            pendingKeep={pendingKeep}
+          />
         ))}
       </div>
     </section>
@@ -766,6 +780,7 @@ export function OrganizeFilesSection() {
   const [picker, setPicker] = useState(false);
   const [op, setOp] = useState<OrganizeOp | null>(null);
   const [excluded, setExcluded] = useState<number[]>([]);
+  const [pendingKeep, setPendingKeep] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"plan" | "execute" | "undo" | null>(null);
   const [cleared, setCleared] = useState(false);
@@ -804,6 +819,7 @@ export function OrganizeFilesSection() {
     if (opRef.current) setCleared(true);
     setOp(null);
     setExcluded([]);
+    setPendingKeep(null);
   }, [rootId, path, fileTemplate, folderTemplate, includeCbz]);
 
   // パスの例とテンプレートの誤り。打つたびに呼ばないよう少し待つ。古い応答で新しい入力を上書きしない
@@ -862,6 +878,7 @@ export function OrganizeFilesSection() {
       if (focus) focusResult.current = true;
     } catch (e) {
       // 選び直しに失敗したときは、直前のプレビューを消さずに理由だけ出す
+      setPendingKeep(null);
       setError(errorText(e, "プレビューを作れませんでした。"));
     } finally {
       setBusy(null);
@@ -904,6 +921,7 @@ export function OrganizeFilesSection() {
     const input = document.querySelector<HTMLInputElement>(`input[data-keep-volume="${id}"]`);
     if (input) input.focus({ preventScroll: true });
     else resultHeadingRef.current?.focus?.({ preventScroll: true });
+    setPendingKeep(null);
   }, [op]);
 
   const preview = () => {
@@ -913,6 +931,7 @@ export function OrganizeFilesSection() {
       fileRef.current?.focus();
       return;
     }
+    setPendingKeep(null);
     void plan(excluded, true);
   };
 
@@ -956,10 +975,17 @@ export function OrganizeFilesSection() {
   const canEditPlan = planned || op?.state === "blocked";
   const summary = op ? summarizeResult(op) : null;
   const excludeOne = canEditPlan
-    ? (id: number) => void plan([...new Set([...excluded, id])], false)
+    ? (id: number) => {
+        if (busy !== null) return;
+        setPendingKeep(null);
+        void plan([...new Set([...excluded, id])], false);
+      }
     : undefined;
   const chooseKeep = canEditPlan
     ? (drop: number[], chosen: OrganizeItem) => {
+        if (busy !== null) return;
+        // 計画が返るまで選んだ行のチェックを保つ(通信中に既定へ戻って見えないように)
+        setPendingKeep(chosen.volume_id);
         keepFocus.current = chosen.volume_id;
         void plan([...new Set([...excluded, ...drop])], false);
       }
@@ -1223,7 +1249,13 @@ export function OrganizeFilesSection() {
               {op.error}
             </div>
           )}
-          <ClashGroups op={op} onChoose={chooseKeep} onExclude={excludeOne} busy={busy === "plan"} />
+          <ClashGroups
+            op={op}
+            onChoose={chooseKeep}
+            onExclude={excludeOne}
+            busy={busy === "plan"}
+            pendingKeep={pendingKeep}
+          />
           {summary.needsChoice > 0 && (
             <p className="organize-result-note">
               競合 {summary.needsChoice} 組はまだ選ばれていません。残す方の行を選ぶと実行に含まれます。
@@ -1238,7 +1270,15 @@ export function OrganizeFilesSection() {
             </button>
             {op.state !== "planned" && op.state !== "blocked" && <a href={organizeHistoryHref}>整理の履歴へ</a>}
             {excluded.length > 0 && canEditPlan && (
-              <button type="button" className="secondary" onClick={() => void plan([], false)} disabled={busy !== null}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setPendingKeep(null);
+                  void plan([], false);
+                }}
+                disabled={busy !== null}
+              >
                 整理しない巻を戻す
               </button>
             )}
