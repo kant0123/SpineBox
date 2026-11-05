@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 受け入れ(フェーズ 4)。受け入れフォルダを蔵書と同じスキャナーで検出(同期)→ 作品・番号・重複・対象外の理由つきで整理案をプレビュー → 利用者が選んだものだけ承認で書庫へ入れる(元は受け入れフォルダの退避へ移すだけ・履歴から元に戻せる)。確信度が低い名寄せ・読めない番号・重複は自動で決めない
-updated: 2026-11-05
+updated: 2026-11-06
 related: [overview, backend, frontend, organize, work-grouping, data-jobs]
 ---
 
