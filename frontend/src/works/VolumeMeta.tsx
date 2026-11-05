@@ -4,7 +4,7 @@ import { fieldNote } from "./labels";
 
 const FIELDS: { name: "publisher" | "label" | "released" | "isbn"; label: string; hint?: string }[] = [
   { name: "publisher", label: "出版社" },
-  { name: "label", label: "レーベル" },
+  { name: "label", label: "出版元" },
   { name: "released", label: "発売日", hint: "2013-05 のように" },
   { name: "isbn", label: "ISBN" },
 ];

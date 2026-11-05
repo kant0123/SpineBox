@@ -9,12 +9,13 @@
 
 共通の規則:
 
-- 変数: 作品名 `title`・著者 `author`・出版社 `publisher`・レーベル `label`・種別 `kind`(漫画 / 小説)・発売年 `year`・
+- 変数: 作品名 `title`・著者 `author`・出版社 `publisher`・出版元(旧称レーベル。巻の書誌) `label`・種別 `kind`(漫画 / 小説)・発売年 `year`・
   番号 `number`(`<番号>` `<巻番号>` `<話番号>` も同じ。`:3` で 3 桁にゼロ埋め)・単位 `unit`(巻 / 話)。
   `N` を 2 つ以上並べた `NN` は 2 桁の番号の略記
 - 番号の直後の `巻` / `話` は、巻の番号の種類(名前から読んだ巻 / 話)に合わせて入れ替わる。既定の
   `第NN巻` が話単位の巻では `第NN話` になる。番号が範囲(まとめ)なら `01-03`
-- 値が無い(作品に割り当てが無い・番号が読めない・著者が空欄)巻は展開せず、理由つきで対象外にする。
+- 著者・出版元・発売年が空の巻は、`UNKNOWN_VALUES` の「著者不明」「出版元不明」「発売年不明」で置き換えて展開する
+- そのほかの値が無い(作品に割り当てが無い・番号が読めない・出版社・種別が空欄)巻は展開せず、理由つきで対象外にする。
   空文字に置き換えて展開すると、別の巻と同じ名前・意味の無い名前になるため。`[...]` の中だけは省略してよいと書いた所
 - 値の中の `/`・バックスラッシュや Windows で使えない文字は `_` にする(作品名でフォルダを増やさない)。区切りごとに末尾の
   `.`・空白を落とし、予約名(CON・NUL・COM1 など)は先頭に `_` を付け、長すぎる区切りは切り詰める。
@@ -34,13 +35,16 @@ DEFAULT_NAME_TEMPLATE = "<作品名>/<作品名> 第NN巻.cbz"
 MAX_PATH = 259
 
 # 値の名前(NameValues.fields の鍵)→ 画面での名前。`<作品名>` も `{作品名}` も `{title}` も同じ変数
-FIELDS = {"title": "作品名", "author": "著者", "publisher": "出版社", "label": "レーベル", "kind": "種別",
+FIELDS = {"title": "作品名", "author": "著者", "publisher": "出版社", "label": "出版元", "kind": "種別",
           "year": "発売年"}
-FIELD_VARIABLES = {**{ja: key for key, ja in FIELDS.items()}, **{key: key for key in FIELDS}}
+# 旧称「レーベル」で書かれた設定の name_template も読めるようにする
+FIELD_VARIABLES = {**{ja: key for key, ja in FIELDS.items()}, **{key: key for key in FIELDS}, "レーベル": "label"}
+# 空のとき対象外にせず、この文字列で置き換える項目(整理で「不明」の名前にする)
+UNKNOWN_VALUES = {"author": "著者不明", "label": "出版元不明", "year": "発売年不明"}
 NUMBER_VARIABLES = ("番号", "巻番号", "話番号", "number")
 UNIT_VARIABLES = ("単位", "unit")
 MISSING_REASONS = {"title": "作品に割り当てられていません", "author": "作品の著者が空欄です",
-                   "publisher": "作品の出版社が空欄です", "label": "巻のレーベルが空欄です",
+                   "publisher": "作品の出版社が空欄です", "label": "巻の出版元が空欄です",
                    "kind": "作品の種別(漫画 / 小説)が空欄です", "year": "巻の発売日が空欄です"}
 UNITS = {"volume": "巻", "episode": "話"}
 
@@ -275,7 +279,7 @@ class RangeTemplate:
 
     ファイル名は拡張子を含まない 1 つの名前(拡張子は元のものを保つ。末尾の `.cbz` は書いても無視する)。
     フォルダーは範囲のパスからの相対で、`/` で区切れる。どちらも空なら None(ファイル名は整理だけ・フォルダーはそのまま)。
-    フォルダーの区切りが `[...]` の省略で空になったら、その区切りごと無くす(`[{label}]/{title}` はレーベルが空なら
+    フォルダーの区切りが `[...]` の省略で空になったら、その区切りごと無くす(`[{publisher}]/{title}` は出版社が空なら
     `{title}` だけ)。ファイル名が空になる巻は対象外。
     """
 
@@ -342,7 +346,7 @@ def _render_parts(parts, values: NameValues) -> str:
             except ValueMissing:
                 pass  # 中の値が空なら丸ごと省略
         elif isinstance(p, _Field):
-            value = str(values.fields.get(p.name) or "").strip()
+            value = str(values.fields.get(p.name) or "").strip() or UNKNOWN_VALUES.get(p.name, "")
             if not value:
                 raise ValueMissing(MISSING_REASONS[p.name])
             buf.append(_clean_value(value))
@@ -396,23 +400,23 @@ PRESETS = (
     ("作品別フォルダー", _VOLUME_NAME, "{title}"),
     ("著者別フォルダー", _VOLUME_NAME, "{author}/{title}"),
     ("出版社別フォルダー", _VOLUME_NAME, "{publisher}/{title}"),
-    ("レーベル別フォルダー", _VOLUME_NAME, "[{label}]/{title}"),
+    ("出版元別フォルダー", _VOLUME_NAME, "{label}/{title}"),
     ("発売年別フォルダー", _VOLUME_NAME, "{year}/{title}"),
     ("種別(漫画 / 小説)別フォルダー", _VOLUME_NAME, "{kind}/{title}"),
 )
 
 # 「パラメーターを挿入」のチップ。(挿入する文字, 画面の名前)
 PARAMETERS = (
-    ("{title}", "作品名"), ("{author}", "著者"), ("{publisher}", "出版社"), ("{label}", "レーベル"),
+    ("{title}", "作品名"), ("{author}", "著者"), ("{publisher}", "出版社"), ("{label}", "出版元"),
     ("{number:2}", "巻番号(2 桁)"), ("{number:3}", "巻番号(3 桁)"), ("{unit}", "単位(巻 / 話)"),
     ("{kind}", "種別(漫画 / 小説)"), ("{year}", "発売年"),
 )
 
-# パスの例に使う値。2 つ目はレーベル・発売年・著者が空の巻(`[...]` の省略と、空欄で対象外になるのを見せる)
+# パスの例に使う値。2 つ目は出版元・発売年・著者が空の巻(`[...]` の省略と、空欄で対象外になるのを見せる)
 EXAMPLE_VALUES = (
     ("値がそろった巻", NameValues({"title": "お気楽領主の楽しい領地防衛", "author": "作者 太郎", "publisher": "出版社X",
-                                 "label": "レーベルY", "kind": "漫画", "year": "2020"}, "volume", 3, 3)),
-    ("レーベル・発売年・著者が空の話", NameValues({"title": "ある作品", "author": None, "publisher": "出版社X",
+                                 "label": "出版元Y", "kind": "漫画", "year": "2020"}, "volume", 3, 3)),
+    ("出版元・発売年・著者が空の話", NameValues({"title": "ある作品", "author": None, "publisher": "出版社X",
                                             "label": None, "kind": "漫画", "year": None}, "episode", 12, 12)),
 )
 

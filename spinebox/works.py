@@ -771,7 +771,7 @@ def _set_volume_field(c, volume_id: int, field: str, value: str | None, source: 
 
 
 def edit_volume_fields(conn: sqlite3.Connection, volume_id: int, changes: dict[str, object]) -> None:
-    """巻の書誌(出版社・レーベル・発売日・ISBN)を手で直す。再取得・再計算で上書きしない。"""
+    """巻の書誌(出版社・出版元・発売日・ISBN)を手で直す。再取得・再計算で上書きしない。"""
     unknown = set(changes) - set(VOLUME_EDITABLE_FIELDS)
     if unknown:
         raise InvalidValue(f"直せない項目: {', '.join(sorted(unknown))}")

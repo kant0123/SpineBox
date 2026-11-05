@@ -798,7 +798,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.patch("/api/volumes/{volume_id}/metadata")
     def edit_volume_metadata(volume_id: int, body: VolumeMetaIn, conn: sqlite3.Connection = Depends(get_conn)):
-        """巻の書誌(出版社・レーベル・発売日・ISBN)を手で直す。再取得・再計算で上書きしない。"""
+        """巻の書誌(出版社・出版元・発売日・ISBN)を手で直す。再取得・再計算で上書きしない。"""
         sent = body.model_fields_set & set(works.VOLUME_EDITABLE_FIELDS)
         if not sent:
             raise HTTPException(422, "直す項目を指定してください(" + "・".join(works.VOLUME_EDITABLE_FIELDS) + ")")

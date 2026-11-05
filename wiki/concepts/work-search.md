@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
-updated: 2026-11-03
+updated: 2026-11-05
 related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, overview]
 ---
 
@@ -17,7 +17,7 @@ related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, 
   割り当てた巻の名前を、1 つずつ正規化して改行でつないだもの。ジャンル・タグの JSON 配列は要素ごとに別の行にする(要素をまたいで語が当たらないように)。入口: `spinebox/search.py:109 _index_work()`
 - 正規化した文字列には英数字・かな・漢字しか残らないので、改行をまたぐ 3 文字(別の項目の末尾と先頭)には検索語が当たらない
 - 統合された作品(`merged_into`)は索引から消す。統合先の作品が、吸収した作品名を別名として・巻の名前ごと持つ([[work-grouping]])
-- 公開 DB の結線(#50。[[metadata-linking]])が足す別名(`work_aliases` の `source = 'public_db'`)も、外されていなければ入る。巻の書誌(`volume_fields` の出版社・レーベル・副題など)は
+- 公開 DB の結線(#50。[[metadata-linking]])が足す別名(`work_aliases` の `source = 'public_db'`)も、外されていなければ入る。巻の書誌(`volume_fields` の出版社・出版元・副題など)は
   索引に入れない(作品単位の出版社・ジャンル・タグで足りる。巻の書誌を引きたくなったら、`volume_fields` の変更にもトリガーが要る)
 - 小説(EPUB・テキスト。#57。[[novel-reader]])の巻も画像の巻と同じ `volumes` の行で、作品に割り当てられれば作品名・巻の名前が索引に入る(テストで確認)。
 - 巻の名前は**見えなくなった巻も含めて**割り当てがあれば入れる(missing の巻の名前で当たっても、一覧は見えている巻を持つ作品しか出さない)
