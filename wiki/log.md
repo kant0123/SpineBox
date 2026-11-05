@@ -365,3 +365,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[organize]], [[backend]], [[frontend]]
 - 備考: 同数・ページ数不明は衝突のまま。CBZ 化は元全体で外す(同じ元の中の重複は決めない)。勝った元が別の組で外れたとき先に外した側が戻らない限界は organize に記録。
 - 更新(レビュー対応): [[recurring-review-findings]]。単巻と CBZ 化する元を同時に比べる(agy の指摘を再現して修正)。
+
+## [2026-11-05] ingest | #147 テンプレートの {author} は複数著者を「・」で区切る
+- 更新: [[organize]]

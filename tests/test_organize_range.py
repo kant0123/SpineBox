@@ -347,6 +347,16 @@ def test_duplicate_names_with_equal_file_counts_stay_conflicts(env):
     assert again[f"漫画/スキャン/{TITLE} 第2巻.cbz"]["status"] == "move"
 
 
+def test_multiple_authors_are_joined_with_nakaguro_in_names(env):
+    v1 = vid_of(env, f"漫画/作者A/{TITLE} 1巻.cbz")
+    works.update_fields(env.conn, work_of(env, v1), author=f"甲 太郎{works.AUTHOR_SEPARATOR}乙 花子", set_author=True)
+    items = by_from(plan_range(env, "漫画/作者A", "{title} ({author}) 第{number:2}{unit}", ""))
+    assert items[f"漫画/作者A/{TITLE} 1巻.cbz"]["output_rel_path"] == f"漫画/作者A/{TITLE} (甲 太郎・乙 花子) 第01巻.cbz"
+    # 保存値は変えない
+    assert works.AUTHOR_SEPARATOR in env.conn.execute(
+        "SELECT value FROM work_fields WHERE work_id = ? AND field = 'author'", (work_of(env, v1),)).fetchone()[0]
+
+
 def test_missing_values_and_brackets(env):
     v1 = vid_of(env, f"漫画/作者A/{TITLE} 1巻.cbz")
     with db.transaction(env.conn) as c:

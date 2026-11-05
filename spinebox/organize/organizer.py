@@ -310,6 +310,8 @@ class Organizer:
                 # 種別は作品の項目(manga / novel)を日本語にする。未決でも小説の巻(EPUB・テキスト)は小説と分かる
                 kind = fields.get(works.FIELD_KIND) or ("novel" if row["format"] else None)
                 fields["kind"] = KIND_LABELS.get(kind)
+                if fields.get("author"):  # 複数著者は保存値の「、」ではなく「・」でつなぐ(出力名だけ。保存値は変えない)
+                    fields["author"] = "・".join(a.strip() for a in fields["author"].split(works.AUTHOR_SEPARATOR))
                 vf = vfields.get(vid, {})
                 fields["label"] = vf.get("label")
                 year = re.match(r"\s*(\d{4})", vf.get("released") or "")
