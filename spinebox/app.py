@@ -1067,24 +1067,57 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def organize_get(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
         return organizer(conn).get(op_id)
 
-    def _exclusive(fn):
-        if runner.busy() or not scan_lock.acquire(blocking=False):
-            raise HTTPException(409, "ジョブか整理の処理中です(データ管理の画面で確かめられます)")
-        try:
-            return fn()
-        finally:
-            scan_lock.release()
+    def _organize_label(op: dict, action: str) -> str:
+        base = kind_label(action)
+        kind = op.get("kind")
+        if kind == "range":
+            scope = op.get("scope") or {}
+            target = f"{scope.get('root_path', '')}/{scope['path']}" if scope.get("path") else scope.get("root_path", "")
+            return f"{base}(範囲: {target})" if target else f"{base}(範囲指定)"
+        if kind == "rename":
+            return f"{base}(改名・移動)"
+        if kind == "intake":
+            return f"{base}(受け入れ: {op.get('source_rel_path') or ''})"
+        rel = op.get("source_rel_path") or ""
+        return f"{base}: {rel}" if rel else base
+
+    def _run_organize_job(kind: str, label: str, params: dict, fn):
+        found: dict = {}
+
+        def run(ctx):
+            try:
+                res = fn(ctx)
+                found["result"] = res
+                return {"volumes": len(res.get("volumes") or [])}
+            except OrganizeError as e:
+                found["exc"] = e
+                raise
+
+        job = run_job_now(kind, params, fn=run, label=label)
+        if "exc" in found:
+            raise found["exc"]
+        _finished_or_raise(job, label)
+        return found["result"]
 
     @app.post("/api/organize/{op_id}/execute")
     def organize_execute(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
-        return _exclusive(lambda: organizer(conn).execute(op_id))
+        org = organizer(conn)
+        op = org.get(op_id)
+        return _run_organize_job("organize_execute", _organize_label(op, "organize_execute"), {"op_id": op_id},
+                                 lambda ctx: org.execute(op_id, ctx=ctx))
 
     @app.post("/api/organize/{op_id}/undo")
     def organize_undo(op_id: str, conn: sqlite3.Connection = Depends(get_conn)):
-        res = _exclusive(lambda: organizer(conn).undo(op_id))
-        if res.get("kind") == "intake":
-            _sync_works(conn)  # 書庫から外れた巻の分、作品の割り当てを取り直す
-        return res
+        org = organizer(conn)
+        op = org.get(op_id)
+
+        def run(ctx):
+            res = org.undo(op_id, ctx=ctx)
+            if res.get("kind") == "intake":
+                _sync_works(conn)  # 書庫から外れた巻の分、作品の割り当てを取り直す
+            return res
+
+        return _run_organize_job("organize_undo", _organize_label(op, "organize_undo"), {"op_id": op_id}, run)
 
     # --- 受け入れ(#66)。受け入れフォルダ → 同期で検出 → 整理案のプレビュー → 承認で書庫へ。
     #     同期とプレビューは何も動かさない。動かすのは承認(approve)だけで、履歴から元に戻せる ---
@@ -1126,7 +1159,20 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def inbox_approve(body: InboxItemsIn, conn: sqlite3.Connection = Depends(get_conn)):
         """選んだものだけを書庫へ入れる(1 件ずつ。失敗した件は巻き戻し済みで、受け入れフォルダに残る)。"""
         decisions = [d.to_decision() for d in body.items]
-        return _exclusive(lambda: intake(conn).approve(decisions))
+        found: dict = {}
+
+        def run(ctx):
+            res = intake(conn).approve(decisions, ctx=ctx)
+            found["result"] = res
+            results = res.get("results") or []
+            ok = [r for r in results if r.get("ok")]
+            failed = len(results) - len(ok)
+            vols = sum(len((r.get("op") or {}).get("volumes") or []) for r in ok)
+            return {"volumes": vols, **({"errors": failed} if failed else {})}
+
+        job = run_job_now("inbox_approve", {"count": len(decisions)}, fn=run)
+        _finished_or_raise(job, kind_label("inbox_approve"))
+        return found["result"]
 
     # --- データ管理のジョブ(#83) ------------------------------------------------------------
 

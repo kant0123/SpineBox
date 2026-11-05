@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: データ管理とジョブ(#83)。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期を 1 本ずつ動かす待ち行列と履歴(jobs 表)。依頼は待ち行列、その場で結果を返す API は他が動いていれば 409、中止は区切りで止める。1 本ずつにした理由と却下した代替案
-updated: 2026-11-05
+updated: 2026-11-06
 related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize, follow]
 ---
 
@@ -16,7 +16,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | パス | 役割 |
 | --- | --- |
 | `spinebox/jobs.py:138 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
-| `spinebox/datajobs.py:82 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
+| `spinebox/datajobs.py:88 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
 | `spinebox/app.py:302 run_job_now()` / `spinebox/app.py:531 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:183 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:136 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
@@ -36,8 +36,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る |
 | `background_analysis` / `background_metadata` / `background_follow` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
 
-**整理処理(CBZ 化・改名・受け入れの承認)はジョブに入れない**(画面には #84 の「整理」節としてデータ管理タブの下に置き、`#/data/organize` から入れる。ジョブの待ち行列・履歴には載らない)。 蔵書を動かすので、今どおりプレビューを見てから明示的に実行する
-(GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ジョブはどれも蔵書を読むだけ。
+**整理処理(CBZ 化・改名・受け入れの承認)の計画(プレビュー)はジョブの自動スケジューリングに入れない**(画面には #84 の「整理」節としてデータ管理タブの下に置き、`#/data/organize` から入れる)。蔵書を動かすので、今どおりプレビューを見てから明示的に実行する(GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ただし、ユーザーが実行・元に戻す・承認ボタンを押した際は、各画面のボタンと同じく `JobRunner.run_now` (`origin = "button"`) を通じて即時実行され、進捗通知とともにタスクセンターの実行中・履歴(`organize_execute`, `organize_undo`, `inbox_approve`)に記録される(#155)。
 
 一覧の「スキャン」・重複の「重複を調べる」・作品ページの「情報を取得」・受け入れの「同期」など、各画面に残るボタンは同じジョブの上で動き、
 `origin = "button"` で同じ履歴に残る。作品一覧のヘッダーにあった「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」は #102 で外し、
@@ -83,5 +82,5 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 - [[backend]] — API 契約(`/api/jobs`)とロックの扱い
 - [[frontend]] — 画面(管理のデータ管理・タスクセンターのタブ)
 - [[duplicate-detection]] / [[cover-thumbnails]] / [[metadata-linking]] / [[volume-split]] / [[inbox]] — 各ジョブの中身
-- [[organize]] — ジョブに入れない整理処理(同じロックで排他)
+- [[organize]] — 整理処理(プレビューは自動スケジューリング外、実行・元に戻すは同じロックで即時ジョブとしてタスクセンターに記録)
 - [[follow]] — `follow_check` の中身(続刊・欠けの調べ方)

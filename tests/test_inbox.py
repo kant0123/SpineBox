@@ -478,7 +478,7 @@ def client(env):
 
 def test_api_flow_sync_preview_approve_undo(env, client):
     assert client.get("/api/inbox").json()["items"] == []
-    cbz(env.inbox / f"{FOO} 第03巻.cbz", "foo3")
+    cbz(env.inbox / "サブ" / f"{FOO} 第03巻.cbz", "foo3")
     cbz(env.inbox / f"{BAR} 第01巻.cbz", "bar1")
     untouched = (tree(env.lib), tree(env.inbox))
     synced = client.post("/api/inbox/sync").json()
@@ -491,6 +491,7 @@ def test_api_flow_sync_preview_approve_undo(env, client):
     res = client.post("/api/inbox/approve", json={"items": [
         {"source_id": item["source_id"], "expect_outputs": preview["items"][0]["expect_outputs"]}]}).json()
     assert res["results"][0]["ok"] is True
+    assert not (env.inbox / "サブ").exists()  # 受け入れ後、空になった受け入れ元のサブフォルダは削除される
     op_id = res["results"][0]["op"]["op_id"]
     assert len(client.get("/api/volumes").json()) == 3
     hist = client.get("/api/organize").json()
@@ -498,6 +499,11 @@ def test_api_flow_sync_preview_approve_undo(env, client):
     assert client.post(f"/api/organize/{op_id}/undo").json()["state"] == "undone"
     assert len(client.get("/api/volumes").json()) == 2
     assert (tree(env.lib), tree(env.inbox)) == untouched
+    jobs = client.get("/api/jobs").json()["history"]
+    assert [(j["kind"], j["origin"], j["status"]) for j in jobs[:3]] == [
+        ("organize_undo", "button", "succeeded"),
+        ("inbox_approve", "button", "succeeded"),
+        ("inbox_sync", "button", "succeeded")]
 
 
 def test_api_validation_and_numbers(env, client):

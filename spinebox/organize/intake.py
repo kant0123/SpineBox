@@ -454,12 +454,16 @@ class Intake:
 
     # --- 承認 --------------------------------------------------------------------------
 
-    def approve(self, decisions: list[Decision]) -> dict:
+    def approve(self, decisions: list[Decision], *, ctx=None) -> dict:
         """選ばれたものを順に書庫へ入れる。1 件の失敗(巻き戻し済み)で残りを止めない。"""
         results = []
-        for d in decisions:
+        if ctx is not None and decisions:
+            ctx.step("受け入れの承認")
+        for i, d in enumerate(decisions):
             state = works._State(self.conn)  # 前の件で作品が増えたかもしれない
             item, plan = self.evaluate(d, state=state, inspect=True)
+            if ctx is not None:
+                ctx.progress(i, len(decisions), item.get("rel_path") or item.get("name") or f"source {d.source_id}")
             if plan is None:
                 results.append({"source_id": d.source_id, "ok": False, "item": item,
                                 "error": "取り込めません: " + ("、".join(item["reasons"]) or "確認が要ります")})
@@ -470,13 +474,15 @@ class Intake:
                 continue
             op = self.org._save_plan(plan)
             try:
-                done = self.org.execute(op["op_id"])
+                done = self.org.execute(op["op_id"], ctx=ctx)
             except OrganizeError as e:
                 results.append({"source_id": d.source_id, "ok": False, "item": item, "op": e.op, "error": str(e)})
                 continue
             warning = self._assign(done, plan["work"])
             results.append({"source_id": d.source_id, "ok": True, "item": item, "op": done,
                             **({"warning": warning} if warning else {})})
+            if ctx is not None:
+                ctx.progress(i + 1, len(decisions), item.get("rel_path") or item.get("name"))
         return {"results": results}
 
     def _assign(self, op: dict, work: dict) -> str | None:

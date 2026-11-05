@@ -65,10 +65,13 @@ KINDS: list[Kind] = [
          "受け入れフォルダを走査して新しい本を検出し、整理案を作ります(承認は受け入れの画面で)。"),
 ]
 KIND_BY_NAME = {k.kind: k for k in KINDS}
-# 画面の一覧には出さないが、履歴に残る種類(作品ページの「情報を取得」と裏の定期処理)
+# 画面の一覧には出さないが、履歴に残る種類(作品ページの「情報を取得」・整理・受け入れの承認・裏の定期処理)
 EXTRA_LABELS = {"work_metadata": "作品の情報を取得", "background_analysis": "裏の解析(中の巻を調べる)",
                 "background_metadata": "裏の公開データベースの取得",
-                "background_follow": "裏の続刊の確認"}
+                "background_follow": "裏の続刊の確認",
+                "organize_execute": "整理を実行",
+                "organize_undo": "整理を元に戻す",
+                "inbox_approve": "受け入れを承認"}
 
 
 def work_title(c: sqlite3.Connection, work_id: int) -> str:

@@ -407,6 +407,10 @@ def test_range_roundtrip_multiple_works_restores_everything(env):
     assert done["state"] == "done"
     assert (root / "お気楽領主" / "お気楽領主 第02巻.zip").read_bytes() == \
         before[0][str(Path("漫画") / "作者A" / f"{TITLE} 2巻.zip")][0]
+    # 整理後に中身が空になった元のフォルダは削除される(移動しなかった巻が残る「そのほか」は残る)
+    assert not (root / "漫画" / "作者A").exists()
+    assert not (root / "小説").exists()
+    assert (root / "そのほか").exists()
     # 巻 id はそのまま。読書位置・作品の割り当て(手動も)・手動の作品名が残る
     assert vid_of(env, "お気楽領主/お気楽領主 第01巻.cbz") == v1
     assert vid_of(env, "ある小説/ある小説 第01巻.txt") == novel

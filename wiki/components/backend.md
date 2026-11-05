@@ -1,7 +1,7 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-05
+updated: 2026-11-06
 related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -40,7 +40,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/config.py:354 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/stats.py:25 collect()` | 管理の統計タブの数(#85)。数え方の決まりはファイル先頭の docstring |
-| `spinebox/jobs.py:138 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:82 DataJobs`([[data-jobs]]) |
+| `spinebox/jobs.py:138 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:88 DataJobs`([[data-jobs]]) |
 | `spinebox/thumbs.py:63 Thumbnails` | 表紙のサムネイル。一覧からは `Library.open(extract=False)` で開ける巻だけ作る([[cover-thumbnails]]) |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
@@ -87,14 +87,14 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/volumes/{id}/pages/{index}` | 画像のバイト列。`ETag` と `Cache-Control: private, max-age=3600`、`If-None-Match` 一致で 304 |
 | `PUT /api/volumes/{id}/progress` | body `{"page": int, "finished": bool, "position"?: 0〜1}`(型は厳密。`"1"` は 422)。保存した値を返す。page はページ数が分かっていれば範囲外を 422。小説は page が区切りの番号、`position` が区切りの中の割合で、`progress` にも `position` が付く。画像の巻の `position` は捨てる |
 | `POST /api/organize/plan` | body `{"volume_id"}` か `{"source_id"}`(どちらか一方)と、任意の `naming`(`"title"` 既定 / `"template"`: 出力先を命名テンプレートで決める)。その巻を含むソース全体の計画。整理の単位は見えている子を持たない巻(分解済みなら子の巻ごと)。問題があれば `state: "blocked"`・`op_id: null`(保存しない)。中の巻を調べていない内側アーカイブは `needs_analysis`(巻 id の配列)で返す。蔵書に書かない |
-| `POST /api/organize/{op_id}/execute` / `.../undo` | 操作(`{"op_id", "state", "volumes": [{"volume_id", "output_rel_path", "new_volume_id", ...}], "warnings", "problems", "error", ...}`)。始められない・失敗(巻き戻し済み)は 409 で `{"detail", "op"}`。ジョブの実行中・待ち中も 409 |
+| `POST /api/organize/{op_id}/execute` / `.../undo` | 操作(`{"op_id", "state", "volumes": [{"volume_id", "output_rel_path", "new_volume_id", ...}], "warnings", "problems", "error", ...}`)。始められない・失敗(巻き戻し済み)は 409 で `{"detail", "op"}`。ジョブの実行中・待ち中も 409。実行時は `JobRunner.run_now` (`origin="button"`) で走り、タスクセンター(`GET /api/jobs`)の実行中・履歴(`organize_execute`, `organize_undo`)に記録される(#155) |
 | `POST /api/organize/rename-plan` | body `{"work_id", "exclude_volume_ids"}`。作品の全巻をテンプレートの名前へ改名・移動する計画(`kind: "rename"`)。`items` に各巻の `status`(move / unchanged / excluded / conflict / skipped)・`reason`・`from_rel_path`・`output_rel_path`。動かす巻が無ければ `blocked`。実行・元に戻すは上と同じエンドポイント |
 | `POST /api/organize/range-plan` | body `{"root_id", "path"?, "file_template"?, "folder_template"?, "exclude_volume_ids"?, "include_cbz"?}`。蔵書ルートの中の範囲(`path` は蔵書ルートからの相対。空ならルート全体、サブフォルダも対象)の巻を、ファイル名・フォルダーのテンプレートで改名・移動する計画(`kind: "range"`。両方空ならファイル名の整理だけ)。`include_cbz: true` なら 1 巻 = 1 CBZ でない元も CBZ 化する(#133。`items` の status に `cbz`、`conversion: true` と `cbz_sources` が付く)。`items` は `rename-plan` と同じ形で、整理した内容は各 item の `changes`。同じ名前の巻はファイル数が多い方を残し、少ない方は `skipped`(`superseded_by` に残した巻の id、`page_count` はファイル数。#143)。範囲の書き方が不正は 422、蔵書フォルダが無いのは 404、テンプレートが不正は 422。実行・元に戻すは `/api/organize/{op_id}/execute`・`undo`([[organize]]) |
 | `GET /api/organize/range/options` | 整理画面の選択肢(読むだけ)。`{"roots": [{id, path, online}], "defaults": {file_template, folder_template}(設定の `name_template` を `{}` 記法へ読み替えたもの), "presets": [{label, file_template, folder_template}], "parameters": [{token, label}]}` |
 | `POST /api/organize/range/example` | body `{"file_template", "folder_template", "path"}`。パスの例 `{"error": str \| null, "examples": [{label, path, reason}]}`。入力のたびに呼ぶので、テンプレートが不正でも 422 にせず `error` に理由を入れる |
 | `GET /api/organize/range/folders?root_id&path` | 範囲を選ぶためのフォルダの直下のフォルダ名 `{root_id, path, parent, folders}`(読むだけ。作業場・退避と「.」で始まるものは出さない)。蔵書フォルダがオフラインは 422 |
 | `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない)。各操作に `kind`(cbz / rename / range / intake)・`naming`・`template` |
-| `GET /api/inbox` / `POST /api/inbox/sync` / `POST /api/inbox/preview` / `POST /api/inbox/approve` | 受け入れ([[inbox]])。`{"inboxes": [{path, library, problems, synced_at}], "items": [...]}`(sync は `volumes`・`offline_roots` も)。preview・approve の body は `{"items": [{"source_id", "work_id"?, "new_title"?, "numbers"?, "skip_volume_ids"?, "expect_outputs"?}]}`。approve は `{"results": [{source_id, ok, item, op?, error?, warning?}]}`(HTTP 200 でも項目ごとに失敗がありうる)。sync・approve はスキャンと同じロックで、実行中は 409。preview と一覧は何も書かない |
+| `GET /api/inbox` / `POST /api/inbox/sync` / `POST /api/inbox/preview` / `POST /api/inbox/approve` | 受け入れ([[inbox]])。`{"inboxes": [{path, library, problems, synced_at}], "items": [...]}`(sync は `volumes`・`offline_roots` も)。preview・approve の body は `{"items": [{"source_id", "work_id"?, "new_title"?, "numbers"?, "skip_volume_ids"?, "expect_outputs"?}]}`。approve は `{"results": [{source_id, ok, item, op?, error?, warning?}]}`(HTTP 200 でも項目ごとに失敗がありうる)。sync・approve はスキャンと同じロックで、実行中は 409。approve は `JobRunner.run_now` (`origin="button"`) で走り、タスクセンターの履歴(`inbox_approve`)に記録される(#155)。preview と一覧は何も書かない |
 | `GET /api/jobs` / `GET /api/jobs/{id}` | データ管理([[data-jobs]])。`{"current": ジョブ \| null, "queue": [...], "history": [...]}`(履歴は新しい順・`limit` 既定 50)。ジョブは `{id, kind, label, origin (jobs / button / background), params, status (queued / running / succeeded / failed / cancelled), queued_at, started_at, finished_at, done, total, current, step, runs, summary, error, cancel_requested, cancellable}`。無い id は 404 |
 | `GET /api/jobs/catalog` | 画面に並べるジョブ `{"kinds": [{kind, group, label, description, count, count_text, available, unavailable_reason, options}]}`。件数を数えられなければ null |
 | `POST /api/jobs` / `POST /api/jobs/{id}/cancel` | body `{"kind", "params"?: {"all"?: bool}(`metadata`)/ {"work_ids"?: [int]}(`follow_check`)}` を待ち行列に入れて 202 + ジョブ(同じジョブが待ち・実行中ならそれ)。知らない種類・指定は 422、取得元が無効・受け入れフォルダが無いなど動かせない設定は 409。中止は待ちなら取り下げ、実行中は区切りで止める。終わったジョブ・裏の定期処理は 409 |
