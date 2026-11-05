@@ -8,7 +8,8 @@
   1 ソースに複数巻があっても、全巻の CBZ 化と検証が済むまで元にも出力先にも触らない
 - 元に戻す: 作った CBZ を `trash/<操作ID>/created/` へ移し、元を元の場所へ戻す。どちらも消さない
 - 移動は 1 つずつ操作ジャーナル(organize_steps)に pending → done で記録し、途中で失敗したら done の手順を逆順に戻す。
-  出力のために作ったフォルダも mkdir として記録し、巻き戻し・元に戻すで空なら消す(蔵書には何も残さない)
+  出力のために作ったフォルダを mkdir、元の移動・退避で空になった親フォルダを rmdir として記録し、巻き戻し・元に戻すで
+  元の状態に戻す(空になった元のフォルダは残さず、元に戻せばフォルダも復活する)
 - 出力名は巻の表示名(naming="title")か命名テンプレート(naming="template"。template.py)
 - 改名・移動だけの整理(kind="rename"): 既に 1 巻 = 1 CBZ の巻を、作品単位でテンプレートの名前へ移す。
   巻 id を変えずにソースのパスを付け替えるので、読書位置・作品の割り当て・指紋・重複の却下はそのまま残る
@@ -452,14 +453,14 @@ class Organizer:
 
     # --- 実行 ---------------------------------------------------------------
 
-    def execute(self, op_id: str) -> dict:
+    def execute(self, op_id: str, *, ctx=None) -> dict:
         op, plan = self._load(op_id)
         if op["state"] != "planned":
             raise OrganizeError(f"この操作は実行できる状態ではありません({op['state']})", self.get(op_id))
         if plan.get("kind") in RENAME_KINDS:
             if plan.get("include_cbz"):
-                return self._execute_range_cbz(op_id, plan)
-            return self._execute_rename(op_id, plan)
+                return self._execute_range_cbz(op_id, plan, ctx=ctx)
+            return self._execute_rename(op_id, plan, ctx=ctx)
         root, base, out_root, out_base = self._roots_of(plan)
         move_only = plan.get("mode") == "move"
         work_dir = out_base / "work" / op_id
@@ -473,35 +474,56 @@ class Organizer:
         self._set_state(op_id, "running")
         done_steps: list[_Step] = []
         built: list[_Built] = []
+        vols = plan["volumes"]
         try:
             if move_only:
                 # 受け入れで、既に 1 巻 = 1 つのファイル(CBZ・EPUB・テキスト)のものは、中身をそのまま
                 # テンプレートの名前で書庫へ改名で移す
-                for v in plan["volumes"]:
+                if ctx is not None:
+                    ctx.step("移動")
+                for i, v in enumerate(vols):
                     b = _Built(v, work_dir, out_root / v["output_rel_path"], page_count=v["page_count"],
                                format=v.get("format"))
                     built.append(b)
                     self._mkdir_steps(op_id, "execute", out_root, out_base, b.output_path, done_steps)
                     self._move_step(op_id, "execute", "move_in", source_path, b.output_path, done_steps)
+                    if ctx is not None:
+                        ctx.progress(i + 1, len(vols), v["output_rel_path"])
+                self._rmdir_empty_parents(op_id, "execute", root, base, source_path, done_steps)
                 self._record_executed(op_id, plan, out_root, built)
                 return self.get(op_id)
             work_dir.mkdir(parents=True, exist_ok=False)
             # 1. 全巻の CBZ を作業場に作る(元にも出力先にもまだ触らない)
-            for i, v in enumerate(plan["volumes"]):
+            if ctx is not None:
+                ctx.step("CBZ 作成")
+            for i, v in enumerate(vols):
+                if ctx is not None:
+                    ctx.progress(i, len(vols), v["title"])
                 b = _Built(v, work_dir / f"{i + 1:04d}.cbz", out_root / v["output_rel_path"])
                 built.append(b)
                 with self.library.open(self.conn, v["volume_id"]) as opened:
                     if not opened.page_names:
                         raise OrganizeError(f"ページの無い巻は整理できません: {v['title']}")
                     b.records = cbz.write_cbz(b.work_path, opened.page_names, opened.read_page)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(vols), v["title"])
             # 2. 全巻を読み直して検証する
-            for b in built:
+            if ctx is not None:
+                ctx.step("検証")
+            for i, b in enumerate(built):
                 cbz.verify_cbz(b.work_path, b.records)
-            # 3. 改名で確定 → 4. 元を退避
-            for b in built:
+                if ctx is not None:
+                    ctx.progress(i + 1, len(built), b.volume["output_rel_path"])
+            # 3. 改名で確定 → 4. 元を退避 → 空になった元の親フォルダを削除
+            if ctx is not None:
+                ctx.step("確定")
+            for i, b in enumerate(built):
                 self._mkdir_steps(op_id, "execute", out_root, out_base, b.output_path, done_steps)
                 self._move_step(op_id, "execute", "commit", b.work_path, b.output_path, done_steps)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(built), b.volume["output_rel_path"])
             self._move_step(op_id, "execute", "trash_original", source_path, trash_path, done_steps)
+            self._rmdir_empty_parents(op_id, "execute", root, base, source_path, done_steps)
             # 5. DB: 新しい CBZ の巻を登録し、読書位置を引き継ぎ、元の巻を「整理済み」にする
             self._record_executed(op_id, plan, out_root, built)
         except BaseException as e:
@@ -594,17 +616,17 @@ class Organizer:
 
     # --- 元に戻す -------------------------------------------------------------
 
-    def undo(self, op_id: str) -> dict:
+    def undo(self, op_id: str, *, ctx=None) -> dict:
         op, plan = self._load(op_id)
         if op["state"] != "done":
             raise OrganizeError(f"この操作は元に戻せる状態ではありません({op['state']})", self.get(op_id))
         if plan.get("kind") in RENAME_KINDS:
             if plan.get("include_cbz"):
-                return self._undo_range_cbz(op_id, plan)
-            return self._undo_rename(op_id, plan)
+                return self._undo_range_cbz(op_id, plan, ctx=ctx)
+            return self._undo_rename(op_id, plan, ctx=ctx)
         root, base, out_root, out_base = self._roots_of(plan)
         if plan.get("mode") == "move":
-            return self._undo_move_in(op_id, plan, root, out_root)
+            return self._undo_move_in(op_id, plan, root, base, out_root, ctx=ctx)
         steps = {s["action"]: s for s in self.conn.execute(
             "SELECT * FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND state = 'done'", (op_id,))}
         trash = steps.get("trash_original")
@@ -633,9 +655,14 @@ class Organizer:
         self._set_state(op_id, "undoing")
         done_steps: list[_Step] = []
         try:
-            for out in outputs:
+            if ctx is not None:
+                ctx.step("元に戻す")
+            for i, out in enumerate(outputs):
                 self._move_step(op_id, "undo", "trash_created", out, created_dir / _rel_posix(out_root, out),
                                 done_steps)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(outputs), _rel_posix(out_root, out))
+            self._mkdir_steps(op_id, "undo", root, base, original, done_steps)
             self._move_step(op_id, "undo", "restore_original", trashed, original, done_steps)
             self._rmdir_created(op_id, done_steps)
             self._record_undone(op_id, plan, out_root, outputs)
@@ -653,7 +680,7 @@ class Organizer:
             raise
         return self.get(op_id)
 
-    def _undo_move_in(self, op_id: str, plan: dict, root: Path, out_root: Path) -> dict:
+    def _undo_move_in(self, op_id: str, plan: dict, root: Path, base: Path, out_root: Path, *, ctx=None) -> dict:
         """受け入れで移しただけ(mode="move")のものを、元の場所へ戻す。移した先のファイルが移したときのままのときだけ。"""
         step = self.conn.execute(
             """SELECT * FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND action = 'move_in'
@@ -675,7 +702,12 @@ class Organizer:
         self._set_state(op_id, "undoing")
         done_steps: list[_Step] = []
         try:
+            if ctx is not None:
+                ctx.step("元に戻す")
+            self._mkdir_steps(op_id, "undo", root, base, original, done_steps)
             self._move_step(op_id, "undo", "restore_original", moved, original, done_steps)
+            if ctx is not None:
+                ctx.progress(1, 1, _rel_posix(root, original))
             self._rmdir_created(op_id, done_steps)
             self._record_undone(op_id, plan, out_root, [moved])
         except BaseException as e:
@@ -743,6 +775,26 @@ class Organizer:
             done_steps.append(_Step(step_id, "mkdir", d, d))
             d.mkdir()
             self._set_step(step_id, "done")
+
+    def _rmdir_empty_parents(self, op_id: str, phase: str, root: Path, base: Path, src: Path,
+                             done_steps: list[_Step]) -> None:
+        """元の移動・退避で空になった親フォルダを、深い方から順に消して rmdir として記録する。
+
+        蔵書ルート・受け入れフォルダ自身と、作業場・退避フォルダの中は消さない。中に他のファイル・フォルダが
+        残っていればそこで止める(空のフォルダだけ消す)。
+        """
+        p = src.parent
+        while fs.is_within(p, root) and p != Path(root) and not fs.is_within(p, base):
+            try:
+                if not p.is_dir() or any(os.scandir(p)):
+                    break
+            except OSError:
+                break
+            step_id = self._journal(op_id, phase, "rmdir", "", str(p))
+            done_steps.append(_Step(step_id, "rmdir", p, p))
+            p.rmdir()
+            self._set_step(step_id, "done")
+            p = p.parent
 
     def _rmdir_created(self, op_id: str, done_steps: list[_Step]) -> None:
         """実行で作ったフォルダを、深い方から空なら消す(元に戻すの最後)。中に何かあれば残す(蔵書を消さない)。"""
@@ -1410,7 +1462,7 @@ class Organizer:
             return "元のファイルが見つかりません(再スキャンしてください)"
         return None
 
-    def _execute_rename(self, op_id: str, plan: dict) -> dict:
+    def _execute_rename(self, op_id: str, plan: dict, *, ctx=None) -> dict:
         moving = [it for it in plan["items"] if it["status"] == ITEM_MOVE]
         try:
             for it in moving:
@@ -1421,11 +1473,17 @@ class Organizer:
         self._set_state(op_id, "running")
         done_steps: list[_Step] = []
         try:
-            for it in moving:
+            if ctx is not None:
+                ctx.step("改名・移動")
+            for i, it in enumerate(moving):
                 root = Path(it["root_path"])
+                base = self.settings.organize_base(root)
                 src, dst = root / it["from_rel_path"], root / it["output_rel_path"]
-                self._mkdir_steps(op_id, "execute", root, self.settings.organize_base(root), dst, done_steps)
+                self._mkdir_steps(op_id, "execute", root, base, dst, done_steps)
                 self._move_step(op_id, "execute", "rename", src, dst, done_steps)
+                self._rmdir_empty_parents(op_id, "execute", root, base, src, done_steps)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(moving), it["output_rel_path"])
             now = db.now()
             with db.transaction(self.conn) as c:
                 for it in moving:
@@ -1493,7 +1551,7 @@ class Organizer:
                       (before["title"], raw, before["name_encoding"], before["number_kind"], before["number_start"],
                        before["number_end"], before["number_evidence"], now, it["volume_id"]))
 
-    def _undo_rename(self, op_id: str, plan: dict) -> dict:
+    def _undo_rename(self, op_id: str, plan: dict, *, ctx=None) -> dict:
         moved = {s["to_path"]: s for s in self.conn.execute(
             """SELECT * FROM organize_steps WHERE op_id = ? AND phase = 'execute' AND action = 'rename'
                AND state = 'done'""", (op_id,))}
@@ -1522,10 +1580,17 @@ class Organizer:
         self._set_state(op_id, "undoing")
         done_steps: list[_Step] = []
         try:
-            for it in reversed(moving):
+            if ctx is not None:
+                ctx.step("元に戻す")
+            for i, it in enumerate(reversed(moving)):
                 root = Path(it["root_path"])
-                self._move_step(op_id, "undo", "restore", root / it["output_rel_path"], root / it["from_rel_path"],
+                base = self.settings.organize_base(root)
+                src = root / it["from_rel_path"]
+                self._mkdir_steps(op_id, "undo", root, base, src, done_steps)
+                self._move_step(op_id, "undo", "restore", root / it["output_rel_path"], src,
                                 done_steps)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(moving), it["from_rel_path"])
             self._rmdir_created(op_id, done_steps)
             now = db.now()
             with db.transaction(self.conn) as c:
@@ -1548,7 +1613,7 @@ class Organizer:
 
     # --- 範囲指定の整理で CBZ 化もまとめて行う(#133) --------------------------------
 
-    def _execute_range_cbz(self, op_id: str, plan: dict) -> dict:
+    def _execute_range_cbz(self, op_id: str, plan: dict, *, ctx=None) -> dict:
         """1 巻 = 1 CBZ の改名・移動と、CBZ 化を 1 つの操作として実行する。
 
         先に CBZ 化する全巻を作業場で作って検証し、その後に改名で確定 → 元のファイル・フォルダを退避、の順に進む。
@@ -1576,33 +1641,52 @@ class Organizer:
         try:
             work_dir.mkdir(parents=True, exist_ok=False)
             # 1. CBZ 化する全巻を作業場に作る(元にも出力先にもまだ触らない)
+            if converting and ctx is not None:
+                ctx.step("CBZ 作成")
             for i, it in enumerate(converting):
+                if ctx is not None:
+                    ctx.progress(i, len(converting), it["title"])
                 b = _Built(it, work_dir / f"{i + 1:04d}.cbz", root / it["output_rel_path"],
                            page_count=it["page_count"])
                 built.append(b)
                 if it.get("epub_pages"):
                     b.records = self._write_epub_cbz(root, it, b.work_path)
-                    continue
-                with self.library.open(self.conn, it["volume_id"]) as opened:
-                    if not opened.page_names:
-                        raise OrganizeError(f"ページの無い巻は CBZ 化できません: {it['title']}")
-                    b.records = cbz.write_cbz(b.work_path, opened.page_names, opened.read_page)
+                else:
+                    with self.library.open(self.conn, it["volume_id"]) as opened:
+                        if not opened.page_names:
+                            raise OrganizeError(f"ページの無い巻は CBZ 化できません: {it['title']}")
+                        b.records = cbz.write_cbz(b.work_path, opened.page_names, opened.read_page)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(converting), it["title"])
             # 2. 全巻を読み直して検証する
-            for b in built:
+            if built and ctx is not None:
+                ctx.step("検証")
+            for i, b in enumerate(built):
                 cbz.verify_cbz(b.work_path, b.records)
+                if ctx is not None:
+                    ctx.progress(i + 1, len(built), b.volume["output_rel_path"])
             # 3. 改名で確定する
-            for b in built:
+            if ctx is not None:
+                ctx.step("確定")
+            total_commit = len(built) + len(moving)
+            for i, b in enumerate(built):
                 self._mkdir_steps(op_id, "execute", root, base, b.output_path, done_steps)
                 self._move_step(op_id, "execute", "commit", b.work_path, b.output_path, done_steps)
-            for it in moving:
+                if ctx is not None:
+                    ctx.progress(i + 1, total_commit, b.volume["output_rel_path"])
+            for i, it in enumerate(moving):
                 src, dst = root / it["from_rel_path"], root / it["output_rel_path"]
                 self._mkdir_steps(op_id, "execute", root, base, dst, done_steps)
                 self._move_step(op_id, "execute", "rename", src, dst, done_steps)
+                self._rmdir_empty_parents(op_id, "execute", root, base, src, done_steps)
+                if ctx is not None:
+                    ctx.progress(len(built) + i + 1, total_commit, it["output_rel_path"])
             # 4. CBZ 化した元を退避フォルダへ移す(削除は、利用者が選んだときだけ確定後に _delete_trashed_originals で)
             for src in sources:
                 original = resolve_source_path(root, src["rel_path"])
                 trashed = base / "trash" / op_id / "original" / src["rel_path"]
                 self._move_step(op_id, "execute", "trash_original", original, trashed, done_steps)
+                self._rmdir_empty_parents(op_id, "execute", root, base, original, done_steps)
             # 5. DB: 新しい CBZ の巻を登録し、読書位置・作品の割り当てを引き継ぐ
             self._record_range_executed(op_id, plan, root, moving, built, sources)
         except BaseException as e:
@@ -1748,7 +1832,7 @@ class Organizer:
             c.execute("UPDATE organize_ops SET state = 'done', error = NULL, executed_at = ?, updated_at = ? WHERE id = ?",
                       (now, now, op_id))
 
-    def _undo_range_cbz(self, op_id: str, plan: dict) -> dict:
+    def _undo_range_cbz(self, op_id: str, plan: dict, *, ctx=None) -> dict:
         """CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は退避の created/ へ、元は元の場所へ戻す。"""
         root = Path(plan["scope"]["root_path"])
         base = self.settings.organize_base(root)
@@ -1815,18 +1899,28 @@ class Organizer:
         self._set_state(op_id, "undoing")
         created_dir = base / "trash" / op_id / "created"
         done_steps: list[_Step] = []
+        total_undo = len(converting) + len(moving)
         try:
-            for it in converting:
+            if ctx is not None:
+                ctx.step("元に戻す")
+            for i, it in enumerate(converting):
                 out = root / it["output_rel_path"]
                 self._move_step(op_id, "undo", "trash_created", out, created_dir / _rel_posix(root, out),
                                 done_steps)
+                if ctx is not None:
+                    ctx.progress(i + 1, total_undo, it["output_rel_path"])
             for src in sources:
                 original = resolve_source_path(root, src["rel_path"])
+                self._mkdir_steps(op_id, "undo", root, base, original, done_steps)
                 self._move_step(op_id, "undo", "restore_original", Path(trashes[str(original)]["to_path"]), original,
                                 done_steps)
-            for it in reversed(moving):
-                self._move_step(op_id, "undo", "restore", root / it["output_rel_path"], root / it["from_rel_path"],
+            for i, it in enumerate(reversed(moving)):
+                src = root / it["from_rel_path"]
+                self._mkdir_steps(op_id, "undo", root, base, src, done_steps)
+                self._move_step(op_id, "undo", "restore", root / it["output_rel_path"], src,
                                 done_steps)
+                if ctx is not None:
+                    ctx.progress(len(converting) + i + 1, total_undo, it["from_rel_path"])
             self._rmdir_created(op_id, done_steps)
             self._record_range_undone(op_id, plan, root, moving, converting, sources)
         except BaseException as e:

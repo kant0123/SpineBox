@@ -112,5 +112,12 @@ export function createMockJobs() {
     return null;
   }
 
-  return { handle };
+  function record(kind: string, label: string, summary: Job["summary"], status: Job["status"] = "succeeded", error: string | null = null): Job {
+    const j = job(++seq, kind, label, "button", status, summary);
+    j.error = error;
+    history.unshift(j);
+    return j;
+  }
+
+  return { handle, record };
 }

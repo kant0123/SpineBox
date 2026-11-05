@@ -335,6 +335,29 @@ def test_existing_buttons_record_the_same_history(app_env):
     assert client.get("/api/thumbnails").json()["job_id"] == history[3]["id"]
 
 
+def test_organize_execute_and_undo_are_recorded_in_jobs_history(app_env):
+    client, _, library = app_env
+    write_zip(library / "サブ" / "整理テスト 第01巻.cbz", [("1.jpg", page_bytes("org"))])
+    client.post("/api/scan")
+    wid = next(w["id"] for w in client.get("/api/works").json()["works"] if w["title"] == "整理テスト")
+    plan = client.post("/api/organize/rename-plan", json={"work_id": wid}).json()
+    assert plan["state"] == "planned"
+    r = client.post(f"/api/organize/{plan['op_id']}/execute")
+    assert r.status_code == 200 and r.json()["state"] == "done"
+    r = client.post(f"/api/organize/{plan['op_id']}/undo")
+    assert r.status_code == 200 and r.json()["state"] == "undone"
+    # 既に元に戻した操作をもう一度戻そうとすると 409 になり、失敗したジョブとしても履歴に残る
+    r = client.post(f"/api/organize/{plan['op_id']}/undo")
+    assert r.status_code == 409 and r.json()["op"]["op_id"] == plan["op_id"]
+    history = client.get("/api/jobs").json()["history"]
+    assert [(j["kind"], j["label"], j["origin"], j["status"]) for j in history[:3]] == [
+        ("organize_undo", "整理を元に戻す(改名・移動)", "button", "failed"),
+        ("organize_undo", "整理を元に戻す(改名・移動)", "button", "succeeded"),
+        ("organize_execute", "整理を実行(改名・移動)", "button", "succeeded"),
+    ]
+    assert history[1]["summary"]["volumes"] >= 1 and history[2]["summary"]["volumes"] >= 1
+
+
 class Blocker:
     """ジョブの途中で止めておく(テストから中止・別の依頼を差し込むため)。"""
 

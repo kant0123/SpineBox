@@ -233,7 +233,8 @@ def test_rename_roundtrip_keeps_state_on_same_volume(env):
         f"{TITLE} 第01巻.cbz", f"{TITLE} 第02巻.cbz", f"{TITLE} 第04巻.cbz"]
     assert (root / TITLE / f"{TITLE} 第02巻.cbz").read_bytes() == before[0][str(Path("別スキャン") / f"{TITLE} 第2巻.cbz")][0]
     assert not (root / "受け入れ" / f"{TITLE} 1巻.cbz").exists()
-    assert (root / "受け入れ").is_dir()  # 空になった元のフォルダも消さない
+    assert not (root / "受け入れ").exists()  # 空になった元のフォルダは削除される
+    assert not (root / "別スキャン").exists()
     # 巻 id はそのまま。読書位置・作品・重複の却下が残り、名前と番号は新しいファイル名のもの
     assert vid_of(env, f"{TITLE}/{TITLE} 第01巻.cbz") == v1
     assert progress(env, v1) == (1, False) and progress(env, v2b) == (2, True)
@@ -436,10 +437,12 @@ def test_rename_execute_rechecks_target_and_undo_rechecks_file(env):
 
 def test_rename_undo_failure_midway_returns_to_executed_state(env, monkeypatch):
     o = organizer(env)
-    plan = o.plan_rename(work_of(env, vid_of(env, "ある作品 第5話.cbz")))
+    work = work_of(env, vid_of(env, f"受け入れ/{TITLE} 1巻.cbz"))
+    plan = o.plan_rename(work, exclude_volume_ids=[vid_of(env, f"{TITLE} 2巻.cbz")])
     o.execute(plan["op_id"])
+    assert not (env.root / "受け入れ").exists()
     after = full_snapshot(env.root)
-    v = vid_of(env, "ある作品/ある作品 第05話.cbz")
+    v = vid_of(env, f"{TITLE}/{TITLE} 第01巻.cbz")
 
     def broken(*a, **kw):
         raise RuntimeError("DB の更新に失敗")
@@ -450,7 +453,45 @@ def test_rename_undo_failure_midway_returns_to_executed_state(env, monkeypatch):
     op = o.get(plan["op_id"])
     assert op["state"] == "done" and "元に戻せませんでした" in op["error"]
     assert full_snapshot(env.root) == after  # 戻したファイルも、消したフォルダも実行済みの状態へ戻る
-    assert vid_of(env, "ある作品/ある作品 第05話.cbz") == v
+    assert vid_of(env, f"{TITLE}/{TITLE} 第01巻.cbz") == v
+
+
+def test_empty_source_folders_are_removed_deepest_first_and_non_empty_kept(make_settings, tmp_path):
+    """整理後に空になった元のフォルダは深い方から削除し、他のファイルが残る親フォルダは残す。元に戻せばフォルダも復活する。"""
+    long_dir = "栽培チートで最強菜園～え、ただの家庭菜園ですけど？～ 5巻 (デジタル版ガンガンコミックスＵＰ！) - 九頭七尾（GA文庫／ＳＢクリエイティブ刊） & 涼 & ごれ"
+    root = tmp_path / "lib"
+    cbz(root / "受け入れ" / long_dir / f"{TITLE} 5巻.cbz", "v5")
+    (root / "受け入れ" / "メモ.txt").write_text("残すファイル", encoding="utf-8")
+    write_zip(root / "深い" / "親" / "子" / f"{TITLE} 6巻.zip", [("001.jpg", page_bytes("v6"))])
+    settings = make_settings(root)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    works.sync(conn)
+    env = SimpleNamespace(conn=conn, settings=settings, root=root,
+                          library=Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes)))
+    before = full_snapshot(root)
+    o = organizer(env)
+
+    # 1. 改名・移動: 空になった long_dir は消え、メモ.txt がある「受け入れ」は残る
+    v5 = vid_of(env, f"受け入れ/{long_dir}/{TITLE} 5巻.cbz")
+    rename_plan = o.plan_rename(work_of(env, v5))
+    o.execute(rename_plan["op_id"])
+    assert (root / TITLE / f"{TITLE} 第05巻.cbz").is_file()
+    assert not (root / "受け入れ" / long_dir).exists()
+    assert (root / "受け入れ" / "メモ.txt").is_file()
+
+    # 2. CBZ 化(テンプレート): 空になった「深い/親/子」が深い方からすべて消える
+    v6 = vid_of(env, f"深い/親/子/{TITLE} 6巻.zip")
+    cbz_plan = o.plan(volume_id=v6, naming="template")
+    o.execute(cbz_plan["op_id"])
+    assert (root / TITLE / f"{TITLE} 第06巻.cbz").is_file()
+    assert not (root / "深い").exists()
+
+    # 3. 元に戻すと、消えた元のフォルダもすべて元通りに復活する
+    o.undo(cbz_plan["op_id"])
+    o.undo(rename_plan["op_id"])
+    assert full_snapshot(root) == before
+    conn.close()
 
 
 def test_cbz_with_template_execute_rechecks_drive(env):

@@ -121,6 +121,22 @@ describe("整理の節", () => {
     const organize = screen.getByRole("heading", { name: "整理" });
     await waitFor(() => expect(document.activeElement).toBe(organize));
   });
+
+  it("整理を実行・元に戻すとタスクセンターの履歴にも残る", async () => {
+    window.location.hash = "#/data";
+    render(<App />);
+    const section = (await screen.findByRole("heading", { name: "整理" })).closest("section")!;
+    await within(section).findByRole("option", { name: "E:/漫画" });
+    fireEvent.click(within(section).getByRole("button", { name: "プレビュー" }));
+    fireEvent.click(await within(section).findByRole("button", { name: /^実行\(/ }));
+    fireEvent.click(await within(section).findByRole("button", { name: "まとめて元に戻す" }));
+    await within(section).findByText("元に戻しました");
+    window.location.hash = "#/admin/tasks";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    const history = (await screen.findByRole("heading", { name: "履歴" })).parentElement!;
+    expect(within(history).getByText("整理を元に戻す(範囲の整理)")).toBeTruthy();
+    expect(within(history).getByText("整理を実行(範囲の整理)")).toBeTruthy();
+  });
 });
 
 describe("summaryText", () => {

@@ -383,3 +383,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-05] ingest | PR #154 (#153) 整理画面の競合の不具合を直し、CBZ 化を巻単位にし、画像だけの EPUB・元の削除に対応する
 - 更新: [[organize]], [[frontend]], [[novel-reader]], [[bookmarks]], [[inbox]], [[data-jobs]], [[work-grouping]](後ろ 4 つはコード参照の行番号だけ)
 - 備考: #153。既定でファイル数の多い方にチェックが入らない原因は、CBZ 化する元が 1 組で負ける(または同数の組を含む)と元全体を止め、その元が勝っていた組まで両方とも整理しないにしていたこと。選び直すと組の全部が整理しないになる原因は、画面が前に整理しないにした巻を選び直しても `exclude_volume_ids` から抜かなかったことと、同じ元全体の巻き込み。負けた巻だけを外す・同数は選択待ち・利用者の選択も `superseded_by` で返す、に変えた。CLAUDE.md・`.agent/rules/spinebox-invariants.md`・`review/domain_invariants.json` の「元は削除しない」に、利用者が選んで確認した削除だけを例外として書き足した。
+
+## [2026-11-06] ingest | PR #155 (#155) 整理後に空になった元のフォルダを削除し、整理タスクをタスクセンターに表示
+- 更新: [[organize]], [[data-jobs]], [[backend]]
+- 備考: #155。整理後(CBZ化・作品単位改名・範囲指定整理・受け入れ)に空になった元の親フォルダをルート直下まで再帰的(最深部から順)に削除するようにした。削除したフォルダはジャーナルに `rmdir` ステップとして記録され、元に戻す(undo)の際は `_mkdir_steps` で復元先フォルダを再作成してからファイルを戻す(undo失敗時のロールバックも対応)。また、整理の実行(`execute`)・元に戻す(`undo`)および受け入れ承認(`approve`)が `JobRunner.run_now` (`origin="button"`) 経由で実行されるようにし、進捗通知とともにタスクセンター(`GET /api/jobs`)の実行中および履歴(`organize_execute`, `organize_undo`, `inbox_approve`)に表示されるようにした。

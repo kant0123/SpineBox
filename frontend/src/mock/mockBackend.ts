@@ -275,14 +275,31 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (!m || method !== "POST") return null;
     const op = ops.find((o) => o.op_id === decodeURIComponent(m[1]));
     if (!op) return json(404, { detail: "整理の操作が見つかりません" });
+    const kindName: Record<string, string> = { cbz: "CBZ 化", intake: "受け入れ", rename: "改名・移動", range: "範囲の整理" };
+    const suffix = op.kind && kindName[op.kind] ? `(${kindName[op.kind]})` : "";
     if (m[2] === "execute") {
-      if (op.state !== "planned") return json(409, { detail: `この操作は実行できる状態ではありません(${op.state})`, op });
+      if (op.state !== "planned") {
+        const detail = `この操作は実行できる状態ではありません(${op.state})`;
+        jobs.record("organize_execute", `整理を実行${suffix}`, null, "failed", `OrganizeError: ${detail}`);
+        return json(409, { detail, op });
+      }
       op.state = "done";
       op.executed_at = "2026-11-01T00:00:05+00:00";
+      jobs.record("organize_execute", `整理を実行${suffix}`, { volumes: op.volumes.length });
     } else {
-      if (op.state !== "done") return json(409, { detail: `この操作は元に戻せる状態ではありません(${op.state})`, op });
+      if (op.state !== "done") {
+        const detail = `この操作は元に戻せる状態ではありません(${op.state})`;
+        jobs.record("organize_undo", `整理を元に戻す${suffix}`, null, "failed", `OrganizeError: ${detail}`);
+        return json(409, { detail, op });
+      }
+      if (op.delete_originals) {
+        const detail = "元のファイルを削除した整理は元に戻せません";
+        jobs.record("organize_undo", `整理を元に戻す${suffix}`, null, "failed", `OrganizeError: ${detail}`);
+        return json(409, { detail, op });
+      }
       op.state = "undone";
       op.undone_at = "2026-11-01T00:00:09+00:00";
+      jobs.record("organize_undo", `整理を元に戻す${suffix}`, { volumes: op.volumes.length });
     }
     return json(200, op);
   }
@@ -413,6 +430,10 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     }
     if (path.startsWith("/api/inbox")) {
       const r = inbox.handle(method, path, parsed);
+      if (r && method === "POST" && path === "/api/inbox/approve" && r.status === 200) {
+        const results = (r.body as { results?: { ok?: boolean }[] }).results ?? [];
+        jobs.record("inbox_approve", "受け入れを承認", { volumes: results.filter((x) => x.ok).length, errors: results.filter((x) => !x.ok).length });
+      }
       if (r) return json(r.status, r.body);
     }
     if (path.startsWith("/api/organize/range")) {
