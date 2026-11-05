@@ -552,6 +552,35 @@ def test_include_cbz_keeps_the_source_with_more_files(env):
     assert again["比較/画像少"]["superseded_by"] == [single["volume_id"]]
 
 
+def test_include_cbz_conversion_is_compared_with_tied_single_volumes(env):
+    # 1 巻 = 1 CBZ どうしが同数(5)で衝突していても、同じ名前になる CBZ 化の元(2 ファイル)はそれらと比べて譲る。
+    # 単巻どうしの判定だけで終えると、ファイル数の少ない元が確定して元が退避されてしまう
+    cbz(env.root / "比較" / "甲" / "a.cbz", "a", 5)
+    cbz(env.root / "比較" / "乙" / "b.cbz", "b", 5)
+    small = env.root / "比較" / "画像少"
+    small.mkdir(parents=True)
+    for i in (1, 2):
+        (small / f"{i:03d}.jpg").write_bytes(page_bytes(f"small/{i}"))
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    plan = plan_range(env, "比較", "固定", "出力", include_cbz=True)
+    items = by_from(plan)
+    a, b, c = items["比較/甲/a.cbz"], items["比較/乙/b.cbz"], items["比較/画像少"]
+    assert a["status"] == b["status"] == "conflict" and "同じ名前" in a["reason"]
+    assert c["status"] == "skipped" and sorted(c["superseded_by"]) == sorted([a["volume_id"], b["volume_id"]])
+    assert not plan["cbz_sources"]
+    # 逆に CBZ 化の元の方が多ければ、単巻どうしの同数の衝突は譲って外れる
+    big = env.root / "比較" / "画像多"
+    big.mkdir(parents=True)
+    for i in range(1, 8):
+        (big / f"{i:03d}.jpg").write_bytes(page_bytes(f"big/{i}"))
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    items = by_from(plan_range(env, "比較", "固定", "出力", include_cbz=True))
+    assert items["比較/画像多"]["status"] == "cbz"
+    assert items["比較/甲/a.cbz"]["status"] == items["比較/乙/b.cbz"]["status"] == "skipped"
+
+
 def test_include_cbz_names_clashing_inside_one_source_stay_a_conflict(env):
     # 同じ元の中の重複は、片方を外すと元全体を外して勝つ側も巻き込むので、ファイル数が違っても自動では決めない
     write_zip(env.root / "漫画" / "同名.zip",
