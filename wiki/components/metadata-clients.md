@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
-updated: 2026-11-02
+updated: 2026-11-05
 related: [metadata-sources, metadata-linking, overview, backend, work-search, follow]
 ---
 
