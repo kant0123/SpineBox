@@ -368,3 +368,6 @@ grep "^## \[" wiki/log.md | tail -5
 
 ## [2026-11-05] ingest | PR #146 (#145) 衝突・CBZ 化の表示をカード風にする
 - 更新: [[organize]], [[frontend]]
+
+## [2026-11-05] ingest | PR #148 (#147) テンプレートの {author} は複数著者を「・」で区切る
+- 更新: [[organize]]
