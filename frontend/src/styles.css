@@ -299,13 +299,13 @@ button.chip:hover:not(:disabled) {
 .organize-counts { display: flex; flex-wrap: wrap; gap: 8px; }
 .organize-subhead { font-size: 1.125rem; margin: 16px 0 6px; }
 .organize-changes { font-size: 0.875rem; }
-/* 整理後の名前ごとのツリー(#143)。見出し = 整理後の名前、├─ └─ の下に元のファイル名 */
+/* 整理後の名前ごとのツリー(#143)。見出し = 整理後の名前、その下に元のファイル名を区切り線で並べるカード */
 .organize-groups, .organize-tree { list-style: none; padding: 0; margin: 0; }
-.organize-group { margin: 14px 0; }
-.organize-group-name { font-weight: 700; overflow-wrap: anywhere; }
-.organize-tree > li { display: flex; gap: 6px; margin: 4px 0; }
-.organize-branch { flex: none; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); }
-.organize-tree-body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.organize-group { margin: 12px 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.organize-group-name { font-weight: 700; padding: 10px 14px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.organize-tree > li { margin: 0; padding: 10px 14px; }
+.organize-tree > li + li { border-top: 1px solid var(--border); }
+.organize-tree-body { min-width: 0; overflow-wrap: anywhere; }
 .scan-issues { margin-top: 6px; }
 .scan-issues summary { cursor: pointer; color: var(--warn); font-weight: 700; min-height: 24px; }
 .scan-issues ul { margin: 6px 0 0; padding-left: 1.1em; max-height: 40vh; overflow-y: auto; }
