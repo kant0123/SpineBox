@@ -234,6 +234,10 @@ describe("範囲指定の整理", () => {
     last.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
     expect(document.activeElement).toBe(first);
+    // 開いた直後(見出し)からの逆順も、モーダルの外へ出さない
+    within(dialog).getByRole("heading", { name: "フォルダーを選ぶ" }).focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
     first.focus();
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(last);
