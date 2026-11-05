@@ -135,6 +135,9 @@ function errorText(e: unknown, fallback: string): string {
  */
 export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: number; focus?: "organize"; view?: "all" | "data" | "tasks" }) {
   const organizeRef = useRef<HTMLElement>(null);
+  const organizeHeadingRef = useRef<HTMLHeadingElement>(null);
+  const jobsRef = useRef<HTMLElement>(null);
+  const jobsHeadingRef = useRef<HTMLHeadingElement>(null);
   const scrolled = useRef(false);
   const [snap, setSnap] = useState<JobsSnapshot | null>(null);
   const [kinds, setKinds] = useState<JobKind[] | null>(null);
@@ -194,12 +197,22 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
     }
   };
 
-  // ジョブの一覧が並んで「整理」節の位置が決まってから、一度だけそこへ移す
+  /** 節へ移る。見出しにもフォーカスを移し、キーボード・読み上げでも現在地が分かるようにする */
+  const jump = (section: HTMLElement | null, heading: HTMLElement | null) => {
+    section?.scrollIntoView?.({ block: "start" });
+    heading?.focus?.({ preventScroll: true });
+  };
+
+  // ジョブの一覧が並んで「整理」節の位置が決まってから、一度だけそこへ移す。
+  // 同じ画面の中で入口(#/data/organize)を行き来したときも、また移す
+  useEffect(() => {
+    scrolled.current = false;
+  }, [focus]);
   const settled = kinds !== null && snap !== null;
   useEffect(() => {
     if (focus === "organize" && settled && !scrolled.current) {
       scrolled.current = true;
-      organizeRef.current?.scrollIntoView?.();
+      jump(organizeRef.current, organizeHeadingRef.current);
     }
   }, [focus, settled]);
 
@@ -209,10 +222,22 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
   return (
     <div className="data-jobs">
       {view !== "tasks" ? (
-        <p className="muted">
-          スキャンや情報の補完をジョブとして 1 本ずつ動かします。実行中に依頼したものは待ち行列に入り、順に動きます(進み具合・履歴は<a href={tasksHref}>タスクセンター</a>)。
-          ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません(蔵書を動かす整理は、下の「整理」節と受け入れの画面で、プレビューを見てから実行します)。
-        </p>
+        <>
+          <p className="muted">
+            スキャンや情報の補完をジョブとして 1 本ずつ動かします。実行中に依頼したものは待ち行列に入り、順に動きます(進み具合・履歴は<a href={tasksHref}>タスクセンター</a>)。
+            ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません。
+          </p>
+          {/* ジョブの一覧が長いので、下の「整理」へ 1 クリックで移れるようにする */}
+          <nav className="data-jump" aria-label="データ管理の内容">
+            <span className="data-jump-label">このページ:</span>
+            <button type="button" className="small secondary" onClick={() => jump(jobsRef.current, jobsHeadingRef.current)}>
+              ジョブ
+            </button>
+            <button type="button" className="small secondary" onClick={() => jump(organizeRef.current, organizeHeadingRef.current)}>
+              整理
+            </button>
+          </nav>
+        </>
       ) : (
         <p className="muted">
           ジョブの実行中・待ち行列・履歴です。ジョブは<a href={dataHref}>データ管理</a>から依頼します。
@@ -224,8 +249,8 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
         </div>
       )}
 
-      <section className="job-section" aria-labelledby="job-running-title">
-        <h2 id="job-running-title">実行中</h2>
+      <section className="job-section" ref={jobsRef} aria-labelledby="job-running-title">
+        <h2 id="job-running-title" ref={jobsHeadingRef} tabIndex={-1}>実行中</h2>
         {snap?.current ? <RunningJob job={snap.current} onCancel={cancel} /> : <p className="muted">{snap ? "動いているジョブはありません。" : "読み込み中…"}</p>}
         {snap && snap.queue.length > 0 && (
           <>
@@ -291,9 +316,8 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
       )}
 
       {view !== "tasks" && (
-      <section className="job-section" id="data-organize" ref={organizeRef} aria-labelledby="job-organize-title">
-        <h2 id="job-organize-title">整理</h2>
-        <p className="muted">ファイル名・フォルダーの整理です。蔵書を動かすのでジョブには入れず、プレビューを見てから実行し、まとめて元に戻せます。</p>
+      <section className="job-section organize-section" id="data-organize" ref={organizeRef} aria-labelledby="job-organize-title">
+        <h2 id="job-organize-title" ref={organizeHeadingRef} tabIndex={-1}>整理</h2>
         <OrganizeFilesSection />
       </section>
       )}

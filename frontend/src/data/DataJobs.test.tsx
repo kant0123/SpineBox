@@ -112,6 +112,9 @@ describe("整理の節", () => {
     await screen.findByLabelText("ファイル名テンプレート");
     expect(screen.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { name: "実行中" })).toBeTruthy();
+    // 単独の入口では、ジョブの一覧の下でも整理の見出しへフォーカスが移る
+    const organize = screen.getByRole("heading", { name: "整理" });
+    await waitFor(() => expect(document.activeElement).toBe(organize));
   });
 });
 

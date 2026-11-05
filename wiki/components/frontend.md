@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:72 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
-| `frontend/src/admin/Admin.tsx:29 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口) |
+| `frontend/src/admin/Admin.tsx:30 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
@@ -33,7 +33,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/organize/Organize.tsx:150 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
 | `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 巻の番号 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
-| `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。モックは `frontend/src/mock/mockJobs.ts` |
+| `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。`view="data"` の上に「ジョブ / 整理」の節内リンクを置き、`focus="organize"`(`#/data/organize`)は整理の見出しへスクロールしてフォーカスする(#149)。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:18 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
@@ -75,6 +75,16 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **範囲指定の整理(#84)のプレビューは、衝突と CBZ 化を「整理後の名前」ごとのツリーで出す(#143)。** 見出しが整理後のパス、その下に元のファイル名を区切り線で並べるカード
   (`frontend/src/organize/OrganizeFiles.tsx` の `RangeItems`)。同じ名前の巻はサーバーがファイル数の多い方を残し、少ない方は「外した」の札と理由で同じ組に出て、
   「こちらを残す」(CBZ 化は「この元を残す」)で組のほかの巻を外して計画を作り直す。同数の巻は「衝突」のままで「この巻を外す」。ボタンは履歴では出さない
+- **範囲指定の整理(#84)の画面は「1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行」の 3 段にする(#149)。** フォルダーテンプレートは
+  「フォルダーへ振り分ける(任意)」の `<details>` に畳み、選択中のテンプレートを summary に出す。項目(`{title}` など)の差し込みは入力欄ごとの
+  「項目を差し込む」に置き、最後にフォーカスした欄へ入れる規則は廃止した(フォルダー欄が閉じていても差し込み先が分かる)。
+  よく使う設定は `applyTemplates()` が両方の欄へ入れ、フォルダーがあれば `<details>` を開く。プレビュー後は結果の見出しへフォーカスとスクロールを移し、
+  要約(改名・移動 / CBZ 化 / 衝突 / 対象外・外した / そのまま)・内訳・実行を 1 か所にまとめる。フォームは 800px に抑え、スマホの sticky な帯
+  (約 53px)に隠れないよう `scroll-margin-top` を付ける。`<form>` にして Enter でもプレビューできる
+- **整理のフォルダー選択はモーダルにする(#149)。** 今のパスから開き、パンくず(蔵書フォルダ全体 / 途中のフォルダ)で移動する。開いたら見出しへ
+  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/organize/OrganizeFiles.tsx:300 FolderPicker`)。
+  前回のパスが読めないときはエラーを出して蔵書フォルダ全体へ戻す。テンプレートの誤りはプレビューを `disabled` で塞がず、押したら該当欄へ
+  フォーカスする(DADS のフォーム)。処理中(プレビュー・実行・元に戻す)だけ入力欄を `disabled` にし、`aria-busy` を付ける
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
   サーバーの `issues` は最大 200 件なので、切った分は「ほか N 件は省略しました」と知らせる。スキャンが失敗したら、サーバーの `detail`
   (型とメッセージ)をそのままエラー表示に出す。固定の文言だけだと、サーバー機で何が起きたか画面から分からなかった
@@ -154,7 +164,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   タブの中に置いた既存の画面は、自前の余白・幅の上限を CSS(`.admin-panel .library` ほか)で外して二重に空かないようにする。
   旧 `#/follows/manage`・`#/data` は管理のフォロー管理タブを開く(`followManageHref` は `#/admin/follows`)。単独の `#/data/organize` は管理のデータ管理タブの整理の節を開く
 - **データ管理(#83)とタスクセンターは同じジョブの画面を 2 つのタブに分けて出す。** `DataJobs` の `view="data"` はジョブを見出し(日常の同期 / ライブラリ全体 / 個別)ごとに説明と対象の件数つきで並べて依頼する画面と、
-  下の「整理」節(#84 の `OrganizeFilesSection`。ジョブではなく、プレビュー → 実行 → 元に戻す。`#/data/organize` はそこへ移る)。`view="tasks"` は実行中の進み具合・今の対象・「中止」、待ち行列の「取り下げ」、履歴(新しい順で失敗の理由つき)。
+  下の「整理」節(#84 の `OrganizeFilesSection`。ジョブではなく、1. 対象 → 2. 名前 → 3. プレビューして実行の 3 段。`#/data/organize` はそこへ移り、見出しへフォーカスする)。`view="tasks"` は実行中の進み具合・今の対象・「中止」、待ち行列の「取り下げ」、履歴(新しい順で失敗の理由つき)。
+  ジョブの一覧が長く整理の節が埋もれるため、`view="data"` の上に「このページ: ジョブ / 整理」のボタンを置き、整理の節は区切り線で分ける(#149)。
   実行中・待ちがある間だけ 1.5 秒ごとに状態を見に行き、全部終わったら対象の件数を取り直す。依頼済みの種類のボタンは「依頼済み」で押せない。
   ジョブの依頼の失敗はサーバーの `detail`(ほかのジョブの実行中など)をそのまま出す。
   #83 では一覧の「作品 / 巻 / データ管理」のタブから辿っていたが、サイドバーが入ったので外した(巻の一覧のヘッダーの「ファイル名の整理」「整理の履歴」も、データ管理のタブに同じ入口があるので外した)。
@@ -192,7 +203,15 @@ npm run build      # frontend/dist
 
 - #129 でホーム・漫画・小説の作品カードを変えた。種別(漫画/小説)とジャンルの行、「重複」「統合済み」のバッジを外し、巻数を「全8巻(〜6巻)」のタグにした。表紙はカードの横幅いっぱい(2:3 を維持)に拡大し、文字をその下へ移した。表紙を大きくする指定は `.work-card` のスコープに限り、ブックマークなど同じ `.work-cover` を使う画面は変えていない。モック API を 375px(iframe 幅 375)・1296px のヘッドレス Chrome で開き、横スクロールが無いこと、表紙がカード幅(375px では 341px)いっぱいで文字が下にあることを確認した。vitest の作品一覧テストも、種別・ジャンル・重複・統合済みが出ないことと巻数タグを検証するよう更新した。
 
-- #126(#112・#119 を含む)で `frontend/` の全画面を DADS(デジタル庁デザインシステムβ版 v2.18.2)準拠に統一した。`styles.css` のカラートークンを 4.5:1(テキスト・アイコン)/ 3:1(フォーム枠線 `--border-strong`・カード枠線 `--border`)以上に改め、二重フォーカスリング(黒 4px + 黄 `#ffd43d` 2px)・14px 未満の文字サイズの全廃・小ボタンの `::after` による 44×44px ターゲット確保・768px ブレークポイント統一・`prefers-reduced-motion` / `forced-colors` 対応を入れた。また `Works.tsx`・`FacetList.tsx`・`WorkPage.tsx`・`VolumeMeta.tsx`・`OrganizeFiles.tsx`・`Inbox.tsx` の全 9 箇所の `placeholder` と `DataJobs.tsx` の `aria-live` を廃止し、可視ラベルとサポートテキスト(`aria-describedby`・`aria-invalid`)に置き換えた。モック API(`npm run dev:mock`)とヘッドレス Chrome で全 22 ルート × 3 幅(375px / 768px / 1280px)× ライト/ダーク(計 132 状態)を巡回し、横スクロール 0 件・14px 未満の文字 0 件・`placeholder` 0 件を確認した
+- #149 で「管理 > データ管理 > 整理」を作り直した。整理の節がジョブ 10 枚の下(y≈2514px、375px)に埋もれていたため、データ管理タブの上に
+  「このページ: ジョブ / 整理」の節内リンクを置き、`#/data/organize` は整理の見出しへスクロールしてフォーカスするようにした。フォームは
+  「1. 対象 / 2. 名前の決め方(任意) / 3. プレビューして実行」の 3 段にし、フォルダーテンプレートを `<details>` に畳んだ。項目の差し込みは
+  入力欄ごとのチップにして、最後のフォーカスに依存しないようにした。フォルダー選択は `role="dialog"` のインライン領域から、Esc・フォーカストラップ・
+  フォーカス返却つきのモーダルにした。テンプレートの誤りでプレビューを `disabled` にせず、押したら該当欄へフォーカスする。プレビュー後は
+  結果の見出しへフォーカスとスクロールを移し、要約・内訳・実行を 1 か所にまとめた。実行後も入力欄を編集して次のプレビューを作れる。
+  モック API を 320 / 375 / 768 / 1280px のヘッドレス Chrome(ライト・ダーク・`forced-colors`)で開き、横スクロール 0 件、14px 未満 0 件、
+  フォルダーモーダルの Esc・フォーカス返却・Tab の循環、プレビュー → 実行 → 元に戻す、`#/data/organize` と節内リンクのフォーカスを確認した。
+  `npm test -- --no-file-parallelism` は 175 件パス、`npm run build` も通過(Node 26 の `localStorage` 問題 #130 の回避のため) `styles.css` のカラートークンを 4.5:1(テキスト・アイコン)/ 3:1(フォーム枠線 `--border-strong`・カード枠線 `--border`)以上に改め、二重フォーカスリング(黒 4px + 黄 `#ffd43d` 2px)・14px 未満の文字サイズの全廃・小ボタンの `::after` による 44×44px ターゲット確保・768px ブレークポイント統一・`prefers-reduced-motion` / `forced-colors` 対応を入れた。また `Works.tsx`・`FacetList.tsx`・`WorkPage.tsx`・`VolumeMeta.tsx`・`OrganizeFiles.tsx`・`Inbox.tsx` の全 9 箇所の `placeholder` と `DataJobs.tsx` の `aria-live` を廃止し、可視ラベルとサポートテキスト(`aria-describedby`・`aria-invalid`)に置き換えた。モック API(`npm run dev:mock`)とヘッドレス Chrome で全 22 ルート × 3 幅(375px / 768px / 1280px)× ライト/ダーク(計 132 状態)を巡回し、横スクロール 0 件・14px 未満の文字 0 件・`placeholder` 0 件を確認した
 
 - #117 でタグ・著者・出版社の一覧(`FacetList`)の各項目にスター(★/☆)を付け外しできるようにした。ボタンはリンク `<a>` の外(横並びの兄弟要素)に置き、DADS v2.18.2 準拠でターゲット領域 44×44px 以上・境界コントラスト 3:1 以上(`#666666` / ダーク `#6b6b75`)・二重フォーカスリングを満たす。スター付きの項目は名前順・作品の多い順のどちらでも上部に優先表示する。モック API を 375px・768px・1280px(ライト・ダーク両方)のヘッドレス Chrome で確認し、横スクロールが出ないこと・スターの切り替えで最上部へ移動することを確認した
 
