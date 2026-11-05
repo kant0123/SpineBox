@@ -313,15 +313,38 @@ def test_conflicts_and_targets_that_cannot_be_used(env):
     assert all("別のドライブ" in it["reason"] for it in cross.values())
 
 
-def test_duplicate_names_conflict_and_can_be_excluded(env):
-    # 1 巻(作者A)と別スキャンの 2 巻を同じ名前にするテンプレート → 両方を衝突に、片方を外すともう片方が動く
+def test_duplicate_names_keep_the_one_with_more_files(env):
+    # 1 巻(作者A。2 ファイル)と別スキャンの 2 巻(3 ファイル)を同じ名前にするテンプレート → 既定でファイル数の多い方を残す(#143)
     plan = plan_range(env, "漫画", "{title}", "{title}")
     items = by_from(plan)
     c1, c2 = items[f"漫画/作者A/{TITLE} 1巻.cbz"], items[f"漫画/スキャン/{TITLE} 第2巻.cbz"]
-    assert c1["status"] == c2["status"] == "conflict" and "同じ名前" in c1["reason"]
+    assert c2["status"] == "move"
+    assert c1["status"] == "skipped" and c1["superseded_by"] == [c2["volume_id"]]
+    assert "ファイル数が多い" in c1["reason"] and "3 ファイル" in c1["reason"]
+    assert c1["output_rel_path"] == c2["output_rel_path"]  # 画面が同じ名前の組にまとめる手がかり
+    assert not any("衝突" in w for w in plan["warnings"])
+    moving = [v["volume_id"] for v in plan["volumes"]]
+    assert c2["volume_id"] in moving and c1["volume_id"] not in moving
+    # 逆に残したいときは、多い方を外して作り直す(「こちらを残す」)と、少ない方が動く
     again = by_from(plan_range(env, "漫画", "{title}", "{title}", exclude=[c2["volume_id"]]))
     assert again[f"漫画/スキャン/{TITLE} 第2巻.cbz"]["status"] == "skipped"
     assert again[f"漫画/作者A/{TITLE} 1巻.cbz"]["status"] == "move"
+    assert again[f"漫画/作者A/{TITLE} 1巻.cbz"]["superseded_by"] == []
+
+
+def test_duplicate_names_with_equal_file_counts_stay_conflicts(env):
+    # 最多が同数(3 ファイルの 2 巻が 2 つ)なら自動では決めない。少ない 1 巻(2 ファイル)だけが外れる
+    cbz(env.root / "漫画" / "作者B" / f"{TITLE} 2巻.cbz", "v2-b", 3)
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    items = by_from(plan_range(env, "漫画", "{title}", "{title}"))
+    a, b = items[f"漫画/スキャン/{TITLE} 第2巻.cbz"], items[f"漫画/作者B/{TITLE} 2巻.cbz"]
+    assert a["status"] == b["status"] == "conflict" and "同じ名前" in a["reason"]
+    small = items[f"漫画/作者A/{TITLE} 1巻.cbz"]
+    assert small["status"] == "skipped" and sorted(small["superseded_by"]) == sorted([a["volume_id"], b["volume_id"]])
+    # 片方を外せば、残りが動く
+    again = by_from(plan_range(env, "漫画", "{title}", "{title}", exclude=[b["volume_id"]]))
+    assert again[f"漫画/スキャン/{TITLE} 第2巻.cbz"]["status"] == "move"
 
 
 def test_missing_values_and_brackets(env):
@@ -502,6 +525,72 @@ def test_include_cbz_conflicting_source_is_excluded_as_a_whole(env):
     assert not any(s["rel_path"] == "漫画/同名.zip" for s in again["cbz_sources"])
     # 外した状態なら、他の元は CBZ 化できる
     assert any(it["status"] == "cbz" for it in again["items"])
+
+
+def test_include_cbz_keeps_the_source_with_more_files(env):
+    # 同じ出力名になる元が複数あるときも、ファイル数の多い元を残し、少ない元は元全体を外す(#143)
+    for name, n in (("画像多", 4), ("画像少", 2)):
+        d = env.root / "比較" / name
+        d.mkdir(parents=True)
+        for i in range(1, n + 1):
+            (d / f"{i:03d}.jpg").write_bytes(page_bytes(f"{name}/{i}"))
+    cbz(env.root / "比較" / "単巻.cbz", "single", 3)  # 1 巻 = 1 CBZ(改名・移動の対象)も同じ名前になる
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    plan = plan_range(env, "比較", "固定", "出力", include_cbz=True)
+    items = by_from(plan)
+    big, small, single = items["比較/画像多"], items["比較/画像少"], items["比較/単巻.cbz"]
+    assert big["status"] == "cbz" and big["output_rel_path"] == "比較/出力/固定.cbz"
+    for loser in (small, single):
+        assert loser["status"] == "skipped" and loser["superseded_by"] == [big["volume_id"]]
+        assert loser["output_rel_path"] == big["output_rel_path"] and "ファイル数が多い" in loser["reason"]
+    assert [s["rel_path"] for s in plan["cbz_sources"]] == ["比較/画像多"]
+    assert not any(it["status"] == "conflict" for it in plan["items"])
+    # 多い元を外して作り直す(「こちらを残す」)と、次にファイル数の多い 1 巻(3)が動き、少ない元は譲ったまま
+    again = by_from(plan_range(env, "比較", "固定", "出力", include_cbz=True, exclude=[big["volume_id"]]))
+    assert again["比較/単巻.cbz"]["status"] == "move" and again["比較/画像少"]["status"] == "skipped"
+    assert again["比較/画像少"]["superseded_by"] == [single["volume_id"]]
+
+
+def test_include_cbz_conversion_is_compared_with_tied_single_volumes(env):
+    # 1 巻 = 1 CBZ どうしが同数(5)で衝突していても、同じ名前になる CBZ 化の元(2 ファイル)はそれらと比べて譲る。
+    # 単巻どうしの判定だけで終えると、ファイル数の少ない元が確定して元が退避されてしまう
+    cbz(env.root / "比較" / "甲" / "a.cbz", "a", 5)
+    cbz(env.root / "比較" / "乙" / "b.cbz", "b", 5)
+    small = env.root / "比較" / "画像少"
+    small.mkdir(parents=True)
+    for i in (1, 2):
+        (small / f"{i:03d}.jpg").write_bytes(page_bytes(f"small/{i}"))
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    plan = plan_range(env, "比較", "固定", "出力", include_cbz=True)
+    items = by_from(plan)
+    a, b, c = items["比較/甲/a.cbz"], items["比較/乙/b.cbz"], items["比較/画像少"]
+    assert a["status"] == b["status"] == "conflict" and "同じ名前" in a["reason"]
+    assert c["status"] == "skipped" and sorted(c["superseded_by"]) == sorted([a["volume_id"], b["volume_id"]])
+    assert not plan["cbz_sources"]
+    # 逆に CBZ 化の元の方が多ければ、単巻どうしの同数の衝突は譲って外れる
+    big = env.root / "比較" / "画像多"
+    big.mkdir(parents=True)
+    for i in range(1, 8):
+        (big / f"{i:03d}.jpg").write_bytes(page_bytes(f"big/{i}"))
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    items = by_from(plan_range(env, "比較", "固定", "出力", include_cbz=True))
+    assert items["比較/画像多"]["status"] == "cbz"
+    assert items["比較/甲/a.cbz"]["status"] == items["比較/乙/b.cbz"]["status"] == "skipped"
+
+
+def test_include_cbz_names_clashing_inside_one_source_stay_a_conflict(env):
+    # 同じ元の中の重複は、片方を外すと元全体を外して勝つ側も巻き込むので、ファイル数が違っても自動では決めない
+    write_zip(env.root / "漫画" / "同名.zip",
+              [("a/vol/001.jpg", page_bytes("same/1")), ("b/vol/001.jpg", page_bytes("same/2")),
+               ("b/vol/002.jpg", page_bytes("same/3"))])
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    same = [it for it in plan_range(env, "漫画", include_cbz=True)["items"] if it["from_rel_path"] == "漫画/同名.zip"]
+    assert sorted(it["page_count"] for it in same) == [1, 2]
+    assert all(it["status"] == "conflict" and not it["superseded_by"] for it in same)
 
 
 def test_include_cbz_image_folder_with_subfolders_is_a_conflict(env):

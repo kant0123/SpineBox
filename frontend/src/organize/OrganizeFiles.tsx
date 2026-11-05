@@ -48,6 +48,10 @@ function errorText(e: unknown, fallback: string): string {
   return e instanceof ApiError && e.detail ? e.detail : fallback;
 }
 
+function pagesText(item: OrganizeItem): string | null {
+  return item.page_count === null || item.page_count === undefined ? null : `${item.page_count} ファイル`;
+}
+
 function RangeItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (volumeId: number) => void }) {
   return (
     <li className={`organize-item ${item.status}`}>
@@ -76,9 +80,114 @@ function RangeItemRow({ item, onExclude }: { item: OrganizeItem; onExclude?: (vo
   );
 }
 
-/** 計画の各巻を扱いごとに分けて出す。動かす・衝突・外したは開いておき、対象外・そのままは畳む */
-export function RangeItems({ op, onExclude }: { op: OrganizeOp; onExclude?: (volumeId: number) => void }) {
+/** 整理後の名前(正規化した名前)の組。同じ名前になる巻が複数あれば衝突の組 */
+interface NameGroup {
+  name: string;
+  items: OrganizeItem[];
+}
+
+const nameKey = (it: OrganizeItem) => (it.output_rel_path ? it.output_rel_path.toLowerCase() : `volume:${it.volume_id}`);
+
+function groupByOutputName(items: OrganizeItem[]): NameGroup[] {
+  const groups = new Map<string, NameGroup>();
+  for (const it of items) {
+    const key = nameKey(it);
+    const group = groups.get(key) ?? { name: it.output_rel_path ?? it.title, items: [] };
+    group.items.push(it);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+/** 整理後の名前の下に、元のファイル名を ├─ └─ で並べる */
+function NameTree({
+  groups,
+  onExclude,
+  onKeep,
+}: {
+  groups: NameGroup[];
+  onExclude?: (volumeId: number) => void;
+  onKeep?: (dropIds: number[]) => void;
+}) {
+  return (
+    <ul className="organize-groups">
+      {groups.map((group) => (
+        <li key={group.name} className="organize-group">
+          <div className="organize-group-name">{group.name}</div>
+          <ul className="organize-tree">
+            {group.items.map((item, i) => {
+              const pages = pagesText(item);
+              const superseded = (item.superseded_by?.length ?? 0) > 0;
+              const active = item.status === "conflict" || item.status === "move" || item.status === "cbz";
+              return (
+                <li key={item.volume_id} className={`organize-item ${item.status}`}>
+                  <span className="organize-branch" aria-hidden="true">
+                    {i === group.items.length - 1 ? "└─" : "├─"}
+                  </span>
+                  <div className="organize-tree-body">
+                    <span className={`organize-badge ${item.status}`}>{ITEM_LABELS[item.status]}</span>{" "}
+                    <code>{item.from_rel_path}</code>
+                    {pages && <span className="muted"> ({pages})</span>}
+                    {(item.changes?.length ?? 0) > 0 && <div className="muted organize-changes">{item.changes!.join("・")}</div>}
+                    {item.reason && item.status !== "move" && item.status !== "cbz" && <div className="muted">{item.reason}</div>}
+                    {onExclude && (active || superseded) && (
+                      <div className="organize-item-actions">
+                        {active && (
+                          <button type="button" className="small secondary" onClick={() => onExclude(item.volume_id)}>
+                            {item.conversion ? "この元を外す" : "この巻を外す"}
+                          </button>
+                        )}
+                        {superseded && onKeep && (
+                          <button
+                            type="button"
+                            className="small secondary"
+                            onClick={() =>
+                              // 組のほかの巻をすべて外す(自動で外した巻も。ファイル数の多い別の巻に、また譲らないように)
+                              onKeep(
+                                group.items
+                                  .filter((o) => o.volume_id !== item.volume_id && !(o.status === "skipped" && !o.superseded_by?.length))
+                                  .map((o) => o.volume_id),
+                              )
+                            }
+                          >
+                            {item.conversion ? "この元を残す" : "こちらを残す"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** 計画の各巻を扱いごとに分けて出す。動かす・衝突・外したは開いておき、対象外・そのままは畳む。
+ *  同じ名前になる巻の組(衝突と、ファイル数の多い方に譲って外した巻)は「衝突」に、CBZ 化は、
+ *  整理後の名前ごとに元のファイル名をぶら下げて出す(#143) */
+export function RangeItems({
+  op,
+  onExclude,
+  onKeep,
+}: {
+  op: OrganizeOp;
+  onExclude?: (volumeId: number) => void;
+  /** 「こちらを残す」: 同じ名前の組のほかの巻を外して計画を作り直す */
+  onKeep?: (dropIds: number[]) => void;
+}) {
   const items = op.items ?? [];
+  const clashNames = new Set(
+    items.filter((it) => it.status === "conflict" || (it.superseded_by?.length ?? 0) > 0).map(nameKey),
+  );
+  // 衝突の組には、名前が重なった相手(残す巻・そのままの巻)も入れる
+  const clashItems = items.filter((it) => clashNames.has(nameKey(it)) && it.status !== "excluded");
+  const clashGroups = groupByOutputName(clashItems);
+  const inClash = new Set(clashItems.map((it) => it.volume_id));
+  const rest = items.filter((it) => !inClash.has(it.volume_id));
   return (
     <>
       <p className="organize-counts">
@@ -92,15 +201,29 @@ export function RangeItems({ op, onExclude }: { op: OrganizeOp; onExclude?: (vol
         })}
       </p>
       {STATUS_ORDER.map((s) => {
-        const list = items.filter((it) => it.status === s);
+        if (s === "conflict") {
+          return clashGroups.length ? (
+            <section key={s}>
+              <h3 className="organize-subhead">衝突({clashGroups.length} 組)</h3>
+              <p className="muted organize-hint">
+                同じ名前になる巻です。ファイル数の多い方を残し、少ない方は外しました。同数の巻は衝突のままなので、どちらかを外してください。
+              </p>
+              <NameTree groups={clashGroups} onExclude={onExclude} onKeep={onKeep} />
+            </section>
+          ) : null;
+        }
+        const list = rest.filter((it) => it.status === s);
         if (!list.length) return null;
-        const rows = (
-          <ul className="organize-volumes">
-            {list.map((it) => (
-              <RangeItemRow key={it.volume_id} item={it} onExclude={onExclude} />
-            ))}
-          </ul>
-        );
+        const rows =
+          s === "cbz" ? (
+            <NameTree groups={groupByOutputName(list)} onExclude={onExclude} />
+          ) : (
+            <ul className="organize-volumes">
+              {list.map((it) => (
+                <RangeItemRow key={it.volume_id} item={it} onExclude={onExclude} />
+              ))}
+            </ul>
+          );
         return s === "excluded" || s === "unchanged" ? (
           <details key={s}>
             <summary>
@@ -494,7 +617,11 @@ export function OrganizeFilesSection() {
             )}
             {!editable && <a href={organizeHistoryHref}>整理の履歴へ</a>}
           </div>
-          <RangeItems op={op} onExclude={editable ? (id) => plan([...excluded, id]) : undefined} />
+          <RangeItems
+            op={op}
+            onExclude={editable ? (id) => plan([...excluded, id]) : undefined}
+            onKeep={editable ? (drop) => plan([...new Set([...excluded, ...drop])]) : undefined}
+          />
         </div>
       )}
     </div>

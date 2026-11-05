@@ -114,6 +114,20 @@ push 前に確かめること:
 - PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 - PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
 
+### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
+
+「同じ名前の巻はファイル数の多い方を残す」のように、対象全体を比べて決める規則を、対象の種類(単巻・CBZ 化する元)ごとに先に判定してから足し合わせる。
+先に判定した側が結果(衝突など)を確定するので、あとからの全体の判定はそれらを対象から外し、種類をまたいだ比較が抜ける。
+
+push 前に確かめること:
+
+- 規則が比べる対象を全部列挙し、判定が 1 回の全体の比較になっているか(部分ごとの判定を先に走らせていないか)
+- 種類が違う対象が同じ結果(同じ出力名)になるテストがあるか。片方の種類だけの重複を確かめたテストは、この漏れを通す
+
+実例:
+
+- PR #144 — `spinebox/organize/organizer.py _plan_range_cbz()` — 単巻の振り分け(`_classify_renames`)が単巻どうしの重複だけで衝突・譲りを決め、同じ名前の CBZ 化の元と比べなかった。単巻が同数で衝突していると、ファイル数の少ない元が `cbz` のまま確定した(単巻 5・5 と画像フォルダ 2 で再現し、`dedupe=False` で全体の判定へ寄せた)
+
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
 他ツール(Antigravity・GitHub Actions 等)の設定ファイルの形を、要約・記憶・似たツールからの類推で書く。

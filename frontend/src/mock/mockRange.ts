@@ -55,10 +55,12 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
     };
     const items: OrganizeItem[] = [
       { volume_id: 11, title: "ｻﾝﾌﾟﾙ漫画　第1巻", from_rel_path: "作者A/ｻﾝﾌﾟﾙ漫画　第1巻.cbz", output_rel_path: null, status: "move", reason: null, cbz_volume_id: null,
-        changes: [] },
-      { volume_id: 12, title: "サンプル漫画 2巻", from_rel_path: "作者A/サンプル漫画 2巻.cbz", output_rel_path: null, status: "move", reason: null, cbz_volume_id: null, changes: [] },
-      { volume_id: 13, title: "サンプル漫画 第2巻", from_rel_path: "スキャン/サンプル漫画 第2巻.cbz", output_rel_path: null, status: "move", reason: null, cbz_volume_id: null, changes: [] },
-      { volume_id: 14, title: "まとめ", from_rel_path: "作者A/まとめ.zip", output_rel_path: null, status: "excluded", cbz_volume_id: 14, changes: [],
+        changes: [], page_count: 8, superseded_by: [] },
+      { volume_id: 12, title: "サンプル漫画 2巻", from_rel_path: "作者A/サンプル漫画 2巻.cbz", output_rel_path: null, status: "move", reason: null, cbz_volume_id: null, changes: [],
+        page_count: 6, superseded_by: [] },
+      { volume_id: 13, title: "サンプル漫画 第2巻", from_rel_path: "スキャン/サンプル漫画 第2巻.cbz", output_rel_path: null, status: "move", reason: null, cbz_volume_id: null, changes: [],
+        page_count: 8, superseded_by: [] },
+      { volume_id: 14, title: "まとめ", from_rel_path: "作者A/まとめ.zip", output_rel_path: null, status: "excluded", cbz_volume_id: 14, changes: [], page_count: 8, superseded_by: [],
         reason: "1 つのファイルに複数の巻・入れ子の巻があります(この画面では動かしません。先に「CBZ に整理」してください)" },
     ];
     const all = items.filter((it) => !sub || it.from_rel_path.startsWith(`${sub}/`));
@@ -84,6 +86,20 @@ export function createMockRange(ops: OrganizeOp[], nextId: () => string) {
       if (it.output_rel_path === it.from_rel_path) Object.assign(it, { status: "unchanged", reason: "既にテンプレートどおりの名前です" });
     }
     const isMoving = (it: OrganizeItem) => it.status === "move" || it.status === "cbz";
+    // 同じ名前になる巻は、ファイル数の多い方を残す(最多が同数なら衝突のまま)
+    for (const it of all) {
+      if (!isMoving(it)) continue;
+      const group = all.filter((o) => isMoving(o) && o.output_rel_path === it.output_rel_path);
+      const most = Math.max(...group.map((o) => o.page_count ?? 0));
+      if (group.length > 1 && (it.page_count ?? 0) < most) {
+        const top = group.filter((o) => o.page_count === most);
+        Object.assign(it, {
+          status: "skipped",
+          superseded_by: top.map((o) => o.volume_id),
+          reason: `同じ名前の${top.map((o) => `「${o.title}」`).join("・")}(${most} ファイル)のほうがファイル数が多いため外しました(この巻は ${it.page_count} ファイル)`,
+        });
+      }
+    }
     for (const it of all) {
       const same = all.filter((o) => o !== it && isMoving(o) && isMoving(it) && o.output_rel_path === it.output_rel_path);
       if (same.length) it.reason = `${same.map((o) => `「${o.title}」`).join("・")}と同じ名前になります。どれかを外してください`;
