@@ -30,7 +30,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
-| `frontend/src/organize/Organize.tsx:150 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
+| `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
 | `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 巻の番号 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
 | `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。`view="data"` の上に「ジョブ / 整理」の節内リンクを置き、`focus="organize"`(`#/data/organize`)は整理の見出しへスクロールしてフォーカスする(#149)。モックは `frontend/src/mock/mockJobs.ts` |
@@ -38,7 +38,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:18 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
-| `frontend/src/api.ts:917 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:929 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -78,7 +78,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   (組が消えたときは結果の見出し)。実行する内容は改名・移動と CBZ 化を別のリストにし、元/先は 768px 以上で 2 列、スマホは積む。
   整理しない内容は `<details>` にまとめる。要約は実行する / 競合 / 整理しない / 対象外 / そのまで、競合の中の「整理しない」は二重に数えない。
   呼称は「競合」「整理しない」「この巻(この本)を整理しない」。数が多くなる前提でカードではなく行リストにし、チェックは 24px + 行全体のタップ領域、
-  フォーカスリングは行に出す。カード表示(#143 / #145)は廃止した
+  フォーカスリングは行に出す。カード表示(#143 / #145)は廃止した。
+  #153: 既定のチェックは、ほかの巻が譲った先(`superseded_by`)から決める(`keepOf`。選択待ちの巻にも入る)。1 件だけの競合は組にせず、整理しない内容の
+  「実行できない」に理由つきで出し、そのときは `<details>` を開いておく。CBZ 化は元ごとにまとめて元のパスを見出しに 1 回だけ出す(`cbzBySource`)。
+  結果のボタン列は sticky(スマホは上の帯 53px の下)。「CBZ 化した元を削除する」は CBZ 化を選んだときだけ出し、実行の前に確認のチェックを取る([[organize]])
 - **範囲指定の整理(#84)の画面は「1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行」の 3 段にする(#149)。** フォルダーテンプレートは
   「フォルダーへ振り分ける(任意)」の `<details>` に畳み、選択中のテンプレートを summary に出す。項目(`{title}` など)の差し込みは入力欄ごとの
   「項目を差し込む」に置き、最後にフォーカスした欄へ入れる規則は廃止した(フォルダー欄が閉じていても差し込み先が分かる)。
@@ -86,7 +89,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   要約(実行する / 競合 / 整理しない / 対象外 / そのまま)・競合の行選択・実行ボタン・実行内容・整理しない内容を 1 か所にまとめる。フォームは 800px に抑え、スマホの sticky な帯
   (約 53px)に隠れないよう `scroll-margin-top` を付ける。`<form>` にして Enter でもプレビューできる
 - **整理のフォルダー選択はモーダルにする(#149)。** 今のパスから開き、パンくず(蔵書フォルダ全体 / 途中のフォルダ)で移動する。開いたら見出しへ
-  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/organize/OrganizeFiles.tsx:581 FolderPicker`)。
+  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/organize/OrganizeFiles.tsx:666 FolderPicker`)。
   前回のパスが読めないときはエラーを出して蔵書フォルダ全体へ戻す。テンプレートの誤りはプレビューを `disabled` で塞がず、押したら該当欄へ
   フォーカスする(DADS のフォーム)。処理中(プレビュー・実行・元に戻す)だけ入力欄を `disabled` にし、`aria-busy` を付ける
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。

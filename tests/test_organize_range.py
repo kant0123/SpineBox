@@ -518,8 +518,8 @@ def test_include_cbz_roundtrip_creates_cbz_and_restores_everything(env):
     assert full_snapshot(root) == before
 
 
-def test_include_cbz_conflicting_source_is_excluded_as_a_whole(env):
-    # 同じフォルダ名の 2 巻を持つ zip。ファイル名テンプレートが空だと同じ名前になる
+def test_include_cbz_choosing_one_of_tied_volumes_in_one_source_converts_the_rest(env):
+    # 同じフォルダ名の 2 巻を持つ zip。ファイル名テンプレートが空だと同じ名前になる(同数なので自動では決めない)
     write_zip(env.root / "漫画" / "同名.zip",
               [("a/vol/001.jpg", page_bytes("same/1")), ("b/vol/001.jpg", page_bytes("same/2"))])
     Scanner(env.conn, env.settings).scan()
@@ -527,14 +527,121 @@ def test_include_cbz_conflicting_source_is_excluded_as_a_whole(env):
     plan = plan_range(env, "漫画", include_cbz=True)
     same = [it for it in plan["items"] if it["from_rel_path"] == "漫画/同名.zip"]
     assert len(same) == 2 and all(it["status"] == "conflict" and "同じ名前" in it["reason"] for it in same)
-    # 片方の巻を外すと、その元全体を外す(元の一部だけ CBZ 化しない)
+    # 片方を整理しない(もう片方を残す)と、残した巻だけを CBZ 化する(#153。外した巻は元といっしょに退避)
     again = plan_range(env, "漫画", include_cbz=True, exclude=[same[0]["volume_id"]])
-    same_again = [it for it in again["items"] if it["from_rel_path"] == "漫画/同名.zip"]
-    assert all(it["status"] == "skipped" and "元全体" in it["reason"] for it in same_again), \
-        [(it["status"], it["reason"]) for it in same_again]
-    assert not any(s["rel_path"] == "漫画/同名.zip" for s in again["cbz_sources"])
-    # 外した状態なら、他の元は CBZ 化できる
-    assert any(it["status"] == "cbz" for it in again["items"])
+    same_again = {it["volume_id"]: it for it in again["items"] if it["from_rel_path"] == "漫画/同名.zip"}
+    dropped, kept = same_again[same[0]["volume_id"]], same_again[same[1]["volume_id"]]
+    assert kept["status"] == "cbz"
+    assert dropped["status"] == "skipped" and dropped["superseded_by"] == [kept["volume_id"]]
+    assert dropped["output_rel_path"] == kept["output_rel_path"] and "利用者の選択" in dropped["reason"]
+    src = next(s for s in again["cbz_sources"] if s["rel_path"] == "漫画/同名.zip")
+    assert src["volume_ids"] == [kept["volume_id"]] and src["dropped_volume_ids"] == [dropped["volume_id"]]
+    assert any("同名.zip" in w and "CBZ にしません" in w for w in again["warnings"])
+
+
+def test_include_cbz_user_skipped_volume_without_a_kept_peer_stops_the_whole_source(env):
+    # 同じ名前の巻が無いのに整理しないにした巻は、元の一部だけ CBZ 化すると失われるので、元全体を止める
+    multi = [it for it in plan_range(env, "漫画", include_cbz=True)["items"] if it["from_rel_path"] == "漫画/まとめ.zip"]
+    again = plan_range(env, "漫画", include_cbz=True, exclude=[multi[0]["volume_id"]])
+    rest = [it for it in again["items"] if it["from_rel_path"] == "漫画/まとめ.zip"]
+    assert rest[0]["status"] == "skipped" and not rest[0]["superseded_by"]
+    assert rest[1]["status"] == "skipped" and "元全体" in rest[1]["reason"]
+    assert not any(s["rel_path"] == "漫画/まとめ.zip" for s in again["cbz_sources"])
+
+
+def two_scans(env):
+    """同じ 2 巻の別スキャンを 2 つのまとめ zip に。1 巻は甲が多く、2 巻は乙が多い(勝ちが元ごとに分かれる)"""
+    write_zip(env.root / "重複" / "甲.zip", [*((f"v1/{i:03d}.jpg", page_bytes(f"k1/{i}")) for i in range(1, 4)),
+                                             ("v2/001.jpg", page_bytes("k2/1"))])
+    write_zip(env.root / "重複" / "乙.zip", [("v1/001.jpg", page_bytes("o1/1")),
+                                             *((f"v2/{i:03d}.jpg", page_bytes(f"o2/{i}")) for i in range(1, 4))])
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+
+    def items(exclude=()):
+        plan = plan_range(env, "重複", "", "出力", include_cbz=True, exclude=exclude)
+        return plan, {(it["from_rel_path"].split("/")[-1], it["title"]): it for it in plan["items"]}
+    return items
+
+
+def test_include_cbz_each_name_keeps_the_volume_with_more_files_across_sources(env):
+    # 勝ちが元ごとに分かれても、組ごとにファイル数の多い巻を残す(#153 より前は片方の元が 1 組で負けると元全体を外し、
+    # その元が勝っていた組まで両方とも整理しないになっていた)
+    plan, it = two_scans(env)()
+    assert it[("甲.zip", "v1")]["status"] == "cbz" and it[("乙.zip", "v2")]["status"] == "cbz"
+    assert it[("乙.zip", "v1")]["superseded_by"] == [it[("甲.zip", "v1")]["volume_id"]]
+    assert it[("甲.zip", "v2")]["superseded_by"] == [it[("乙.zip", "v2")]["volume_id"]]
+    assert sorted((s["rel_path"], len(s["volume_ids"]), len(s["dropped_volume_ids"])) for s in plan["cbz_sources"]) == [
+        ("重複/乙.zip", 1, 1), ("重複/甲.zip", 1, 1)]
+    assert plan["state"] == "planned" and not any(i["status"] == "conflict" for i in plan["items"])
+
+
+def test_include_cbz_choosing_the_smaller_volume_keeps_it_and_other_groups(env):
+    items = two_scans(env)
+    _, it = items()
+    # 2 巻で少ない甲を選ぶ(乙の 2 巻を整理しない)。選んだ巻が実行に入り、1 巻の組は甲のまま
+    plan, again = items([it[("乙.zip", "v2")]["volume_id"]])
+    assert again[("甲.zip", "v2")]["status"] == "cbz" and again[("甲.zip", "v1")]["status"] == "cbz"
+    assert again[("乙.zip", "v2")]["status"] == "skipped" and again[("乙.zip", "v2")]["superseded_by"]
+    assert again[("乙.zip", "v1")]["status"] == "skipped" and again[("乙.zip", "v1")]["superseded_by"]
+    # 乙は CBZ にする巻が無いので触らない(退避しない)
+    assert [s["rel_path"] for s in plan["cbz_sources"]] == ["重複/甲.zip"]
+
+
+def test_include_cbz_partial_source_roundtrip(env):
+    root = env.root
+    items = two_scans(env)
+    before = full_snapshot(root)
+    plan, _ = items()
+    o = organizer(env)
+    assert o.execute(plan["op_id"])["state"] == "done"
+    with zipfile.ZipFile(root / "重複" / "出力" / "v1.cbz") as z:
+        assert z.read("0001.jpg") == page_bytes("k1/1") and len(z.namelist()) == 3
+    with zipfile.ZipFile(root / "重複" / "出力" / "v2.cbz") as z:
+        assert z.read("0001.jpg") == page_bytes("o2/1") and len(z.namelist()) == 3
+    trash = root / ".spinebox" / "trash" / plan["op_id"] / "original" / "重複"
+    assert (trash / "甲.zip").is_file() and (trash / "乙.zip").is_file()
+    # 外した巻は一覧から消える(元が退避フォルダへ移ったため)
+    listed = {r["title"] for r in env.conn.execute(
+        "SELECT v.title FROM volumes v JOIN sources s ON s.id = v.source_id WHERE s.missing = 0 AND v.missing = 0"
+        " AND v.organized_op_id IS NULL AND s.rel_path LIKE '重複/%'")}
+    assert listed == {"v1", "v2"}
+    assert o.undo(plan["op_id"])["state"] == "undone"
+    assert full_snapshot(root) == before
+
+
+def test_include_cbz_delete_originals_removes_trash_and_refuses_undo(env):
+    root = env.root
+    plan = organizer(env).plan_range(env.root_id, "漫画", include_cbz=True, delete_originals=True)
+    assert plan["delete_originals"] is True
+    assert any("削除します" in w and "元に戻せません" in w for w in plan["warnings"])
+    o = organizer(env)
+    done = o.execute(plan["op_id"])
+    assert done["state"] == "done" and not done["error"]
+    assert (root / "漫画" / "v1.cbz").is_file() and not (root / "漫画" / "まとめ.zip").exists()
+    assert not (root / ".spinebox" / "trash" / plan["op_id"] / "original").exists()
+    # 改名・移動した巻はそのまま(削除するのは CBZ 化した元だけ)
+    assert (root / "漫画" / "作者A" / f"{TITLE} 1巻.cbz").is_file()
+    with pytest.raises(OrganizeError, match="元に戻せません"):
+        o.undo(plan["op_id"])
+    # include_cbz なしでは削除の指定は効かない(CBZ 化しないので削除する元が無い)
+    assert organizer(env).plan_range(env.root_id, "漫画", delete_originals=True)["delete_originals"] is False
+
+
+def test_include_cbz_delete_failure_keeps_the_result_and_reports(env, monkeypatch):
+    import spinebox.organize.organizer as mod
+
+    def boom(path, *a, **k):
+        raise OSError("使用中")
+    monkeypatch.setattr(mod.shutil, "rmtree", boom)
+    plan = organizer(env).plan_range(env.root_id, "漫画", include_cbz=True, delete_originals=True)
+    o = organizer(env)
+    done = o.execute(plan["op_id"])
+    assert done["state"] == "done" and "削除できませんでした" in done["error"]
+    assert (env.root / ".spinebox" / "trash" / plan["op_id"] / "original" / "漫画" / "画像の巻").is_dir()
+    # 削除を始めた操作は、一部が残っていても元に戻さない(どこまで消えたか分からない状態で戻さない)
+    with pytest.raises(OrganizeError, match="元に戻せません"):
+        o.undo(plan["op_id"])
 
 
 def test_include_cbz_keeps_the_source_with_more_files(env):
@@ -591,16 +698,18 @@ def test_include_cbz_conversion_is_compared_with_tied_single_volumes(env):
     assert items["比較/甲/a.cbz"]["status"] == items["比較/乙/b.cbz"]["status"] == "skipped"
 
 
-def test_include_cbz_names_clashing_inside_one_source_stay_a_conflict(env):
-    # 同じ元の中の重複は、片方を外すと元全体を外して勝つ側も巻き込むので、ファイル数が違っても自動では決めない
+def test_include_cbz_names_clashing_inside_one_source_keep_the_one_with_more_files(env):
+    # 同じ元の中の重複も、ファイル数の多い巻を残し、少ない巻だけを CBZ にしない(#153。元のほかの巻は巻き込まない)
     write_zip(env.root / "漫画" / "同名.zip",
               [("a/vol/001.jpg", page_bytes("same/1")), ("b/vol/001.jpg", page_bytes("same/2")),
                ("b/vol/002.jpg", page_bytes("same/3"))])
     Scanner(env.conn, env.settings).scan()
     works.sync(env.conn)
-    same = [it for it in plan_range(env, "漫画", include_cbz=True)["items"] if it["from_rel_path"] == "漫画/同名.zip"]
-    assert sorted(it["page_count"] for it in same) == [1, 2]
-    assert all(it["status"] == "conflict" and not it["superseded_by"] for it in same)
+    same = sorted((it for it in plan_range(env, "漫画", include_cbz=True)["items"]
+                   if it["from_rel_path"] == "漫画/同名.zip"), key=lambda it: it["page_count"])
+    assert [it["page_count"] for it in same] == [1, 2]
+    assert same[1]["status"] == "cbz"
+    assert same[0]["status"] == "skipped" and same[0]["superseded_by"] == [same[1]["volume_id"]]
 
 
 def test_include_cbz_image_folder_with_subfolders_is_a_conflict(env):
@@ -801,3 +910,100 @@ def test_name_values_does_not_query_per_volume(env):
     assert many == once and n_many == n_once
     n_works = env.conn.execute("SELECT COUNT(DISTINCT work_id) FROM work_volumes").fetchone()[0]
     assert n_once <= 2 + 2 * n_works  # 巻の行・書誌の 2 回 + 作品ごとの 2 回(吸収先・項目)
+
+
+def test_include_cbz_tie_in_one_volume_waits_without_flipping_other_groups(env):
+    # 4 巻だけ同数(利用者が選ぶまで決まらない)。#153 より前は甲・乙の元を丸ごと止め、1〜3 巻の組でも
+    # ファイル数の多い方が既定で選ばれていなかった
+    write_zip(env.root / "重複" / "甲.zip", [*((f"v1/{i:03d}.jpg", page_bytes(f"k1/{i}")) for i in range(1, 4)),
+                                             *((f"v4/{i:03d}.jpg", page_bytes(f"k4/{i}")) for i in range(1, 3))])
+    write_zip(env.root / "重複" / "乙.zip", [("v1/001.jpg", page_bytes("o1/1")),
+                                             *((f"v4/{i:03d}.jpg", page_bytes(f"o4/{i}")) for i in range(1, 3))])
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+
+    def plan(exclude=()):
+        p = plan_range(env, "重複", "", "出力", include_cbz=True, exclude=exclude)
+        return p, {(it["from_rel_path"].split("/")[-1], it["title"]): it for it in p["items"]}
+    p, it = plan()
+    k1, o1, k4, o4 = it[("甲.zip", "v1")], it[("乙.zip", "v1")], it[("甲.zip", "v4")], it[("乙.zip", "v4")]
+    assert k4["status"] == o4["status"] == "conflict" and not k4["waiting_for"]
+    # 1 巻の組は甲が多いまま(乙が譲る)。甲の 1 巻は 4 巻の選択待ち
+    assert o1["status"] == "skipped" and o1["superseded_by"] == [k1["volume_id"]]
+    assert k1["status"] == "conflict" and k1["waiting_for"] == [k4["volume_id"]]
+    assert not p["cbz_sources"]
+    # 4 巻で甲を選ぶと、甲は全巻 CBZ 化、乙は CBZ にする巻が無いので触らない
+    p2, it2 = plan([o4["volume_id"]])
+    assert it2[("甲.zip", "v1")]["status"] == it2[("甲.zip", "v4")]["status"] == "cbz"
+    assert it2[("乙.zip", "v4")]["superseded_by"] == [k4["volume_id"]]
+    assert [s["rel_path"] for s in p2["cbz_sources"]] == ["重複/甲.zip"]
+    # 4 巻で乙を選ぶと、甲は 1 巻だけ、乙は 4 巻だけを CBZ 化する(どちらも元は退避)
+    p3, it3 = plan([k4["volume_id"]])
+    assert it3[("甲.zip", "v1")]["status"] == "cbz" and it3[("乙.zip", "v4")]["status"] == "cbz"
+    assert sorted(s["rel_path"] for s in p3["cbz_sources"]) == ["重複/乙.zip", "重複/甲.zip"]
+
+
+def test_range_rename_choice_keeps_the_clash_group(env):
+    # 改名・移動でも、競合で残す方を選んだ(もう片方を整理しないにした)巻は、選んだ巻に譲ったと分かる
+    cbz(env.root / "比較" / "甲" / "a.cbz", "a", 5)
+    cbz(env.root / "比較" / "乙" / "b.cbz", "b", 5)
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    items = by_from(plan_range(env, "比較", "固定", "出力"))
+    a, b = items["比較/甲/a.cbz"], items["比較/乙/b.cbz"]
+    assert a["status"] == b["status"] == "conflict"
+    again = by_from(plan_range(env, "比較", "固定", "出力", exclude=[b["volume_id"]]))
+    assert again["比較/甲/a.cbz"]["status"] == "move"
+    dropped = again["比較/乙/b.cbz"]
+    assert dropped["status"] == "skipped" and dropped["superseded_by"] == [a["volume_id"]]
+    assert dropped["output_rel_path"] == again["比較/甲/a.cbz"]["output_rel_path"]
+
+
+def make_epub(path: Path, sections: list[str], images: dict[str, bytes]) -> Path:
+    """最小の EPUB。sections は本文(body の中身)、images は OEBPS/ 直下の画像。"""
+    manifest = "".join(f'<item id="s{i}" href="s{i}.xhtml" media-type="application/xhtml+xml"/>'
+                       for i in range(len(sections)))
+    manifest += "".join(f'<item id="i{i}" href="{n}" media-type="image/jpeg"/>' for i, n in enumerate(images))
+    spine = "".join(f'<itemref idref="s{i}"/>' for i in range(len(sections)))
+    entries = [("mimetype", b"application/epub+zip"),
+               ("META-INF/container.xml", b'<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:'
+                b'xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>'),
+               ("OEBPS/content.opf", f'<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf"><manifest>'
+                f'{manifest}</manifest><spine>{spine}</spine></package>'.encode())]
+    entries += [(f"OEBPS/s{i}.xhtml", f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>p{i}</title></head>'
+                 f'<body>{body}</body></html>'.encode()) for i, body in enumerate(sections)]
+    entries += [(f"OEBPS/{n}", data) for n, data in images.items()]
+    return write_zip(path, entries)
+
+
+def test_include_cbz_converts_image_only_epub_and_keeps_text_epub(env):
+    root = env.root
+    make_epub(root / "電子" / "漫画 第1巻.epub",
+              ['<div><img src="b.jpg" alt=""/></div>', '<div><img src="a.jpg"/></div>',
+               '<svg><image xlink:href="c.jpg"/></svg>'],
+              {"a.jpg": page_bytes("e/a"), "b.jpg": page_bytes("e/b"), "c.jpg": page_bytes("e/c")})
+    make_epub(root / "電子" / "小説 第1巻.epub", ["<p>本文です。" * 20 + "</p>"], {})
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    old = vid_of(env, "電子/漫画 第1巻.epub")
+    with db.transaction(env.conn) as c:
+        c.execute("INSERT INTO reading_progress (volume_id, page, finished, position, updated_at) VALUES (?, 1, 0, 0.5, ?)",
+                  (old, db.now()))
+    before = full_snapshot(root)
+    o = organizer(env)
+    plan = o.plan_range(env.root_id, "電子", include_cbz=True)
+    items = by_from(plan)
+    comic, novel = items["電子/漫画 第1巻.epub"], items["電子/小説 第1巻.epub"]
+    assert comic["status"] == "cbz" and comic["page_count"] == 3 and comic["output_rel_path"] == "電子/漫画 第1巻.cbz"
+    assert novel["status"] == "excluded" and "小説" in novel["reason"]
+    assert full_snapshot(root) == before
+    assert o.execute(plan["op_id"])["state"] == "done"
+    # spine の順(区切り → その中の画像)に入る。本文の XHTML・CSS は入れない
+    with zipfile.ZipFile(root / "電子" / "漫画 第1巻.cbz") as z:
+        assert z.namelist() == ["0001.jpg", "0002.jpg", "0003.jpg"]
+        assert [z.read(n) for n in z.namelist()] == [page_bytes("e/b"), page_bytes("e/a"), page_bytes("e/c")]
+    new = vid_of(env, "電子/漫画 第1巻.cbz")
+    assert progress(env, new) == 1  # 区切り 1 の最初の画像 = 2 ページ目(0 始まりで 1)
+    assert o.undo(plan["op_id"])["state"] == "undone"
+    assert full_snapshot(root) == before
+    assert progress(env, old) == 1

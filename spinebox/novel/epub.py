@@ -175,3 +175,28 @@ def read_section(reader: ArchiveReader, book: EpubBook, index: int, limits: Extr
     section = book.sections[index]
     data = reader.read_entry(section.entry, _limits(limits, MAX_SECTION_BYTES))
     return decode_markup(data), section.entry.name
+
+
+# 画像だけの EPUB(漫画)の判定。区切りごとに、タグを除いた文字がこれ以下なら「文字の無いページ」とみなす
+# (固定レイアウトの漫画は各区切りが <img> 1 枚。title 要素・空白は数えない)
+MAX_PAGE_TEXT = 20
+_SKIP_BLOCKS = re.compile(r"<(head|script|style)\b.*?</\1\s*>", re.I | re.S)
+_TAG = re.compile(r"<[^>]*>", re.S)
+_IMAGE_REF = re.compile(r"<(?:img\b[^>]*?\bsrc|image\b[^>]*?\b(?:xlink:)?href)\s*=\s*[\"']([^\"']+)[\"']", re.I)
+
+
+def image_pages(reader: ArchiveReader, book: EpubBook, limits: ExtractionLimits) -> list[tuple[int, ArchiveEntry]] | None:
+    """画像だけの EPUB なら、spine 順のページ(区切りの番号, 画像のエントリ)を返す。本文の文字がある区切りが
+    1 つでもあれば None(小説。CBZ にすると文字が失われる)。最初に文字のある区切りで読むのをやめる。"""
+    pages: list[tuple[int, ArchiveEntry]] = []
+    for index, section in enumerate(book.sections):
+        markup, name = read_section(reader, book, index, limits)
+        text = _TAG.sub("", _SKIP_BLOCKS.sub("", markup))
+        if len(re.sub(r"\s+|&nbsp;|&#160;", "", text)) > MAX_PAGE_TEXT:
+            return None
+        base = posixpath.dirname(name)
+        for href in _IMAGE_REF.findall(markup):
+            target = resolve_href(base, href)
+            if target is not None and target in book.resource_index:
+                pages.append((index, book.resources[book.resource_index[target]].entry))
+    return pages or None

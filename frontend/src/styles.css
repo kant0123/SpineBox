@@ -473,6 +473,23 @@ button.chip:hover:not(:disabled) {
 .organize-result-rest { margin-top: 20px; padding-top: 8px; border-top: 1px solid var(--border-strong); }
 .organize-result-rest > summary { min-height: 44px; padding: 8px 0; cursor: pointer; font-weight: 700; }
 .organize-result-rest section { margin-top: 8px; }
+/* CBZ 化は元(1 つのファイル・フォルダ)ごとにまとめ、元のパスを行ごとに繰り返さない(#153) */
+.organize-source { margin-top: 12px; padding-left: 12px; border-left: 4px solid var(--border-strong); }
+.organize-source-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 4px; }
+.organize-source-head code { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; }
+.organize-source-label { flex: none; font-size: 0.875rem; color: var(--muted); }
+.organize-source-note { margin: 0 0 4px; font-size: 0.875rem; color: var(--muted); }
+/* 元を削除する実行の確認。押せなくするのではなく、押したらここへフォーカスして理由を出す */
+.organize-confirm { margin: 12px 0 0; padding: 8px 12px; border: 1px solid var(--error); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.organize-confirm.error { border-width: 2px; }
+.organize-confirm-error { margin: 4px 0 0; color: var(--error); font-weight: 700; }
+/* 結果のボタン列は、長いリストをスクロールしても上に残す(実行・元に戻すを探しに戻らない) */
+.organize-result-actions {
+  position: sticky; top: var(--organize-sticky-top, 0px); z-index: 2;
+  padding: 8px 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
 @media (max-width: 767px) {
   .organize-section, .organize-form, .organize-result, .job-section { scroll-margin-top: 4rem; }
   .organize-picker-backdrop { align-items: flex-end; padding: 8px; }
@@ -482,6 +499,8 @@ button.chip:hover:not(:disabled) {
   .organize-run { flex-direction: column; align-items: stretch; }
   .organize-run-actions button { width: 100%; }
   .organize-result-actions .organize-commit { margin-left: 0; }
+  /* スマホは上の帯(.topbar。sticky)の下に止める */
+  .organize-result-actions { top: var(--organize-sticky-top, 3.3rem); }
 }
 .scan-issues { margin-top: 6px; }
 .scan-issues summary { cursor: pointer; color: var(--warn); font-weight: 700; min-height: 24px; }

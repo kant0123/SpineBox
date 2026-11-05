@@ -20,7 +20,7 @@ related: [backend, frontend, organize, work-grouping, volume-split, overview, ma
 | パス | 役割 |
 | --- | --- |
 | `spinebox/bookmarks.py:97 list_bookmarks()` | 一覧。作品は `works._summary()` と同じ形、巻は作品名つき |
-| `spinebox/bookmarks.py:85 transfer_volume()` | 整理での引き継ぎ。`spinebox/organize/organizer.py:1701 transfer_volume_state()`(読書位置・作品の割り当て・巻の書誌と同じ場所)から呼ぶ |
+| `spinebox/bookmarks.py:85 transfer_volume()` | 整理での引き継ぎ。`spinebox/organize/organizer.py:1921 transfer_volume_state()`(読書位置・作品の割り当て・巻の書誌と同じ場所)から呼ぶ |
 | `spinebox/works.py:379 _merge_bookmarks()` | 統合で吸収先へ移す(`merge_works()` から) |
 | `spinebox/db.py:40 MIGRATIONS` | 版 12 の `bookmarks`。作品か巻のどちらか一方(CHECK)、それぞれ部分一意索引で 1 つにつき 1 行 |
 | `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` | 付け外しのボタン。巻の一覧・作品ページ(作品と各巻)・小説リーダーのメニューに置く。漫画のリーダーでは manga-viewer のヘッダーの ★ が同じ API を呼ぶ([[manga-reader]]) |

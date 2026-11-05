@@ -71,13 +71,15 @@ class RenamePlanIn(BaseModel):
 class RangePlanIn(BaseModel):
     """範囲指定の整理(#84)。path は蔵書ルートからの相対(空ならルート全体。サブフォルダも対象)。
     file_template / folder_template が両方空ならファイル名の整理だけ。exclude_volume_ids は外す巻。
-    include_cbz は 1 巻 = 1 CBZ でない元も読める巻ごとに CBZ にする(#133)。"""
+    include_cbz は 1 巻 = 1 CBZ でない元も読める巻ごとに CBZ にする(#133)。delete_originals は CBZ 化した元を
+    確定・検証の後で削除する(#153。既定は退避。削除した整理は元に戻せない)。"""
     root_id: StrictInt
     path: StrictStr = ""
     file_template: StrictStr = ""
     folder_template: StrictStr = ""
     exclude_volume_ids: list[StrictInt] = Field(default_factory=list)
     include_cbz: bool = False
+    delete_originals: bool = False
 
 
 class RangeExampleIn(BaseModel):
@@ -1052,7 +1054,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             return organizer(conn).plan_range(body.root_id, body.path, file_template=body.file_template,
                                               folder_template=body.folder_template,
                                               exclude_volume_ids=body.exclude_volume_ids,
-                                              include_cbz=body.include_cbz)
+                                              include_cbz=body.include_cbz,
+                                              delete_originals=body.delete_originals)
         except TemplateError as e:
             raise HTTPException(422, str(e)) from e
 
