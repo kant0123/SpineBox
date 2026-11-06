@@ -32,7 +32,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。一覧の「作品 / 巻」の切り替えは `frontend/src/works/ViewTabs.tsx:4 ViewTabs()` |
-| `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 巻の番号 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
+| `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
 | `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。`view="data"` の上に「ジョブ / 整理」の節内リンクを置き、`focus="organize"`(`#/data/organize`)は整理の見出しへスクロールしてフォーカスする(#149)。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:18 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
@@ -103,7 +103,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **作品カードに種別・ジャンルと「重複」「統合済み」は出さない(#129)。** ホーム・漫画・小説のカードは作品名・著者・出版社に絞り、
   種別(漫画/小説)とジャンルはカードから外す(漫画・小説はナビで分かれ、ジャンルは作品ページで見る)。重複と統合済みは
   一覧の判断には使わず、カードが情報過多になるためバッジから外す(統合の提案・候補の確認待ち・欠け・オフライン・読書状態は残す)。
-  巻数は独立した行ではなく `.work-badges` の先頭のタグにし、文言を「全8巻(〜6巻)」(最高巻数が無ければ「全8巻」)にした。
+  巻数は独立した行ではなく `.work-badges` の先頭のタグにし、文言を「既刊8巻(〜6巻)」(最高巻数が無ければ「既刊8巻」)にした(#185)。「既刊」は手持ち分(`GET /api/works` の `volume_count` = 見えている巻の数。`max_volume` は手持ちの最大巻番号)で、公開 DB の全巻数 `total_volumes` ではない(`WorkLinks.tsx` の候補の「全 N 巻」はそちら)。
 - **欠けの番号は多すぎるときだけ件数にする(#165)。** 作品カードのバッジと作品ページの「欠けている巻」は、欠けが
   5 個以下なら番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、
   カーソルを合わせるとツールチップで出る。欠けの多い作品でカードが数行になり、一覧が読みにくくなるのを避ける。
@@ -143,7 +143,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **作品カードは「タイトル一覧」(`#/works/<id>/titles`)へ、管理はそこから(#105)。** カードの行き先を作品ページから分け、まずその作品の巻を番号順に並べる。「作品を管理」ボタンで今までカードから開いていた `#/works/<id>`(作品名・著者・巻の割り当て・統合)へ移る。
   管理ページの URL を変えないのは、ブックマーク・フォロー・統合の提案・整理の履歴からの既存のリンクをそのまま使うため。作品ページの戻り先は「タイトル一覧へ」にした
 - **タイトル一覧の行の名前は「作品名 第N巻」にそろえ、ファイル名を出さない(#115)。** 同じ作品でも巻の名前は元のファイル名のまま(英字・作者の括弧・アンダースコア)で揺れ、並べても同じ本の巻に見えない。補完済みの作品名(`work.title`)と巻番号から作り、番号の無い巻だけ元の名前を残す(作品名だけでは見分けられない)。
-  進み具合は「N% (読んだ / 全体)」にし、「未読」の文字は行に出さない(未読は 0% と色で分かる)。表紙は行の一番左に置き、並んだときに背表紙のように見えるようにする。色は読書状態(未読 / 読書中 / 読了)で塗り分け、凡例を出す。ヘッダーには作品全体の進捗(ページの割合と読了巻数。重複は 1 巻として数える)を出す。ページ数が未確定の巻(まだ開いていない小説)は割合に数えず、その巻数を添える
+  進み具合は「N% (読んだ / 全体)」にし、「未読」の文字は行に出さない(未読は 0% と色で分かる)。表紙は行の一番左に置き、並んだときに背表紙のように見えるようにする。色は読書状態(未読 / 読書中 / 読了)で塗り分け、凡例を出す。ヘッダーには作品全体の進捗(ページの割合と読了巻数。重複は 1 巻として数える)を出す。ページ数が未確定の巻(まだ開いていない小説)は割合に数えず、その巻数を添える。
+  行頭の「N巻」の列は置かない。巻名「作品名 第N巻」に番号が含まれ、列が冗長なため。重複モーダルの見出し「N巻 の重複」など番号の表示は残す
 - **重複した巻は 1 行にまとめ、押したらモーダルで選ばせる(#115)。** 同じ巻番号の別スキャンは同じ本なので、行を分けると持っている巻の数と全体の進捗が水増しされる。行の代表は読んでいる巻(読了 > 読書中 > オフラインでない巻)にし、押すと `#/read/<id>` を選ぶモーダルを出す。モーダルでは元の名前を出す(名前の揺れが選ぶ手がかりになる)。「重複」の印は残す。Esc で閉じ、閉じたら開いた行へフォーカスを戻す。Tab はモーダルの中を回す(背後の行へフォーカスを移さない)
 - **欠け・最新巻はフォローの「続刊を調べる」の結果だけを使う(#115)。** タイトル一覧を開くたびに公開 DB を引き直すと、閲覧の画面が取得元の遅さ・失敗に引きずられる。`work.follow.releases`(フォロー中で、最後に調べた結果)があるときだけ、点線の行で番号の位置(欠け)と後ろ(最新巻)に出す。持っていないので押してもリーダーへは行かせない
 
