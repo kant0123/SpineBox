@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-05
+updated: 2026-11-06
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -105,9 +105,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   文字は表紙の下へ続ける(#129)。`cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
   読み込めたら見せる。表紙が無い・404(入れ子の巻でまだ作っていない・小説・1 ページ目が画像でない)なら
   「表紙なし」の枠(`WorkCoverPlaceholder`)を同じ 2:3 で残す(#132)。枠を残すのは作品カードだけで、
-  タイトル一覧・ブックマークの表紙は今までどおり何も出さない。表紙の有無で高さが変わらないので、
-  `.work-grid` の `grid-auto-rows: 1fr` と `align-items: stretch` で全カードの大きさを揃え、タイトルの開始位置もそろう
-  (文字が少ない作品は下に余白が出る)。入れ子の巻の表紙は管理のデータ管理タブの「表紙のみ補完」(明示操作)で作る。
+  タイトル一覧・ブックマークの表紙は今までどおり何も出さない。表紙の枠を全カードに出すので、同じ行の
+  タイトルの開始位置はそろう。カードの高さは中身に合わせ、一覧全体で揃えない(#161。`grid-auto-rows: 1fr` は
+  グリッドの高さが不定のとき全行を一覧で一番高いカードに揃えるため、バッジの少ない作品ほど内側の下に余白ができた。
+  `.work-grid` は `align-items: start`)。入れ子の巻の表紙は管理のデータ管理タブの「表紙のみ補完」(明示操作)で作る。
   表紙の URL は `ETag` + `Cache-Control: private, no-cache` なので、画面を開き直すと取り直す(以前の「表紙を作る」の後に `?rev=` を変える仕組みは、作成を画面から起動しなくなったので廃止した)。
   巻の一覧のカードには出していない(要望は作品の一覧。同じ `api.thumbnailUrl()` で足せる)
 - **巻情報の読み込み待ちを見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
@@ -207,6 +208,14 @@ npm run build      # frontend/dist
 ```
 
 ## 経緯
+
+- #161 で作品カードの高さを中身に合わせた。`.work-grid` の `grid-auto-rows: 1fr` は、グリッドの高さが
+  不定のとき全行を一覧で一番高いカードの高さに揃えるため、バッジの少ない作品ほど内側の下に空白が残っていた
+  (1280px で 29 / 59px、375px で 59px)。タイトルの位置を揃える目的(#132)は表紙の枠(表紙なしを含む)で
+  足りていたので、`align-items: start` にしてカードは中身の高さで終わるようにした。モック API をヘッドレス
+  Chrome(CDP)で 375 / 767 / 768 / 1280px、ライト・ダークで開き、内側下部の余白が枠の 1px だけになること、
+  同じ行のタイトル位置がそろうこと、横スクロールが無いことを確認した。`npm test` 181 件(ローカルの Node 26 は
+  #130 の回避策 `NODE_OPTIONS=--localstorage-file=...` が必要)と `npm run build` が通った。
 
 - #151 で範囲指定の整理のプレビュー結果を作り直した。カード/ツリーから 1 行 1 件のリストにし、要約 → 競合 → 実行ボタン → 実行する内容 →
   整理しない内容の順にした。競合は整理後の名前ごとに見出しを付け、既定でファイル数の多い方の行にチェックを入れる。行を選ぶと

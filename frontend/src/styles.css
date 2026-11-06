@@ -670,8 +670,10 @@ button.small::after {
   background: var(--accent-subtle);
   color: var(--accent-hover);
 }
-/* 全カードの大きさを揃える。表紙の無い作品も枠を持つので、タイトルの位置もそろう(#132) */
-.work-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 1fr; align-items: stretch; }
+/* カードは中身の高さに合わせる。行の高さを揃える(grid-auto-rows: 1fr)と、一覧で一番高いカードに
+   全カードが引き伸ばされ、バッジの少ない作品ほど内側の下に余白ができる(#161)。
+   表紙の無い作品も枠を持つので、タイトルの位置はそろう(#132) */
+.work-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }
 .work-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
 .work-link { display: flex; gap: 12px; padding: 12px; color: inherit; text-decoration: none; }
 /* 作品カードは表紙を横幅いっぱいに置き、文字をその下に続ける */
