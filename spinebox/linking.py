@@ -494,12 +494,14 @@ def _prefer_japanese_value(name: str, row, desired: _Desired) -> bool:
     """ファイル名・外側の名前から入った作品名・著者より、公開 DB の日本語の値を優先する。
 
     作品名と著者は一覧・検索・整理のテンプレートにそのまま出るので、ローマ字のファイル名のままにしない
-    (利用者の要望)。確信度 0.9 の規則は、日本語でない値と作品名・著者以外の項目にだけ残す。
-    手動の値(`manual`)は `_apply_field()` が先に除く。置き換えた元の作品名は別名と evidence.replaced に残す。
+    (利用者の要望)。日本語同士の置き換えは確信度 0.9 の規則に委ねる(低確信度の別作品で正しい日本語を
+    上書きしない)。手動の値(`manual`)は `_apply_field()` が先に除く。置き換えた元の作品名は別名と evidence.replaced に残す。
     """
     if name not in (works.FIELD_TITLE, works.FIELD_AUTHOR) or row is None:
         return False
-    return row["source"] in (works.SOURCE_FILENAME, works.SOURCE_CONTAINER) and _has_cjk(desired.value)
+    return (row["source"] in (works.SOURCE_FILENAME, works.SOURCE_CONTAINER)
+            and not _has_cjk(row["value"] or "")
+            and _has_cjk(desired.value))
 
 
 def _apply_field(c, work_id: int, name: str, desired: _Desired | None) -> None:

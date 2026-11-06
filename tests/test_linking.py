@@ -471,8 +471,8 @@ def test_name_derived_values_are_replaced_only_when_confident_or_chosen(env_fact
 
 def test_japanese_title_and_author_are_preferred_over_filename_at_low_confidence(env_factory):
     """日本語の作品名・著者は確信度 0.9 未満でもファイル名由来の値を上書きする(#166)。"""
-    env = env_factory("kaku", ["[ファイル名の著者] Atumare Fushigi Kenkyubu 第01巻.cbz",
-                                "[ファイル名の著者] Atumare Fushigi Kenkyubu 第02巻.cbz"])
+    env = env_factory("kaku", ["[File Author] Atumare Fushigi Kenkyubu 第01巻.cbz",
+                                "[File Author] Atumare Fushigi Kenkyubu 第02巻.cbz"])
     wid = env.work_id()
     assert env.work(wid)["title"] == "Atumare Fushigi Kenkyubu"
     put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
@@ -490,7 +490,21 @@ def test_japanese_title_and_author_are_preferred_over_filename_at_low_confidence
     linking.apply_work(conn, wid)
     conn.close()
     assert env.work(wid)["title"] == "Atumare Fushigi Kenkyubu"
-    assert env.work(wid)["fields"]["author"]["value"] == "ファイル名の著者"
+    assert env.work(wid)["fields"]["author"]["value"] == "File Author"
+
+
+def test_japanese_filename_title_and_author_are_not_overwritten_at_low_confidence(env_factory):
+    """日本語同士の置き換えは確信度 0.9 の規則(低確信度の別作品で正しい日本語を上書きしない)。"""
+    env = env_factory("kaku", ["[ファイル名の著者] かくかくしかじか 第01巻.cbz"])
+    wid = env.work_id()
+    assert env.work(wid)["title"] == "かくかくしかじか"
+    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
+    w = env.work(wid)
+    assert w["title"] == "かくかくしかじか" and w["fields"]["author"]["value"] == "ファイル名の著者"
+    # 確信度が高いときは置き換える
+    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.95)
+    w = env.work(wid)
+    assert w["title"] == "公開DBの作品名" and w["fields"]["author"]["value"] == "公開DBの著者"
 
 
 def test_manual_title_and_author_are_not_overwritten_by_japanese_public_db(env_factory):
