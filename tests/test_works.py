@@ -816,7 +816,6 @@ def test_a_decimal_volume_refreshes_a_misread_work_title(make_env):
     """小数点の巻を誤読して作った `… 第04` の作品名を、系列名へ直す(#167)。"""
     _, settings, client = make_env(["ようこそ実力至上主義の教室へ 第04.5巻 (txt+jpg).cbz"])
     (w,) = client.get("/api/works").json()["works"]
-    add_alias(settings, w["id"], "ようこそ実力至上主義の教室へ", confidence=0.8)
     conn = db.connect(settings.db_path)
     try:
         with db.transaction(conn) as c:

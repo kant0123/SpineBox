@@ -549,11 +549,12 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             continue
         norm = own.name.norm
         work = st.works.get(cur["work_id"]) if cur is not None else None
+        if work is not None:
+            _refresh_title(c, st, work, own)  # 系列名の別名が無くても、誤読した 1 巻の作品名を直す
         leaves = work is not None and norm in work.names and _leaves_numbered_work(c, work, norm, want)
         if work is not None and norm in work.names and not leaves:
             if cur["source"] == SOURCE_FILENAME:
                 _refresh_assignment(c, vid, cur, own)
-            _refresh_title(c, st, work, own)
             _fill_author(c, work, own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
             continue
         target = st.find_work(norm)
