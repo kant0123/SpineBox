@@ -96,8 +96,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1099 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1119 build_slots()` は
+`spinebox/works.py:1133 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1153 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
@@ -134,3 +134,5 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - [[volume-split]] — 巻番号の候補、分解された子の巻の扱い
 - [[organize]] — CBZ 化で作品の割り当てを引き継ぐ
 - [[work-search]] — 作品名・別名・著者・巻の名前の全文検索。正規化は `normalize_title` を共用
+
+
