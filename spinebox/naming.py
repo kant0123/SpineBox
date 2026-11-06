@@ -14,6 +14,11 @@
 
 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001 はページ番号)、`全3巻`(総巻数)、
 語の途中の `v`(`Dev01`)、年月日らしい 4 桁の数字。
+
+`作品名 01` `作品名(3)` の形の末尾の番号は、名前だけでは巻番号と決められない(`Kitchen 2` が
+作品名のこともある)ので `parse_number()` では拾わない。代わりに `trailing_number()` が候補を返し、
+**同じ名前で末尾の番号だけが違う巻が 2 つ以上並んでいるとき**だけ、呼ぶ側(`spinebox/works.py`)が
+巻番号として使う(ファイル名は候補、という不変条件の延長。根拠は `wiki/concepts/work-grouping.md`)。
 """
 from __future__ import annotations
 
@@ -232,3 +237,52 @@ def parse_work_name(name: str) -> WorkName | None:
     if number_part is not None:
         parts.append(("number", number_part.strip()))
     return WorkName(title, norm, tuple(authors), number, tuple(parts))
+
+
+# --- 末尾の番号(同じ名前の組が証拠) -----------------------------------------------------------
+#
+# `作品名 01` `作品名_01` `作品名(3)` の形。名前だけでは巻番号と決められない(`Kitchen 2` が
+# 作品名のこともある)ので `_RULES` には入れない。**同じ名前で末尾の番号だけが違う巻が 2 つ以上**の
+# ときに限り、`spinebox/works.py` が巻番号として使う。
+
+_N3 = r"\d{1,3}"
+_TRAILING_NUMBER = re.compile(
+    rf"^(?P<base>.*?)(?P<tail>[\s_\-－]+(?P<sep>{_N3})|\s*[\(（]\s*(?P<paren>{_N3})\s*[\)）])\s*$")
+# 番号の直前がこの語なら末尾の番号と読まない(印の付いた番号は `_RULES` が先に拾う)
+_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol\.?|v|ch\.?|ep\.?|巻|話|全)$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class TrailingNumber:
+    """名前の末尾の番号。単独では巻番号と決めない(同じ名前の組が証拠)。"""
+    base: str       # 番号を落とした名前(作品名の候補。正規化は呼ぶ側で)
+    number: int     # 1〜999
+    evidence: str   # 名前の中で当たった部分(`01` `(3)`)
+
+
+def trailing_number(name: str) -> TrailingNumber | None:
+    """`作品名 01` `作品名(3)` の末尾の番号の候補。巻番号と決めるのは呼ぶ側。
+
+    印の無い単独の数字(`DLRAW.TO_001` の 001)と、作品名として読めない残りは返さない。
+    """
+    text = unicodedata.normalize("NFKC", strip_known_ext(name)).strip()
+    m = _TRAILING_NUMBER.match(text)
+    if m is None:
+        return None
+    number = int(m.group("sep") or m.group("paren"))
+    base = m.group("base").strip()
+    if number == 0 or not _readable_base(base):
+        return None
+    return TrailingNumber(base, number, m.group("tail").strip())
+
+
+def _readable_base(base: str) -> bool:
+    """末尾の番号の前が、作品名として読める残りか。"""
+    norm = normalize_title(base)
+    if not norm or norm.isdigit():
+        return False
+    if base[-1].isdigit():
+        return False  # `v01-03` の `03` のように、範囲の後ろを末尾の番号と読まない
+    if re.fullmatch(_SITE, base, re.IGNORECASE):  # 配布元の名前の直後の数字(ページ番号など)
+        return False
+    return not _TRAILING_MARK.search(base)

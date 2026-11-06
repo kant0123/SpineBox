@@ -65,6 +65,51 @@ def test_same_normalized_title_is_one_work(make_env):
     assert all(v["work_id"] for v in client.get("/api/volumes").json())
 
 
+def test_trailing_numbers_of_the_same_name_are_volume_numbers(make_env):
+    _, _, client = make_env(["作品名 1.cbz", "作品名 2.cbz", "作品名 4.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"], w["missing_volumes"]) == ("作品名", 3, [3])
+    assert client.get("/api/works/proposals").json() == []  # 別作品にならないので統合の提案も出ない
+    d = client.get(f"/api/works/{w['id']}").json()
+    assert [s["label"] for s in d["slots"]] == ["1巻", "2巻", "4巻"]
+    v = d["slots"][0]["volumes"][0]
+    assert v["volume_number"] == {"kind": "volume", "start": 1, "end": 1, "evidence": "1"}
+    assert ["number", "1"] in v["assignment"]["evidence"]["parts"]
+    assert v["assignment"]["confidence"] == 0.9 and v["assignment"]["source"] == "filename"
+
+
+def test_trailing_number_alone_stays_in_the_title(make_env):
+    # `Kitchen 2` が作品名のこともあるので、名前だけでは巻番号と決めない(同じ名前の組が要る)
+    _, _, client = make_env(["Kitchen 2.cbz", "Kitchen.cbz"])
+    assert set(by_title(client)) == {"Kitchen 2", "Kitchen"}
+    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())
+
+
+def test_trailing_number_in_parentheses(make_env):
+    _, _, client = make_env(["作品名(1).cbz", "作品名(2).cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 2)
+
+
+def test_trailing_numbers_are_stable_after_resync(make_env):
+    _, _, client = make_env(["作品名 1.cbz", "作品名 2.cbz"])
+    client.post("/api/works/refresh")
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 2)
+    assert [s["label"] for s in client.get(f"/api/works/{w['id']}").json()["slots"]] == ["1巻", "2巻"]
+
+
+def test_numbers_are_dropped_when_the_group_is_gone(make_env):
+    lib, _, client = make_env(["作品名 1.cbz", "作品名 2.cbz"])
+    assert set(by_title(client)) == {"作品名"}
+    (lib / "作品名 2.cbz").unlink()
+    client.post("/api/scan")
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 1)  # 外側の名前の別名で同じ作品に残る
+    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())  # 番号は名前から導出なので消える
+    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())
+
+
 def test_author_and_title_come_from_the_name_with_evidence(make_env):
     _, _, client = make_env(["[青色まろ×赤池宗] お気楽 第01巻.cbz", "[青色まろ×赤池宗] お気楽 第02巻.cbz"])
     (w,) = client.get("/api/works").json()["works"]

@@ -5,7 +5,9 @@
   根拠・「手動か」を 1 件ごとに持つ。手動のものは再計算(`sync`)で上書きしない。外部ソース(公開 DB)は
   空欄と別名だけを足す
 - 割り当て: 巻の**自分の名前**(巻の名前 → 入れ子の名前 → 外側のアーカイブ・フォルダの名前の順で最初に作品名と読めたもの)
-  の正規化が、既存の作品の名前(作品名か別名)と一致すればその作品へ、無ければ新しい作品へ
+  の正規化が、既存の作品の名前(作品名か別名)と一致すればその作品へ、無ければ新しい作品へ。
+  `作品名 01` `作品名 02` のように**同じ名前で末尾の番号だけが違う巻が 2 つ以上**あるときは、
+  末尾の番号を巻番号として読む(`_trailing_series`。名前だけでは決めない)
 - 統合: 別々の作品が同じ本と言える強い根拠があれば**統合の提案**を出す。確信度が高く、手動の決定が絡まないものだけ自動で統合し、
   残りは確認待ち(`open`)。根拠は (1) 別スキャンの重複候補(spinebox/duplicates.py。却下されたものは使わない)、
   (2) 別名と作品名の一致。却下した提案・利用者が分けた組は再計算で戻さない
@@ -19,12 +21,12 @@ import re
 import sqlite3
 import unicodedata
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
-from .naming import normalize_title, parse_work_name
+from .naming import normalize_title, parse_work_name, trailing_number
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -129,7 +131,13 @@ class OwnName:
         return {"name": self.text, "level": "volume" if self.level == 0 else "enclosing", **self.name.as_dict()}
 
 
-def own_name(row) -> OwnName | None:
+def own_name(row, series: dict | None = None) -> OwnName | None:
+    """巻の作品名の候補。`series` を渡すと、末尾の番号まで読んだ作品名を優先する(`_trailing_series`)。"""
+    if series is not None:
+        wn = parse_work_name(series["title"])
+        if wn is not None:
+            # 番号を読んだ根拠を parts に残す(画面で「名前の中のどこを番号と読んだか」を見せる)
+            return OwnName(replace(wn, parts=wn.parts + (("number", series["evidence"]),)), 0, series["title"])
     for level, text in enumerate(name_chain(row)):
         wn = parse_work_name(text)
         if wn is not None:
@@ -172,6 +180,7 @@ class _State:
     def __init__(self, c: sqlite3.Connection):
         self.vols = c.execute(
             "SELECT v.id, v.title, v.container_path, v.entry_prefix, v.inner_path, v.parent_id, "
+            "v.number_kind, v.number_start, v.number_end, v.number_evidence, "
             "s.id AS source_id, s.rel_path " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + " ORDER BY v.id").fetchall()
         self.listed = {r["id"] for r in self.vols}
         self.works: dict[int, _Work] = {}
@@ -425,7 +434,61 @@ def sync(conn: sqlite3.Connection) -> SyncSummary:
     return summary
 
 
+def _owns_trailing_number(r) -> bool:
+    """末尾の番号の規則で入れた番号か(付け直しで消してよいのはこれだけ)。"""
+    if r["number_kind"] != "volume" or r["number_start"] is None or r["number_start"] != r["number_end"]:
+        return False
+    t = trailing_number(r["title"])
+    return t is not None and t.number == r["number_start"]
+
+
+def _trailing_series(st: _State) -> dict[int, dict]:
+    """同じ名前で末尾の番号だけが違う巻の組から、作品名と巻番号を読む(名前だけでは決めない)。
+
+    `作品名 01` `作品名 02` … と 2 つ以上の違う番号が並ぶ組だけを系列とみなす。1 巻だけの
+    `作品名 01` は作品名の一部として残す(`Kitchen 2` が作品名のこともあるため。`spinebox/naming.py`)。
+    """
+    groups: dict[str, list] = defaultdict(list)
+    for r in st.vols:
+        if r["number_kind"] is not None and not _owns_trailing_number(r):
+            continue  # 印の付いた番号(`v01-03`)など、強い根拠で読めている番号は触らない
+        t = trailing_number(r["title"])
+        if t is None:
+            continue
+        wn = parse_work_name(t.base)
+        if wn is None:
+            continue
+        groups[wn.norm].append((r["id"], t, wn))
+    out: dict[int, dict] = {}
+    for items in groups.values():
+        if len({t.number for _, t, _ in items}) < 2:
+            continue
+        for vid, t, wn in items:
+            out[vid] = {"title": wn.title, "number": t.number, "evidence": t.evidence}
+    return out
+
+
+def _apply_trailing_numbers(c, st: _State, series: dict[int, dict]) -> None:
+    """末尾の番号を巻の番号の列へ反映する。組が無くなった番号は消す(名前から導出した値なので)。"""
+    now = db.now()
+    for r in st.vols:
+        want = series.get(r["id"])
+        if want is None:
+            if _owns_trailing_number(r):
+                c.execute("UPDATE volumes SET number_kind = NULL, number_start = NULL, number_end = NULL, "
+                          "number_evidence = NULL, updated_at = ? WHERE id = ?", (now, r["id"]))
+            continue
+        if (r["number_kind"], r["number_start"], r["number_end"], r["number_evidence"]) == \
+                ("volume", want["number"], want["number"], want["evidence"]):
+            continue
+        c.execute("UPDATE volumes SET number_kind = 'volume', number_start = ?, number_end = ?, "
+                  "number_evidence = ?, updated_at = ? WHERE id = ?",
+                  (want["number"], want["number"], want["evidence"], now, r["id"]))
+
+
 def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
+    series = _trailing_series(st)
+    _apply_trailing_numbers(c, st, series)
     for r in st.vols:
         vid = r["id"]
         cur = st.assign.get(vid)
@@ -440,7 +503,7 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
                 st.assign[vid] = {"work_id": parent["work_id"], "manual": 1, "source": SOURCE_MANUAL}
                 summary.volumes_assigned += 1
                 continue
-        own = own_name(r)
+        own = own_name(r, series.get(vid))
         if own is None:
             continue
         norm = own.name.norm
@@ -558,10 +621,16 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
         return roots, index
 
     roots, index = existing_index()
+    active = {st.assign[v]["work_id"] for v in st.listed if v in st.assign}
     kept_open: set[int] = set()
     for pair, cand in sorted(found.items(), key=lambda kv: (-kv[1]["confidence"], kv[0])):
         a, b = _pair(roots.get(pair[0], pair[0]), roots.get(pair[1], pair[1]))
         if a == b or cand["confidence"] < PROPOSE_MIN:
+            continue
+        auto = (cand["confidence"] >= AUTO_MERGE_MIN and not _manual_involved(c, a) and not _manual_involved(c, b))
+        if not auto and (a not in active or b not in active):
+            # 見えている巻を持たない作品は画面に出ないので、確認待ちは作らない(既にある行は下で消える)。
+            # 自動統合は空の作品を片付けるのに使えるので残す
             continue
         ex = index.get((a, b))
         payload = _dumps(cand["evidence"])
@@ -571,7 +640,6 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
                              evidence = ? WHERE id = ?""", (a, b, cand["rule"], cand["confidence"], payload, ex["id"]))
                 kept_open.add(ex["id"])
             continue  # 却下・分離した組は戻さない
-        auto = (cand["confidence"] >= AUTO_MERGE_MIN and not _manual_involved(c, a) and not _manual_involved(c, b))
         now = db.now()
         pid = c.execute(
             """INSERT INTO work_merge_proposals (work_a, work_b, rule, confidence, evidence, status, created_at, decided_at)

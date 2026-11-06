@@ -1,6 +1,6 @@
 import pytest
 
-from spinebox.naming import normalize_title, parse_number, parse_work_name
+from spinebox.naming import normalize_title, parse_number, parse_work_name, trailing_number
 
 
 @pytest.mark.parametrize("name, kind, start, end", [
@@ -137,3 +137,43 @@ def test_romaji_and_japanese_names_are_not_the_same_work_by_name_alone():
     assert normalize_title("ＯＫＩ　ｒａｋｕ") == normalize_title("oki raku")
     assert normalize_title("カガク") == normalize_title("かがく")
     assert normalize_title(OKIRAKU) != normalize_title(OKIRAKU_JP)  # 結ぶのは重複候補の証拠や別名
+
+
+# --- 末尾の番号(同じ名前の組が証拠) -----------------------------------------------------------
+
+@pytest.mark.parametrize("name, base, number", [
+    ("作品名 01", "作品名", 1),
+    ("作品名_2", "作品名", 2),
+    ("作品名-12", "作品名", 12),
+    ("作品名 (3)", "作品名", 3),
+    ("作品名(3)", "作品名", 3),
+    ("作品名（０５）", "作品名", 5),          # 全角の括弧・数字
+    ("[著者] 作品名 07.cbz", "[著者] 作品名", 7),
+])
+def test_trailing_number_candidate(name, base, number):
+    t = trailing_number(name)
+    assert t is not None, name
+    assert (t.base, t.number) == (base, number)
+    assert t.evidence  # 名前の中で当たった部分
+
+
+@pytest.mark.parametrize("name", [
+    "DLRAW.TO_001.jpg",     # 配布元の直後の数字(ページ番号)
+    "DLRAW.AC_89",
+    "Manga-Zip.info_1",
+    "001",
+    "2019",
+    "作品名 0",             # 0 巻は無い
+    "作品名 第3",           # 印の付いた番号は parse_number の担当
+    "作品名 v01",
+    "v01-03",
+    "作品名",
+])
+def test_trailing_number_is_not_a_candidate(name):
+    assert trailing_number(name) is None
+
+
+def test_trailing_number_alone_is_not_a_volume_number():
+    # `Kitchen 2` が作品名のこともあるので、名前だけでは巻番号と決めない(spinebox/works.py が組で見る)
+    assert parse_number("Kitchen 2") is None
+    assert trailing_number("Kitchen 2").number == 2
