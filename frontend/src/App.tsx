@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { parseRoute, type Route } from "./route";
 import { Admin } from "./admin/Admin";
 import { FacetList } from "./browse/FacetList";
-import { Library } from "./library/Library";
 import { Reader } from "./reader/Reader";
 import { Duplicates } from "./duplicates/Duplicates";
 import { AppShell } from "./shell/AppShell";
@@ -21,8 +20,6 @@ function Page({ route }: { route: Route }) {
   switch (route.name) {
     case "works":
       return <Works key={JSON.stringify(route.scope)} scope={route.scope} />;
-    case "library":
-      return <Library />;
     case "organize-plan":
       return <OrganizePlan key={`${route.id}/${route.naming}`} volumeId={route.id} naming={route.naming} />;
     case "work-organize":

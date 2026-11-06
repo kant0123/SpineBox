@@ -16,7 +16,6 @@ export type AdminTab = (typeof ADMIN_TABS)[number];
 
 export type Route =
   | { name: "works"; scope: WorksScope }
-  | { name: "library" }
   | { name: "read"; id: string }
   | { name: "organize-history" }
   | { name: "organize-plan"; id: string; naming: "title" | "template" }
@@ -41,7 +40,7 @@ const HOME: Route = { name: "works", scope: { by: "all" } };
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (/^\/?$/.test(h) || /^\/works\/?$/.test(h)) return HOME;
-  if (/^\/volumes\/?$/.test(h)) return { name: "library" };
+  if (/^\/volumes\/?$/.test(h)) return HOME;
   if (/^\/manga\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "manga" } };
   if (/^\/novels\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "novel" } };
   if (/^\/follows\/?$/.test(h)) return { name: "follows" };
@@ -94,8 +93,8 @@ export const organizeHistoryHref = "#/organize";
 /** ホーム(作品一覧)。リーダー・整理の画面の「一覧へ」もここへ戻る */
 export const libraryHref = "#/";
 export const homeHref = libraryHref;
-/** 巻の一覧(作品一覧の「巻」タブ) */
-export const volumesHref = "#/volumes";
+/** 巻の一覧は廃止し、ホーム(作品一覧)へ戻す */
+export const volumesHref = homeHref;
 export const duplicatesHref = "#/duplicates";
 /** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
 export const inboxHref = "#/inbox";
