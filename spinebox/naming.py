@@ -43,9 +43,9 @@ _RB = r"(?!\d)"
 
 # (種類, 規則名, 正規表現)。上から順に強い根拠。最初に当たった規則を採る
 _RULES: list[tuple[str, str, re.Pattern]] = [
-    ("volume", "第N巻", re.compile(rf"第\s*{_NUM}(?:{_SEP}{_NUM})?\s*巻")),
+    ("volume", "第N巻", re.compile(rf"第\s*{_NUM}(?:{_SEP}{_NUM})?\s*[巻卷]")),
     ("episode", "第N話", re.compile(rf"第\s*{_NUM}(?:{_SEP}{_NUM})?\s*話")),
-    ("volume", "N巻", re.compile(rf"(?<![\d全第]){_NUM}(?:{_SEP}{_NUM})?\s*巻")),
+    ("volume", "N巻", re.compile(rf"(?<![\d全第]){_NUM}(?:{_SEP}{_NUM})?\s*[巻卷]")),
     ("episode", "N話", re.compile(rf"(?<![\d全第]){_NUM}(?:{_SEP}{_NUM})?\s*話")),
     ("volume", "Vol.N", re.compile(rf"{_LB}vol(?:ume)?\.?\s*{_NUM}(?:{_SEP}(?:vol(?:ume)?\.?\s*)?{_NUM})?{_RB}",
                                    re.IGNORECASE)),
@@ -93,13 +93,18 @@ def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
                 continue
             if rule == "N-M" and (start == 0 or len(m.group(1)) > 3 or len(m.group(2)) > 3):
                 continue
+            # `4.5巻` の `5巻` を単独の巻番号と読まない(小数点の巻は番号なし。#167)
+            if start > 1 and text[m.start() - 1] == "." and text[m.start() - 2].isdigit():
+                continue
             return NumberCandidate(kind, start, end, m.group(0).strip(), rule), m.span()
     return None
 
 
 def parse_number(name: str) -> NumberCandidate | None:
     """名前(パスなら最後の要素)から巻・話の番号の候補を 1 つ返す。見つからなければ None。"""
-    found = _find_number(unicodedata.normalize("NFKC", strip_known_ext(name)))
+    text = unicodedata.normalize("NFKC", strip_known_ext(name))
+    text = _DECIMAL_VOLUME.sub(" ", text)
+    found = _find_number(text)
     return found[0] if found else None
 
 
@@ -127,6 +132,12 @@ _TAG = re.compile(
 
 # 著者の区切り(`[作画×原作]`)。`・` は外国人名の中に出るので割らない
 _AUTHOR_SEP = re.compile(r"\s*[×／/、,＆&]\s*")
+
+# 小数点の巻(`第04.5巻`)。巻番号として読めないので、作品名から外して番号なしにする(#167)
+_DECIMAL_VOLUME = re.compile(r"第\s*(\d{1,3})\.(\d{1,2})\s*[巻卷]")
+
+# 末尾の著者列(`作品名 1 - 著者 & 著者`)。作品名の末尾の番号を隠すので外す(#167)
+_AUTHOR_SUFFIX = re.compile(r"\s+[-–—]\s+[^-–—]*(?:[&＆×、,])[^-–—]*$")
 
 # 末尾の「全3巻」「完結」
 _TRAILING_NOTE = re.compile(r"[\s(\[【]*(?:全\s*\d+\s*巻|完結(?:済み?)?)[\s)\]】]*$")
@@ -184,6 +195,22 @@ def _clean_title(text: str) -> str:
     return text.strip(" -–—:;,.~〜/|\\").strip()
 
 
+def _strip_trailing_decor(text: str) -> str:
+    """末尾の装飾(数字でない括弧・著者列)を落とす。数字だけの括弧・範囲は番号なので残す(#167)。"""
+    while True:
+        m = _TRAILING_BRACKET.search(text)
+        if not m:
+            break
+        content = _bracket_content(m)
+        if re.fullmatch(r"\d{1,3}", content) or re.fullmatch(r"\d{1,3}[-~〜–—]\d{1,3}", content):
+            break
+        text = text[:m.start()].strip()
+    m = _AUTHOR_SUFFIX.search(text)
+    if m:
+        text = text[:m.start()].strip()
+    return text
+
+
 def parse_work_name(name: str) -> WorkName | None:
     """名前(パスなら最後の要素)から作品名・著者の候補を取り出す。作品名と読める部分が無ければ None。"""
     text = unicodedata.normalize("NFKC", strip_known_ext(name)).strip()
@@ -211,6 +238,8 @@ def parse_work_name(name: str) -> WorkName | None:
             parts.append(("tag", content))
         text = text[m.end():]
 
+    text = _DECIMAL_VOLUME.sub(" ", text)
+    text = _strip_trailing_decor(text)
     found = _find_number(text)
     number = found[0] if found else None
     if found:
@@ -224,15 +253,10 @@ def parse_work_name(name: str) -> WorkName | None:
     else:
         title_raw, number_part = text, None
 
-    # 末尾のタグ括弧と「全N巻」「完結」を外す
-    title = title_raw
-    while True:
-        m = _TRAILING_BRACKET.search(title)
-        if not m or not _TAG.fullmatch(_bracket_content(m)):
-            break
-        title = title[:m.start()]
+    # 末尾の装飾(数字でない括弧・著者列)と「全N巻」「完結」を外す
+    title = _strip_trailing_decor(title_raw)
     title = _TRAILING_NOTE.sub("", title)
-    title = _clean_title(title)
+    title = _clean_title(title).rstrip("[")
 
     # 作品名が空で、先頭の括弧が著者として読まれていたなら、その括弧が作品名(`[作品名] 第1巻`)
     if not title and first_other is not None:
@@ -258,7 +282,7 @@ _N3 = r"\d{1,3}"
 _TRAILING_NUMBER = re.compile(
     rf"^(?P<base>.*?)(?P<tail>[\s_\-－]+(?P<sep>{_N3})|\s*[\(（]\s*(?P<paren>{_N3})\s*[\)）])\s*$")
 # 番号の直前がこの語なら末尾の番号と読まない(印の付いた番号は `_RULES` が先に拾う)
-_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol\.?|v|ch\.?|ep\.?|巻|話|全)$", re.IGNORECASE)
+_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol\.?|v|ch\.?|ep\.?|巻|卷|話|全)$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -275,6 +299,7 @@ def trailing_number(name: str) -> TrailingNumber | None:
     印の無い単独の数字(`DLRAW.TO_001` の 001)と、作品名として読めない残りは返さない。
     """
     text = unicodedata.normalize("NFKC", strip_known_ext(name)).strip()
+    text = _strip_trailing_decor(text)
     m = _TRAILING_NUMBER.match(text)
     if m is None:
         return None

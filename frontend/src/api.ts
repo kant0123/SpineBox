@@ -387,11 +387,12 @@ export interface DuplicateItem {
 export interface MergeEvidence {
   duplicate?: DuplicateItem[];
   alias?: { norm: string; a: { name: string; source: string; is_title: boolean }; b: { name: string; source: string; is_title: boolean } };
+  link?: { source: SourceName; source_id: string; confidence: number };
 }
 
 export interface WorkProposal {
   id: number;
-  rule: "duplicate" | "alias" | "manual";
+  rule: "duplicate" | "alias" | "link" | "manual";
   confidence: number;
   status: "open";
   evidence: MergeEvidence;
@@ -401,7 +402,7 @@ export interface WorkProposal {
 
 export interface WorkMerge {
   id: number;
-  rule: "duplicate" | "alias" | "manual";
+  rule: "duplicate" | "alias" | "link" | "manual";
   confidence: number;
   status: "auto" | "approved";
   evidence: MergeEvidence;

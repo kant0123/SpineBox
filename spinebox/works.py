@@ -66,6 +66,7 @@ SOURCE_PUBLIC_DB = "public_db"    # 公開 DB(国立国会図書館サーチ・A
 CONF_OWN_NAME = 0.9          # 巻自身の名前から作品名を読めた
 CONF_ENCLOSING_NAME = 0.6    # 巻自身の名前に作品名が無く、外側の名前から読んだ
 CONF_CONTAINER_ALIAS = 0.5   # 作品の全部の巻を含む外側のアーカイブの名前(別名・著者の候補)
+CONF_SAME_LINK = 0.9         # 同じ公開 DB の項目に linked した 2 作品は同じ本(#167)
 AUTO_MERGE_MIN = 0.9         # この確信度以上で、手動の決定が絡まなければ自動で統合する
 PROPOSE_MIN = 0.5            # これ未満は提案にも出さない
 VISUAL_ONLY_CAP = 0.85       # 見た目だけ(巻番号が不明)の重複候補は自動統合しない
@@ -206,6 +207,8 @@ class _State:
             w = self.works.get(r["work_id"])
             if w is not None and r["manual"]:
                 w.manual_volumes += 1
+        self.links: list[dict] = [dict(r) for r in c.execute(
+            "SELECT * FROM work_links WHERE status = 'linked' AND source_id IS NOT NULL")]
         self.by_norm: dict[str, list[int]] = defaultdict(list)
         for w in self.works.values():
             for norm, n in w.names.items():
@@ -335,7 +338,7 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
     手動の統合・承認(manual)で動かした巻は手動の割り当てにする。drop の作品名は keep の別名に残す
     (その名前の巻がまた見つかっても、keep に入る)。
     """
-    source = {"duplicate": SOURCE_DUPLICATE, "alias": SOURCE_ALIAS}.get(rule, SOURCE_MANUAL)
+    source = {"duplicate": SOURCE_DUPLICATE, "alias": SOURCE_ALIAS, "link": SOURCE_ALIAS}.get(rule, SOURCE_MANUAL)
     merge_info = {"merged_from": drop, "merged_into": keep, "rule": rule, "confidence": confidence}
     for m in c.execute("SELECT * FROM work_volumes WHERE work_id = ?", (drop,)).fetchall():
         was_manual = bool(m["manual"])
@@ -532,9 +535,11 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             continue
         norm = own.name.norm
         work = st.works.get(cur["work_id"]) if cur is not None else None
-        if work is not None and norm in work.names and not _leaves_numbered_work(c, work, norm, want):
+        leaves = work is not None and norm in work.names and _leaves_numbered_work(c, work, norm, want)
+        if work is not None and norm in work.names and not leaves:
             if cur["source"] == SOURCE_FILENAME:
                 _refresh_assignment(c, vid, cur, own)
+            _refresh_title(c, st, work, own)
             _fill_author(c, work, own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
             continue
         target = st.find_work(norm)
@@ -549,6 +554,8 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             w.names[norm] = _Name(own.name.title, SOURCE_FILENAME, own.confidence, True)
             st.works[target] = w
             st._add_index(target, norm, w.names[norm])
+            if leaves:
+                _merge_links(c, target, work.id)
             summary.works_created += 1
         else:
             _fill_author(c, st.works[target], own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
@@ -571,6 +578,34 @@ def _fill_author(c, work: _Work, authors, source: str, confidence: float, eviden
     if text and not work.author and not work.author_manual:
         _set_field(c, work.id, FIELD_AUTHOR, text, source, False, confidence, evidence)
         work.author = text
+
+
+def _refresh_title(c, st: _State, work: _Work, own: OwnName) -> None:
+    """名前から読んだ作品名が変わったら、手動でない 1 巻の作品名を今の読みに合わせる(#167)。
+
+    `ようこそ… 第04` のように小数点の巻を誤読して作った作品名を、小数点を外した系列名へ直す。
+    複数の巻を持つ作品は、別の巻の名前と食い違う可能性があるので触らない。
+    """
+    if work.title_manual or work.title_source != SOURCE_FILENAME:
+        return  # 手動の作品名・公開 DB が置き換えた作品名は、名前の読みで上書きしない
+    if trailing_number(work.title) is not None:
+        return  # 末尾の番号を持つ作品名は `_leaves_numbered_work` の領分(手動が絡むときは動かさない)
+    title = own.name.title
+    if not title or title == work.title:
+        return
+    if c.execute("SELECT COUNT(*) FROM work_volumes WHERE work_id = ?", (work.id,)).fetchone()[0] != 1:
+        return
+    old_norm = normalize_title(work.title)
+    if old_norm in st.by_norm:
+        st.by_norm[old_norm] = [i for i in st.by_norm[old_norm] if i != work.id]
+    if old_norm in work.names and work.names[old_norm].is_title:
+        del work.names[old_norm]
+    new_norm = own.name.norm
+    work.names[new_norm] = _Name(title, SOURCE_FILENAME, own.confidence, True)
+    st._add_index(work.id, new_norm, work.names[new_norm])
+    _set_field(c, work.id, FIELD_TITLE, title, SOURCE_FILENAME, False, own.confidence, own.evidence())
+    work.title = title
+    work.title_source = SOURCE_FILENAME
 
 
 # --- 統合の提案 ------------------------------------------------------------------------------
@@ -627,6 +662,30 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
     return out
 
 
+def _link_evidence(st: _State) -> dict[tuple[int, int], dict]:
+    """同じ公開 DB の項目(source, source_id)に linked した別々の作品の組(#167)。
+
+    同じ項目に結線された 2 作品は同じ本。手動で選んだ結線が片方にあれば自動統合しない
+    (利用者の決定を守る。`_manual_involved` が効く)。
+    """
+    holders: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for l in st.links:
+        if l["work_id"] in st.works:
+            holders[(l["source"], l["source_id"])].append(l["work_id"])
+    out: dict[tuple[int, int], dict] = {}
+    for (source, source_id), ids in holders.items():
+        ids = sorted(set(ids))
+        if len(ids) < 2:
+            continue
+        for i, x in enumerate(ids):
+            for y in ids[i + 1:]:
+                key = (x, y)
+                if key not in out:
+                    out[key] = {"source": source, "source_id": source_id, "confidence": CONF_SAME_LINK,
+                                "a": {"work": x}, "b": {"work": y}}
+    return out
+
+
 def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
     found: dict[tuple[int, int], dict] = {}
     for pair, items in _duplicate_evidence(c, st).items():
@@ -636,6 +695,9 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
     for pair, ev in _alias_evidence(st).items():
         if pair not in found or ev["confidence"] > found[pair]["confidence"]:
             found[pair] = {"rule": "alias", "confidence": ev["confidence"], "evidence": {"alias": ev}}
+    for pair, ev in _link_evidence(st).items():
+        if pair not in found or ev["confidence"] > found[pair]["confidence"]:
+            found[pair] = {"rule": "link", "confidence": ev["confidence"], "evidence": {"link": ev}}
 
     def existing_index() -> tuple[dict[int, int], dict[tuple[int, int], dict]]:
         roots = _roots(c)

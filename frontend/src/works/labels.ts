@@ -35,6 +35,9 @@ export function evidenceLines(ev: MergeEvidence): string[] {
     const { a, b } = ev.alias;
     lines.push(`名前「${a.name}」(${a.is_title ? "作品名" : "別名"})と「${b.name}」(${b.is_title ? "作品名" : "別名"})が同じ`);
   }
+  if (ev.link) {
+    lines.push(`同じ公開データベースの項目「${dbName(ev.link.source)}」(${ev.link.source_id})に linked している(確信度 ${confidenceText(ev.link.confidence)})`);
+  }
   return lines;
 }
 
