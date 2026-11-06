@@ -421,6 +421,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:556 _assign_volumes()` — `_refresh_title()` を `norm in work.names` の分岐の内側に置いていた。小数点の巻を誤読した 1 巻作品は系列名の別名を持たないのが自然なので、`norm in work.names` が偽になり、作品名が直らず、新しい系列作品を作って元の作品が孤立した(agy レビューの WARNING。判定の前に呼ぶよう移し、テストから事前の `add_alias` を外した)
+- PR #172 — `spinebox/works.py _assign_volumes()` — `_refresh_title()` を `norm in work.names` の分岐の内側に置いていた。小数点の巻を誤読した 1 巻作品は系列名の別名を持たないのが自然なので、`norm in work.names` が偽になり、作品名が直らず、新しい系列作品を作って元の作品が孤立した(agy レビューの WARNING。判定の前に呼ぶよう移し、テストから事前の `add_alias` を外した)
+
 
 
