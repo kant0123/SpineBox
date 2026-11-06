@@ -406,7 +406,13 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-06] ingest | PR #169 (#168) 管理画面に統合タブを作成
 - 更新: [[frontend]]
 - 備考: 管理タブに `proposals` (`統合`) を追加し、`WorkProposals` を `embedded` で載せた。`#/admin/proposals` と既存の `#/works/proposals` の両方から統合の提案を操作できる。
-
 ## [2026-11-07] ingest | PR #174 (#167) 末尾の番号の後の装飾・「卷」表記・小数点の巻を読み、同じ公開 DB 項目に linked した組を自動統合する
 - 更新: [[work-grouping]], [[recurring-review-findings]]、および行番号のずれ直しで [[backend]]・[[volume-split]]・[[metadata-linking]]・[[cover-thumbnails]]・[[work-search]]
 - 備考: #167。#162 の後、確認待ちの提案は 3949 → 232 件まで減ったが、残りは別名規則で 0.5〜0.896 のまま未統合で、名寄せの読み残しが大半。`trailing_number()` は末尾の装飾([レーベル] (レーベル) [AVIF]・ - 著者 & 著者)を落として読むようにし、落とした部分は evidence に残す。簡体字の巻表示・話表示(卷 话)は 巻 話 と同じに読む(_fold_chars)。小数点の巻(第04.5巻)は整数の番号で持てないので番号なしにし、作品名にも残さない。同じ取得元・同じ source_id に linked した組は別名一致を 0.9 として扱い、手動の決定が絡まなければ自動統合する(元の確信度は `alias_confidence`、shared_item を根拠に残す)。tests/test_naming.py・tests/test_works.py に 6 件足し、直す前は 6 件とも落ちることを確認。
+## [2026-11-07] ingest | PR #170 (#165) 欠けの番号が多すぎるときは件数だけを出し、内訳をツールチップで見せる
+- 更新: [[frontend]]
+- 備考: #165。作品カードのバッジと作品ページの「欠けている巻」で、欠けが 5 個以下のときは番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、カーソルを合わせるとツールチップで出る。DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う。組み立ては frontend/src/works/labels.ts:40 missingLabel()(MISSING_LIST_MAX = 5)。巻と話を合わせて数える。Vitest 184 件・バックエンド 1156 件パス、375px / 1280px のライト・ダークで横スクロール無しを確認した。
+
+## [2026-11-07] ingest | PR #171 (#166) 一覧の作品名・著者をファイル名ではなく公開DBの日本語に
+- 更新: [[metadata-linking]], [[backend]]
+- 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。

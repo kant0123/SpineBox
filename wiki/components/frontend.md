@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-06
+updated: 2026-11-07
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -101,6 +101,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   種別(漫画/小説)とジャンルはカードから外す(漫画・小説はナビで分かれ、ジャンルは作品ページで見る)。重複と統合済みは
   一覧の判断には使わず、カードが情報過多になるためバッジから外す(統合の提案・候補の確認待ち・欠け・オフライン・読書状態は残す)。
   巻数は独立した行ではなく `.work-badges` の先頭のタグにし、文言を「全8巻(〜6巻)」(最高巻数が無ければ「全8巻」)にした。
+- **欠けの番号は多すぎるときだけ件数にする(#165)。** 作品カードのバッジと作品ページの「欠けている巻」は、欠けが
+  5 個以下なら番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、
+  カーソルを合わせるとツールチップで出る。欠けの多い作品でカードが数行になり、一覧が読みにくくなるのを避ける。
+  DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う(件数は常に見えるので、
+  内訳は補助)。組み立ては frontend/src/works/labels.ts:40 missingLabel()。
 - **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** カードの横幅いっぱい(`.work-card .work-cover` で幅 100%・2:3 の縦横比・上角丸)に置き、
   文字は表紙の下へ続ける(#129)。`cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
   読み込めたら見せる。表紙が無い・404(入れ子の巻でまだ作っていない・小説・1 ページ目が画像でない)なら
