@@ -4,6 +4,7 @@ import { facetListHref, workProposalsHref, workTitlesHref, type WorksScope } fro
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
+import { ReadLaterButton } from "./ReadLaterButton";
 import { ViewTabs } from "./ViewTabs";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 
@@ -57,6 +58,12 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
     }
   }, [fixedKey, root]);
 
+  const onReadLaterChange = useCallback((on: boolean) => {
+    // 後で読むだけ表示のときに外した作品は一覧から消えるよう取り直す
+    if (on === false && query.read_later) void load(query);
+    // それ以外はカード上のボタンの表示だけで足りる(一覧の取り直しはしない)
+  }, [load, query]);
+
   const loadProposals = useCallback(async () => {
     try {
       setPending((await api.listProposals("open")).length);
@@ -82,13 +89,14 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   }, [text]);
 
   const setFilter = (name: keyof WorkQuery, value: string) => setQuery((cur) => ({ ...cur, [name]: value || undefined }));
+  const setReadLaterOnly = (on: boolean) => setQuery((cur) => (on ? { ...cur, read_later: true } : { ...cur, read_later: undefined }));
   const clearAll = () => {
     setText("");
     setQuery({});
   };
 
   const selectable = FILTER_NAMES.filter((n) => !(n in fixed));
-  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0);
+  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0) + (query.read_later ? 1 : 0);
   const filtering = activeFilters > 0 || !!query.q?.trim();
 
   return (
@@ -148,6 +156,14 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                 </select>
               </label>
             ))}
+            <label className="work-filter-check">
+              <input
+                type="checkbox"
+                checked={!!query.read_later}
+                onChange={(e) => setReadLaterOnly(e.target.checked)}
+              />
+              後で読むだけ
+            </label>
           </div>
         )}
       </form>
@@ -173,12 +189,17 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           const missing = missingLabel(w);
           return (
             <li key={w.id} className="work-card">
-              <a className="work-link" href={workTitlesHref(w.id)}>
-                {w.cover_volume_id !== null ? (
-                  <WorkCover volumeId={w.cover_volume_id} placeholder />
-                ) : (
-                  <WorkCoverPlaceholder />
-                )}
+              <div className="work-cover-wrap">
+                <a className="work-link work-cover-link" href={workTitlesHref(w.id)} aria-label={w.title}>
+                  {w.cover_volume_id !== null ? (
+                    <WorkCover volumeId={w.cover_volume_id} placeholder />
+                  ) : (
+                    <WorkCoverPlaceholder />
+                  )}
+                </a>
+                <ReadLaterButton id={w.id} initial={w.read_later ?? false} label={w.title} onChange={onReadLaterChange} />
+              </div>
+              <a className="work-link work-text-link" href={workTitlesHref(w.id)}>
                 <span className="work-text">
                   <span className="volume-title">{w.title}</span>
                   {w.author && <span className="volume-meta">{w.author}</span>}
