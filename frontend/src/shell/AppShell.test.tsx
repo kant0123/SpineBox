@@ -285,7 +285,7 @@ describe("著者・タグ・出版社の一覧", () => {
 });
 
 describe("管理", () => {
-  it("タブが統計・好み・データ管理・フォロー管理・タスクセンターの順に並ぶ", async () => {
+  it("タブが統計・好み・データ管理・統合・フォロー管理・タスクセンターの順に並ぶ", async () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
