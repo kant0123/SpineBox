@@ -66,15 +66,17 @@ def test_same_normalized_title_is_one_work(make_env):
 
 
 def test_trailing_numbers_of_the_same_name_are_volume_numbers(make_env):
-    _, _, client = make_env(["作品名 1.cbz", "作品名 2.cbz", "作品名 4.cbz"])
+    _, _, client = make_env(["[著者] 作品名 1.cbz", "[著者] 作品名 2.cbz", "[著者] 作品名 4.cbz"])
     (w,) = client.get("/api/works").json()["works"]
-    assert (w["title"], w["volume_count"], w["missing_volumes"]) == ("作品名", 3, [3])
+    assert (w["title"], w["author"], w["volume_count"], w["missing_volumes"]) == ("作品名", "著者", 3, [3])
     assert client.get("/api/works/proposals").json() == []  # 別作品にならないので統合の提案も出ない
     d = client.get(f"/api/works/{w['id']}").json()
     assert [s["label"] for s in d["slots"]] == ["1巻", "2巻", "4巻"]
     v = d["slots"][0]["volumes"][0]
     assert v["volume_number"] == {"kind": "volume", "start": 1, "end": 1, "evidence": "1"}
+    assert ["author", "著者"] in v["assignment"]["evidence"]["parts"]
     assert ["number", "1"] in v["assignment"]["evidence"]["parts"]
+    assert v["assignment"]["evidence"]["name"] == "[著者] 作品名 1"
     assert v["assignment"]["confidence"] == 0.9 and v["assignment"]["source"] == "filename"
 
 

@@ -134,10 +134,9 @@ class OwnName:
 def own_name(row, series: dict | None = None) -> OwnName | None:
     """巻の作品名の候補。`series` を渡すと、末尾の番号まで読んだ作品名を優先する(`_trailing_series`)。"""
     if series is not None:
-        wn = parse_work_name(series["title"])
-        if wn is not None:
-            # 番号を読んだ根拠を parts に残す(画面で「名前の中のどこを番号と読んだか」を見せる)
-            return OwnName(replace(wn, parts=wn.parts + (("number", series["evidence"]),)), 0, series["title"])
+        wn = series["work_name"]
+        # 番号を読んだ根拠を parts に残す(画面で「名前の中のどこを番号と読んだか」を見せる)
+        return OwnName(replace(wn, parts=wn.parts + (("number", series["evidence"]),)), 0, row["title"])
     for level, text in enumerate(name_chain(row)):
         wn = parse_work_name(text)
         if wn is not None:
@@ -464,7 +463,7 @@ def _trailing_series(st: _State) -> dict[int, dict]:
         if len({t.number for _, t, _ in items}) < 2:
             continue
         for vid, t, wn in items:
-            out[vid] = {"title": wn.title, "number": t.number, "evidence": t.evidence}
+            out[vid] = {"work_name": wn, "number": t.number, "evidence": t.evidence}
     return out
 
 
