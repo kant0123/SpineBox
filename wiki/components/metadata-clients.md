@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
-updated: 2026-11-05
+updated: 2026-11-06
 related: [metadata-sources, metadata-linking, overview, backend, work-search, follow]
 ---
 
@@ -36,7 +36,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | `spinebox/metadata/base.py:30 MetadataSource` | 取得元の共通基底。`search()` が例外を畳んで `SearchOutcome` にする。取得元は `_search()` だけ書く |
 | `spinebox/metadata/base.py:79 fetch` | 保存済みの応答つきの取得(下記) |
 | `spinebox/metadata/ndl.py:57 parse_opensearch` / `spinebox/metadata/anilist.py:57 parse_search` / `spinebox/metadata/mangaupdates.py:76 parse_search`・`spinebox/metadata/mangaupdates.py:89 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
-| `spinebox/metadata/match.py:113 score_item` | 確からしさの計算 |
+| `spinebox/metadata/match.py:118 score_item` | 確からしさの計算 |
 | `spinebox/metadata/http.py:152 HttpFetcher` | タイムアウト・再試行・User-Agent・取得元ごとの関門(`spinebox/metadata/http.py:86 Gate`) |
 | `spinebox/metadata/store.py:32 ResponseStore` | 生応答の保存。`get_by_key(source, request_key)` で候補の `response_key` から引ける |
 | `spinebox/db.py:40 MIGRATIONS` の 5 番 | `metadata_responses` |

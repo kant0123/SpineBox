@@ -2,6 +2,7 @@
 import pytest
 
 from metadata_fakes import fixture
+from spinebox.linking import AUTO_LINK_MIN
 from spinebox.metadata import SearchQuery, ndl
 from spinebox.metadata.kana import to_romaji
 from spinebox.metadata.match import author_score, is_romaji_word, normalize, normalize_romaji, score_item, title_score
@@ -46,6 +47,23 @@ def test_title_score_exact_contains_and_unrelated():
     assert why == "title:contains" and 0.6 < score < 0.95
     score, why = title_score("全く別の作品", names)
     assert score < 0.3 and why.startswith("title:similar")
+
+
+def test_containment_counts_only_when_the_shorter_name_is_at_the_head():
+    names = ("お気楽領主の楽しい領地防衛",)
+    # 候補の名前が先頭(候補に副題・巻数が付く)
+    assert title_score("お気楽領主", names)[1] == "title:contains"
+    # こちらの名前が先頭(こちらに副題が付く)
+    assert title_score("お気楽領主の楽しい領地防衛 第2部", names)[1] == "title:contains"
+    # 前置きが付いているだけ(短い名前が末尾・途中にしか無い)は、部分一致として強めない
+    assert title_score("新版 お気楽領主の楽しい領地防衛", names)[1] != "title:contains"
+
+
+def test_an_alias_swallowed_at_the_end_is_not_a_containment_match():
+    # 実データ(#158): 作品名「57 files」が MangaUpdates の別名「FILES」に 0.8143 で連携していた
+    # (`57 files` に `files` が含まれる)。数えた名前に短い別名が含まれるだけでは、連携の基準に届かせない
+    score, why = title_score("57 files", ("孤独な猫は夜明けに眠る", "FILES"))
+    assert why != "title:contains" and score < AUTO_LINK_MIN
 
 
 def test_title_score_romaji_query_matches_romaji_name():
