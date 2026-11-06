@@ -48,7 +48,7 @@ describe("作品の一覧", () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    expect(within(card).getByText("全4巻(〜4巻)")).toBeTruthy();
+    expect(within(card).getByText("既刊4巻(〜4巻)")).toBeTruthy();
     expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
     expect(within(card).queryByText(/重複/)).toBeNull();
     expect(within(card).queryByText("統合済み")).toBeNull();
@@ -56,7 +56,7 @@ describe("作品の一覧", () => {
     expect(within(card).getByText("集英社")).toBeTruthy();
     expect(within(card).queryByText("漫画")).toBeNull();
     const other = (await screen.findByText("外付けの作品")).closest("li")!;
-    expect(within(other).getByText("全1巻")).toBeTruthy();
+    expect(within(other).getByText("既刊1巻")).toBeTruthy();
     expect(within(other).queryByText(/ファンタジー/)).toBeNull();
     expect(within((await screen.findByText("別の読み物")).closest("li")!).queryByText("小説")).toBeNull();
     // 別名は作品ページで見る(一覧のカードには出さない)

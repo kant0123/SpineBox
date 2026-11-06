@@ -429,3 +429,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] lint | PR #187 wiki/log.md のエントリ見出しの前の空行を揃える
 - 更新: なし
 - 備考: #183。コンフリクト標識は現在の origin/main に残っていなかったが、見出しの直前に空行が無いエントリが 5 件あった(#128・#134・#169・#174・#170 の見出しの前)。他のエントリと同じ 1 行区切りにした。py -3.12 で `python scripts/ci_local.py --no-report` を実行し、pytest 1250 passed・wiki-lint OK。フロントの 116 件は Node 26 の localStorage 問題(#130)で、この変更と無関係。
+
+## [2026-11-07] ingest | PR #188 (#185) 作品カードの巻数表示を既刊に変える
+- 更新: [[frontend]]
+- 備考: #185。作品カードの巻数タグを全N巻(〜M巻)から既刊N巻(〜M巻)に変更した。対象は frontend/src/works/Works.tsx の volume_count(見えている巻の数)・max_volume(手持ちの最大巻番号)で、公開 DB の全巻数 total_volumes ではない(候補の「全 N 巻」は WorkLinks.tsx の候補の表示でその意味のまま残す)。フロントの vitest 185 件・build 通過、モック API で既刊4巻(〜4巻)等の表示を確認した。
