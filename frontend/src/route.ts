@@ -11,7 +11,7 @@ export type WorksScope =
   | { by: FacetField; value: string };
 
 /** 管理のタブ(#85。Peach の管理と同じ並び) */
-export const ADMIN_TABS = ["stats", "preferences", "data", "follows", "tasks"] as const;
+export const ADMIN_TABS = ["stats", "preferences", "data", "proposals", "follows", "tasks"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 export type Route =
