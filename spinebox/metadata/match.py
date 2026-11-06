@@ -72,8 +72,11 @@ def title_score(query_title: str, names: tuple[str, ...]) -> tuple[float, str]:
         if nk == qk:
             return 1.0, "title:exact"
         short, long_ = (qk, nk) if len(qk) <= len(nk) else (nk, qk)
-        if len(short) >= _MIN_CONTAIN and short in long_:
-            # 副題つき(`作品名 生産系魔術で…`)や巻数つきを、同じ作品の別表記として強めに見る
+        # 副題つき(`作品名 生産系魔術で…`)や巻数つきを、同じ作品の別表記として強めに見る。
+        # ただし短い名前が長い名前の**先頭**にあるときだけ。末尾や途中にしか無いのは、数の数えた
+        # 名前(`57 files`)に別名(`FILES`)が含まれるだけのように、前置きの数字・ごみが残っている
+        # だけで、たまたま含まれることがある(実データで 0.8143 の誤連携。#158)
+        if len(short) >= _MIN_CONTAIN and short in long_ and long_.startswith(short):
             score = 0.6 + 0.3 * len(short) / len(long_)
             if score > best:
                 best, reason = score, "title:contains"

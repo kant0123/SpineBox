@@ -13,7 +13,7 @@
 その正規化(`normalize_title`。作品の名寄せの突き合わせ用)にする。ここでも結果は候補でしかない。
 
 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001 はページ番号)、`全3巻`(総巻数)、
-語の途中の `v`(`Dev01`)、年月日らしい 4 桁の数字。
+語の途中の `v`(`Dev01`)、年月日らしい 4 桁の数字、数えた数を表す名前(`57 files`。下記)。
 
 `作品名 01` `作品名(3)` の形の末尾の番号は、名前だけでは巻番号と決められない(`Kitchen 2` が
 作品名のこともある)ので `parse_number()` では拾わない。代わりに `trailing_number()` が候補を返し、
@@ -165,6 +165,15 @@ def normalize_title(text: str) -> str:
 
 _JUNK_NAMES = frozenset(normalize_title(x) for x in _JUNK_RAW)
 
+# 数を数えただけの名前(`57 files` `4 cover`)。配布元の接頭辞を落とすと残る、ファイル数・ページ数の
+# 見出しで、作品名ではない。実データでは `DLRAW.AC_57_files` が「57 files」になり、1〜109 files などの
+# 74 作品ができていた(#158)。数だけの名前と違い、汎用語が付いているので `_JUNK_NAMES` では拾えない。
+_COUNT_NOUNS = (
+    "files?", "pages?", "pgs?", "images?", "imgs?", "pics?", "photos?", "pictures?", "covers?",
+    "books?", "volumes?", "vols?", "items?", "folders?", "entries?", "sheets?", "frames?", "scans?",
+)
+_COUNT_NAME = re.compile(rf"^\d{{1,5}}(?:{'|'.join(_COUNT_NOUNS)})$")
+
 
 def _bracket_content(m: re.Match) -> str:
     return next(g for g in m.groups() if g is not None).strip()
@@ -232,7 +241,7 @@ def parse_work_name(name: str) -> WorkName | None:
     elif title:
         parts.append(("title", title))
     norm = normalize_title(title)
-    if not norm or norm.isdigit() or norm in _JUNK_NAMES:
+    if not norm or norm.isdigit() or norm in _JUNK_NAMES or _COUNT_NAME.match(norm):
         return None
     if number_part is not None:
         parts.append(("number", number_part.strip()))

@@ -125,6 +125,23 @@ def test_parse_work_name_without_a_title(name):
     assert parse_work_name(name) is None
 
 
+@pytest.mark.parametrize("name", [
+    # 配布元の接頭辞を落とすと残る、ファイル数・ページ数の見出し(実データ。 #158)
+    "DLRAW.AC_57_files", "57 files", "57_files.cbz", "88 Files", "4 cover", "1 pg", "120 pages",
+])
+def test_counted_names_are_not_work_titles(name):
+    assert parse_work_name(name) is None
+
+
+@pytest.mark.parametrize("name, title", [
+    ("FILES", "FILES"),                                  # 汎用語だけでも、数が付いていなければ作品名
+    ("5 Centimeters per Second", "5 Centimeters per Second"),  # 数 + 固有の語
+])
+def test_a_number_alone_does_not_make_a_name_a_count(name, title):
+    wn = parse_work_name(name)
+    assert wn is not None and wn.title == title
+
+
 def test_work_name_keeps_number_and_parts_as_evidence():
     wn = parse_work_name("20260112RAW.TO_[著者] 作品 v01s.zip")
     assert wn.number.start == 1 and wn.number.evidence == "v01"

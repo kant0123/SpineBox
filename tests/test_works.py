@@ -548,6 +548,29 @@ def test_unnamed_volume_is_counted_as_unassigned(make_env):
     assert r["works"] == [] and r["unassigned"] == 1
 
 
+def test_counted_names_are_not_work_titles(make_env):
+    # 実データ(#158): 配布元の接頭辞を落とすと「57 files」になり、1〜109 files などの 74 作品ができていた。
+    # 1〜3 は、末尾の番号の系列(#157)として「files」1〜3 巻にも読ませない
+    _, _, client = make_env([f"DLRAW.AC_{n}_files.cbz" for n in (1, 2, 3, 57)])
+    r = client.get("/api/works").json()
+    assert r["works"] == [] and r["unassigned"] == 4
+
+
+def test_counted_names_fall_back_to_the_enclosing_name(make_env):
+    # 数えた名前しか無い巻でも、外側の名前が作品名なら、その作品に入る(確信度は低い)
+    lib, _, client = make_env(scan=False)
+    for n in (57, 58):
+        d = lib / "ふしぎ研究部 第01-20巻" / f"DLRAW.AC_{n}_files"
+        d.mkdir(parents=True)
+        for i in range(3):
+            (d / f"DLRAW.AC_{i + 1:04d}.jpg").write_bytes(page_bytes(f"{n}/{i}"))
+    client.post("/api/scan")
+    ws = by_title(client)
+    assert set(ws) == {"ふしぎ研究部"}
+    w = client.get(f"/api/works/{ws['ふしぎ研究部']['id']}").json()
+    assert w["volume_count"] == 2 and w["title_confidence"] == 0.6
+
+
 def test_children_of_a_split_bundle_inherit_a_manual_decision(make_env, make_settings):
     from conftest import zip_bytes
     lib, settings, client = make_env(["Other v01.cbz"], scan=False)
