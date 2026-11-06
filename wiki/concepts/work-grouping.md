@@ -1,6 +1,6 @@
 ---
 type: concept
-summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
+summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、末尾の番号は同じ名前の組がそろっているときだけ巻番号として読む。別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
 updated: 2026-11-06
 related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
@@ -14,7 +14,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:409 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:420 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
@@ -25,6 +25,13 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - **確信度の目安。** 自分の名前から 0.9、巻の名前に作品名が無く外側の名前から読んだものは 0.6(`CONF_*` 定数)。
   外側のアーカイブ・フォルダの名前は、**その全部の巻が 1 つの作品に入っているときだけ**別名・著者の候補(0.5)にする
   (複数作品の入れ物の名前を別名にすると、別作品を混ぜる根拠になるため)
+- **末尾の番号は、同じ名前の組がそろっているときだけ巻番号と読む。** `作品名 01` `作品名(3)` の形は
+  名前だけでは巻番号と決められない(`Kitchen 2` が作品名のこともある)ので、`spinebox/naming.py parse_number()`
+  は拾わず、`trailing_number()` が候補を返すだけ。`spinebox/works.py _trailing_series()` が、
+  同じ名前で末尾の番号だけが違う巻が 2 つ以上ある組に限り、番号を `volumes.number_*` に入れて作品名から番号を落とす。
+  組が 1 つに減れば番号は消え、作品名も元へ戻る(名前から導出した値なので残さない)。
+  この形を読まないと 1 巻 = 1 作品に分裂し、公開 DB のシリーズ別名が全作品に付いて統合の提案が総当たりになる
+  (実データ 2026-11-06: 4610 巻のうち 782 巻・73 組が該当。確認待ちの提案 6123 件のうち 3500 件超がこれだけで消えた)
 
 ## 統合の規則
 
@@ -44,6 +51,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - **既にある行(open・dismissed)は再計算で自動適用も復活もしない。** 却下は戻せるだけ。根拠が消えた `open` は派生データなので消す
 - **利用者が巻を別の作品へ分けると、その組を `dismissed` の提案として記録する**(`_mark_separated`)。そうしないと、
   同じ重複候補の証拠で次の再計算が即座に元へ統合してしまう。画面の「却下・分けたものを表示」から「提案に戻す」で取り消せる
+- **見えている巻を持たない作品は、確認待ちの提案にしない**(自動統合の対象には残す)。巻の組み替えで空になった作品は
+  一覧にも提案の画面にも出ないので、行だけが増える。自動統合は空の作品を片付けるのに使えるため残す
 
 ## 手動の決定を守る
 
@@ -59,8 +68,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:970 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:990 build_slots()` は
+`spinebox/works.py:1040 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1060 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
@@ -78,6 +87,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 | 統合を巻の付け替えで実装する(統合された作品を消す) | 取り消せない。`merged_into` なら承認後も根拠と別名が残り、分けられる |
 | 重複候補の見た目だけの一致も自動統合する | 巻番号が分からない組は別の巻どうしが似ているだけのことがある(扉絵・同じ作者の別作品)。0.85 で頭打ちにして必ず確認待ちにした |
 | 外側のアーカイブ名を常に別名にする | 複数作品の入れ物(「漫画まとめ」など)の名前が別名になり、別作品を混ぜる根拠になる |
+| 末尾の番号を名前だけで巻番号にする(`_RULES` に足す) | `Kitchen 2` が作品名のこともある。実データでは末尾の番号はすべて巻番号だったが、蔵書が変われば誤読する。同じ名前の組がそろっているときだけ読む |
+| 末尾の番号は読まず、番号なしのまま 1 作品にまとめる | 作品ページが「番号の読めない巻」だけになり、欠け巻・重複枠が出ない。組で読めるなら読む方がよい |
 
 ## 覆すとしたら
 
