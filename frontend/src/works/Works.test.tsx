@@ -109,8 +109,8 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     expect(await screen.findByRole("heading", { name: "タイトル一覧(5)" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "サンプル漫画" })).toBeTruthy();
     const items = [...document.querySelectorAll<HTMLElement>(".title-list .title-item")];
-    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻
-    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "2巻", "3巻", "4巻", "5巻"]);
+    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻。巻番号の列は出さない(巻名に番号が含まれるため)
+    expect(items.every((li) => li.querySelector(".title-number") === null)).toBe(true);
     expect(items.map((li) => li.querySelector(".volume-title")!.textContent)).toEqual([
       "サンプル漫画 第1巻", "サンプル漫画 第2巻", "サンプル漫画 第3巻", "サンプル漫画 第4巻", "サンプル漫画 第5巻",
     ]);

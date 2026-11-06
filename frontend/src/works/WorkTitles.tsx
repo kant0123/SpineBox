@@ -77,7 +77,6 @@ export function WorkTitles({ id }: { id: string }) {
         <span className="title-cover">
           <WorkCover volumeId={row.primary.id} />
         </span>
-        <span className="title-number">{row.label}</span>
         <span className="title-body">
           <span className="volume-title">{row.title}</span>
           <span className="volume-meta">
@@ -126,7 +125,6 @@ export function WorkTitles({ id }: { id: string }) {
     <li key={row.key}>
       <div className={`title-item missing ${row.missing}`}>
         <span className="title-cover placeholder" aria-hidden="true" />
-        <span className="title-number">{row.label}</span>
         <span className="title-body">
           <span className="volume-title">{row.title}</span>
           <span className="volume-meta">{releaseDateText(row.release.released)}</span>
