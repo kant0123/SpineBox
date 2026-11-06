@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:72 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
-| `frontend/src/admin/Admin.tsx:30 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
+| rontend/src/admin/Admin.tsx:30 Admin() | 管理(#/admin/<tab>)。統計 rontend/src/admin/Stats.tsx:35 Stats()・好み rontend/src/admin/Preferences.tsx:16 Preferences()・データ管理(#84 の整理 OrganizeFilesSection を載せ済み)・統合の提案(ProposalsPanel)・フォロー管理(#87 の FollowManage を載せ済み)・タスクセンター(#83 征E��)は rontend/src/admin/panels.tsx:8 DataPanel() ほぁE絁E��込み口)。375px でタブの列が横に流れるため、E��ぁE��タブが隠れなぁE��置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
@@ -148,7 +148,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
 | ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
 | フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86)。どちらも単独の画面をそのままサイドバーの中に出す |
-| 管理: 統計・好み・データ管理・フォロー管理・タスクセンター | 同じ 5 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `follows` / `tasks`) |
+| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 同じ 6 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `proposals` / `follows` / `tasks`) |
 | 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
 
 - **既存の画面はサイドバーの中に収め、どのナビの下かを `activeNav()` で決める。** 作品ページ・巻の一覧・提案はホーム、重複の候補・受け入れ・整理は管理。
