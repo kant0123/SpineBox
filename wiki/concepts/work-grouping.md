@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、末尾の番号は同じ名前の組がそろっているときだけ巻番号として読む。別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
-updated: 2026-11-06
+updated: 2026-11-07
 related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
 
@@ -19,9 +19,13 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:187 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
-  `spinebox/naming.py:150 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
+- **名前の読み方。** `spinebox/naming.py:211 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+  `spinebox/naming.py:179 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
+  簡体字の巻表示・話表示(`卷` `话`)は正規の字(`巻` `話`)と同じに読む(`spinebox/naming.py _fold_chars`)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品
+- **小数点の巻は番号なしの巻として作品に入れる。** `第04.5巻` は整数の `number_start`/`number_end` で持てないので番号にせず
+  (`parse_number()` は小数点の内側の `5巻` を拾わない)、作品名にも残さない(`parse_work_name()` が末尾の `第N.M巻/話` を落とす)。
+  欠け巻・重複枠の計算には入れず、番号の読めない巻として扱う
 - **数の数えた名前は作品名にしない。** 配布元の接頭辞(`DLRAW.AC_`)を落とすと残る `57 files` `4 cover` のような名前は、
   ファイル数・ページ数の見出しで、作品名ではない(`spinebox/naming.py _COUNT_NAME`)。実データ(#158)では 1〜109 files などの
   74 作品・184 巻がこれでできていた。自分の名前が読めないので、外側の名前(`あつまれ!ふしぎ研究部 第01-20巻.rar`)から
@@ -36,6 +40,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   は拾わず、`trailing_number()` が候補を返すだけ。`spinebox/works.py _trailing_series()` が、
   同じ名前で末尾の番号だけが違う巻が 2 つ以上ある組に限り、番号を `volumes.number_*` に入れて作品名から番号を落とす。
   組が 1 つに減れば番号は消え、作品名も元へ戻る(名前から導出した値なので残さない)。
+  末尾の番号の後ろの括弧の装飾(`[レーベル]` `(レーベル)` `[AVIF]` など)と著者列(` - 著者 & 著者`)は装飾として落としてから読む。
+  落とした部分は番号の根拠(`evidence`)に残す。数字の括弧(`(3)`)は従来どおり番号
   この形を読まないと 1 巻 = 1 作品に分裂し、公開 DB のシリーズ別名が全作品に付いて統合の提案が総当たりになる
   (実データ 2026-11-06: 4610 巻のうち 782 巻・73 組が該当。確認待ちの提案 6123 件のうち 3500 件超がこれだけで消えた)
 - **系列として読めた巻は、系列名を別名に持つだけの 1 巻作品に留めない。** 巻の割り当ては、読み直した作品名が
@@ -53,7 +59,10 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 1. **重複候補の証拠**([[duplicate-detection]])。確信度は一致ページ比。巻番号まで同じ(`same_number`)ならその値、
    見た目だけ(`visual_only`)は 0.85 で頭打ち(`VISUAL_ONLY_CAP`)にして自動統合に回さない。却下された重複候補は根拠にしない
 2. **別名と作品名の一致**(外側の名前から作った別名など)。公開 DB 由来の別名は連携の確信度がそのまま根拠の
-   確信度になるので、同じ項目に linked した 2 作品どうしも「同じ作品」の証拠になる(弱い連携なら確認待ちになるだけ)
+   確信度になるので、同じ項目に linked した 2 作品どうしも「同じ作品」の証拠になる(弱い連携なら確認待ちになるだけ)。
+   両方の作品が同じ取得元・同じ公開 DB 項目(`source`・`source_id`)に linked している場合、その別名一致を
+   確信度 0.9 として扱い、手動の決定が絡まなければ自動統合する(`_alias_evidence` が `work_links` の一致で引き上げる)。
+   元の別名の確信度は `alias_confidence` として根拠に残し、選んだ項目も `shared_item` に残す
 
 確信度が 0.9 以上で、**どちらの作品にも手動の決定(手で直した作品名・著者・手動の巻の割り当て・手動で選んだ公開 DB の連携)が絡まない**ものだけ自動で統合する(`AUTO_MERGE_MIN`)。
 0.5 以上 0.9 未満、または手動が絡むものは提案(`open`)にして、利用者が「同じ作品として統合」/「別の作品」を選ぶ。0.5 未満は出さない。
@@ -82,8 +91,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1079 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1099 build_slots()` は
+`spinebox/works.py:1089 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1109 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果

@@ -210,6 +210,11 @@ class _State:
         for w in self.works.values():
             for norm, n in w.names.items():
                 self._add_index(w.id, norm, n)
+        # 同じ公開 DB 項目に linked した作品どうしの組(統合の確信度の補い用)
+        self.links: dict[int, set[tuple[str, str]]] = defaultdict(set)
+        for r in c.execute("""SELECT work_id, source, source_id FROM work_links
+                              WHERE status = 'linked' AND source_id IS NOT NULL AND source_id <> ''"""):
+            self.links[r["work_id"]].add((r["source"], r["source_id"]))
 
     def _add_index(self, work_id: int, norm: str, n: _Name) -> None:
         # 外側のアーカイブ名から付けた別名は、巻の割り当てには使わない(提案の根拠にだけ使う)
@@ -619,9 +624,14 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
                 if not (nx.is_title or ny.is_title) and SOURCE_CONTAINER in (nx.source, ny.source):
                     continue
                 conf = min(nx.confidence, ny.confidence)
+                # 同じ公開 DB 項目に linked した組は「同じ作品である証拠」(#167)。別名の確信度で 0.9 に届かなくても
+                # 0.9 として扱い、手動の決定が絡まなければ自動統合する。元の確信度は alias_confidence に残す
+                shared = sorted(st.links.get(x, set()) & st.links.get(y, set()))
+                eff = max(conf, AUTO_MERGE_MIN) if shared else conf
                 key = (x, y)
-                if key not in out or conf > out[key]["confidence"]:
-                    out[key] = {"norm": norm, "confidence": round(conf, 3),
+                if key not in out or eff > out[key]["confidence"]:
+                    out[key] = {"norm": norm, "confidence": round(eff, 3), "alias_confidence": round(conf, 3),
+                                "shared_item": list(shared[0]) if shared else None,
                                 "a": {"work": x, "name": nx.display, "source": nx.source, "is_title": nx.is_title},
                                 "b": {"work": y, "name": ny.display, "source": ny.source, "is_title": ny.is_title}}
     return out
