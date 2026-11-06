@@ -417,6 +417,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[metadata-linking]], [[backend]]
 - 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。
 
-## [2026-11-07] ingest | PR #191 (#190) ��i�ꗗ�Ɍ��̊m�F�҂��E�����̒�Ă̍i�荞�݂�ǉ�
-- �X�V: [[work-search]], [[backend]]
-- ���l: #190�B��i�J�[�h�̌��̊m�F�҂��E�����̒�ăo�b�W������i����������i�荞�݂������A�S��i�𗬂������Ă����B�u�i�荞�݁v�̃`�F�b�N�{�b�N�X(���̊m�F�҂������E�����̒�Ă���)��V�݂��AGET /api/works �� link_pending=1 / pending_proposals=1 ��ǉ������B���b�N API �����������ōi��B�t�����g 186 ���E�o�b�N�G���h 1251 ���p�X(�t�����g�� Node 26 �� localStorage ��� #130 �̉���̂��� --pool=vmForks �Ŏ��s�BCI �� Node 22 �Œʏ�̃v�[��)�B
+## [2026-11-07] ingest | PR #191 (#190) 作品一覧に候補の確認待ち・統合の提案の絞り込みを追加
+- 更新: [[work-search]], [[backend]], [[metadata-linking]]
+- 備考: #190。作品カードの候補の確認待ち・統合の提案バッジを持つ作品だけを見る絞り込みが無く、全作品を流し見していた。「絞り込み」のチェックボックス(候補の確認待ちだけ・統合の提案だけ)を新設し、GET /api/works に link_pending=1 / pending_proposals=1 を追加した。モック API も同じ条件で絞る。 フロント 186 件・バックエンド 1251 件パス(フロントは Node 26 の localStorage 問題 #130 の回避のため --pool=vmForks で実行。CI は Node 22 で通常のプール)。
