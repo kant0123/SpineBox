@@ -107,7 +107,28 @@ def test_numbers_are_dropped_when_the_group_is_gone(make_env):
     (w,) = client.get("/api/works").json()["works"]
     assert (w["title"], w["volume_count"]) == ("作品名", 1)  # 外側の名前の別名で同じ作品に残る
     assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())  # 番号は名前から導出なので消える
-    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())
+
+
+def test_a_work_without_volumes_gets_no_new_proposal(make_env):
+    """巻の組み替えで空になった作品は確認待ちの提案を作らない(画面に出ない行が増えるだけなので)。"""
+    lib, settings, client = make_env(["A 1.cbz", "B.cbz"])
+    ws = {w["title"]: w["id"] for w in client.get("/api/works").json()["works"]}
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            for wid in (ws["A 1"], ws["B"]):  # 0.8 で一致する別名を同じだけ持たせる
+                c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, evidence,
+                             created_at) VALUES (?, 'Same', 'same', 'filename', 0, 0.8, '{}', ?)""",
+                          (wid, db.now()))
+    finally:
+        conn.close()
+    client.post("/api/works/refresh")
+    assert len(client.get("/api/works/proposals").json()) == 1
+    cbz(lib, "A 2.cbz")  # A 1 と A 2 が 1 作品になり、元の A 1 は巻を持たなくなる
+    client.post("/api/scan")
+    assert set(by_title(client)) == {"A", "B"}
+    assert client.get("/api/works/proposals").json() == []
+    assert rows(settings, "SELECT COUNT(*) AS n FROM work_merge_proposals WHERE status = 'open'")[0]["n"] == 0
 
 
 def test_author_and_title_come_from_the_name_with_evidence(make_env):
