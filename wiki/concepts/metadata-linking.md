@@ -60,7 +60,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 
 | 規則 | 理由 |
 | --- | --- |
-| **訳すのは反映(`apply_work`)と、候補を画面へ出すとき(`spinebox/works.py:1384 _link_json()`)だけ。** `work_links.item` / `candidates` と生の応答は英語のまま | 対応表を足す・設定を変えると、取り直さずに次の反映(起動時・スキャン後)で全作品に効く。取得し直しは外部への要求とレート制限を食う |
+| **訳すのは反映(`apply_work`)と、候補を画面へ出すとき(`spinebox/works.py:1419 _link_json()`)だけ。** `work_links.item` / `candidates` と生の応答は英語のまま | 対応表を足す・設定を変えると、取り直さずに次の反映(起動時・スキャン後)で全作品に効く。取得し直しは外部への要求とレート制限を食う |
 | ジャンル・タグは対応表(AniList・MangaUpdates のジャンルは全語、タグは頻出のもの)で引く。表記の揺れ(`Teacher/s` と `Teacher`、ハイフン、全角、大文字小文字)は畳み、訳して同じになった語は 1 つにまとめる | MangaUpdates のタグ(categories)は利用者投稿で数千語あり全部は持てない。記録済みの応答に出る語はすべて引ける(`tests/test_ja_terms.py` が確かめる) |
 | **対応表に無い語は既定で入れない**(`[metadata] untranslated_terms = "hide"`。`keep` で英語のまま入れる) | 利用者が日本語で揃えたいと要望した。元の値は残っているので、`keep` にすれば次の起動で戻る。隠した語は絞り込みの候補にも出ない |
 | 出版社は NDL(日本語)が先。NDL の連携が無く MangaUpdates の原版元だけのときは、ローマ字名を対応表で日本語にする。**対応が無いローマ字名はそのまま出す** | 英語表記が入る経路はこれだけ(NDL が確認待ち・該当なしの作品)。出版社名は固有名なので、隠すより読める綴りで残す |
@@ -86,7 +86,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 
 ## 手動の編集と「自動に戻す」
 
-`spinebox/works.py:806 edit_fields()` は手動で保存し、直す前の値を `evidence.previous` に退避する。`spinebox/works.py:845 reset_field()` が復元し、無ければ空に戻す(その後 `apply_work` が公開 DB の値を入れ直す)。
+`spinebox/works.py:841 edit_fields()` は手動で保存し、直す前の値を `evidence.previous` に退避する。`spinebox/works.py:880 reset_field()` が復元し、無ければ空に戻す(その後 `apply_work` が公開 DB の値を入れ直す)。
 作品名は直す前の名前が残っていないと戻せない(409)。巻の書誌は `edit_volume_fields()` / `reset_volume_field()` で同じ。
 統合(`merge_works`)は手動の項目を優先して引き継ぎ、連携も `_merge_links()` で移す。整理(CBZ 化)で巻が作り直されても、`transfer_volume_fields()` が書誌を引き継ぐ。
 
@@ -121,3 +121,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 - **取得元のクライアント(パーサ)で日本語にする**(#74): 保存する連携の中身が訳した値になり、対応表を直しても取り直すまで直らない。反映で訳せば起動で全作品に効く
 - **画面(フロント)でだけ訳す**(#74): 絞り込み・全文検索の値が英語のまま残り、「日常」で絞れない。`work_fields` に訳した値を入れた
 - **NDL を 1 冊ずつ連携の単位にする**: 作品に 1〜10 件の書誌が並び、どれを選ぶかを巻ごとに利用者に聞くことになる。組にして 1 回の確認で済ませた
+
+
+
+

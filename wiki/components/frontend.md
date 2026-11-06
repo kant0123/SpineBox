@@ -38,7 +38,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:18 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
-| `frontend/src/api.ts:940 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:946 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -47,6 +47,9 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 - **ファビコンは SVG・ICO・PNG の 3 種を `frontend/public/` に置く。** モダンブラウザ向けには高精細・ダーク/ライト対応のベクター `favicon.svg`、レガシー互換に 16/32/48px マルチサイズの `favicon.ico`、iOS Safari のホーム画面追加・PWA 向けに 180x180 の `apple-touch-icon.png` を用意する。Vite ビルド(`npm run build`)で `frontend/dist/` にそのままコピーされ、バックエンドの静的配信 `/` 経由でブラウザへ配信される
 
+- **統合の根拠に、同じ公開 DB 項目への linked を出す。** `frontend/src/works/labels.ts:51 evidenceLines()` が
+  `alias.shared_item` を「同じ公開データベースの項目「<取得元>」(<source_id>)に linked している」と表示する。
+  確信度は元の別名の値(`alias_confidence`)を出し、0.9 に引き上げた理由を隠さない。文言だけで、画面の構造は変えない
 - **ページ番号は 0 始まり。** `progress.page` も `pages[].index` と同じ番号で送る(画面の表示だけ +1)。
   #14 と同時に作ったため、契約の文面に始まりの番号が無かった。バックエンドと食い違ったら API 契約側を正にして合わせる
 - **位置は「画面」ではなく「ページ」で持つ。** 回転で見開きの組み方が変わっても、読んでいたページを含む画面から再開できる。
@@ -271,3 +274,5 @@ npm run build      # frontend/dist
   横スクロールが出ないことを確かめた(実データでの 375px 確認はローカルで行う)
 - #19 でビルド済みの `frontend/dist` をバックエンドから配信して実 API で通した(375px・横長 812x375 で、一覧 → 最終ページ → 位置保存 →
   一覧に戻って再開、`/read/<id>` の直開きとリロード)。LAN 越しの実機(スマホ)の確認はサーバー機側で行う(#20)。常駐・公開の手順は [[server-setup]]
+
+

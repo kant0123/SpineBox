@@ -414,6 +414,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[work-grouping]], [[recurring-review-findings]]、および行番号のずれ直しで [[backend]]・[[volume-split]]・[[metadata-linking]]・[[cover-thumbnails]]・[[work-search]]
 - 備考: #167。#162 の後、確認待ちの提案は 3949 → 232 件まで減ったが、残りは別名規則で 0.5〜0.896 のまま未統合で、名寄せの読み残しが大半。`trailing_number()` は末尾の装飾([レーベル] (レーベル) [AVIF]・ - 著者 & 著者)を落として読むようにし、落とした部分は evidence に残す。簡体字の巻表示・話表示(卷 话)は 巻 話 と同じに読む(_fold_chars)。小数点の巻(第04.5巻)は整数の番号で持てないので番号なしにし、作品名にも残さない。同じ取得元・同じ source_id に linked した組は別名一致を 0.9 として扱い、手動の決定が絡まなければ自動統合する(元の確信度は `alias_confidence`、shared_item を根拠に残す)。tests/test_naming.py・tests/test_works.py に 6 件足し、直す前は 6 件とも落ちることを確認。
 
+## [2026-11-07] ingest | PR #172 (#167) 既存 DB の小数点の巻番号・誤読した作品名を名寄せで直し、連携の移動と冪等を補う
+- 更新: [[work-grouping]], [[recurring-review-findings]]、[[frontend]] の統合の根拠表示
+- 備考: #174 が同じ範囲(装飾・`卷`・小数点の読み、同じ公開 DB 項目の自動統合)を先に実装・マージ済みなので、この PR はその上での補正。`parse_work_name()` が数字でない末尾の装飾(`(txt+jpg)`)を番号の読みの前に落とし、`(3巻)`・`[1-27]` のような数字の括弧は番号として残す。小数点の巻を誤読して作った 1 巻の作品名(`… 第04`)は `_refresh_title()` が今の系列名へ直す(スキャンし直さなくても直る)。既存 DB の小数点の巻番号は `_apply_trailing_numbers()` が `parse_number()` で読めない番号として消し、番号を持たない巻の行は触らない(冪等)。番号付きの作品を既存の系列名の作品へ付け替えるときも `_merge_links()` が公開 DB の連携を移す。フロントは統合の根拠に同じ公開 DB 項目への linked を表示する(文言のみ)。agy レビューで `_find_number` の添字境界・`_merge_links` の分岐位置・`SCAN_VERSION` の未更新・`_apply_trailing_numbers` の冪等条件を直した。スキーマ変更なし。
+
 ## [2026-11-07] ingest | PR #170 (#165) 欠けの番号が多すぎるときは件数だけを出し、内訳をツールチップで見せる
 - 更新: [[frontend]]
 - 備考: #165。作品カードのバッジと作品ページの「欠けている巻」で、欠けが 5 個以下のときは番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、カーソルを合わせるとツールチップで出る。DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う。組み立ては frontend/src/works/labels.ts:40 missingLabel()(MISSING_LIST_MAX = 5)。巻と話を合わせて数える。Vitest 184 件・バックエンド 1156 件パス、375px / 1280px のライト・ダークで横スクロール無しを確認した。

@@ -818,3 +818,83 @@ def test_manual_author_of_the_absorbed_work_is_not_lost_on_merge(make_env):
     assert r.status_code == 200
     d = r.json()
     assert (d["author"], d["author_manual"]) == ("手で入れた著者", True)  # 名前から読んだ著者で手動の著者を隠さない
+def test_parenthesized_volume_number_is_read(make_env):
+    """`(3巻)` のような括弧つきの巻番号を装飾として落とさず、番号として読む(#167)。"""
+    _, _, client = make_env(["作品名 (3巻).cbz", "作品名 (4巻).cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 2)
+    assert [s["label"] for s in client.get(f"/api/works/{w['id']}").json()["slots"]] == ["3巻", "4巻"]
+
+
+def test_decimal_volume_without_dai_is_unnumbered(make_env):
+    """`4.1巻` のように `第` の無い小数点の巻も番号なしにする(#167)。"""
+    _, _, client = make_env(["作品名 4.1巻.cbz", "作品名 4.2巻.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 2)
+    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())
+
+
+def test_a_decimal_volume_refreshes_a_misread_work_title(make_env):
+    """小数点の巻を誤読して作った `… 第04` の作品名を、系列名へ直す(#167)。"""
+    _, settings, client = make_env(["ようこそ実力至上主義の教室へ 第04.5巻 (txt+jpg).cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("UPDATE work_fields SET value = ? WHERE work_id = ? AND field = 'title'",
+                      ("ようこそ実力至上主義の教室へ 第04", w["id"]))
+    finally:
+        conn.close()
+    client.post("/api/works/refresh")
+    w2 = client.get(f"/api/works/{w['id']}").json()
+    assert w2["title"] == "ようこそ実力至上主義の教室へ"
+
+
+def test_a_decimal_volume_number_is_cleared_without_a_rescan(make_env):
+    """既存 DB の小数点の巻番号を、名寄せで消す(#167)。"""
+    _, settings, client = make_env(["作品名 第04.5巻.cbz"])
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("UPDATE volumes SET number_kind = 'volume', number_start = 5, number_end = 5, "
+                      "number_evidence = '5巻'")
+    finally:
+        conn.close()
+    client.post("/api/works/refresh")
+    (w,) = client.get("/api/works").json()["works"]
+    assert w["title"] == "作品名"
+    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())
+
+
+def test_a_later_numbered_remnant_moves_its_link_to_the_existing_series_work(make_env):
+    """2 巻目以降の番号付きの作品の連携も、既存の系列名の作品へ移す(#167)。"""
+    _, settings, client = make_env(["作品名 1.cbz", "作品名 2.cbz"])
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            v2 = c.execute("SELECT id FROM volumes WHERE title = '作品名 2'").fetchone()["id"]
+            wid = c.execute("INSERT INTO works (created_at, updated_at) VALUES (?, ?)",
+                            (db.now(), db.now())).lastrowid
+            c.execute("""INSERT INTO work_fields (work_id, field, value, source, manual, confidence, evidence, updated_at)
+                         VALUES (?, 'title', '作品名 2', 'filename', 0, 0.9, '{}', ?)""", (wid, db.now()))
+            c.execute("UPDATE work_volumes SET work_id = ? WHERE volume_id = ?", (wid, v2))
+    finally:
+        conn.close()
+    add_alias(settings, wid, "作品名", confidence=0.8)
+    add_linked_item(settings, wid, "mangaupdates", "12345", confidence=0.8)
+    client.post("/api/works/refresh")
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 2)
+    links = client.get(f"/api/works/{w['id']}").json()["links"]
+    assert any(l["source"] == "mangaupdates" and l["source_id"] == "12345" and l["status"] == "linked"
+               for l in links)
+
+
+def test_sync_does_not_touch_unnumbered_volume_rows(make_env):
+    """番号を持たない巻の行を、名寄せのたびに書き換えない(冪等)。"""
+    _, settings, client = make_env(["作品名.cbz"])
+    before = [tuple(r) for r in rows(settings, "SELECT id, updated_at FROM volumes ORDER BY id")]
+    client.post("/api/works/refresh")
+    after = [tuple(r) for r in rows(settings, "SELECT id, updated_at FROM volumes ORDER BY id")]
+    assert after == before
+
