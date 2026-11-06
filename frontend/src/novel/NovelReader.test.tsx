@@ -1,5 +1,5 @@
-// 縦書きリーダーをモック API と通す。jsdom には描画が無いので、本文の帯の幅(scrollWidth)を
-// 文字数・文字サイズ・高さから計算する差し替えで、ページ割りと文字サイズの変更を再現する
+// 縦書きリーダーをモチE�� API と通す。jsdom には描画が無ぁE�Eで、本斁E�E帯の幁EscrollWidth)めE
+// 斁E��数・斁E��サイズ・高さから計算する差し替えで、�Eージ割りと斁E��サイズの変更を�E現する
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
@@ -31,7 +31,7 @@ async function open(id: number) {
 
 const text = () => screen.getByTestId("novel-text");
 const at = () => ({ section: Number(text().dataset.section), page: Number(text().dataset.page), pages: Number(text().dataset.pages) });
-/** 今のページが覆う割合の範囲 [from, to) */
+/** 今�Eペ�Eジが要E��割合�E篁E�� [from, to) */
 const span = () => ({ from: Number(text().dataset.from), to: Number(text().dataset.to) });
 const press = (key: string) => fireEvent.keyDown(window, { key });
 const puts = () => backend.log.filter((l) => l.method === "PUT").map((l) => l.body as { page: number; finished: boolean; position?: number });
@@ -74,10 +74,10 @@ describe("縦書きリーダー", () => {
       window.location.hash = "#/volumes";
     });
     render(<App />);
-    const card = (await screen.findByText("縦書きの小説 第1巻")).closest("li")!;
+    const card = (await screen.findByText("縦書き�E小説 第1巻")).closest("li")!;
     expect(card.textContent).toContain("小説");
     expect(card.textContent).toContain("EPUB");
-    expect(card.textContent).not.toContain("CBZ に整理");
+    expect(card.textContent).not.toContain("CBZ に整琁E);
     cleanup();
 
     await open(7);
@@ -85,20 +85,20 @@ describe("縦書きリーダー", () => {
     expect(at()).toMatchObject({ section: 0, page: 0 });
     expect(at().pages).toBeGreaterThan(1);
     expect(text().textContent).toContain("第一章");
-    expect(text().querySelector("ruby rt")?.textContent).toBe("ねこ");
+    expect(text().querySelector("ruby rt")?.textContent).toBe("ねぁE);
 
     const seen = new Set<number>();
     for (let i = 0; i < 200; i++) {
       seen.add(at().section);
       const before = at();
       press("ArrowLeft");
-      if (screen.queryByText("最後のページです")) break;
+      if (screen.queryByText("最後�Eペ�EジでぁE)) break;
       await waitFor(() => expect(at()).not.toEqual(before));
       await ready();
     }
-    expect(screen.getByText("最後のページです")).toBeTruthy();
+    expect(screen.getByText("最後�Eペ�EジでぁE)).toBeTruthy();
     expect([...seen]).toEqual([0, 1, 2]);
-    expect(text().textContent).toContain("おしまい");
+    expect(text().textContent).toContain("おしまぁE);
     expect(at().page).toBe(at().pages - 1);
 
     await act(async () => {
@@ -107,16 +107,16 @@ describe("縦書きリーダー", () => {
     const last = puts().at(-1)!;
     expect(last.page).toBe(2);
     expect(last.finished).toBe(true);
-    expect(last.position).toBe(span().from); // 最後のページの先頭の割合
+    expect(last.position).toBe(span().from); // 最後�Eペ�Eジの先頭の割吁E
   });
 
-  it("本文の危険な HTML(スクリプト・イベントハンドラ・外部 URL)は実行も読み込みもされない", async () => {
+  it("本斁E�E危険な HTML(スクリプト・イベントハンドラ・外部 URL)は実行も読み込みもされなぁE, async () => {
     backend.handle("PUT", "/api/volumes/7/progress", JSON.stringify({ page: 1, finished: false, position: 0 }));
     await open(7);
     await ready();
     expect(at().section).toBe(1);
     const el = text();
-    expect(el.textContent).toContain("危険な本文");
+    expect(el.textContent).toContain("危険な本斁E);
     expect(el.querySelectorAll("script, iframe, a").length).toBe(0);
     for (const node of Array.from(el.querySelectorAll("*"))) {
       for (const attr of Array.from(node.attributes)) expect(attr.name.startsWith("on")).toBe(false);
@@ -126,27 +126,27 @@ describe("縦書きリーダー", () => {
     expect(window.__novelPwned).toBeUndefined();
   });
 
-  it("保存した位置(区切り+割合)から再開し、文字サイズを変えても近い位置に留まる", async () => {
-    await open(8); // 区切り 2 の 2 つ目、割合 0.5
+  it("保存した位置(区刁E��+割吁Eから再開し、文字サイズを変えても近い位置に留まめE, async () => {
+    await open(8); // 区刁E�� 2 の 2 つ目、割吁E0.5
     await ready();
     const first = at();
     expect(first.section).toBe(1);
     expect(span().from).toBeLessThanOrEqual(0.5);
     expect(span().to).toBeGreaterThan(0.5);
 
-    press("Escape"); // jsdom に PointerEvent が無いので、メニューはキーで開く
+    press("Escape"); // jsdom に PointerEvent が無ぁE�Eで、メニューはキーで開く
     for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole("button", { name: "大きく" }));
     await ready();
     const bigger = at();
     expect(bigger.section).toBe(1);
     expect(bigger.pages).toBeGreaterThan(first.pages);
-    // 文字サイズを変えても、同じ割合(0.5)を含むページにいる
+    // 斁E��サイズを変えても、同じ割吁E0.5)を含むペ�EジにぁE��
     expect(span().from).toBeLessThanOrEqual(0.5);
     expect(span().to).toBeGreaterThan(0.5);
     expect(localStorage.getItem("spinebox.novel")).toContain("24");
   });
 
-  it("区切りの先頭で戻ると、前の区切りの最後のページへ行く", async () => {
+  it("区刁E��の先頭で戻ると、前の区刁E��の最後�Eペ�Eジへ行く", async () => {
     backend.handle("PUT", "/api/volumes/8/progress", JSON.stringify({ page: 1, finished: false, position: 0 }));
     await open(8);
     await ready();
@@ -157,15 +157,15 @@ describe("縦書きリーダー", () => {
     expect(at().page).toBe(at().pages - 1);
   });
 
-  it("最終ページからさらに進むと、同じ作品の次の巻へ移る(#113)", async () => {
+  it("最終�Eージからさらに進むと、同じ作品の次の巻へ移めE#113)", async () => {
     window.location.hash = "";
     const v = defaultVolumes().find((x) => x.id === 7)!;
     const html = mockSections()[7];
     const detail: VolumeDetail = {
       id: 7, title: v.title, format: "epub", page_count: html.length, pages: [],
       sections: html.map((h, i) => ({ index: i, length: h.length })),
-      progress: { page: 2, finished: false, position: 0 }, // 最後の区切りから
-      next_volume: { id: 8, title: "青空文庫のテキスト", volume_number: null, offline: false },
+      progress: { page: 2, finished: false, position: 0 }, // 最後�E区刁E��から
+      next_volume: { id: 8, title: "青空斁E��のチE��スチE, volume_number: null, offline: false },
     };
     render(<NovelReader id="7" detail={detail} />);
     await ready();
