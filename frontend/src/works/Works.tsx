@@ -89,14 +89,16 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   }, [text]);
 
   const setFilter = (name: keyof WorkQuery, value: string) => setQuery((cur) => ({ ...cur, [name]: value || undefined }));
-  const setReadLaterOnly = (on: boolean) => setQuery((cur) => (on ? { ...cur, read_later: true } : { ...cur, read_later: undefined }));
+  const setOnly = (name: "read_later" | "link_pending" | "pending_proposals", on: boolean) =>
+    setQuery((cur) => (on ? { ...cur, [name]: true } : { ...cur, [name]: undefined }));
   const clearAll = () => {
     setText("");
     setQuery({});
   };
 
   const selectable = FILTER_NAMES.filter((n) => !(n in fixed));
-  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0) + (query.read_later ? 1 : 0);
+  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0)
+    + (query.read_later ? 1 : 0) + (query.link_pending ? 1 : 0) + (query.pending_proposals ? 1 : 0);
   const filtering = activeFilters > 0 || !!query.q?.trim();
 
   return (
@@ -159,8 +161,24 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
             <label className="work-filter-check">
               <input
                 type="checkbox"
+                checked={!!query.link_pending}
+                onChange={(e) => setOnly("link_pending", e.target.checked)}
+              />
+              候補の確認待ちだけ
+            </label>
+            <label className="work-filter-check">
+              <input
+                type="checkbox"
+                checked={!!query.pending_proposals}
+                onChange={(e) => setOnly("pending_proposals", e.target.checked)}
+              />
+              統合の提案だけ
+            </label>
+            <label className="work-filter-check">
+              <input
+                type="checkbox"
                 checked={!!query.read_later}
-                onChange={(e) => setReadLaterOnly(e.target.checked)}
+                onChange={(e) => setOnly("read_later", e.target.checked)}
               />
               後で読むだけ
             </label>
