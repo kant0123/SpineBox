@@ -367,6 +367,16 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
                        dropped["confidence"], json.loads(dropped["evidence"]) if dropped["evidence"] else None)
     _merge_links(c, keep, drop)
     _merge_bookmarks(c, keep, drop)
+    # 後で読む(#173)の印も吸収先へ移す。read_later は循環 import を避けてここで直接扱う
+    _dropped = c.execute("SELECT work_id, created_at FROM read_later WHERE work_id = ?", (drop,)).fetchone()
+    if _dropped is not None:
+        _kept = c.execute("SELECT work_id, created_at FROM read_later WHERE work_id = ?", (keep,)).fetchone()
+        if _kept is None:
+            c.execute("UPDATE read_later SET work_id = ? WHERE work_id = ?", (keep, drop))
+        else:
+            c.execute("DELETE FROM read_later WHERE work_id = ?", (drop,))
+            if _dropped["created_at"] < _kept["created_at"]:
+                c.execute("UPDATE read_later SET created_at = ? WHERE work_id = ?", (_dropped["created_at"], keep))
     now = db.now()
     c.execute("UPDATE works SET merged_into = ?, updated_at = ? WHERE id = ?", (keep, now, drop))
     c.execute("UPDATE works SET merged_into = ?, updated_at = ? WHERE merged_into = ?", (keep, now, drop))
@@ -1316,10 +1326,11 @@ def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) 
 
 
 def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None,
-               root_id: int | None = None) -> dict:
+               root_id: int | None = None, read_later_only: bool = False) -> dict:
     """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
 
     q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / publisher / status(読書状態)の絞り込み。
+    read_later_only は後で読む(#173)を付けた作品だけにする。
     root_id は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・読書状態などもそのルートの巻で数える。
     total は絞る前の作品数(蔵書の切り替えの後)、facets は絞り込みの候補(同じく絞る前の作品から作る)。
     """
@@ -1344,12 +1355,14 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
         a, b = roots.get(r["work_a"], r["work_a"]), roots.get(r["work_b"], r["work_b"])
         if a == b:
             merged_roots.add(a)
+    later_ids = {r[0] for r in conn.execute("SELECT work_id FROM read_later")}
     out = []
     for wid, w in works.items():
         if wid not in vols:
             continue
         s = _summary(w, vols[wid], opens.get(wid, 0), pending_links.get(wid, 0))
         s["merged"] = wid in merged_roots
+        s["read_later"] = wid in later_ids
         out.append(s)
     out.sort(key=lambda s: natural_key(s["title"]))
     where, params = _root_condition(root_id)
@@ -1358,6 +1371,8 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
     facets = search.facets(values, [s["id"] for s in out])
     shown = [s for s in out if (hits is None or s["id"] in hits)
              and search.matches_filters(values.get(s["id"], {}), s["reading_state"], wanted)]
+    if read_later_only:
+        shown = [s for s in shown if s.get("read_later")]
     return {"works": shown, "total": len(out), "facets": facets, "unassigned": total - assigned}
 
 
@@ -1480,6 +1495,7 @@ def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = 
         "numbers": number_summary(vols),
         "proposals": proposals, "merges": merges, "merged": bool(merges),
         "bookmarked": conn.execute("SELECT 1 FROM bookmarks WHERE work_id = ?", (work_id,)).fetchone() is not None,
+        "read_later": conn.execute("SELECT 1 FROM read_later WHERE work_id = ?", (work_id,)).fetchone() is not None,
     }
 
 
