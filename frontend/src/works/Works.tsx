@@ -3,7 +3,7 @@ import { api, type ReadingState, type SourceName, type WorkFilterName, type Work
 import { facetListHref, workProposalsHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
-import { KIND_TEXT, missingText, READING_STATE_TEXT } from "./labels";
+import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
 import { ViewTabs } from "./ViewTabs";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 
@@ -170,7 +170,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります(「巻」の表示にあります)。</p>}
       <ul className="work-grid">
         {data?.works.map((w) => {
-          const missing = missingText(w);
+          const missing = missingLabel(w);
           return (
             <li key={w.id} className="work-card">
               <a className="work-link" href={workTitlesHref(w.id)}>
@@ -187,7 +187,11 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                     <span className="badge volume-count-badge">
                       全{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
                     </span>
-                    {missing && <span className="badge">欠け {missing}</span>}
+                    {missing.text && (
+                      <span className="badge" title={missing.title}>
+                        欠け {missing.text}
+                      </span>
+                    )}
                     {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
                     {w.link_pending > 0 && <span className="badge">候補の確認待ち</span>}
                     {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}

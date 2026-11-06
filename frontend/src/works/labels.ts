@@ -24,6 +24,29 @@ export function missingText(w: Pick<WorkSummary, "missing_volumes" | "missing_ep
   return parts.join("、");
 }
 
+/** 欠けの番号を並べて見せる上限。これより多いときは件数だけにし、内訳はツールチップ(title)に回す */
+export const MISSING_LIST_MAX = 5;
+
+/** 欠けの表示。title は番号を省略したときだけ入る(全番号) */
+export interface MissingLabel {
+  text: string;
+  title?: string;
+}
+
+/**
+ * カード・作品ページに出す欠けの表示。番号が多すぎるときは「12 巻」と件数だけにし、
+ * カーソルを合わせたときのツールチップ用に全番号を title へ入れる。
+ */
+export function missingLabel(w: Pick<WorkSummary, "missing_volumes" | "missing_episodes">): MissingLabel {
+  const total = w.missing_volumes.length + w.missing_episodes.length;
+  if (total === 0) return { text: "" };
+  if (total <= MISSING_LIST_MAX) return { text: missingText(w) };
+  const counts: string[] = [];
+  if (w.missing_volumes.length) counts.push(`${w.missing_volumes.length} 巻`);
+  if (w.missing_episodes.length) counts.push(`${w.missing_episodes.length} 話`);
+  return { text: counts.join("、"), title: missingText(w) };
+}
+
 /** 統合の根拠を一文ずつにする */
 export function evidenceLines(ev: MergeEvidence): string[] {
   const lines: string[] = [];
