@@ -75,7 +75,7 @@ export function ProposalCard({ p, dismissed = false, onChanged }: { p: WorkPropo
   );
 }
 
-export function WorkProposals() {
+export function WorkProposals({ embedded = false }: { embedded?: boolean }) {
   const [showDismissed, setShowDismissed] = useState(false);
   const [items, setItems] = useState<WorkProposal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +96,12 @@ export function WorkProposals() {
   return (
     <div className="library duplicates">
       <header className="library-header">
-        <h1>作品の統合の提案</h1>
-        <a className="back-link" href={worksHref}>
-          作品へ戻る
-        </a>
+        {embedded ? <span /> : <h1>作品の統合の提案</h1>}
+        {!embedded && (
+          <a className="back-link" href={worksHref}>
+            作品へ戻る
+          </a>
+        )}
       </header>
       <p className="muted">
         別々の作品になっているが、同じ本かもしれない組です。承認するまで統合しません。名前は候補であり、確信度が低いものは自動で決めつけません。

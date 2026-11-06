@@ -2,6 +2,7 @@
 // データ管理とタスクセンターは #83 のジョブ(`DataJobs`)、整理は #84、フォロー管理は #87 の画面を載せている。
 import { DataJobs } from "../data/DataJobs";
 import { FollowManage } from "../follows/Follows";
+import { WorkProposals } from "../works/WorkProposals";
 import { duplicatesHref, inboxHref, organizeHistoryHref, volumesHref, workProposalsHref } from "../route";
 
 /** データ管理: ジョブ(スキャン・補完・表紙など。#83)・整理(#84)と、ほかの画面への入口 */
@@ -31,4 +32,9 @@ export function FollowsPanel() {
 /** タスクセンター: ジョブの実行中・待ち・履歴(#83) */
 export function TasksPanel() {
   return <DataJobs view="tasks" />;
+}
+
+/** 統合: 作品の統合の提案(#50) */
+export function ProposalsPanel() {
+  return <WorkProposals embedded />;
 }

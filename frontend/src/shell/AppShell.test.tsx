@@ -289,11 +289,12 @@ describe("管理", () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "データ管理", "フォロー管理", "タスクセンター"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "データ管理", "統合", "フォロー管理", "タスクセンター"]);
     expect(tabs.map((t) => t.getAttribute("href"))).toEqual([
       "#/admin",
       "#/admin/preferences",
       "#/admin/data",
+      "#/admin/proposals",
       "#/admin/follows",
       "#/admin/tasks",
     ]);
@@ -306,6 +307,8 @@ describe("管理", () => {
     expect(await screen.findByRole("heading", { name: "履歴" })).toBeTruthy(); // #83 のタスクセンター
     await navigate("#/admin/follows");
     expect(await screen.findByRole("button", { name: "続刊を調べる" })).toBeTruthy(); // #87 のフォロー管理
+    await navigate("#/admin/proposals");
+    expect(await screen.findByRole("button", { name: "同じ作品として統合" })).toBeTruthy(); // 統合の提案
   });
 
   it("統計は API の数を出し、蔵書の切り替えに従う", async () => {
