@@ -737,6 +737,11 @@ button.small::after {
 .work-cover { flex: none; width: 64px; aspect-ratio: 2 / 3; height: auto; align-self: flex-start; object-fit: cover; border-radius: 4px; background: var(--surface-divider); opacity: 0; transition: opacity 0.2s; }
 .work-card .work-cover { width: 100%; align-self: stretch; border-radius: 12px 12px 0 0; }
 .work-cover.loaded { opacity: 1; }
+/* 横長(見開き)の表紙の表示(#75)。通常は中央クロップ。横長と判定したら寄せ位置を変え、
+   さらに見開きが明らかな画像は全体を縮小表示(contain)して欠けを避ける。 */
+.work-cover.landscape-left { object-position: left center; }
+.work-cover.landscape-right { object-position: right center; }
+.work-cover.landscape-contain { object-fit: contain; object-position: center center; }
 /* 表紙の無い作品も同じ高さの枠を出し、タイトルの位置をそろえる(#132) */
 .work-cover-placeholder { display: flex; align-items: center; justify-content: center; opacity: 1; }
 .work-cover-placeholder-text { color: var(--muted); font-size: 0.875rem; }

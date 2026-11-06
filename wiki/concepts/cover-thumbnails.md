@@ -31,6 +31,11 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   変わらないので、同じ行のタイトル位置がそろう。タイトル一覧・ブックマークの表紙は今までどおり何も出さない。
   サーバーは `ETag` + `Cache-Control: private, no-cache` なので、表紙を作った後に画面を開き直すと取り直す
   (以前は「表紙を作る」の後に `?rev=` を付けて同じ画面で取り直していたが、作成を画面から起動しなくなったので廃止した)
+- **横長(見開き)の表紙の表示。** `WorkCover` が画像の読み込み後に `naturalWidth/Height` からアスペクト比を判定し、
+  CSS クラスを付ける(`frontend/src/works/WorkCover.tsx`)。ar > 2.0 は `landscape-contain`(全体を縮小表示、欠けを避ける)、
+  1.2 < ar <= 2.0 は種別で `landscape-left`(漫画) / `landscape-right`(小説)。それ以外は既定の中央クロップ。
+  しきい値と方向は実データ(お気楽領主は全巻縦長、かくかくしかじかは 4 巻中 3 巻が横長 ar 1.41〜2.21)を根拠にした仮定で、
+  日本語の右綴じを考慮して漫画・小説とも右寄せが正しい可能性がある(その場合は 1 行で切替)。
 
 ## なぜこうなっているか
 

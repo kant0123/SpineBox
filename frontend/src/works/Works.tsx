@@ -192,7 +192,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
               <div className="work-cover-wrap">
                 <a className="work-link work-cover-link" href={workTitlesHref(w.id)} aria-label={w.title}>
                   {w.cover_volume_id !== null ? (
-                    <WorkCover volumeId={w.cover_volume_id} placeholder />
+                    <WorkCover volumeId={w.cover_volume_id} placeholder kind={w.kind} />
                   ) : (
                     <WorkCoverPlaceholder />
                   )}
