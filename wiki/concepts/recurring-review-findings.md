@@ -367,3 +367,17 @@ push 前に確かめること:
 
 - PR #172 — `spinebox/scanner.py:44 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
 
+### 変化が無ければ書かない処理で、条件の抜けにより毎回書く
+
+「冪等で、変化が無ければ書かない」処理の更新条件に、対象の値が存在するかのガードを入れず、値が無い行にも毎回 UPDATE を発行する。`updated_at` が毎回変わり、契約と DB の書き込み量が破れる。
+
+push 前に確かめること:
+
+- 更新する条件は、対象の値が NULL の行を除外しているか
+- 何も変えない再実行で、行の `updated_at` が変わらないテストがあるか
+- ループ内で、条件が常に真になる行がないか
+
+実例:
+
+- PR #172 — `spinebox/works.py:504 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+

@@ -789,6 +789,15 @@ def test_sync_is_idempotent_and_writes_nothing_when_nothing_changed(make_env):
     assert [tuple(r) for r in rows(settings, "SELECT * FROM work_fields ORDER BY work_id, field")][:1] == fields[:1]
 
 
+def test_sync_does_not_touch_unnumbered_volume_rows(make_env):
+    """番号を持たない巻の行を、名寄せのたびに書き換えない(冪等)。"""
+    _, settings, client = make_env(["作品名.cbz"])
+    before = [tuple(r) for r in rows(settings, "SELECT id, updated_at FROM volumes ORDER BY id")]
+    client.post("/api/works/refresh")
+    after = [tuple(r) for r in rows(settings, "SELECT id, updated_at FROM volumes ORDER BY id")]
+    assert after == before
+
+
 def test_organize_carries_the_work_assignment_to_the_new_volume_and_back(make_env):
     lib, settings, client = make_env(["T v01.cbz", "T v02.cbz", "U v01.cbz"])
     ws = by_title(client)

@@ -501,7 +501,7 @@ def _apply_trailing_numbers(c, st: _State, series: dict[int, dict]) -> None:
         want = series.get(r["id"])
         if want is None:
             # 末尾の番号の組が無くなった番号と、今の読み方で読めない番号(小数点の巻など)を消す。
-            if _owns_trailing_number(r) or parse_number(r["title"]) is None:
+            if _owns_trailing_number(r) or (r["number_kind"] is not None and parse_number(r["title"]) is None):
                 c.execute("UPDATE volumes SET number_kind = NULL, number_start = NULL, number_end = NULL, "
                           "number_evidence = NULL, updated_at = ? WHERE id = ?", (now, r["id"]))
             continue
