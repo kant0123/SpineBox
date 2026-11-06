@@ -48,7 +48,7 @@ describe("作品の一覧", () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    expect(within(card).getByText("全4巻(〜4巻)")).toBeTruthy();
+    expect(within(card).getByText("既刊4巻(〜4巻)")).toBeTruthy();
     expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
     expect(within(card).queryByText(/重複/)).toBeNull();
     expect(within(card).queryByText("統合済み")).toBeNull();
@@ -56,7 +56,7 @@ describe("作品の一覧", () => {
     expect(within(card).getByText("集英社")).toBeTruthy();
     expect(within(card).queryByText("漫画")).toBeNull();
     const other = (await screen.findByText("外付けの作品")).closest("li")!;
-    expect(within(other).getByText("全1巻")).toBeTruthy();
+    expect(within(other).getByText("既刊1巻")).toBeTruthy();
     expect(within(other).queryByText(/ファンタジー/)).toBeNull();
     expect(within((await screen.findByText("別の読み物")).closest("li")!).queryByText("小説")).toBeNull();
     // 別名は作品ページで見る(一覧のカードには出さない)
@@ -109,8 +109,8 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     expect(await screen.findByRole("heading", { name: "タイトル一覧(5)" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "サンプル漫画" })).toBeTruthy();
     const items = [...document.querySelectorAll<HTMLElement>(".title-list .title-item")];
-    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻
-    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "2巻", "3巻", "4巻", "5巻"]);
+    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻。巻番号の列は出さない(巻名に番号が含まれるため)
+    expect(items.every((li) => li.querySelector(".title-number") === null)).toBe(true);
     expect(items.map((li) => li.querySelector(".volume-title")!.textContent)).toEqual([
       "サンプル漫画 第1巻", "サンプル漫画 第2巻", "サンプル漫画 第3巻", "サンプル漫画 第4巻", "サンプル漫画 第5巻",
     ]);
