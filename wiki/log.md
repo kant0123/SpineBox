@@ -437,3 +437,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] ingest | PR #188 (#185) 作品カードの巻数表示を既刊に変える
 - 更新: [[frontend]]
 - 備考: #185。作品カードの巻数タグを全N巻(〜M巻)から既刊N巻(〜M巻)に変更した。対象は frontend/src/works/Works.tsx の volume_count(見えている巻の数)・max_volume(手持ちの最大巻番号)で、公開 DB の全巻数 total_volumes ではない(候補の「全 N 巻」は WorkLinks.tsx の候補の表示でその意味のまま残す)。フロントの vitest 185 件・build 通過、モック API で既刊4巻(〜4巻)等の表示を確認した。
+
+## [2026-11-07] ingest | PR #191 (#190) 作品一覧に候補の確認待ち・統合の提案の絞り込みを追加
+- 更新: [[work-search]], [[backend]], [[metadata-linking]]
+- 備考: #190。作品カードの候補の確認待ち・統合の提案バッジを持つ作品だけを見る絞り込みが無く、全作品を流し見していた。「絞り込み」のチェックボックス(候補の確認待ちだけ・統合の提案だけ)を新設し、GET /api/works に link_pending=1 / pending_proposals=1 を追加した。モック API も同じ条件で絞る。フロント 186 件・バックエンド 1251 件パス(フロントは Node 26 の localStorage 問題 #130 の回避のため --pool=vmForks で実行。CI は Node 22 で通常のプール)。

@@ -1308,11 +1308,13 @@ def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) 
 
 
 def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None,
-               root_id: int | None = None, read_later_only: bool = False) -> dict:
+               root_id: int | None = None, read_later_only: bool = False,
+               link_pending_only: bool = False, pending_proposals_only: bool = False) -> dict:
     """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
 
     q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / publisher / status(読書状態)の絞り込み。
     read_later_only は後で読む(#173)を付けた作品だけにする。
+    link_pending_only は候補の確認待ち(link_pending > 0)の作品だけ、pending_proposals_only は統合の提案(pending_proposals > 0)の作品だけにする。
     root_id は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・読書状態などもそのルートの巻で数える。
     total は絞る前の作品数(蔵書の切り替えの後)、facets は絞り込みの候補(同じく絞る前の作品から作る)。
     """
@@ -1355,6 +1357,10 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
              and search.matches_filters(values.get(s["id"], {}), s["reading_state"], wanted)]
     if read_later_only:
         shown = [s for s in shown if s.get("read_later")]
+    if link_pending_only:
+        shown = [s for s in shown if s.get("link_pending", 0) > 0]
+    if pending_proposals_only:
+        shown = [s for s in shown if s.get("pending_proposals", 0) > 0]
     return {"works": shown, "total": len(out), "facets": facets, "unassigned": total - assigned}
 
 
