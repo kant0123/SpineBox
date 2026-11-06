@@ -621,16 +621,20 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
                    genre: str | None = None, tag: str | None = None, publisher: str | None = None,
                    status: str | None = None, root: int | None = None, read_later: str | None = None,
+                   link_pending: str | None = None, pending_proposals: str | None = None,
                    conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
 
         q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status は絞り込み。
         root は蔵書の切り替え(#85。/api/libraries の id。その蔵書ルートの巻だけで数える。知らない id なら空)。
         read_later=1 は後で読む(#173)を付けた作品だけにする。
+        link_pending=1 は候補の確認待ち(link_pending > 0)の作品だけ、pending_proposals=1 は統合の提案(pending_proposals > 0)の作品だけにする。
         """
         return works.list_works(conn, q, {"author": author, "kind": kind, "genre": genre, "tag": tag,
                                           "publisher": publisher, "status": status}, root_id=root,
-                                read_later_only=read_later in ("1", "true", "True"))
+                                read_later_only=read_later in ("1", "true", "True"),
+                                link_pending_only=link_pending in ("1", "true", "True"),
+                                pending_proposals_only=pending_proposals in ("1", "true", "True"))
 
     @app.get("/api/works/facets/{name}")
     def list_work_facet(name: str, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
