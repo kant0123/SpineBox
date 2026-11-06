@@ -175,10 +175,12 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     { id: 2, name: "漫画", path: "E:/漫画", online: false },
   ];
   const rootOf = (volumeId: number) => (volumes.find((v) => v.id === volumeId)?.offline ? 2 : 1);
+  const later = new Map<number, string>();
   const mockWorks = createMockWorks(
     () => volumes,
     rootOf,
     (kind, id) => marks[kind].has(id),
+    (id) => later.has(id),
   );
   const opened = new Set<number>();
   const candidates = defaultCandidates(volumes);
@@ -365,6 +367,16 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     return json(200, { [`${kind}_id`]: id, bookmarked: map.has(id), created_at: map.get(id) ?? null });
   }
 
+  function handleReadLater(method: string, path: string): MockResponse | null {
+    const m = path.match(/^\/api\/read-later\/works\/(\d+)$/);
+    if (!m || (method !== "PUT" && method !== "DELETE")) return null;
+    const id = Number(m[1]);
+    if (!mockWorks.summaryOf(id)) return json(404, { detail: "作品が見つかりません" });
+    if (method === "PUT" && !later.has(id)) later.set(id, new Date((markClock += 1000)).toISOString().replace(".000Z", "+00:00"));
+    if (method === "DELETE") later.delete(id);
+    return json(200, { work_id: id, read_later: later.has(id), created_at: later.get(id) ?? null });
+  }
+
   function handle(method: string, rawPath: string, body?: string): MockResponse {
     const path = rawPath.split("?")[0];
     const parsed = body ? JSON.parse(body) : undefined;
@@ -374,6 +386,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (pm) return pm;
     const b = handleBookmarks(method, path, rawPath.split("?")[1] ?? "");
     if (b) return b;
+    const rl = handleReadLater(method, path);
+    if (rl) return rl;
     const w = mockWorks.handle(method, path, rawPath.split("?")[1] ?? "", parsed);
     if (w) return json(w.status, w.body);
 

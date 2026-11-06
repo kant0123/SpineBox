@@ -54,6 +54,8 @@ export function createMockWorks(
   rootOf: (volumeId: number) => number = () => 1,
   /** ブックマーク(#86)の状態。mockBackend が持つ */
   marked: (kind: "work" | "volume", id: number) => boolean = () => false,
+  /** 後で読む(#173)の状態。mockBackend が持つ */
+  laterMarked: (id: number) => boolean = () => false,
 ) {
   let aliasSeq = 10;
   let workSeq = 10;
@@ -201,6 +203,7 @@ export function createMockWorks(
       kind: val(w, "kind") ?? null, publisher: val(w, "publisher") ?? null, genres: val(w, "genres") ?? [], tags: val(w, "tags") ?? [],
       link_pending: w.links.filter((l) => l.status === "pending").length,
       cover_volume_id: coverOf(vols),
+      read_later: laterMarked(w.id),
     };
   }
 
@@ -240,6 +243,7 @@ export function createMockWorks(
   function listWorks(query: string): Res {
     const params = new URLSearchParams(query);
     const root = params.get("root");
+    const laterOnly = params.get("read_later") === "1";
     const all = listed(root);
     const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [], publisher: [] };
     for (const w of all) {
@@ -250,6 +254,7 @@ export function createMockWorks(
     if (status && !["unread", "reading", "finished"].includes(status)) return res(422, { detail: "status は unread / reading / finished" });
     const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
     const shown = all.filter((w) => {
+      if (laterOnly && !laterMarked(w.id)) return false;
       const body = [w.title, ...w.aliases.map((a) => a.alias), w.author ?? "", ...Object.values(w.extra).flatMap((f) => strings(f.value)), ...volumesOf(w, root).map((v) => v.title)]
         .map(normalizeSearch).join("\n");
       if (!terms.every((t) => body.includes(t))) return false;

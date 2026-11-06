@@ -76,6 +76,30 @@ describe("作品の一覧", () => {
     expect(screen.queryByRole("button", { name: "表紙を作る" })).toBeNull();
     expect(screen.queryByRole("button", { name: "名寄せを取り直す" })).toBeNull();
   });
+
+  it("表紙の右下に後で読むを重ね、付けたものだけに絞り込める(#173)", async () => {
+    expect(workQueryString({ read_later: true })).toBe("?read_later=1");
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const button = within(card).getByRole("button", { name: "サンプル漫画 を後で読む" });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    // ボタンは表紙のリンクの外(兄弟要素)で、表紙の重ね先にある
+    const wrap = card.querySelector(".work-cover-wrap")!;
+    expect(within(wrap as HTMLElement).queryByRole("button", { name: "サンプル漫画 を後で読む" })).toBeTruthy();
+    expect(wrap.querySelector(".work-cover-link")!.contains(button)).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(within(card).getByRole("button", { name: "サンプル漫画 の後で読むを外す" }).getAttribute("aria-pressed")).toBe("true"));
+    expect(backend.log.some((l) => l.method === "PUT" && l.path === "/api/read-later/works/1")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /絞り込み/ }));
+    fireEvent.click(screen.getByLabelText("後で読むだけ"));
+    await waitFor(() => expect(screen.queryByText("別の読み物")).toBeNull());
+    expect(screen.getByText("サンプル漫画")).toBeTruthy();
+
+    fireEvent.click(within(card).getByRole("button", { name: "サンプル漫画 の後で読むを外す" }));
+    await waitFor(() => expect(screen.queryByText("サンプル漫画")).toBeNull());
+  });
 });
 
 describe("作品のタイトル一覧(#105 / #115)", () => {

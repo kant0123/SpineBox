@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import bookmarks, db, follows, linking, page_marks, search, stats, works
+from . import bookmarks, db, follows, linking, page_marks, read_later, search, stats, works
 from .analysis import compute_findings
 from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
 from .duplicates import CandidateNotFound, candidate_counts, dismiss
@@ -620,14 +620,17 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/works")
     def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
                    genre: str | None = None, tag: str | None = None, publisher: str | None = None,
-                   status: str | None = None, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+                   status: str | None = None, root: int | None = None, read_later: str | None = None,
+                   conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
 
         q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status は絞り込み。
         root は蔵書の切り替え(#85。/api/libraries の id。その蔵書ルートの巻だけで数える。知らない id なら空)。
+        read_later=1 は後で読む(#173)を付けた作品だけにする。
         """
         return works.list_works(conn, q, {"author": author, "kind": kind, "genre": genre, "tag": tag,
-                                          "publisher": publisher, "status": status}, root_id=root)
+                                          "publisher": publisher, "status": status}, root_id=root,
+                                read_later_only=read_later in ("1", "true", "True"))
 
     @app.get("/api/works/facets/{name}")
     def list_work_facet(name: str, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
@@ -861,6 +864,16 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.delete("/api/bookmarks/volumes/{volume_id}")
     def remove_volume_bookmark(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         return bookmarks.set_volume(conn, volume_id, False)
+
+    # --- 後で読む(#173) ---
+
+    @app.put("/api/read-later/works/{work_id}")
+    def add_work_read_later(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return read_later.set_work(conn, work_id, True)
+
+    @app.delete("/api/read-later/works/{work_id}")
+    def remove_work_read_later(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        return read_later.set_work(conn, work_id, False)
 
     # --- しおり(#136)。漫画リーダー(manga-viewer)の bookmarkApi の形に合わせる。work_id = 巻の id(文字列で来る) ---
 
