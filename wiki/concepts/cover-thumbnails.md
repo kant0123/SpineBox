@@ -9,7 +9,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
 入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:963 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:984 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:18 WorkCover()`。
+`spinebox/app.py:984 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:34 WorkCover()`。
 
 ## 内容
 
