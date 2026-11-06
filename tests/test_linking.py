@@ -436,6 +436,8 @@ def put_link(env, wid, source, item, *, confidence, manual=False, status="linked
 
 ANILIST_ITEM = {"title": "公開DBの作品名", "authors": ["公開DBの著者"], "kind": "manga", "genres": ["Drama"],
                 "tags": ["Tag"], "synopsis": "あらすじ", "romaji": "Koukai DB no Sakuhin", "aliases": []}
+ANILIST_ITEM_ROMAJI = {"title": "Koukai DB no Sakuhin", "authors": ["Koukai DB Author"], "kind": "manga",
+                       "genres": ["Drama"], "tags": ["Tag"], "synopsis": "あらすじ", "aliases": []}
 
 
 @pytest.mark.parametrize("confidence, manual, replaced", [(0.95, False, True), (0.8, False, False), (0.8, True, True)])
@@ -443,14 +445,14 @@ def test_name_derived_values_are_replaced_only_when_confident_or_chosen(env_fact
     env = env_factory("kaku", ["[ファイル名の著者] 作品名X 第01巻.cbz", "[ファイル名の著者] 作品名X 第02巻.cbz"])
     wid = env.work_id()
     assert env.work(wid)["fields"]["author"]["source"] == "filename"
-    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=confidence, manual=manual)
+    put_link(env, wid, "anilist", ANILIST_ITEM_ROMAJI, confidence=confidence, manual=manual)
     f = env.work(wid)["fields"]
     # 空欄は、確信度が低くても埋める
     assert f["kind"]["value"] == "manga" and f["genres"]["value"] == ["ドラマ"]
     assert "synopsis" not in f  # 連携した候補の中身にあらすじがあっても入れない(#82)
     if replaced:
-        assert (f["author"]["value"], f["author"]["source"]) == ("公開DBの著者", "public_db")
-        assert f["title"]["value"] == "公開DBの作品名"
+        assert (f["author"]["value"], f["author"]["source"]) == ("Koukai DB Author", "public_db")
+        assert f["title"]["value"] == "Koukai DB no Sakuhin"
         # 置き換えた作品名は別名に残る(その名前の巻が、また新しい作品にならない)
         assert "作品名X" in [a["alias"] for a in env.work(wid)["aliases"]]
     else:
@@ -465,6 +467,40 @@ def test_name_derived_values_are_replaced_only_when_confident_or_chosen(env_fact
     assert (f["author"]["value"], f["author"]["source"]) == ("ファイル名の著者", "filename")
     assert f["title"]["value"] == "作品名X"
     assert "kind" not in f and "genres" not in f and "synopsis" not in f
+
+
+def test_japanese_title_and_author_are_preferred_over_filename_at_low_confidence(env_factory):
+    """日本語の作品名・著者は確信度 0.9 未満でもファイル名由来の値を上書きする(#166)。"""
+    env = env_factory("kaku", ["[ファイル名の著者] Atumare Fushigi Kenkyubu 第01巻.cbz",
+                                "[ファイル名の著者] Atumare Fushigi Kenkyubu 第02巻.cbz"])
+    wid = env.work_id()
+    assert env.work(wid)["title"] == "Atumare Fushigi Kenkyubu"
+    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
+    w = env.work(wid)
+    assert w["title"] == "公開DBの作品名" and w["title_source"] == "public_db"
+    assert w["fields"]["author"]["value"] == "公開DBの著者"
+    # 置き換えたローマ字の作品名は別名に残る
+    assert "Atumare Fushigi Kenkyubu" in [a["alias"] for a in w["aliases"]]
+    # 一覧 API も日本語の作品名を返す(ホーム・漫画・小説はこの一覧)
+    titles = [x["title"] for x in env.client.get("/api/works").json()["works"]]
+    assert titles == ["公開DBの作品名"]
+    # 連携が外れたら元のファイル名の作品名に戻る
+    conn = db.connect(env.settings.db_path)
+    conn.execute("UPDATE work_links SET status = 'none', item = NULL WHERE work_id = ?", (wid,))
+    linking.apply_work(conn, wid)
+    conn.close()
+    assert env.work(wid)["title"] == "Atumare Fushigi Kenkyubu"
+    assert env.work(wid)["fields"]["author"]["value"] == "ファイル名の著者"
+
+
+def test_manual_title_and_author_are_not_overwritten_by_japanese_public_db(env_factory):
+    env = env_factory("kaku", ["[ファイル名の著者] Atumare Fushigi Kenkyubu 第01巻.cbz"])
+    wid = env.work_id()
+    env.client.patch(f"/api/works/{wid}", json={"title": "手で直した作品名", "author": "手で直した著者"})
+    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
+    w = env.work(wid)
+    assert w["title"] == "手で直した作品名" and w["title_manual"] is True
+    assert w["fields"]["author"]["value"] == "手で直した著者"
 
 
 def test_apply_is_idempotent_and_writes_nothing_when_unchanged(env_factory):
@@ -520,8 +556,9 @@ def test_public_db_aliases_alone_only_propose_when_the_link_is_weak(env_factory)
     env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
     ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
     # 確信度の低い連携の別名は、自動統合の基準(0.9)に届かず、提案止まり
+    # 日本語の作品名なら #166 でタイトルが置き換わり作品が合くため、別名だけを試す(タイトルはローマ字のまま)
     put_link(env, ws["Kakukaku Shikajika"], "anilist",
-             {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []}, confidence=0.8)
+             {"title": "Kakukaku Shikajika", "romaji": "Kakukaku Shikajika", "aliases": [KAKU], "authors": []}, confidence=0.8)
     env.client.post("/api/works/refresh")
     works_now = {w["title"]: w for w in env.client.get("/api/works").json()["works"]}
     assert set(works_now) == {"Kakukaku Shikajika", KAKU}

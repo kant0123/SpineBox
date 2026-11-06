@@ -406,3 +406,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-06] ingest | PR #169 (#168) 管理画面に統合タブを作成
 - 更新: [[frontend]]
 - 備考: 管理タブに `proposals` (`統合`) を追加し、`WorkProposals` を `embedded` で載せた。`#/admin/proposals` と既存の `#/works/proposals` の両方から統合の提案を操作できる。
+
+## [2026-11-07] ingest | #166 一覧の作品名・著者をファイル名ではなく公開DBの日本語に
+- 更新: [[metadata-linking]]
+- 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。
