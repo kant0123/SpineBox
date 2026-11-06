@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-06
+updated: 2026-11-07
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
