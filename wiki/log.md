@@ -416,3 +416,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] ingest | PR #171 (#166) 一覧の作品名・著者をファイル名ではなく公開DBの日本語に
 - 更新: [[metadata-linking]], [[backend]]
 - 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。
+
+## [2026-11-07] ingest | PR #188 (#185) 作品カードの巻数表示を既刊に変える
+- 更新: [[frontend]]
+- 備考: #185。作品カードの巻数タグを全N巻(〜M巻)から既刊N巻(〜M巻)に変更した。対象は frontend/src/works/Works.tsx の volume_count(見えている巻の数)・max_volume(手持ちの最大巻番号)で、公開 DB の全巻数 total_volumes ではない(候補の「全 N 巻」は WorkLinks.tsx の候補の表示でその意味のまま残す)。フロントの vitest 185 件・build 通過、モック API で既刊4巻(〜4巻)等の表示を確認した。
