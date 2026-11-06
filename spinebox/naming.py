@@ -94,7 +94,7 @@ def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
             if rule == "N-M" and (start == 0 or len(m.group(1)) > 3 or len(m.group(2)) > 3):
                 continue
             # `4.5巻` の `5巻` を単独の巻番号と読まない(小数点の巻は番号なし。#167)
-            if start > 1 and text[m.start() - 1] == "." and text[m.start() - 2].isdigit():
+            if m.start() >= 2 and text[m.start() - 1] == "." and text[m.start() - 2].isdigit():
                 continue
             return NumberCandidate(kind, start, end, m.group(0).strip(), rule), m.span()
     return None
@@ -134,7 +134,7 @@ _TAG = re.compile(
 _AUTHOR_SEP = re.compile(r"\s*[×／/、,＆&]\s*")
 
 # 小数点の巻(`第04.5巻`)。巻番号として読めないので、作品名から外して番号なしにする(#167)
-_DECIMAL_VOLUME = re.compile(r"第\s*(\d{1,3})\.(\d{1,2})\s*[巻卷]")
+_DECIMAL_VOLUME = re.compile(r"(?:第\s*)?(\d{1,3})\.(\d{1,2})\s*[巻卷]")
 
 # 末尾の著者列(`作品名 1 - 著者 & 著者`)。作品名の末尾の番号を隠すので外す(#167)
 _AUTHOR_SUFFIX = re.compile(r"\s+[-–—]\s+[^-–—]*(?:[&＆×、,])[^-–—]*$")

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field, replace
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
-from .naming import normalize_title, parse_work_name, trailing_number
+from .naming import normalize_title, parse_number, parse_work_name, trailing_number
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -500,7 +500,8 @@ def _apply_trailing_numbers(c, st: _State, series: dict[int, dict]) -> None:
     for r in st.vols:
         want = series.get(r["id"])
         if want is None:
-            if _owns_trailing_number(r):
+            # 末尾の番号の組が無くなった番号と、今の読み方で読めない番号(小数点の巻など)を消す。
+            if _owns_trailing_number(r) or parse_number(r["title"]) is None:
                 c.execute("UPDATE volumes SET number_kind = NULL, number_start = NULL, number_end = NULL, "
                           "number_evidence = NULL, updated_at = ? WHERE id = ?", (now, r["id"]))
             continue
@@ -554,11 +555,11 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             w.names[norm] = _Name(own.name.title, SOURCE_FILENAME, own.confidence, True)
             st.works[target] = w
             st._add_index(target, norm, w.names[norm])
-            if leaves:
-                _merge_links(c, target, work.id)
             summary.works_created += 1
         else:
             _fill_author(c, st.works[target], own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
+        if leaves:
+            _merge_links(c, target, work.id)
         _put_assignment(c, vid, target, SOURCE_FILENAME, False, own.confidence, own.evidence())
         st.assign[vid] = {"work_id": target, "manual": 0, "source": SOURCE_FILENAME}
         summary.volumes_assigned += 1
