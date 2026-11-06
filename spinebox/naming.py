@@ -342,7 +342,10 @@ def trailing_number(name: str) -> TrailingNumber | None:
     base = m.group("base").strip()
     if number == 0 or not _readable_base(base):
         return None
-    return TrailingNumber(base, number, m.group("tail").strip())
+    evidence = m.group("tail").strip()
+    if dropped:
+        evidence = f"{evidence} {dropped}"
+    return TrailingNumber(base, number, evidence)
 
 
 def _readable_base(base: str) -> bool:

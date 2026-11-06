@@ -407,6 +407,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]]
 - 備考: 管理タブに `proposals` (`統合`) を追加し、`WorkProposals` を `embedded` で載せた。`#/admin/proposals` と既存の `#/works/proposals` の両方から統合の提案を操作できる。
 
-## [2026-11-07] ingest | PR (#167) 末尾の番号の後の装飾・「卷」表記・小数点の巻を読み、同じ公開 DB 項目に linked した組を自動統合する
-- 更新: [[work-grouping]]
-- 備考: #167。#162 の後、確認待ちの提案は 3949 → 232 件まで減ったが、残りは別名規則で 0.5〜0.896 のまま未統合で、名寄せの読み残しが大半。	railing_number() は末尾の装飾([レーベル] (レーベル) [AVIF]・ - 著者 & 著者)を落として読むようにし、落とした部分は evidence に残す。簡体字の巻表示・話表示(卷 话)は 巻 話 と同じに読む(_fold_chars)。小数点の巻(第04.5巻)は整数の番号で持てないので番号なしにし、作品名にも残さない。同じ取得元・同じ source_id に linked した組は別名一致を 0.9 として扱い、手動の決定が絡まなければ自動統合する(元の確信度は lias_confidence、shared_item を根拠に残す)。	ests/test_naming.py・	ests/test_works.py に 6 件足し、直す前は 6 件とも落ちることを確認。
+## [2026-11-07] ingest | PR #174 (#167) 末尾の番号の後の装飾・「卷」表記・小数点の巻を読み、同じ公開 DB 項目に linked した組を自動統合する
+- 更新: [[work-grouping]], [[recurring-review-findings]]、および行番号のずれ直しで [[backend]]・[[volume-split]]・[[metadata-linking]]・[[cover-thumbnails]]・[[work-search]]
+- 備考: #167。#162 の後、確認待ちの提案は 3949 → 232 件まで減ったが、残りは別名規則で 0.5〜0.896 のまま未統合で、名寄せの読み残しが大半。`trailing_number()` は末尾の装飾([レーベル] (レーベル) [AVIF]・ - 著者 & 著者)を落として読むようにし、落とした部分は evidence に残す。簡体字の巻表示・話表示(卷 话)は 巻 話 と同じに読む(_fold_chars)。小数点の巻(第04.5巻)は整数の番号で持てないので番号なしにし、作品名にも残さない。同じ取得元・同じ source_id に linked した組は別名一致を 0.9 として扱い、手動の決定が絡まなければ自動統合する(元の確信度は `alias_confidence`、shared_item を根拠に残す)。tests/test_naming.py・tests/test_works.py に 6 件足し、直す前は 6 件とも落ちることを確認。

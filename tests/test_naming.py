@@ -214,3 +214,5 @@ def test_trailing_number_evidence_keeps_dropped_decor():
     assert "青色まろ" in t.evidence  # 著者列も根拠に残す
     t = trailing_number("ハズレ判定から始まったチート魔術士生活(コミック) : 2 (モンスターコミックス)")
     assert "モンスターコミックス" in t.evidence
+    t = trailing_number("作品名 1 - 著者 [レーベル]")
+    assert "[レーベル]" in t.evidence  # 著者列と括弧装飾が併用されても落とした装飾は根拠に残す
