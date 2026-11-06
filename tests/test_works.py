@@ -170,6 +170,14 @@ def test_author_suffix_does_not_block_the_trailing_number(make_env):
     assert [s["label"] for s in client.get(f"/api/works/{w['id']}").json()["slots"]] == ["1巻", "2巻"]
 
 
+def test_parenthesized_volume_number_is_read(make_env):
+    """`(3巻)` のような括弧つきの巻番号を装飾として落とさず、番号として読む(#167)。"""
+    _, _, client = make_env(["作品名 (3巻).cbz", "作品名 (4巻).cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("作品名", 2)
+    assert [s["label"] for s in client.get(f"/api/works/{w['id']}").json()["slots"]] == ["3巻", "4巻"]
+
+
 def test_chinese_volume_mark_is_read_as_a_volume_number(make_env):
     """`卷` を `巻` と同じ巻の印として読む(#167)。"""
     _, _, client = make_env(["Aチャンネル 第01卷.cbz", "Aチャンネル 第02卷.cbz"])

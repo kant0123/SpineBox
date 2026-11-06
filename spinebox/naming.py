@@ -204,6 +204,8 @@ def _strip_trailing_decor(text: str) -> str:
         content = _bracket_content(m)
         if re.fullmatch(r"\d{1,3}", content) or re.fullmatch(r"\d{1,3}[-~〜–—]\d{1,3}", content):
             break
+        if re.search(r"[巻卷話]", content) and re.search(r"\d", content):
+            break  # `(3巻)` `(第3巻)` `(3話)` は装飾ではなく番号
         text = text[:m.start()].strip()
     m = _AUTHOR_SUFFIX.search(text)
     if m:
@@ -256,7 +258,7 @@ def parse_work_name(name: str) -> WorkName | None:
     # 末尾の装飾(数字でない括弧・著者列)と「全N巻」「完結」を外す
     title = _strip_trailing_decor(title_raw)
     title = _TRAILING_NOTE.sub("", title)
-    title = _clean_title(title).rstrip("[")
+    title = _clean_title(title).rstrip("[(").strip()
 
     # 作品名が空で、先頭の括弧が著者として読まれていたなら、その括弧が作品名(`[作品名] 第1巻`)
     if not title and first_other is not None:
