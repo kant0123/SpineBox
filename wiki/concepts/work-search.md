@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
-updated: 2026-11-05
+updated: 2026-11-07
 related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, overview]
 ---
 
@@ -37,7 +37,7 @@ related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, 
 
 ## 正規化
 
-検索語も索引も `spinebox/naming.py:150 normalize_title()` を通す。作品の名寄せの突き合わせと**同じ関数**にしている。
+検索語も索引も `spinebox/naming.py:179 normalize_title()` を通す。作品の名寄せの突き合わせと**同じ関数**にしている。
 
 - NFKC(全角英数・半角カタカナを揃える)→ 大小文字を畳む(casefold)→ カタカナをひらがなへ → 英数字・かな・漢字以外(空白・記号・`_`)を落とす
 - なので「ＯＫＩＲＡＫＵ」「okiraku」、「カクカク」「ｶｸｶｸ」「かくかく」、「ryoshu_no」「ryoshu no」はそれぞれ同じ語になる

@@ -6,14 +6,16 @@
 拾う表記(全角数字・全角記号は NFKC で半角にしてから見る):
 
 - 巻: `第01巻` `第01-04巻` `01巻` `1~4巻` `v01` `v01s` `v05A` `v01-06` `v01-v06` `Vol.1` `vol 2` `Volume 3`
-- 話: `第12話` `第1-5話` `12話` `ch.12` `ch12` `Chapter 3` `ep.4`
+  (`卷` は `巻` と同じに扱う)
+- 話: `第12話` `第1-5話` `12話` `ch.12` `ch12` `Chapter 3` `ep.4` (`话` は `話` と同じに扱う)
 - 印の無い範囲 `01-03`(巻の候補として最も弱い根拠)
 
 作品名・著者の候補(`parse_work_name`): 巻番号・配布元の印・タグ・拡張子を落とした残りを、作品名の候補と
 その正規化(`normalize_title`。作品の名寄せの突き合わせ用)にする。ここでも結果は候補でしかない。
 
 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001 はページ番号)、`全3巻`(総巻数)、
-語の途中の `v`(`Dev01`)、年月日らしい 4 桁の数字、数えた数を表す名前(`57 files`。下記)。
+語の途中の `v`(`Dev01`)、年月日らしい 4 桁の数字、数えた数を表す名前(`57 files`。下記)、
+小数点の巻(`第04.5巻` は整数の番号で持てないので番号にせず、作品名に残さない)。
 
 `作品名 01` `作品名(3)` の形の末尾の番号は、名前だけでは巻番号と決められない(`Kitchen 2` が
 作品名のこともある)ので `parse_number()` では拾わない。代わりに `trailing_number()` が候補を返し、
@@ -83,10 +85,28 @@ def strip_known_ext(name: str) -> str:
     return base[: -len(suffix)] if suffix.lower() in _KNOWN_EXTS else base
 
 
+def _fold_chars(text: str) -> str:
+    """簡体字の巻・話の表示を正規の字に揃える(`卷`→`巻`、`话`→`話`)。
+
+    `第01卷` のように簡体字で書かれた巻表示を、巻番号として読める形にする。NFKC では変わらない
+    ので、正規表現に掛ける前に適用する。
+    """
+    return text.replace("卷", "巻").replace("话", "話")
+
+
+def _in_decimal(text: str, m: re.Match) -> bool:
+    """当たった数字が小数点の巻(`第04.5巻`)の内側か。整数の巻番号として扱わない。"""
+    s, e = m.span(1)
+    return (s >= 2 and text[s - 1] == "." and text[s - 2].isdigit()) or \
+        (e + 1 < len(text) and text[e] == "." and text[e + 1].isdigit())
+
+
 def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
     """NFKC 済みの text から巻・話の番号の候補と、名前の中の位置(span)を返す。"""
     for kind, rule, pattern in _RULES:
         for m in pattern.finditer(text):
+            if _in_decimal(text, m):
+                continue  # `第04.5巻` の `5巻` は小数点の巻。番号なしとして扱う(作品名へは残さない)
             start = int(m.group(1))
             end = int(m.group(2)) if m.group(2) is not None else start
             if end < start or end - start > _MAX_SPAN:
@@ -99,7 +119,7 @@ def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
 
 def parse_number(name: str) -> NumberCandidate | None:
     """名前(パスなら最後の要素)から巻・話の番号の候補を 1 つ返す。見つからなければ None。"""
-    found = _find_number(unicodedata.normalize("NFKC", strip_known_ext(name)))
+    found = _find_number(_fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))))
     return found[0] if found else None
 
 
@@ -131,6 +151,10 @@ _AUTHOR_SEP = re.compile(r"\s*[×／/、,＆&]\s*")
 # 末尾の「全3巻」「完結」
 _TRAILING_NOTE = re.compile(r"[\s(\[【]*(?:全\s*\d+\s*巻|完結(?:済み?)?)[\s)\]】]*$")
 
+# 末尾の小数点の巻(`ようこそ実力至上主義の教室へ 第04.5巻`)。整数の番号で持てないので番号にせず、
+# 作品名に残して別作品にしないよう、末尾の「第N.M巻/話」ごと落とす(_find_number で整数部に一致させない)
+_DECIMAL_VOLUME = re.compile(r"\s*(?:第\s*)?\d{1,4}\.\d{1,3}\s*[巻話]\s*$")
+
 # 作品名として使えない、中身の無い名前
 _JUNK_RAW = (
     "cover", "covers", "image", "images", "img", "raw", "scan", "scans", "page", "pages", "jpg", "jpeg", "png",
@@ -158,7 +182,7 @@ def normalize_title(text: str) -> str:
     `Okiraku ryoshu no` と `Okiraku_ryoshu_no`、`ＯＫＩ` と `oki` が同じになる。意味の同じ別名
     (ローマ字と日本語)は同じにならない。それは重複候補の証拠や別名で結ぶ。
     """
-    t = unicodedata.normalize("NFKC", text).casefold()
+    t = _fold_chars(unicodedata.normalize("NFKC", text)).casefold()
     t = "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" else ch for ch in t)
     return "".join(ch for ch in t if ch.isalnum())
 
@@ -186,7 +210,7 @@ def _clean_title(text: str) -> str:
 
 def parse_work_name(name: str) -> WorkName | None:
     """名前(パスなら最後の要素)から作品名・著者の候補を取り出す。作品名と読める部分が無ければ None。"""
-    text = unicodedata.normalize("NFKC", strip_known_ext(name)).strip()
+    text = _fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))).strip()
     parts: list[tuple[str, str]] = []
 
     m = _DISTRIBUTOR.match(text)
@@ -232,6 +256,7 @@ def parse_work_name(name: str) -> WorkName | None:
             break
         title = title[:m.start()]
     title = _TRAILING_NOTE.sub("", title)
+    title = _DECIMAL_VOLUME.sub("", title)
     title = _clean_title(title)
 
     # 作品名が空で、先頭の括弧が著者として読まれていたなら、その括弧が作品名(`[作品名] 第1巻`)
@@ -256,9 +281,31 @@ def parse_work_name(name: str) -> WorkName | None:
 
 _N3 = r"\d{1,3}"
 _TRAILING_NUMBER = re.compile(
-    rf"^(?P<base>.*?)(?P<tail>[\s_\-－]+(?P<sep>{_N3})|\s*[\(（]\s*(?P<paren>{_N3})\s*[\)）])\s*$")
+    rf"^(?P<base>.*?)(?P<tail>[\s_\-－:]+(?P<sep>{_N3})|\s*[\(（]\s*(?P<paren>{_N3})\s*[\)）])\s*$")
 # 番号の直前がこの語なら末尾の番号と読まない(印の付いた番号は `_RULES` が先に拾う)
-_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol\.?|v|ch\.?|ep\.?|巻|話|全)$", re.IGNORECASE)
+_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol\.?|v|ch\.?|ep\.?|巻|卷|話|话|全)$", re.IGNORECASE)
+
+# 末尾の番号の後ろの装飾。数字でない末尾の括弧(`[レーベル]` `(レーベル)` `[AVIF]` など)を落としてから読む。
+# 数字の括弧(`(3)`)は番号として残し、装飾の括弧だけを落とす
+_TRAILING_BRACKET_GROUP = re.compile(r"\s*(?:\[([^\]]*)\]|【([^】]*)】|\(([^)]*)\))\s*$")
+# 番号の後ろの著者列(`作品名 1 - 著者 & 著者`)。番号とダッシュで区切られた後ろを装飾と読む
+_TRAILING_AUTHOR_TAIL = re.compile(
+    rf"^(?P<base>.*?)(?P<tail>[\s_\-－:]+(?P<num>{_N3})\s*[-－—]\s*\S.*?)\s*$")
+
+
+def _strip_trailing_decor(text: str) -> tuple[str, str]:
+    """末尾の括弧の装飾を落とし、(残った名前, 落とした装飾)を返す。装飾は根拠(evidence)に残す。"""
+    dropped: list[str] = []
+    while True:
+        m = _TRAILING_BRACKET_GROUP.search(text)
+        if m is None:
+            break
+        content = next(g for g in m.groups() if g is not None).strip()
+        if re.fullmatch(r"\d+", content):
+            break  # (3) は装飾ではなく番号として読ませる
+        dropped.insert(0, text[m.start():].strip())
+        text = text[:m.start()]
+    return text, " ".join(dropped)
 
 
 @dataclass(frozen=True)
@@ -273,16 +320,32 @@ def trailing_number(name: str) -> TrailingNumber | None:
     """`作品名 01` `作品名(3)` の末尾の番号の候補。巻番号と決めるのは呼ぶ側。
 
     印の無い単独の数字(`DLRAW.TO_001` の 001)と、作品名として読めない残りは返さない。
+    末尾の番号の後ろの括弧・著者列(`作品名 2 [レーベル][AVIF]` `作品名 1 - 著者 & 著者`)は装飾として
+    落としてから読み、落とした部分は evidence に残す。
     """
-    text = unicodedata.normalize("NFKC", strip_known_ext(name)).strip()
+    text = _fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))).strip()
+    text, dropped = _strip_trailing_decor(text)
     m = _TRAILING_NUMBER.match(text)
+    if m is not None:
+        number = int(m.group("sep") or m.group("paren"))
+        base = m.group("base").strip()
+        if number == 0 or not _readable_base(base):
+            return None
+        evidence = m.group("tail").strip()
+        if dropped:
+            evidence = f"{evidence} {dropped}"
+        return TrailingNumber(base, number, evidence)
+    m = _TRAILING_AUTHOR_TAIL.match(text)
     if m is None:
         return None
-    number = int(m.group("sep") or m.group("paren"))
+    number = int(m.group("num"))
     base = m.group("base").strip()
     if number == 0 or not _readable_base(base):
         return None
-    return TrailingNumber(base, number, m.group("tail").strip())
+    evidence = m.group("tail").strip()
+    if dropped:
+        evidence = f"{evidence} {dropped}"
+    return TrailingNumber(base, number, evidence)
 
 
 def _readable_base(base: str) -> bool:

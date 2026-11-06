@@ -76,13 +76,24 @@ def set_alias_confidence(settings, alias, confidence):
         conn.close()
 
 
-def add_manual_link(settings, work_id, source="mangaupdates"):
+def add_manual_link(settings, work_id, source="mangaupdates", source_id="test"):
     """利用者が選んだ公開 DB の連携(手動の決定)。"""
     conn = db.connect(settings.db_path)
     try:
         with db.transaction(conn) as c:
             c.execute("""INSERT INTO work_links (work_id, source, status, source_id, manual, confidence)
-                         VALUES (?, ?, 'linked', 'test', 1, 1.0)""", (work_id, source))
+                         VALUES (?, ?, 'linked', ?, 1, 1.0)""", (work_id, source, source_id))
+    finally:
+        conn.close()
+
+
+def add_linked_item(settings, work_id, source="mangaupdates", source_id="same-id", confidence=0.8):
+    """公開 DB の自動連携(手動でない)。source と source_id で同じ提示先を表す。"""
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("""INSERT INTO work_links (work_id, source, status, source_id, manual, confidence)
+                         VALUES (?, ?, 'linked', ?, 0, ?)""", (work_id, source, source_id, confidence))
     finally:
         conn.close()
 
@@ -190,6 +201,80 @@ def test_an_open_proposal_is_merged_when_the_evidence_becomes_certain(make_env):
     assert w["volume_count"] == 2
     merges = client.get(f"/api/works/{w['id']}").json()["merges"]
     assert [(m["rule"], m["status"]) for m in merges] == [("alias", "auto")]
+
+
+def test_series_with_decor_after_the_trailing_number(make_env):
+    """末尾の番号の後ろの括弧の装飾を落として系列と読む(#167)。"""
+    _, _, client = make_env([
+        "異種族レビュアーズ 1 [ドラゴンコミックスエイジ][AVIF].cbz",
+        "異種族レビュアーズ 2 [ドラゴンコミックスエイジ][AVIF].cbz",
+        "異種族レビュアーズ 3 [ドラゴンコミックスエイジ][AVIF].cbz",
+    ])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("異種族レビュアーズ", 3)
+    assert client.get("/api/works/proposals").json() == []
+
+
+def test_author_list_after_the_trailing_number(make_env):
+    """末尾の番号の後ろの著者列を落として系列と読む(#167)。"""
+    _, _, client = make_env([
+        "お気楽領主の楽しい領地防衛 1 - 青色まろ & 赤池宗 & 転.cbz",
+        "お気楽領主の楽しい領地防衛 2 - 青色まろ & 赤池宗 & 転.cbz",
+        "お気楽領主の楽しい領地防衛 3 - 青色まろ & 赤池宗 & 転.cbz",
+    ])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("お気楽領主の楽しい領地防衛", 3)
+
+
+def test_jian_volume_mark_is_read(make_env):
+    """簡体字の巻表示(`第01卷`)も巻番号として読む(#167)。"""
+    _, _, client = make_env(["Aチャンネル 第01卷.cbz", "Aチャンネル 第02卷.cbz", "Aチャンネル 第03卷.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("Aチャンネル", 3)
+    d = client.get(f"/api/works/{w['id']}").json()
+    assert [s["label"] for s in d["slots"]] == ["1巻", "2巻", "3巻"]
+
+
+def test_decimal_volume_converts_to_numberless_series_member(make_env):
+    """小数点の巻(`第04.5巻`)は番号なしの巻として同じ作品に入る(#167)。"""
+    _, _, client = make_env([
+        "ようこそ実力至上主義の教室へ 第04巻.cbz",
+        "ようこそ実力至上主義の教室へ 第04.5巻.cbz",
+        "ようこそ実力至上主義の教室へ 第05巻.cbz",
+    ])
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("ようこそ実力至上主義の教室へ", 3)
+    vs = {v["title"]: v for v in client.get("/api/volumes").json()}
+    assert vs["ようこそ実力至上主義の教室へ 第04.5巻"]["volume_number"] is None  # 整数で持てないので番号なし
+    assert vs["ようこそ実力至上主義の教室へ 第04巻"]["volume_number"]["start"] == 4
+
+
+def test_same_public_db_item_merges_below_threshold(make_env):
+    """同じ公開 DB 項目に linked した組は、別名の確信度で 0.9 に届かなくても自動統合する(#167)。"""
+    _, settings, client = make_env(["Alpha 1.cbz", "Beta 1.cbz"])
+    for w in by_title(client).values():
+        add_alias(settings, w["id"], "同じ別名", confidence=0.8)
+        add_linked_item(settings, w["id"])  # 同じ source / source_id に linked
+    client.post("/api/works/refresh")
+    assert client.get("/api/works/proposals").json() == []
+    (w,) = client.get("/api/works").json()["works"]
+    assert w["volume_count"] == 2
+    merges = client.get(f"/api/works/{w['id']}").json()["merges"]
+    assert [(m["rule"], m["status"], m["confidence"]) for m in merges] == [("alias", "auto", 0.9)]
+
+
+def test_same_public_db_item_with_manual_decision_is_only_a_proposal(make_env):
+    """同じ項目に linked していても、手動の決定が絡む組は確認待ちのまま(#167)。"""
+    _, settings, client = make_env(["Alpha 1.cbz", "Beta 1.cbz"])
+    ws = by_title(client)
+    add_alias(settings, ws["Alpha 1"]["id"], "同じ別名", confidence=0.8)
+    add_alias(settings, ws["Beta 1"]["id"], "同じ別名", confidence=0.8)
+    add_linked_item(settings, ws["Alpha 1"]["id"])
+    add_manual_link(settings, ws["Beta 1"]["id"], source_id="same-id")  # 手で選んだ公開 DB の連携(同じ項目)
+    client.post("/api/works/refresh")
+    (p,) = client.get("/api/works/proposals").json()
+    assert (p["status"], p["confidence"]) == ("open", 0.9)
+    assert set(by_title(client)) == {"Alpha 1", "Beta 1"}
 
 
 def test_a_work_without_volumes_gets_no_new_proposal(make_env):
