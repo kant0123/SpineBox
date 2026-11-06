@@ -308,6 +308,34 @@ push 前に確かめること:
   既存の重複候補画面(`frontend/src/duplicates/Duplicates.tsx`)の `.dup-list`(gap 14px・margin 12px 0 0)を
   後勝ちで上書きした。`.title-modal .dup-list` にスコープして修正
 
+### 同じ根拠(evidence)を寄せる経路が複数あるとき、一方にだけ付けて他方で落とす
+
+根拠の組み立て(`evidence` の文字列化・`parts` の付け足し)が、同じ入力に対する経路(早い return と遅い return、正規形と例外形)の
+分かれている箇所で、一方の経路にだけ寄せている。経路を要約した側が証拠を無くすと、DB・画面の根拠表示が欠落する。
+
+push 前に確かめること:
+
+- 同じ根拠を組み立てる経路をすべて列挙し、それぞれで同じ情報(落とした部分・著者・出所)が根拠に残っているか
+- 経路が分かれる手前で落とした分を、遅い経路で復元しているか。経路を要約する分岐ごとに、根拠の内容が変わっていないか
+
+実例:
+
+- PR #174 — `spinebox/naming.py trailing_number()` — 末尾の括弧装飾(`dropped`)は `_TRAILING_NUMBER` の経路では `evidence` に付けていたが、後から足した著者列の経路(`_TRAILING_AUTHOR_TAIL`)では捨てており、`作品名 1 - 著者 [レーベル]` の括弧装飾が根拠から欠落していた(agy レビューの WARNING。経路を要約して再現し、両経路で付けるように修正)
+
+### シェルへ渡す文字列で、シェルのエスケープを考慮せず書いている
+
+PowerShell の二重引用符の中では `` ` `` がエスケープ文字(`t → タブ、`a → BEL など)になる。Wiki・PR 本文のような自由文書を
+そのまま二重引用符で渡すと、`code` のような組み込み記号が制御文字に化けて、文書が黙って壊れる。wiki-lint では拾えない。
+
+push 前に確かめること:
+
+- 自由文書をシェル経由で書くとき、デリミタ(単一/二重引用符・ファイル経由)のエスケープを考えたか
+- 書いたファイルに制御文字(タブ・BEL)が入っていないかを、書いた後に機械で見たか
+
+実例:
+
+- PR #174 — `wiki/log.md` の備考 — PowerShell の二重引用符で渡した Python `-c` の文字列中の `` `trailing_number()` `` など 4 か所が、タブ・BEL 文字に化けてコミットされていた(agy レビューの NITPICK。機械で数えて修正)
+
 ### 一度取り出した値を捨てて、元の文字列から作り直す
 
 構造化した結果(名前・著者・根拠の組)を途中まで作っておきながら、下流へは文字列だけ渡し、
@@ -338,7 +366,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/naming.py:86 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(agy レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
+- PR #172 — `spinebox/naming.py:104 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(agy レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
 
 ### 共通の後処理を分岐の片側だけに置いている
 
@@ -351,7 +379,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:526 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
+- PR #172 — `spinebox/works.py:529 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
 
 ### 解析規則を変えたのに、既存データを読み直す版を上げていない
 
@@ -365,7 +393,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/scanner.py:44 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
+- PR #172 — `spinebox/scanner.py:45 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
 
 ### 変化が無ければ書かない処理で、条件の抜けにより毎回書く
 
@@ -379,5 +407,6 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:507 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+- PR #172 — `spinebox/works.py:509 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+
 

@@ -391,13 +391,18 @@ export interface DuplicateItem {
 
 export interface MergeEvidence {
   duplicate?: DuplicateItem[];
-  alias?: { norm: string; a: { name: string; source: string; is_title: boolean }; b: { name: string; source: string; is_title: boolean } };
-  link?: { source: SourceName; source_id: string; confidence: number };
+  alias?: {
+    norm: string;
+    a: { name: string; source: string; is_title: boolean };
+    b: { name: string; source: string; is_title: boolean };
+    shared_item?: [SourceName, string] | null;
+    alias_confidence?: number;
+  };
 }
 
 export interface WorkProposal {
   id: number;
-  rule: "duplicate" | "alias" | "link" | "manual";
+  rule: "duplicate" | "alias" | "manual";
   confidence: number;
   status: "open";
   evidence: MergeEvidence;
@@ -407,7 +412,7 @@ export interface WorkProposal {
 
 export interface WorkMerge {
   id: number;
-  rule: "duplicate" | "alias" | "link" | "manual";
+  rule: "duplicate" | "alias" | "manual";
   confidence: number;
   status: "auto" | "approved";
   evidence: MergeEvidence;

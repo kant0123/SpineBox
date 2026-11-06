@@ -206,7 +206,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                   {w.publisher && <span className="volume-meta">{w.publisher}</span>}
                   <span className="work-badges">
                     <span className="badge volume-count-badge">
-                      全{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
+                      既刊{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
                     </span>
                     {missing.text && (
                       <span className="badge" title={missing.title}>
