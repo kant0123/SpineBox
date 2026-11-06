@@ -4,7 +4,7 @@ import { progressLabel } from "../library/Library";
 import { readHref, workHref, workOrganizeHref, workTitlesHref, worksHref } from "../route";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
-import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, sourceText } from "./labels";
+import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, missingLabel, sourceText } from "./labels";
 import { VolumeMeta } from "./VolumeMeta";
 import { WorkLinks } from "./WorkLinks";
 import { ProposalCard } from "./WorkProposals";
@@ -143,10 +143,10 @@ export function WorkPage({ id }: { id: string }) {
     );
   }
 
-  const missing = [
-    work.numbers.volume.missing.length ? `${work.numbers.volume.missing.join("・")} 巻` : "",
-    work.numbers.episode.missing.length ? `${work.numbers.episode.missing.join("・")} 話` : "",
-  ].filter(Boolean);
+  const missing = missingLabel({
+    missing_volumes: work.numbers.volume.missing,
+    missing_episodes: work.numbers.episode.missing,
+  });
   const limited = work.numbers.volume.limited || work.numbers.episode.limited;
   const ids = [...selected];
 
@@ -341,9 +341,9 @@ export function WorkPage({ id }: { id: string }) {
           </a>
           <span className="muted">(全巻の変更前 → 変更後をプレビューしてから実行します)</span>
         </p>
-        {missing.length > 0 ? (
-          <div className="notice warn" role="status">
-            欠けている巻: {missing.join("、")}
+        {missing.text ? (
+          <div className="notice warn" role="status" title={missing.title}>
+            欠けている巻: {missing.text}
           </div>
         ) : limited ? (
           <div className="notice" role="status">

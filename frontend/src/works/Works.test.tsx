@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { parseRoute } from "../route";
-import { confidenceText, evidenceLines, missingText } from "./labels";
+import { confidenceText, evidenceLines, missingLabel, missingText } from "./labels";
 import { workQueryString } from "../api";
 import { normalizeSearch } from "../mock/mockWorks";
 
@@ -451,6 +451,52 @@ describe("公開データベースの情報(#50)", () => {
     expect(backend.log.find((l) => l.method === "PATCH" && l.path === "/api/volumes/1/metadata")!.body).toEqual({ isbn: "9784088700000" });
     fireEvent.click(within(row).getByRole("button", { name: "ISBNを自動に戻す" }));
     await waitFor(() => expect(within(row).queryByRole("button", { name: "ISBNを自動に戻す" })).toBeNull());
+  });
+});
+
+describe("欠けの表示", () => {
+  it("番号が少なければ並べ、多すぎるときは件数だけにして内訳をツールチップに回す", () => {
+    expect(missingLabel({ missing_volumes: [3, 5], missing_episodes: [2] })).toEqual({ text: "3・5 巻、2 話" });
+    // 境界: 5 個までは番号を並べる
+    expect(missingLabel({ missing_volumes: [1, 2, 3, 4, 5], missing_episodes: [] })).toEqual({ text: "1・2・3・4・5 巻" });
+    // 6 個からは件数だけ(巻と話を合わせて数える)
+    expect(missingLabel({ missing_volumes: [1, 2, 3, 4, 5, 6], missing_episodes: [] })).toEqual({
+      text: "6 巻",
+      title: "1・2・3・4・5・6 巻",
+    });
+    expect(missingLabel({ missing_volumes: [1, 2, 3, 4], missing_episodes: [1, 2] })).toEqual({
+      text: "4 巻、2 話",
+      title: "1・2・3・4 巻、1・2 話",
+    });
+    expect(missingLabel({ missing_volumes: [], missing_episodes: [] })).toEqual({ text: "" });
+  });
+
+  it("作品カードは多すぎるとき件数だけを出し、内訳をツールチップに入れる", async () => {
+    const list = JSON.parse(backend.handle("GET", "/api/works").body);
+    list.works.find((w: { title: string }) => w.title === "サンプル漫画").missing_volumes = [1, 2, 3, 4, 5, 6];
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "/api/works") return new Response(JSON.stringify(list), { status: 200, headers: { "Content-Type": "application/json" } });
+      return stub(url, init);
+    });
+    window.location.hash = "#/works";
+    render(<App />);
+    const badge = await screen.findByText("欠け 6 巻");
+    expect(badge.getAttribute("title")).toBe("1・2・3・4・5・6 巻");
+  });
+
+  it("作品ページの「欠けている巻」も同じ規則にする", async () => {
+    const detail = JSON.parse(backend.handle("GET", "/api/works/1").body);
+    detail.numbers.volume = { max: 6, missing: [1, 2, 3, 4, 5, 6], limited: false };
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "/api/works/1") return new Response(JSON.stringify(detail), { status: 200, headers: { "Content-Type": "application/json" } });
+      return stub(url, init);
+    });
+    window.location.hash = "#/works/1";
+    render(<App />);
+    const notice = await screen.findByText("欠けている巻: 6 巻");
+    expect(notice.getAttribute("title")).toBe("1・2・3・4・5・6 巻");
   });
 });
 
