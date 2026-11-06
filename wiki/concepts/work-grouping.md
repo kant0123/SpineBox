@@ -14,7 +14,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:446 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:456 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
@@ -33,7 +33,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   (複数作品の入れ物の名前を別名にすると、別作品を混ぜる根拠になるため)
 - **末尾の番号は、同じ名前の組がそろっているときだけ巻番号と読む。** `作品名 01` `作品名(3)` の形は
   名前だけでは巻番号と決められない(`Kitchen 2` が作品名のこともある)ので、`spinebox/naming.py:103 parse_number()`
-  は拾わず、`spinebox/naming.py:296 trailing_number()` が候補を返すだけ。`spinebox/works.py:471 _trailing_series()` が、
+  は拾わず、`spinebox/naming.py:296 trailing_number()` が候補を返すだけ。`spinebox/works.py:481 _trailing_series()` が、
   同じ名前で末尾の番号だけが違う巻が 2 つ以上ある組に限り、番号を `volumes.number_*` に入れて作品名から番号を落とす。
   組が 1 つに減れば番号は消え、作品名も元へ戻る(名前から導出した値なので残さない)。
   この形を読まないと 1 巻 = 1 作品に分裂し、公開 DB のシリーズ別名が全作品に付いて統合の提案が総当たりになる
@@ -42,7 +42,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   **今の作品の名前のどれか**(別名を含む)と一致すれば動かさないが、公開 DB に linked した 1 巻 = 1 作品は
   系列名を別名として持つため、系列として読めても留まっていた(#162)。作品名が `系列名 + 末尾の番号` そのもの
   (例: `作品名 01`)で、手動の決定(作品名・巻の割り当て・公開 DB の連携)が絡まないなら系列名の作品へ付け替える
-  (`spinebox/works.py:428 _leaves_numbered_work()`)。付け替え先も、番号付きの作品(系列名を別名で持つだけ)には寄せず、
+  (`spinebox/works.py:438 _leaves_numbered_work()`)。付け替え先も、番号付きの作品(系列名を別名で持つだけ)には寄せず、
   無ければ系列名の作品を作る。留まると 1 巻 = 1 作品のまま、同じ公開 DB 項目の別名一致が総当たりの確認待ちになる
   (実データ 2026-11-06: 1187 作品・確認待ち 3949 件のうち、この形が 479 作品・65 シリーズ、3612 件がこれに絡んでいた)
 - **末尾の装飾・`卷`・小数点の巻も読む(#167)。** `parse_work_name()` は末尾の番号の後ろのレーベル・形式の括弧
@@ -50,10 +50,10 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   `巻` と同じ印として読む。小数点の巻(`第04.5巻`)は単独の巻番号として読めないので番号なしにし、作品名から
   `第04` を残さない。実データ 2026-11-06: 残った確認待ち 232 件のうち、名前の一致が 98 組、装飾で番号を
   読めないものが 87 組、`卷` が 6 組、小数点が 1 組だった。
-- **小数点の巻で誤読した作品名を直す。** `spinebox/works.py:583 _refresh_title()` が、手動でない・公開 DB が
+- **小数点の巻で誤読した作品名を直す。** `spinebox/works.py:594 _refresh_title()` が、手動でない・公開 DB が
   置き換えていない 1 巻の作品名を、名前から読み直した系列名へ合わせる(`ようこそ… 第04` → `ようこそ…`)。
   これで別名の一致が 0.9 になり、自動統合できる。
-- **番号付きの 1 巻を系列名へ付け替えるとき、公開 DB の連携も移す。** `spinebox/works.py:376 _merge_links()` が、
+- **番号付きの 1 巻を系列名へ付け替えるとき、公開 DB の連携も移す。** `spinebox/works.py:386 _merge_links()` が、
   空になる番号付きの作品の linked を系列名の作品へ移す(系列名の作品を新設するか、既に存在するかを問わず)。
   移さないと系列名の作品が連携を持たず、別名・書誌が付かない。
 
@@ -96,8 +96,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1141 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1161 build_slots()` は
+`spinebox/works.py:1152 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1172 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
