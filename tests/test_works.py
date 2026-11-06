@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from conftest import page_bytes, snapshot, write_zip
 from spinebox import db, works
 from spinebox.app import create_app
+from spinebox.naming import normalize_title
 
 
 def cbz(lib, name, pages=3):
@@ -50,6 +51,38 @@ def rows(settings, sql, *args):
     conn = db.connect(settings.db_path)
     try:
         return conn.execute(sql, args).fetchall()
+    finally:
+        conn.close()
+
+
+def add_alias(settings, work_id, alias, *, source="public_db", confidence=1.0, manual=False):
+    """公開 DB の連携などで付く別名を DB に足す(結線そのものは tests/test_linking.py)。"""
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                      (work_id, alias, normalize_title(alias), source, int(manual), confidence, db.now()))
+    finally:
+        conn.close()
+
+
+def set_alias_confidence(settings, alias, confidence):
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("UPDATE work_aliases SET confidence = ? WHERE alias = ?", (confidence, alias))
+    finally:
+        conn.close()
+
+
+def add_manual_link(settings, work_id, source="mangaupdates"):
+    """利用者が選んだ公開 DB の連携(手動の決定)。"""
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("""INSERT INTO work_links (work_id, source, status, source_id, manual, confidence)
+                         VALUES (?, ?, 'linked', 'test', 1, 1.0)""", (work_id, source))
     finally:
         conn.close()
 
@@ -109,6 +142,54 @@ def test_numbers_are_dropped_when_the_group_is_gone(make_env):
     (w,) = client.get("/api/works").json()["works"]
     assert (w["title"], w["volume_count"]) == ("作品名", 1)  # 外側の名前の別名で同じ作品に残る
     assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())  # 番号は名前から導出なので消える
+
+
+def test_a_linked_volume_work_returns_to_the_series(make_env):
+    """公開 DB の別名で系列名を持つ 1 巻 = 1 作品は、系列名の作品へ戻す(#162)。
+
+    1 巻ずつの作品が公開 DB に linked されて別名 `作品名` を持つと、名前から読み直した `作品名` が
+    「今の作品の別名」と一致して付け替えられず、1 巻 = 1 作品のまま提案が総当たりで残っていた。
+    """
+    lib, settings, client = make_env(["作品名.cbz", "[著者] 作品名 1.cbz"])
+    ws = by_title(client)
+    assert set(ws) == {"作品名", "作品名 1"}
+    add_alias(settings, ws["作品名 1"]["id"], "作品名", confidence=0.8)  # 公開 DB の連携で付く系列名の別名
+    cbz(lib, "[著者] 作品名 2.cbz")
+    client.post("/api/scan")
+    ws = by_title(client)
+    assert set(ws) == {"作品名"}  # 番号付きの作品は空になり、一覧から消える
+    assert ws["作品名"]["volume_count"] == 3
+    assert client.get("/api/works/proposals").json() == []
+
+
+def test_a_work_with_a_manual_link_is_not_folded_into_the_series(make_env):
+    """手で選んだ公開 DB の連携がある作品は、系列名へ寄せず、自動統合もしない(#162)。"""
+    lib, settings, client = make_env(["[著者] 作品名 1.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    add_alias(settings, w["id"], "作品名")
+    add_manual_link(settings, w["id"])
+    cbz(lib, "[著者] 作品名 2.cbz")
+    client.post("/api/scan")
+    assert set(by_title(client)) == {"作品名 1", "作品名"}
+    (p,) = client.get("/api/works/proposals").json()  # 0.9 でも手動が絡むので確認待ち
+    assert (p["status"], p["confidence"]) == ("open", 0.9)
+
+
+def test_an_open_proposal_is_merged_when_the_evidence_becomes_certain(make_env):
+    """後から 0.9 以上になった確認待ちは、再計算で自動統合する(#162)。"""
+    _, settings, client = make_env(["Alpha 1.cbz", "Beta 1.cbz"])
+    for w in by_title(client).values():
+        add_alias(settings, w["id"], "作品名", confidence=0.8)
+    client.post("/api/works/refresh")
+    (p,) = client.get("/api/works/proposals").json()
+    assert (p["status"], p["confidence"]) == ("open", 0.8)
+    set_alias_confidence(settings, "作品名", 1.0)  # 連携が確かになり、別名の一致が 1.0 になる
+    client.post("/api/works/refresh")
+    assert client.get("/api/works/proposals").json() == []
+    (w,) = client.get("/api/works").json()["works"]
+    assert w["volume_count"] == 2
+    merges = client.get(f"/api/works/{w['id']}").json()["merges"]
+    assert [(m["rule"], m["status"]) for m in merges] == [("alias", "auto")]
 
 
 def test_a_work_without_volumes_gets_no_new_proposal(make_env):

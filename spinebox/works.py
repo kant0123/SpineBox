@@ -409,6 +409,30 @@ def _manual_involved(c, work_id: int) -> bool:
     return c.execute("SELECT 1 FROM work_links WHERE work_id = ? AND manual = 1 LIMIT 1", (work_id,)).fetchone() is not None
 
 
+def _numbered_variant(title: str, norm: str) -> bool:
+    """作品名が「系列名 + 末尾の番号」だけか(例: `作品名 01`。`norm` は系列名の正規化)。
+
+    公開 DB に linked した 1 巻 = 1 作品の残骸を見分けるために使う(#162)。別名で系列名を持つだけなので、
+    系列名の作品があればそちらへ寄せる。
+    """
+    t = trailing_number(title)
+    if t is None:
+        return False
+    wn = parse_work_name(t.base)
+    return wn is not None and wn.norm == norm
+
+
+def _leaves_numbered_work(c, work: _Work, norm: str, want: dict | None) -> bool:
+    """末尾の番号で読んだ系列名へ付け替えるために、今の作品を離れるか(#162)。
+
+    今の作品名が `系列名 + 番号` そのもの(`作品名 01`)なら、その作品は 1 巻ぶんの残骸で、系列名は
+    公開 DB の別名として持っているだけなので、系列名の作品へ移す。手で直した作品は動かさない。
+    """
+    if want is None or not _numbered_variant(work.title, norm):
+        return False
+    return not _manual_involved(c, work.id)
+
+
 def _pair(a: int, b: int) -> tuple[int, int]:
     return (a, b) if a < b else (b, a)
 
@@ -502,17 +526,20 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
                 st.assign[vid] = {"work_id": parent["work_id"], "manual": 1, "source": SOURCE_MANUAL}
                 summary.volumes_assigned += 1
                 continue
-        own = own_name(r, series.get(vid))
+        want = series.get(vid)
+        own = own_name(r, want)
         if own is None:
             continue
         norm = own.name.norm
         work = st.works.get(cur["work_id"]) if cur is not None else None
-        if work is not None and norm in work.names:
+        if work is not None and norm in work.names and not _leaves_numbered_work(c, work, norm, want):
             if cur["source"] == SOURCE_FILENAME:
                 _refresh_assignment(c, vid, cur, own)
             _fill_author(c, work, own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
             continue
         target = st.find_work(norm)
+        if want is not None and target is not None and _numbered_variant(st.works[target].title, norm):
+            target = None  # 系列名を別名で持つだけの番号付きの作品には寄せない(新しい系列名の作品を作る)
         if target is None:
             author = author_text(own.name.authors)
             target = _new_work(c, own.name.title, source=SOURCE_FILENAME, manual=False, confidence=own.confidence,
@@ -619,6 +646,13 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
                 index[pair] = dict(r)
         return roots, index
 
+    def merge_now(a: int, b: int, cand: dict) -> tuple[dict, dict]:
+        """自動統合して、統合で変わった根と提案の index を引き直す。"""
+        keep, drop = choose_survivor(c, a, b)
+        merge_works(c, keep, drop, rule=cand["rule"], confidence=cand["confidence"], manual=False)
+        summary.merged += 1
+        return existing_index()
+
     roots, index = existing_index()
     active = {st.assign[v]["work_id"] for v in st.listed if v in st.assign}
     kept_open: set[int] = set()
@@ -634,11 +668,20 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
         ex = index.get((a, b))
         payload = _dumps(cand["evidence"])
         if ex is not None:
-            if ex["status"] == "open":  # 確認待ちの提案は根拠だけ最新にする(自動では統合しない)
-                c.execute("""UPDATE work_merge_proposals SET work_a = ?, work_b = ?, rule = ?, confidence = ?,
-                             evidence = ? WHERE id = ?""", (a, b, cand["rule"], cand["confidence"], payload, ex["id"]))
+            # 却下・分けた組は戻さない
+            if ex["status"] != "open":
+                continue
+            c.execute("""UPDATE work_merge_proposals SET work_a = ?, work_b = ?, rule = ?, confidence = ?,
+                         evidence = ? WHERE id = ?""", (a, b, cand["rule"], cand["confidence"], payload, ex["id"]))
+            if not auto:
+                # 確認待ちの提案は根拠だけ最新にする(利用者の決定を待つ)
                 kept_open.add(ex["id"])
-            continue  # 却下・分離した組は戻さない
+                continue
+            # 後から確信度が基準を超えた確認待ちは自動で統合する(#162)。行は自動の記録として残す
+            c.execute("UPDATE work_merge_proposals SET status = 'auto', decided_at = ? WHERE id = ?",
+                      (db.now(), ex["id"]))
+            roots, index = merge_now(a, b, cand)
+            continue
         now = db.now()
         pid = c.execute(
             """INSERT INTO work_merge_proposals (work_a, work_b, rule, confidence, evidence, status, created_at, decided_at)
@@ -646,10 +689,7 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
             (a, b, cand["rule"], cand["confidence"], payload, "auto" if auto else "open", now,
              now if auto else None)).lastrowid
         if auto:
-            keep, drop = choose_survivor(c, a, b)
-            merge_works(c, keep, drop, rule=cand["rule"], confidence=cand["confidence"], manual=False)
-            summary.merged += 1
-            roots, index = existing_index()
+            roots, index = merge_now(a, b, cand)
         else:
             kept_open.add(pid)
             index[(a, b)] = {"id": pid, "status": "open"}
