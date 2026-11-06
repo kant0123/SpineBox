@@ -2,7 +2,7 @@ import zipfile
 
 import pytest
 
-from conftest import RawName, page_bytes, snapshot, write_zip
+from conftest import RawName, page_bytes, snapshot, write_zip, zip_bytes
 from spinebox import db, scanner
 from spinebox.archive.zipreader import ZipReader
 from spinebox.scanner import Scanner
@@ -183,3 +183,62 @@ def test_resolve_source_path_rejects_escape(tmp_path):
     assert scanner.resolve_source_path(tmp_path, "") == tmp_path
     with pytest.raises(ValueError):
         scanner.resolve_source_path(tmp_path, "../x.zip")
+
+
+def test_zip_containing_epub_container_is_scanned_as_novel(conn, tmp_path, make_settings):
+    from novels import epub_bytes
+
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "book.zip").write_bytes(epub_bytes(["<p>hello</p>"]))
+    scan(conn, make_settings(lib))
+    vols = volumes(conn)
+    assert ("book.zip", None, "") in vols
+    assert vols[("book.zip", None, "")]["format"] == "epub"
+
+
+def test_non_content_dirs_are_excluded_from_archive_volumes(conn, tmp_path, make_settings):
+    lib = tmp_path / "lib"
+    inner = zip_bytes([("a.jpg", page_bytes("inner/a"))])
+    write_zip(lib / "pack.zip", [
+        ("__MACOSX/ghost.jpg", page_bytes("mac")),
+        ("META-INF/cover.jpg", page_bytes("meta")),
+        (".DS_Store/x.jpg", page_bytes("ds")),
+        ("__MACOSX/inner.zip", inner),
+        ("Vol1/001.jpg", page_bytes("v1/001")),
+        ("Vol1/002.jpg", page_bytes("v1/002")),
+    ])
+    scan(conn, make_settings(lib))
+    vols = volumes(conn)
+    assert set(vols) == {("pack.zip", None, "Vol1/")}
+    # 非コンテンツディレクトリ内の内側アーカイブも巻にならない
+    assert not any(v[1] for v in vols)
+
+
+def test_cover_only_folder_in_archive_is_skipped(conn, tmp_path, make_settings):
+    lib = tmp_path / "lib"
+    write_zip(lib / "pack.zip", [
+        ("CoverOnly/cover.jpg", page_bytes("cover")),
+        ("CoverOnly/front_cover.jpg", page_bytes("cover2")),
+        ("RealVol/001.jpg", page_bytes("real/001")),
+    ])
+    scan(conn, make_settings(lib))
+    vols = volumes(conn)
+    assert set(vols) == {("pack.zip", None, "RealVol/")}
+
+
+def test_cover_only_filesystem_folder_is_skipped(conn, tmp_path, make_settings):
+    lib = tmp_path / "lib"
+    folder = lib / "CoverOnlyFolder"
+    folder.mkdir(parents=True)
+    (folder / "cover.jpg").write_bytes(page_bytes("cover"))
+    (folder / "front_cover.jpg").write_bytes(page_bytes("cover2"))
+    # 混在フォルダは巻になる
+    mixed = lib / "MixedFolder"
+    mixed.mkdir(parents=True)
+    (mixed / "cover.jpg").write_bytes(page_bytes("cover"))
+    (mixed / "001.jpg").write_bytes(page_bytes("page"))
+    scan(conn, make_settings(lib))
+    vols = volumes(conn)
+    assert ("CoverOnlyFolder", None, "") not in vols
+    assert ("MixedFolder", None, "") in vols
