@@ -168,7 +168,8 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - #66 で受け入れ([[inbox]])を足した。マイグレーション 10(`library_roots.inbox`)。設定 `inbox_dirs`(受け入れフォルダと書庫の組)。
   受け入れフォルダは蔵書と同じスキャナーで走査するが `inbox = 1` の行として分け、一覧・作品・検索・重複・結線の対象外にする
 - #57 で小説(EPUB・テキスト)を足した([[novel-reader]])。マイグレーション 8(`volumes.format`・`reading_progress.position`)。
-  小説のソースは 1 ファイルなので `sources.kind` は `archive`(CHECK を作り直さないため)。新しい種類のソースなので `SCAN_VERSION` は上げていない
+  小説のソースは 1 ファイルなので `sources.kind` は `archive`(CHECK を作り直さないため)。#177 で拡張子が `.zip` でも
+  `META-INF/container.xml` を含むアーカイブを EPUB として登録するようになった(内容判定)。新しい種類のソースなので `SCAN_VERSION` は上げていない
 - #56 で作品の全文検索と絞り込みを足した([[work-search]])。マイグレーション 9(`work_search_dirty` と、索引が古くなる変更で印を付けるトリガー)。
   索引の表 `work_search` はマイグレーションではなく起動時・一覧の前に `spinebox/search.py` が作る(SQLite の trigram の有無で形が変わるため)
 
@@ -190,6 +191,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 - #30 で巻への分解と巻範囲の食い違いを足した([[volume-split]])。マイグレーション 2(`volumes` に親子・巻番号の候補・解析の版の列)。
   `SCAN_VERSION` を 2 にしたので、既存 DB は次のスキャンで全アーカイブの目次を読み直す(取り出しはしない)
+- #177 で EPUB を拡張子ではなく内容(`META-INF/container.xml` の有無)で判定するようにした。`SCAN_VERSION` を 3 に上げ、
+  既存 DB の EPUB を含むアーカイブ(拡張子が `.zip` でも)を再スキャンして、`OEBPS` などの内部フォルダを巻にしない。
+  `_scan_archive` は目次に `META-INF/container.xml` があれば `_scan_novel(..., FORMAT_EPUB)` に回す
 
 - #31 で整理処理を足した([[organize]])。マイグレーション 3(`organize_ops` / `organize_steps` / `organize_volumes` と `volumes.organized_op_id`)。
   クラウドで作ったブランチは版 2 だったが、#30 が先にマージされたため 3 番へ付け替えた(未リリースなので版番号の付け替えは可)。

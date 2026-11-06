@@ -183,3 +183,20 @@ def test_resolve_source_path_rejects_escape(tmp_path):
     assert scanner.resolve_source_path(tmp_path, "") == tmp_path
     with pytest.raises(ValueError):
         scanner.resolve_source_path(tmp_path, "../x.zip")
+
+
+def test_epub_zip_is_scanned_as_novel_not_manga(conn, tmp_path, make_settings):
+    lib = tmp_path / "lib"
+    write_zip(lib / "book.zip", [
+        ("META-INF/container.xml", b'<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:container"><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>'),
+        ("OEBPS/content.opf", b'<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf"><manifest/><spine/></package>'),
+        ("OEBPS/001.jpg", page_bytes("p")),
+        ("2vad_vrb_files/cover.jpg", page_bytes("c")),
+    ])
+    scan(conn, make_settings(lib))
+    vols = volumes(conn)
+    assert set(vols) == {("book.zip", None, "")}
+    r = vols[("book.zip", None, "")]
+    assert r["format"] == "epub"
+    assert r["page_count"] is None
+    assert r["title"] == "book"

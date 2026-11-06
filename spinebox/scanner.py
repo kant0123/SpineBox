@@ -34,14 +34,15 @@ from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import parse_number
 from .novel import FORMAT_EPUB, novel_format
-from .novel.epub import scan_problems as epub_scan_problems
+from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
 from .pages import is_image
 
 log = logging.getLogger(__name__)
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
 # 2: 巻の名前から番号の候補(number_*)を記録する(#30)
-SCAN_VERSION = 2
+# 3: EPUB を拡張子ではなく内容(META-INF/container.xml)で判定し、内部フォルダを巻にしない(#177)
+SCAN_VERSION = 3
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -437,6 +438,11 @@ class Scanner:
             with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
                 listing = list_entries(reader, self.settings.limits)
             issues.extend(listing.skipped)
+            # 拡張子ではなく内容で EPUB を判定する(#177)。META-INF/container.xml があれば EPUB として扱い、
+            # 内部フォルダ(OEBPS 等)を漫画の巻として切り出さない
+            if any(e.name == EPUB_CONTAINER for e in listing.entries):
+                self._scan_novel(root_id, rel, path, FORMAT_EPUB)
+                return
             specs, more = archive_volume_specs(listing, path.name, self.settings.limits)
             issues.extend(more)
             if not specs:
