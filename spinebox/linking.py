@@ -160,7 +160,8 @@ def candidates_for(source: str, outcome: SearchOutcome, ctx: "_Context") -> list
     return [_work_candidate(c) for c in outcome.candidates]
 
 
-def decide(cands: list[dict], known_kind: str | None, hold: bool = False) -> tuple[str, dict | None, list[dict], float | None]:
+def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
+           title_is_romaji: bool = False) -> tuple[str, dict | None, list[dict], float | None]:
     """候補から連携を決める。(状態, 連携する候補, 見せる候補, 2 位との差)。
 
     状態: linked(自動で連携)/ pending(確認待ち)/ none(見せられる候補が無い)。
@@ -176,7 +177,10 @@ def decide(cands: list[dict], known_kind: str | None, hold: bool = False) -> tup
     top = shown[0]["summary"]["score"]
     second = shown[1]["summary"]["score"] if len(shown) > 1 else 0.0
     margin = round(top - second, 4)
-    if top >= AUTO_LINK_MIN and margin >= LINK_MARGIN and not hold:
+    auto_min = AUTO_LINK_MIN
+    if title_is_romaji and shown and _has_cjk(shown[0]["summary"].get("title") or ""):
+        auto_min = 0.6
+    if top >= auto_min and margin >= LINK_MARGIN and not hold:
         return "linked", shown[0], shown, margin
     return "pending", None, shown, margin
 
@@ -222,7 +226,13 @@ def _context(c: sqlite3.Connection, work_id: int) -> _Context:
 
 
 def _query(source: str, ctx: _Context) -> SearchQuery:
-    return SearchQuery(ctx.title, author=ctx.author, kind=ctx.kind, limit=NDL_LIMIT if source == "ndl" else None)
+    title = ctx.title
+    if title and " " not in title and re.search(r"[A-Za-z]", title):
+        split = re.sub(r"([a-z])([A-Z])", r"\1 \2", title)
+        split = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", split)
+        if split != title:
+            title = split
+    return SearchQuery(title, author=ctx.author, kind=ctx.kind, limit=NDL_LIMIT if source == "ndl" else None)
 
 
 # --- 取得 ------------------------------------------------------------------------------------
@@ -260,7 +270,7 @@ def _record_failure(conn, work_id: int, source: str, failure_json: str) -> None:
 
 
 def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[dict], known_kind: str | None,
-           hold: bool = False) -> str:
+           hold: bool = False, title_is_romaji: bool = False) -> str:
     """成功した検索の結果を work_links に書く。利用者が選んだ連携は変えない(中身の更新だけ)。"""
     now = db.now()
     responses = _responses(outcome)
@@ -291,7 +301,7 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
                 shown = [chosen, *shown[:SHOW_LIMIT - 1]]
             margin = None
         else:
-            status, chosen, shown, margin = decide(cands, known_kind, hold)
+            status, chosen, shown, margin = decide(cands, known_kind, hold, title_is_romaji=title_is_romaji)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin, "responses": responses,
               "hold": "kind_unresolved" if hold and status == "pending" else None}
@@ -331,13 +341,15 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
             continue
         try:
             ctx = _context(conn, work_id)
+            title_is_romaji = not _has_cjk(ctx.title)
             outcome = service.search(_query(name, ctx), [name])[0]
             if not outcome.ok:
                 _record_failure(conn, work_id, name, _failure_json(outcome, db.now()))
                 result.sources[name] = "failed"
                 continue
             result.sources[name] = _store(conn, work_id, name, outcome, candidates_for(name, outcome, ctx), ctx.kind,
-                                          hold=name != "ndl" and kind_unresolved(conn, work_id))
+                                          hold=name != "ndl" and kind_unresolved(conn, work_id),
+                                          title_is_romaji=title_is_romaji)
             apply_work(conn, work_id)
         except Exception as e:  # noqa: BLE001 (取得の不具合でスキャン・閲覧・ほかの取得元を止めない)
             log.exception("公開 DB の取得に失敗しました: source=%s", name)
@@ -404,7 +416,8 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
     with db.transaction(conn) as c:
         hold = source != "ndl" and kind_unresolved(c, work_id)
         # 種別が決まっていなければ絞らない(ほかの候補が消えるのを避ける)。決まっていれば違う種別の候補は除く
-        status, chosen, shown, margin = decide(cands, _context(c, work_id).kind, hold)
+        _rctx = _context(c, work_id)
+        status, chosen, shown, margin = decide(cands, _rctx.kind, hold, title_is_romaji=not _has_cjk(_rctx.title))
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin,
               "responses": prev.get("responses", []),
