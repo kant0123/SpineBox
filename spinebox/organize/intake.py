@@ -186,7 +186,7 @@ class Intake:
         warnings: list[str] = []
 
         # 取り込み方: 1 巻 = 1 つのファイル(CBZ・小説)は中身を変えずに移すだけ。それ以外は 1 巻ずつ CBZ にする
-        novel = any(v["format"] for v in vols)
+        novel = any(v["format"] in ("epub", "text") for v in vols)
         suffix = Path(rel).suffix.lower()
         single_cbz = (src["kind"] == "archive" and suffix == ".cbz" and len(vols) == 1 and not novel
                       and vols[0]["container_path"] is None and vols[0]["entry_prefix"] == ""

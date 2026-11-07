@@ -993,9 +993,9 @@ class Organizer:
             if r["format"]:
                 if r["format"] == "pdf":
                     source_path = resolve_source_path(root, r["rel_path"])
-                    page_count, problems = self._inspect_pdf(source_path)
-                    if problems:
-                        it.update(status=ITEM_EXCLUDED, reason="; ".join(problems))
+                    page_count, pdf_probs = self._inspect_pdf(source_path)
+                    if pdf_probs:
+                        it.update(status=ITEM_EXCLUDED, reason="; ".join(pdf_probs))
                         continue
                     it.update(page_count=page_count, is_pdf=True)
                 elif r["format"] == "epub":

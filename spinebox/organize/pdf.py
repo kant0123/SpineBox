@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import io
 import logging
+import hashlib
+import time
+import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Sequence
 
 import pypdf
 from PIL import Image
 
-from .cbz import PageRecord, page_entry_names, verify_cbz, write_cbz
+from .cbz import PageRecord, verify_cbz
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +94,6 @@ def extract_pdf_page_image(
         raw_bytes = img.data
         is_jpeg = raw_bytes.startswith(b"\xff\xd8")
         is_png = raw_bytes.startswith(b"\x89PNG")
-        ext = "jpg" if is_jpeg else ("png" if is_png else "jpg")
 
         pil_img = None
         needs_convert = False
@@ -104,9 +106,16 @@ def extract_pdf_page_image(
         except Exception:  # noqa: BLE001
             pass
 
+        # raw_bytes が JPEG / PNG 以外(生ピクセルや TIFF 等)なら Pillow で変換
+        if not (is_jpeg or is_png):
+            needs_convert = True
+
         if rotation != 0 or needs_convert:
             if pil_img is None:
-                pil_img = Image.open(io.BytesIO(raw_bytes))
+                try:
+                    pil_img = Image.open(io.BytesIO(raw_bytes))
+                except Exception:
+                    pil_img = img.image
             if pil_img.mode == "CMYK":
                 pil_img = pil_img.convert("RGB")
             elif pil_img.mode not in ("RGB", "L"):
@@ -118,7 +127,8 @@ def extract_pdf_page_image(
             pil_img.save(buf, format="JPEG", quality=95)
             return (f"{page_index + 1:04d}.jpg", buf.getvalue())
 
-        # 無劣化抽出
+        # 無劣化抽出 (JPEG または PNG)
+        ext = "jpg" if is_jpeg else "png"
         return (f"{page_index + 1:04d}.{ext}", raw_bytes)
 
     # 2. 白紙ページ (画像が 0 枚)
@@ -187,21 +197,20 @@ def write_pdf_cbz(pdf_path: Path, out_path: Path) -> list[PageRecord]:
     if num_pages == 0:
         raise PdfEmpty(f"ページがありません: {pdf_path.name}")
 
-    # オンデマンドでページ画像を抽出するクロージャ
-    # 各ページの拡張子を決定するため、まず名前リストを準備
-    # write_cbz は source_names の拡張子を保つため、デフォルトは .jpg
-    source_names = [f"page_{i + 1:04d}.jpg" for i in range(num_pages)]
+    records: list[PageRecord] = []
+    date_time = time.localtime()[:6]
+    width = max(4, len(str(num_pages)))
 
-    # ページごとのキャッシュまたは逐次読み込み
-    page_data_cache: dict[int, bytes] = {}
+    with zipfile.ZipFile(out_path, "x", compression=zipfile.ZIP_STORED, allowZip64=True) as z:
+        for i, page in enumerate(reader.pages):
+            entry_stem = f"{i + 1:0{width}d}"
+            name, data = extract_pdf_page_image(page, i, pdf_path=pdf_path)
+            ext = PurePosixPath(name).suffix.lower() or ".jpg"
+            entry_name = f"{entry_stem}{ext}"
+            info = zipfile.ZipInfo(entry_name, date_time=date_time)
+            info.compress_type = zipfile.ZIP_STORED
+            z.writestr(info, data)
+            records.append(PageRecord(entry_name, hashlib.sha256(data).hexdigest(), len(data)))
 
-    def read_page(idx: int) -> bytes:
-        if idx in page_data_cache:
-            return page_data_cache.pop(idx)
-        page = reader.pages[idx]
-        _, data = extract_pdf_page_image(page, idx, pdf_path=pdf_path)
-        return data
-
-    records = write_cbz(out_path, source_names, read_page)
     verify_cbz(out_path, records)
     return records

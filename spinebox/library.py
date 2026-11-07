@@ -146,6 +146,8 @@ class Library:
         内側 zip の巻だけ(一覧の表紙のように、巻の数だけ呼ばれうるところで使う。spinebox/thumbs.py)。
         """
         row = get_volume_row(conn, volume_id)
+        if row["format"] == "pdf":
+            raise VolumeUnreadable("PDF の巻は直接開けません(先に「CBZ に整理」を実行してください)")
         if row["format"] is not None:
             # 小説(EPUB・テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
             raise VolumeUnreadable("小説の巻にはページ画像がありません")

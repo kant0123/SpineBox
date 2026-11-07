@@ -18,6 +18,7 @@ from spinebox.library import Library
 from spinebox.organize.cbz import verify_cbz
 from spinebox.organize.organizer import Organizer
 from spinebox.organize.pdf import inspect_pdf, write_pdf_cbz
+from pypdf.generic import DictionaryObject, NameObject, NumberObject, DecodedStreamObject
 from spinebox.scanner import Scanner
 
 
@@ -319,3 +320,110 @@ def test_scan_unreadable_pdf_does_not_update_source_size_or_drop_existing(env):
 
     vol_after = env.conn.execute("SELECT id, missing FROM volumes WHERE id = ?", (vol["id"],)).fetchone()
     assert vol_after["missing"] == 0  # missing にされない
+
+
+def make_png_pdf(path: Path) -> Path:
+    """PNG 画像が埋め込まれた PDF を作成する。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writer = pypdf.PdfWriter()
+    page = writer.add_blank_page(width=100, height=100)
+    stream = DecodedStreamObject()
+    raw_rgb = b"\x00\xff\x00" * 100
+    stream._data = raw_rgb
+    stream[NameObject("/Type")] = NameObject("/XObject")
+    stream[NameObject("/Subtype")] = NameObject("/Image")
+    stream[NameObject("/Width")] = NumberObject(10)
+    stream[NameObject("/Height")] = NumberObject(10)
+    stream[NameObject("/ColorSpace")] = NameObject("/DeviceRGB")
+    stream[NameObject("/BitsPerComponent")] = NumberObject(8)
+
+    img_ref = writer._add_object(stream)
+    page[NameObject("/Resources")] = DictionaryObject()
+    page["/Resources"][NameObject("/XObject")] = DictionaryObject()
+    page["/Resources"]["/XObject"][NameObject("/Im1")] = img_ref
+
+    with open(path, "wb") as f:
+        writer.write(f)
+    return path
+
+
+def test_write_pdf_cbz_preserves_png_and_handles_raw_tiff(tmp_path):
+    """PNG 画像は .png エントリ名になり、TIFF 等の生画像は .jpg に安全に変換されること。"""
+    # 1. PNG 画像の PDF
+    png_pdf = make_png_pdf(tmp_path / "png.pdf")
+    out_cbz = tmp_path / "png.cbz"
+    records = write_pdf_cbz(png_pdf, out_cbz)
+    assert len(records) == 1
+    assert records[0].name == "0001.png"
+    with zipfile.ZipFile(out_cbz) as z:
+        data = z.read("0001.png")
+        assert data.startswith(b"\x89PNG")
+
+    # 2. 1-bit (TIFF) 画像の PDF
+    im_1bit = Image.new("1", (20, 20), 1)
+    tiff_pdf = tmp_path / "1bit.pdf"
+    buf = io.BytesIO()
+    im_1bit.save(buf, format="PDF")
+    tiff_pdf.write_bytes(buf.getvalue())
+
+    out_tiff_cbz = tmp_path / "1bit.cbz"
+    records2 = write_pdf_cbz(tiff_pdf, out_tiff_cbz)
+    assert len(records2) == 1
+    assert records2[0].name == "0001.jpg"
+    with zipfile.ZipFile(out_tiff_cbz) as z:
+        data2 = z.read("0001.jpg")
+        assert data2.startswith(b"\xff\xd8")  # 有効な JPEG に変換されている
+
+
+def test_pdf_volume_api_and_thumbs(env):
+    """未整理の PDF の巻は直接開けず、表紙も作れず、API は 422 を返すこと。"""
+    from fastapi import HTTPException
+    from fastapi.testclient import TestClient
+    from spinebox.app import create_app
+    from spinebox.library import VolumeUnreadable
+    from spinebox.thumbs import ThumbnailUnavailable, Thumbnails
+
+    root = env.root
+    pdf_path = root / "漫画" / "未整理 第1巻.pdf"
+    make_simple_pdf(pdf_path, num_pages=2)
+
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    vid = vid_of(env, "漫画/未整理 第1巻.pdf")
+
+    # 1. library.open は VolumeUnreadable
+    with pytest.raises(VolumeUnreadable, match="PDF の巻は直接開けません"):
+        with env.library.open(env.conn, vid):
+            pass
+
+    # 2. thumbs.get は ThumbnailUnavailable
+    thumbs = Thumbnails(env.settings, env.library)
+    with pytest.raises(ThumbnailUnavailable, match="PDF の巻の表紙は直接作成できません"):
+        thumbs.get(env.conn, vid)
+
+    # 3. GET /api/volumes/{id} は 422
+    client = TestClient(create_app(env.settings))
+    res = client.get(f"/api/volumes/{vid}")
+    assert res.status_code == 422
+    assert "PDF の巻は直接閲覧できません" in res.json()["detail"]
+
+
+def test_plan_range_cbz_preserves_unanalyzed_problems_with_pdf(env):
+    """PDF が含まれるフォルダでも、未解析アーカイブの problems がシャドウイングされずに残ること。"""
+    root = env.root
+    # 正常な PDF
+    make_simple_pdf(root / "混在" / "第1巻.pdf", num_pages=2)
+    # 内側アーカイブを含む zip (未解析) を作成
+    inner_zip = io.BytesIO()
+    with zipfile.ZipFile(inner_zip, "w") as z:
+        z.writestr("inner.zip", b"dummy")
+    outer_path = root / "混在" / "第2巻.zip"
+    outer_path.write_bytes(inner_zip.getvalue())
+
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+
+    o = organizer(env)
+    plan = o.plan_range(env.root_id, "混在", include_cbz=True)
+    # 未解析アーカイブがあるため needs_analysis に入っていること
+    assert len(plan["needs_analysis"]) > 0
