@@ -67,6 +67,7 @@ class _Work:
 
 def _volume_dict(v: dict, number: dict | None) -> dict:
     return {"volume_id": v["id"], "title": v["title"], "page_count": v["page_count"], "number": number,
+            "format": v.get("format"),
             "output_rel_path": None, "duplicate_of": [], "skipped": False, "reason": None}
 
 
@@ -198,12 +199,16 @@ class Intake:
         needs = self.org._unanalyzed(listed, problems) if mode == "cbz" else []
         item["needs_analysis"] = needs
         if mode == "cbz":
+            is_pdf = any(v["format"] == "pdf" for v in vols)
             if inspect:
                 if src["kind"] == "folder":
                     self.org._inspect_folder(source_path, problems, warnings)
+                elif is_pdf:
+                    _, pdf_probs = self.org._inspect_pdf(source_path)
+                    problems.extend(pdf_probs)
                 else:
                     self.org._inspect_archive(source_path, vols, problems, warnings)
-            elif src["kind"] == "archive" and not file_reader_available(source_path, self.settings.sevenzip_path):
+            elif not is_pdf and src["kind"] == "archive" and not file_reader_available(source_path, self.settings.sevenzip_path):
                 problems.append("この形式は今読めません(7-Zip が見つからない、または未対応)")
         base = self.settings.organize_base(root)
         out_base = self.settings.organize_base(shelf_path)
