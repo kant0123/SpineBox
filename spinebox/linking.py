@@ -161,8 +161,7 @@ def candidates_for(source: str, outcome: SearchOutcome, ctx: "_Context") -> list
     return [_work_candidate(c) for c in outcome.candidates]
 
 
-def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
-           title_is_romaji: bool = False) -> tuple[str, dict | None, list[dict], float | None]:
+def decide(cands: list[dict], known_kind: str | None, hold: bool = False) -> tuple[str, dict | None, list[dict], float | None]:
     """候補から連携を決める。(状態, 連携する候補, 見せる候補, 2 位との差)。
 
     状態: linked(自動で連携)/ pending(確認待ち)/ none(見せられる候補が無い)。
@@ -269,7 +268,7 @@ def _record_failure(conn, work_id: int, source: str, failure_json: str) -> None:
 
 
 def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[dict], known_kind: str | None,
-           hold: bool = False, title_is_romaji: bool = False) -> str:
+           hold: bool = False) -> str:
     """成功した検索の結果を work_links に書く。利用者が選んだ連携は変えない(中身の更新だけ)。"""
     now = db.now()
     responses = _responses(outcome)
@@ -300,7 +299,7 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
                 shown = [chosen, *shown[:SHOW_LIMIT - 1]]
             margin = None
         else:
-            status, chosen, shown, margin = decide(cands, known_kind, hold, title_is_romaji=title_is_romaji)
+            status, chosen, shown, margin = decide(cands, known_kind, hold)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin, "responses": responses,
               "hold": "kind_unresolved" if hold and status == "pending" else None}
@@ -340,15 +339,13 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
             continue
         try:
             ctx = _context(conn, work_id)
-            title_is_romaji = not _has_cjk(ctx.title)
             outcome = service.search(_query(name, ctx), [name])[0]
             if not outcome.ok:
                 _record_failure(conn, work_id, name, _failure_json(outcome, db.now()))
                 result.sources[name] = "failed"
                 continue
             result.sources[name] = _store(conn, work_id, name, outcome, candidates_for(name, outcome, ctx), ctx.kind,
-                                          hold=name != "ndl" and kind_unresolved(conn, work_id),
-                                          title_is_romaji=title_is_romaji)
+                                          hold=name != "ndl" and kind_unresolved(conn, work_id))
             apply_work(conn, work_id)
         except Exception as e:  # noqa: BLE001 (取得の不具合でスキャン・閲覧・ほかの取得元を止めない)
             log.exception("公開 DB の取得に失敗しました: source=%s", name)
@@ -416,7 +413,7 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
         hold = source != "ndl" and kind_unresolved(c, work_id)
         # 種別が決まっていなければ絞らない(ほかの候補が消えるのを避ける)。決まっていれば違う種別の候補は除く
         _rctx = _context(c, work_id)
-        status, chosen, shown, margin = decide(cands, _rctx.kind, hold, title_is_romaji=not _has_cjk(_rctx.title))
+        status, chosen, shown, margin = decide(cands, _rctx.kind, hold)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin,
               "responses": prev.get("responses", []),

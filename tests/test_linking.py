@@ -1015,6 +1015,10 @@ def test_query_splits_camel_case_romaji_title():
     ctx = _Context("KakukakuShikajika", None, None, [])
     assert _query("anilist", ctx).title == "Kakukaku Shikajika"
 
+    # 連続する大文字の後に小文字が続く場合（頭字語など）も正しく分割される
+    ctx_seed = _Context("GundamSEEDDestiny", None, None, [])
+    assert _query("anilist", ctx_seed).title == "Gundam SEED Destiny"
+
     # 日本語混じりや英字を含む日本語作品名は誤分割しない
     ctx_spy = _Context("SPYxFAMILY", None, None, [])
     assert _query("anilist", ctx_spy).title == "SPYxFAMILY"
@@ -1024,5 +1028,5 @@ def test_decide_threshold_is_not_loosened_for_ambiguous_matches():
     from spinebox.linking import decide
     # スコア 0.65 の曖昧一致候補は、単一候補であっても自動連携せず pending に留める
     cand = [{"summary": {"source_id": "1", "score": 0.65, "title": "日本語タイトル", "kind": "manga"}}]
-    status, _, _, _ = decide(cand, "manga", hold=False, title_is_romaji=True)
+    status, _, _, _ = decide(cand, "manga", hold=False)
     assert status == "pending"
