@@ -465,3 +465,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-08] revert | PR #213 (#190) 作品一覧の候補の確認待ち・統合の提案フィルタを撤回
 - 更新: [[work-search]], [[backend]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #190/#211。#207 以降で候補の確認待ち・統合の提案を専用画面で扱う方針のため、作品一覧の interim フィルタ(link_pending / pending_proposals)を撤回した。GET /api/works の link_pending / pending_proposals パラメータとフロントのチェックボックスを削除。read_later フィルタは残す。agy レビューの指摘(log.md の巻き込み削除、backend.md / work-search.md からの read_later 誤削除、Works.test.tsx のアサーション巻き込み削除)を修正し、recurring-review-findings に実例を記録。
+
+## [2026-11-08] ingest | PR #216 (#214) 外側アーカイブ名由来の別名が作品名と完全一致する場合は自動統合する
+- 更新: [[work-grouping]], [[cover-thumbnails]], [[metadata-linking]], [[recurring-review-findings]]
+- 備考: #214。外側アーカイブ名由来の別名(source=container)と作品名が正規化タイトルで一致する組の確信度を 0.9 に引き上げ、手動の決定が絡まなければ自動統合するようにした。外側アーカイブ名の別名は 1 作品しか入らないソースにしか付かないため誤統合のリスクが低く、元の確信度 0.5 は alias_confidence に残す。手動の決定が絡む組は 0.9 の確認待ちのまま残る。
