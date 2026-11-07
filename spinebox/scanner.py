@@ -45,7 +45,8 @@ log = logging.getLogger(__name__)
 # 4: 拡張子が .zip でも META-INF/container.xml を含むアーカイブを EPUB 小説として扱う(#178)
 # 5: アーカイブ内の非コンテンツディレクトリ(__MACOSX, META-INF 等)を巻にしない(#179)
 # 6: 表紙画像だけを含むフォルダを巻にしない(#180)
-SCAN_VERSION = 6
+# 7: EPUB の構造名(OEBPS 等)を非コンテンツディレクトリにして巻にしない(#215)
+SCAN_VERSION = 7
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -132,7 +133,7 @@ def resolve_source_path(root: Path, rel_path: str) -> Path:
 
 
 # 非コンテンツ(メタデータ・システム)のディレクトリ名。大文字小文字は区別しない。
-_NON_CONTENT_DIRS = frozenset({"__macosx", "meta-inf", ".ds_store"})
+_NON_CONTENT_DIRS = frozenset({"__macosx", "meta-inf", "metainf", "oebps", "ops", "epub", "mimetype", ".ds_store"})
 
 
 def _is_non_content_path(prefix: str) -> bool:

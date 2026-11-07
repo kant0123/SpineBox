@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
-updated: 2026-11-07
+updated: 2026-11-08
 related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks, data-jobs, manga-reader]
 ---
 
@@ -24,7 +24,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - `作品名 01` `作品名(3)` の形も `parse_number()` では拾わない(`Kitchen 2` が作品名のこともある)。
   `spinebox/naming.py trailing_number()` が候補を返し、**同じ名前で末尾の番号だけが違う巻が 2 つ以上**のときだけ
   [[work-grouping]] が巻番号として `volumes.number_*` に入れる(スキャンでは書かない)
-- 読み方を変えたら `spinebox/scanner.py:48 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
+- 読み方を変えたら `spinebox/scanner.py:49 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
 
 ### 分解(巻の単位と子の巻)
 

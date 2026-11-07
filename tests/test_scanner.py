@@ -203,6 +203,8 @@ def test_non_content_dirs_are_excluded_from_archive_volumes(conn, tmp_path, make
     write_zip(lib / "pack.zip", [
         ("__MACOSX/ghost.jpg", page_bytes("mac")),
         ("META-INF/cover.jpg", page_bytes("meta")),
+        ("OEBPS/page.jpg", page_bytes("oebps")),
+        ("ops/page.jpg", page_bytes("ops")),
         (".DS_Store/x.jpg", page_bytes("ds")),
         ("__MACOSX/inner.zip", inner),
         ("Vol1/001.jpg", page_bytes("v1/001")),
