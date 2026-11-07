@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { parseRoute } from "../route";
-import { confidenceText, evidenceLines, missingText } from "./labels";
+import { confidenceText, evidenceLines, missingLabel, missingText } from "./labels";
 import { workQueryString } from "../api";
 import { normalizeSearch } from "../mock/mockWorks";
 
@@ -48,7 +48,7 @@ describe("作品の一覧", () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    expect(within(card).getByText("全4巻(〜4巻)")).toBeTruthy();
+    expect(within(card).getByText("既刊4巻(〜4巻)")).toBeTruthy();
     expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
     expect(within(card).queryByText(/重複/)).toBeNull();
     expect(within(card).queryByText("統合済み")).toBeNull();
@@ -56,7 +56,7 @@ describe("作品の一覧", () => {
     expect(within(card).getByText("集英社")).toBeTruthy();
     expect(within(card).queryByText("漫画")).toBeNull();
     const other = (await screen.findByText("外付けの作品")).closest("li")!;
-    expect(within(other).getByText("全1巻")).toBeTruthy();
+    expect(within(other).getByText("既刊1巻")).toBeTruthy();
     expect(within(other).queryByText(/ファンタジー/)).toBeNull();
     expect(within((await screen.findByText("別の読み物")).closest("li")!).queryByText("小説")).toBeNull();
     // 別名は作品ページで見る(一覧のカードには出さない)
@@ -75,6 +75,30 @@ describe("作品の一覧", () => {
     expect(screen.queryByRole("button", { name: "表紙を作る" })).toBeNull();
     expect(screen.queryByRole("button", { name: "名寄せを取り直す" })).toBeNull();
   });
+
+  it("表紙の右下に後で読むを重ね、付けたものだけに絞り込める(#173)", async () => {
+    expect(workQueryString({ read_later: true })).toBe("?read_later=1");
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const button = within(card).getByRole("button", { name: "サンプル漫画 を後で読む" });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    // ボタンは表紙のリンクの外(兄弟要素)で、表紙の重ね先にある
+    const wrap = card.querySelector(".work-cover-wrap")!;
+    expect(within(wrap as HTMLElement).queryByRole("button", { name: "サンプル漫画 を後で読む" })).toBeTruthy();
+    expect(wrap.querySelector(".work-cover-link")!.contains(button)).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(within(card).getByRole("button", { name: "サンプル漫画 の後で読むを外す" }).getAttribute("aria-pressed")).toBe("true"));
+    expect(backend.log.some((l) => l.method === "PUT" && l.path === "/api/read-later/works/1")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /絞り込み/ }));
+    fireEvent.click(screen.getByLabelText("後で読むだけ"));
+    await waitFor(() => expect(screen.queryByText("別の読み物")).toBeNull());
+    expect(screen.getByText("サンプル漫画")).toBeTruthy();
+
+    fireEvent.click(within(card).getByRole("button", { name: "サンプル漫画 の後で読むを外す" }));
+    await waitFor(() => expect(screen.queryByText("サンプル漫画")).toBeNull());
+  });
 });
 
 describe("作品のタイトル一覧(#105 / #115)", () => {
@@ -84,8 +108,8 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     expect(await screen.findByRole("heading", { name: "タイトル一覧(5)" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "サンプル漫画" })).toBeTruthy();
     const items = [...document.querySelectorAll<HTMLElement>(".title-list .title-item")];
-    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻
-    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "2巻", "3巻", "4巻", "5巻"]);
+    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻。巻番号の列は出さない(巻名に番号が含まれるため)
+    expect(items.every((li) => li.querySelector(".title-number") === null)).toBe(true);
     expect(items.map((li) => li.querySelector(".volume-title")!.textContent)).toEqual([
       "サンプル漫画 第1巻", "サンプル漫画 第2巻", "サンプル漫画 第3巻", "サンプル漫画 第4巻", "サンプル漫画 第5巻",
     ]);
@@ -207,6 +231,7 @@ describe("作品の検索と絞り込み(#56)", () => {
   it("クエリ文字列は空の値を付けない", () => {
     expect(workQueryString({})).toBe("");
     expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
+    expect(workQueryString({ read_later: true, link_pending: true, pending_proposals: true })).toBe("?read_later=1&link_pending=1&pending_proposals=1");
     expect(normalizeSearch("ＯＫＩ カクｶｸ・x")).toBe("okiかくかくx");
   });
 
@@ -225,6 +250,29 @@ describe("作品の検索と絞り込み(#56)", () => {
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
     await waitFor(() => expect(cardTitles()).toHaveLength(3));
     expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
+  });
+
+  it("候補の確認待ち・統合の提案で絞り込める", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect(cardTitles()).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
+    // 候補の確認待ちはサンプル漫画だけ(NDL・AniList の pending)
+    fireEvent.click(screen.getByLabelText("候補の確認待ちだけ"));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
+    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
+    expect(screen.getByText(/1 件 \/ 全 3 作品/)).toBeTruthy();
+    // 提案の絞り込みを足すと、両方の条件で絞られ 0 件になる(サンプル漫画に提案は無い)
+    fireEvent.click(screen.getByLabelText("統合の提案だけ"));
+    await waitFor(() => expect(cardTitles()).toEqual([]));
+    // 候補の確認待ちを外すと提案の 2 作品だけになる
+    fireEvent.click(screen.getByLabelText("候補の確認待ちだけ"));
+    await waitFor(() => expect([...cardTitles()].sort()).toEqual(["別の読み物", "外付けの作品"]));
+    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
+    // 提案の絞り込みも外すと全部戻る
+    fireEvent.click(screen.getByLabelText("統合の提案だけ"));
+    await waitFor(() => expect(cardTitles()).toHaveLength(3));
   });
 
   it("絞り込みは開いたときだけ出て、読書状態と項目で絞れる", async () => {
@@ -426,6 +474,52 @@ describe("公開データベースの情報(#50)", () => {
     expect(backend.log.find((l) => l.method === "PATCH" && l.path === "/api/volumes/1/metadata")!.body).toEqual({ isbn: "9784088700000" });
     fireEvent.click(within(row).getByRole("button", { name: "ISBNを自動に戻す" }));
     await waitFor(() => expect(within(row).queryByRole("button", { name: "ISBNを自動に戻す" })).toBeNull());
+  });
+});
+
+describe("欠けの表示", () => {
+  it("番号が少なければ並べ、多すぎるときは件数だけにして内訳をツールチップに回す", () => {
+    expect(missingLabel({ missing_volumes: [3, 5], missing_episodes: [2] })).toEqual({ text: "3・5 巻、2 話" });
+    // 境界: 5 個までは番号を並べる
+    expect(missingLabel({ missing_volumes: [1, 2, 3, 4, 5], missing_episodes: [] })).toEqual({ text: "1・2・3・4・5 巻" });
+    // 6 個からは件数だけ(巻と話を合わせて数える)
+    expect(missingLabel({ missing_volumes: [1, 2, 3, 4, 5, 6], missing_episodes: [] })).toEqual({
+      text: "6 巻",
+      title: "1・2・3・4・5・6 巻",
+    });
+    expect(missingLabel({ missing_volumes: [1, 2, 3, 4], missing_episodes: [1, 2] })).toEqual({
+      text: "4 巻、2 話",
+      title: "1・2・3・4 巻、1・2 話",
+    });
+    expect(missingLabel({ missing_volumes: [], missing_episodes: [] })).toEqual({ text: "" });
+  });
+
+  it("作品カードは多すぎるとき件数だけを出し、内訳をツールチップに入れる", async () => {
+    const list = JSON.parse(backend.handle("GET", "/api/works").body);
+    list.works.find((w: { title: string }) => w.title === "サンプル漫画").missing_volumes = [1, 2, 3, 4, 5, 6];
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "/api/works") return new Response(JSON.stringify(list), { status: 200, headers: { "Content-Type": "application/json" } });
+      return stub(url, init);
+    });
+    window.location.hash = "#/works";
+    render(<App />);
+    const badge = await screen.findByText("欠け 6 巻");
+    expect(badge.getAttribute("title")).toBe("1・2・3・4・5・6 巻");
+  });
+
+  it("作品ページの「欠けている巻」も同じ規則にする", async () => {
+    const detail = JSON.parse(backend.handle("GET", "/api/works/1").body);
+    detail.numbers.volume = { max: 6, missing: [1, 2, 3, 4, 5, 6], limited: false };
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "/api/works/1") return new Response(JSON.stringify(detail), { status: 200, headers: { "Content-Type": "application/json" } });
+      return stub(url, init);
+    });
+    window.location.hash = "#/works/1";
+    render(<App />);
+    const notice = await screen.findByText("欠けている巻: 6 巻");
+    expect(notice.getAttribute("title")).toBe("1・2・3・4・5・6 巻");
   });
 });
 

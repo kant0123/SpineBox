@@ -1,13 +1,13 @@
 ---
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
-updated: 2026-11-05
+updated: 2026-11-07
 related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, overview]
 ---
 
 # 作品の検索と絞り込み(`spinebox/search.py`)
 
-作品一覧(`GET /api/works`)に、全文検索の語 `q` と絞り込み(著者・種別・ジャンル・タグ・読書状態)を足す(GOAL.md「できるようになること」3)。
+作品一覧(`GET /api/works`)に、全文検索の語 `q` と絞り込み(著者・種別・ジャンル・タグ・読書状態・候補の確認待ち・統合の提案・後で読む)を足す(GOAL.md「できるようになること」3)。
 検索語と絞り込みは組み合わせられ、語どうしは空白区切りの AND。
 
 ## 索引の持ち方
@@ -37,7 +37,7 @@ related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, 
 
 ## 正規化
 
-検索語も索引も `spinebox/naming.py:150 normalize_title()` を通す。作品の名寄せの突き合わせと**同じ関数**にしている。
+検索語も索引も `spinebox/naming.py:179 normalize_title()` を通す。作品の名寄せの突き合わせと**同じ関数**にしている。
 
 - NFKC(全角英数・半角カタカナを揃える)→ 大小文字を畳む(casefold)→ カタカナをひらがなへ → 英数字・かな・漢字以外(空白・記号・`_`)を落とす
 - なので「ＯＫＩＲＡＫＵ」「okiraku」、「カクカク」「ｶｸｶｸ」「かくかく」、「ryoshu_no」「ryoshu no」はそれぞれ同じ語になる
@@ -67,6 +67,11 @@ trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Pyth
   候補(`facets.kind`)は保存された値(`manga`)のまま返し、画面で日本語に直す
 - 読書状態は作品単位: 見えている巻を全部読み終えたら `finished`(既読)、1 巻も開いていなければ `unread`(未読)、それ以外は `reading`(読書中)。
   `reading_state` として一覧の各作品に付ける
+- 「だけ」の絞り込み(後で読む `read_later=1` / 候補の確認待ち `link_pending=1` / 統合の提案 `pending_proposals=1`)は `work_fields` の項目ではなく、
+  一覧の各作品のカウント(`read_later` / `link_pending` > 0 / `pending_proposals` > 0)で絞る。`spinebox/works.py list_works()` の
+  `read_later_only` / `link_pending_only` / `pending_proposals_only` で処理し、画面は「絞り込み(件数)」の数にも含める。組み合わせ可能で、
+  `total`・`facets` は絞る前の作品で計算する(読書状態などと同じ)。候補の確認待ち・統合の提案はバッジ(`候補の確認待ち` / `統合の提案`)を持つ作品へ
+  すぐ行けるよう追加した
 - 絞り込みの候補(`facets`)は**絞る前**の作品の値から作る(絞ったあとで候補が消えて戻れなくならないように)。候補の無い項目は画面に出さない
 - 未対応の絞り込み名・読書状態の値は 422
 - サイドバーの著者・タグ・出版社の一覧(#85 / #117)は同じ値の分け方・正規化で、値ごとの作品数とスターの有無を返す(`spinebox/search.py:291 facet_counts()`、`spinebox/search.py:271 set_facet_star()`)。表記の揺れ(全角・半角など)は最初に出た表記にまとめ、記号だけで正規化が空になる値は元の文字列をキーに残して別の値と衝突しないようにする(`_facet_key()`)
