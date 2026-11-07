@@ -3,7 +3,8 @@ import { api } from "../api";
 import { Icon } from "../shell/icons";
 
 /**
- * 後で読むの付け外し(#173)。作品カードの表紙の右下に重ねて置く(DADS button の sm)。
+ * 後で読むの付け外し(#173)。作品カードの表紙の右下に重ねて置く。アイコンのみの 32px 円で、
+ * 見た目は小さくするが ::after で 44px のヒット領域を持たせる(DADS button の sm/xs と同じ方式)。
  * 押した時点で表示を切り替え、失敗したら元に戻して理由を出す(BookmarkButton と同じ振る舞い)。
  */
 export function ReadLaterButton({
@@ -55,7 +56,6 @@ export function ReadLaterButton({
         }}
       >
         <Icon name="clock" />
-        <span className="read-later-text">{on ? "後で読む済み" : "後で読む"}</span>
       </button>
       {failed && (
         <span className="read-later-error" role="alert">

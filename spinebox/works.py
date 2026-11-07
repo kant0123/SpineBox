@@ -26,7 +26,7 @@ from dataclasses import dataclass, field, replace
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
-from .naming import normalize_title, parse_work_name, trailing_number
+from .naming import normalize_title, parse_number, parse_work_name, trailing_number
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -512,7 +512,9 @@ def _apply_trailing_numbers(c, st: _State, series: dict[int, dict]) -> None:
     for r in st.vols:
         want = series.get(r["id"])
         if want is None:
-            if _owns_trailing_number(r):
+            # 末尾の番号の組が無くなった番号と、今の読み方で読めない番号(小数点の巻など)を消す。
+            # 番号を持たない巻の行は触らない(冪等)。
+            if _owns_trailing_number(r) or (r["number_kind"] is not None and parse_number(r["title"]) is None):
                 c.execute("UPDATE volumes SET number_kind = NULL, number_start = NULL, number_end = NULL, "
                           "number_evidence = NULL, updated_at = ? WHERE id = ?", (now, r["id"]))
             continue
@@ -547,7 +549,10 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             continue
         norm = own.name.norm
         work = st.works.get(cur["work_id"]) if cur is not None else None
-        if work is not None and norm in work.names and not _leaves_numbered_work(c, work, norm, want):
+        if work is not None:
+            _refresh_title(c, st, work, own)  # 系列名の別名が無くても、誤読した 1 巻の作品名を直す
+        leaves = work is not None and norm in work.names and _leaves_numbered_work(c, work, norm, want)
+        if work is not None and norm in work.names and not leaves:
             if cur["source"] == SOURCE_FILENAME:
                 _refresh_assignment(c, vid, cur, own)
             _fill_author(c, work, own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
@@ -567,6 +572,8 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             summary.works_created += 1
         else:
             _fill_author(c, st.works[target], own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
+        if leaves:
+            _merge_links(c, target, work.id)
         _put_assignment(c, vid, target, SOURCE_FILENAME, False, own.confidence, own.evidence())
         st.assign[vid] = {"work_id": target, "manual": 0, "source": SOURCE_FILENAME}
         summary.volumes_assigned += 1
@@ -586,6 +593,34 @@ def _fill_author(c, work: _Work, authors, source: str, confidence: float, eviden
     if text and not work.author and not work.author_manual:
         _set_field(c, work.id, FIELD_AUTHOR, text, source, False, confidence, evidence)
         work.author = text
+
+
+def _refresh_title(c, st: _State, work: _Work, own: OwnName) -> None:
+    """名前から読んだ作品名が変わったら、手動でない 1 巻の作品名を今の読みに合わせる(#167)。
+
+    `ようこそ… 第04` のように小数点の巻を誤読して作った作品名を、小数点を外した系列名へ直す。
+    複数の巻を持つ作品は、別の巻の名前と食い違う可能性があるので触らない。
+    """
+    if work.title_manual or work.title_source != SOURCE_FILENAME:
+        return  # 手動の作品名・公開 DB が置き換えた作品名は、名前の読みで上書きしない
+    if trailing_number(work.title) is not None:
+        return  # 末尾の番号を持つ作品名は `_leaves_numbered_work` の領分(手動が絡むときは動かさない)
+    title = own.name.title
+    if not title or title == work.title:
+        return
+    if c.execute("SELECT COUNT(*) FROM work_volumes WHERE work_id = ?", (work.id,)).fetchone()[0] != 1:
+        return
+    old_norm = normalize_title(work.title)
+    if old_norm in st.by_norm:
+        st.by_norm[old_norm] = [i for i in st.by_norm[old_norm] if i != work.id]
+    if old_norm in work.names and work.names[old_norm].is_title:
+        del work.names[old_norm]
+    new_norm = own.name.norm
+    work.names[new_norm] = _Name(title, SOURCE_FILENAME, own.confidence, True)
+    st._add_index(work.id, new_norm, work.names[new_norm])
+    _set_field(c, work.id, FIELD_TITLE, title, SOURCE_FILENAME, False, own.confidence, own.evidence())
+    work.title = title
+    work.title_source = SOURCE_FILENAME
 
 
 # --- 統合の提案 ------------------------------------------------------------------------------
@@ -1273,11 +1308,13 @@ def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) 
 
 
 def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None,
-               root_id: int | None = None, read_later_only: bool = False) -> dict:
+               root_id: int | None = None, read_later_only: bool = False,
+               link_pending_only: bool = False, pending_proposals_only: bool = False) -> dict:
     """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
 
     q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / publisher / status(読書状態)の絞り込み。
     read_later_only は後で読む(#173)を付けた作品だけにする。
+    link_pending_only は候補の確認待ち(link_pending > 0)の作品だけ、pending_proposals_only は統合の提案(pending_proposals > 0)の作品だけにする。
     root_id は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・読書状態などもそのルートの巻で数える。
     total は絞る前の作品数(蔵書の切り替えの後)、facets は絞り込みの候補(同じく絞る前の作品から作る)。
     """
@@ -1320,6 +1357,10 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
              and search.matches_filters(values.get(s["id"], {}), s["reading_state"], wanted)]
     if read_later_only:
         shown = [s for s in shown if s.get("read_later")]
+    if link_pending_only:
+        shown = [s for s in shown if s.get("link_pending", 0) > 0]
+    if pending_proposals_only:
+        shown = [s for s in shown if s.get("pending_proposals", 0) > 0]
     return {"works": shown, "total": len(out), "facets": facets, "unassigned": total - assigned}
 
 

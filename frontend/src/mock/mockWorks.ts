@@ -244,6 +244,8 @@ export function createMockWorks(
     const params = new URLSearchParams(query);
     const root = params.get("root");
     const laterOnly = params.get("read_later") === "1";
+    const linkPendingOnly = params.get("link_pending") === "1";
+    const pendingProposalsOnly = params.get("pending_proposals") === "1";
     const all = listed(root);
     const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [], publisher: [] };
     for (const w of all) {
@@ -255,6 +257,9 @@ export function createMockWorks(
     const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
     const shown = all.filter((w) => {
       if (laterOnly && !laterMarked(w.id)) return false;
+      const s = summary(w, root);
+      if (linkPendingOnly && !(s.link_pending > 0)) return false;
+      if (pendingProposalsOnly && !(s.pending_proposals > 0)) return false;
       const body = [w.title, ...w.aliases.map((a) => a.alias), w.author ?? "", ...Object.values(w.extra).flatMap((f) => strings(f.value)), ...volumesOf(w, root).map((v) => v.title)]
         .map(normalizeSearch).join("\n");
       if (!terms.every((t) => body.includes(t))) return false;

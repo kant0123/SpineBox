@@ -316,6 +316,10 @@ export interface WorkQuery {
   status?: ReadingState;
   /** 後で読む(#173)を付けた作品だけ */
   read_later?: boolean;
+  /** 候補の確認待ち(link_pending > 0)の作品だけ */
+  link_pending?: boolean;
+  /** 統合の提案(pending_proposals > 0)の作品だけ */
+  pending_proposals?: boolean;
   /** 蔵書の切り替え(#85。LibraryRoot の id)。その蔵書ルートの巻だけで一覧を作る */
   root?: string;
 }
@@ -336,7 +340,7 @@ export function workQueryString(query: WorkQuery = {}): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (typeof v === "string" && v.trim()) params.set(k, v.trim());
-    else if (k === "read_later" && v === true) params.set(k, "1");
+    else if ((k === "read_later" || k === "link_pending" || k === "pending_proposals") && v === true) params.set(k, "1");
   }
   const text = params.toString();
   return text ? `?${text}` : "";
@@ -391,7 +395,13 @@ export interface DuplicateItem {
 
 export interface MergeEvidence {
   duplicate?: DuplicateItem[];
-  alias?: { norm: string; a: { name: string; source: string; is_title: boolean }; b: { name: string; source: string; is_title: boolean } };
+  alias?: {
+    norm: string;
+    a: { name: string; source: string; is_title: boolean };
+    b: { name: string; source: string; is_title: boolean };
+    shared_item?: [SourceName, string] | null;
+    alias_confidence?: number;
+  };
 }
 
 export interface WorkProposal {

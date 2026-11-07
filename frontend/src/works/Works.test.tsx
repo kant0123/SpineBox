@@ -48,7 +48,7 @@ describe("作品の一覧", () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    expect(within(card).getByText("全4巻(〜4巻)")).toBeTruthy();
+    expect(within(card).getByText("既刊4巻(〜4巻)")).toBeTruthy();
     expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
     expect(within(card).queryByText(/重複/)).toBeNull();
     expect(within(card).queryByText("統合済み")).toBeNull();
@@ -56,15 +56,14 @@ describe("作品の一覧", () => {
     expect(within(card).getByText("集英社")).toBeTruthy();
     expect(within(card).queryByText("漫画")).toBeNull();
     const other = (await screen.findByText("外付けの作品")).closest("li")!;
-    expect(within(other).getByText("全1巻")).toBeTruthy();
+    expect(within(other).getByText("既刊1巻")).toBeTruthy();
     expect(within(other).queryByText(/ファンタジー/)).toBeNull();
     expect(within((await screen.findByText("別の読み物")).closest("li")!).queryByText("小説")).toBeNull();
     // 別名は作品ページで見る(一覧のカードには出さない)
     expect(within(card).queryByText(/別名/)).toBeNull();
     expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1/titles");
     expect(screen.getByText(/統合の提案が 1 件/).closest("a")!.getAttribute("href")).toBe("#/works/proposals");
-    // 巻の一覧と行き来できる
-    expect(screen.getByRole("link", { name: "巻" }).getAttribute("href")).toBe("#/volumes");
+    // 巻の一覧は廃止した
   });
 
   it("ヘッダーに重複の候補・情報を補完・表紙を作る・名寄せを取り直すを置かない(管理のデータ管理タブに集約)", async () => {
@@ -109,8 +108,8 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     expect(await screen.findByRole("heading", { name: "タイトル一覧(5)" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "サンプル漫画" })).toBeTruthy();
     const items = [...document.querySelectorAll<HTMLElement>(".title-list .title-item")];
-    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻
-    expect(items.map((li) => li.querySelector(".title-number")!.textContent)).toEqual(["1巻", "2巻", "3巻", "4巻", "5巻"]);
+    // 1巻(重複 2 冊)・2巻・欠けの 3巻・4巻・最新巻の 5巻。巻番号の列は出さない(巻名に番号が含まれるため)
+    expect(items.every((li) => li.querySelector(".title-number") === null)).toBe(true);
     expect(items.map((li) => li.querySelector(".volume-title")!.textContent)).toEqual([
       "サンプル漫画 第1巻", "サンプル漫画 第2巻", "サンプル漫画 第3巻", "サンプル漫画 第4巻", "サンプル漫画 第5巻",
     ]);
@@ -232,6 +231,7 @@ describe("作品の検索と絞り込み(#56)", () => {
   it("クエリ文字列は空の値を付けない", () => {
     expect(workQueryString({})).toBe("");
     expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
+    expect(workQueryString({ read_later: true, link_pending: true, pending_proposals: true })).toBe("?read_later=1&link_pending=1&pending_proposals=1");
     expect(normalizeSearch("ＯＫＩ カクｶｸ・x")).toBe("okiかくかくx");
   });
 
@@ -250,6 +250,29 @@ describe("作品の検索と絞り込み(#56)", () => {
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
     await waitFor(() => expect(cardTitles()).toHaveLength(3));
     expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
+  });
+
+  it("候補の確認待ち・統合の提案で絞り込める", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect(cardTitles()).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
+    // 候補の確認待ちはサンプル漫画だけ(NDL・AniList の pending)
+    fireEvent.click(screen.getByLabelText("候補の確認待ちだけ"));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
+    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
+    expect(screen.getByText(/1 件 \/ 全 3 作品/)).toBeTruthy();
+    // 提案の絞り込みを足すと、両方の条件で絞られ 0 件になる(サンプル漫画に提案は無い)
+    fireEvent.click(screen.getByLabelText("統合の提案だけ"));
+    await waitFor(() => expect(cardTitles()).toEqual([]));
+    // 候補の確認待ちを外すと提案の 2 作品だけになる
+    fireEvent.click(screen.getByLabelText("候補の確認待ちだけ"));
+    await waitFor(() => expect([...cardTitles()].sort()).toEqual(["別の読み物", "外付けの作品"]));
+    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
+    // 提案の絞り込みも外すと全部戻る
+    fireEvent.click(screen.getByLabelText("統合の提案だけ"));
+    await waitFor(() => expect(cardTitles()).toHaveLength(3));
   });
 
   it("絞り込みは開いたときだけ出て、読書状態と項目で絞れる", async () => {

@@ -5,7 +5,6 @@ import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
 import { ReadLaterButton } from "./ReadLaterButton";
-import { ViewTabs } from "./ViewTabs";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
@@ -89,14 +88,16 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   }, [text]);
 
   const setFilter = (name: keyof WorkQuery, value: string) => setQuery((cur) => ({ ...cur, [name]: value || undefined }));
-  const setReadLaterOnly = (on: boolean) => setQuery((cur) => (on ? { ...cur, read_later: true } : { ...cur, read_later: undefined }));
+  const setOnly = (name: "read_later" | "link_pending" | "pending_proposals", on: boolean) =>
+    setQuery((cur) => (on ? { ...cur, [name]: true } : { ...cur, [name]: undefined }));
   const clearAll = () => {
     setText("");
     setQuery({});
   };
 
   const selectable = FILTER_NAMES.filter((n) => !(n in fixed));
-  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0) + (query.read_later ? 1 : 0);
+  const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0)
+    + (query.read_later ? 1 : 0) + (query.link_pending ? 1 : 0) + (query.pending_proposals ? 1 : 0);
   const filtering = activeFilters > 0 || !!query.q?.trim();
 
   return (
@@ -104,7 +105,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       <header className="library-header">
         <h1>{scopeTitle(scope)}</h1>
       </header>
-      {scope.by === "all" && <ViewTabs current="works" />}
+
       {(scope.by === "author" || scope.by === "tag" || scope.by === "publisher") && (
         <p className="scope-back"><a className="back-link" href={facetListHref(scope.by)}>‹ {FILTER_LABELS[scope.by]}の一覧へ</a></p>
       )}
@@ -159,8 +160,24 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
             <label className="work-filter-check">
               <input
                 type="checkbox"
+                checked={!!query.link_pending}
+                onChange={(e) => setOnly("link_pending", e.target.checked)}
+              />
+              候補の確認待ちだけ
+            </label>
+            <label className="work-filter-check">
+              <input
+                type="checkbox"
+                checked={!!query.pending_proposals}
+                onChange={(e) => setOnly("pending_proposals", e.target.checked)}
+              />
+              統合の提案だけ
+            </label>
+            <label className="work-filter-check">
+              <input
+                type="checkbox"
                 checked={!!query.read_later}
-                onChange={(e) => setReadLaterOnly(e.target.checked)}
+                onChange={(e) => setOnly("read_later", e.target.checked)}
               />
               後で読むだけ
             </label>
@@ -183,7 +200,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       {data && data.total > 0 && data.works.length === 0 && !filtering && scope.by !== "all" && (
         <p className="muted">この条件の作品はありません。</p>
       )}
-      {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります(「巻」の表示にあります)。</p>}
+      {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります。</p>}
       <ul className="work-grid">
         {data?.works.map((w) => {
           const missing = missingLabel(w);
@@ -206,7 +223,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                   {w.publisher && <span className="volume-meta">{w.publisher}</span>}
                   <span className="work-badges">
                     <span className="badge volume-count-badge">
-                      全{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
+                      既刊{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
                     </span>
                     {missing.text && (
                       <span className="badge" title={missing.title}>
