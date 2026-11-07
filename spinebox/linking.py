@@ -29,6 +29,7 @@ from .analysis import compute_findings
 from .config import MetadataSettings
 from .metadata import MetadataService, SearchQuery
 from .metadata.model import SearchOutcome
+from .metadata.match import is_romaji_word
 from .naming import normalize_title
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -177,10 +178,7 @@ def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
     top = shown[0]["summary"]["score"]
     second = shown[1]["summary"]["score"] if len(shown) > 1 else 0.0
     margin = round(top - second, 4)
-    auto_min = AUTO_LINK_MIN
-    if title_is_romaji and shown and _has_cjk(shown[0]["summary"].get("title") or ""):
-        auto_min = 0.6
-    if top >= auto_min and margin >= LINK_MARGIN and not hold:
+    if top >= AUTO_LINK_MIN and margin >= LINK_MARGIN and not hold:
         return "linked", shown[0], shown, margin
     return "pending", None, shown, margin
 
@@ -227,7 +225,8 @@ def _context(c: sqlite3.Connection, work_id: int) -> _Context:
 
 def _query(source: str, ctx: _Context) -> SearchQuery:
     title = ctx.title
-    if title and " " not in title and re.search(r"[A-Za-z]", title):
+    if (title and not re.search(r"\s", title) and is_romaji_word(title)
+            and re.match(r"[A-Z][a-z]", title)):
         split = re.sub(r"([a-z])([A-Z])", r"\1 \2", title)
         split = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", split)
         if split != title:

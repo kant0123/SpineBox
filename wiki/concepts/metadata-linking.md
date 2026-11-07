@@ -24,7 +24,7 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 **スキャン・閲覧・編集はネットワークに触らない**(CLAUDE.md「取得失敗でスキャンと閲覧を止めない」)。`apply_work` は連携の中身(保存済み)の純関数なので、
 スキャンで巻が増えれば `apply_all` が新しい巻へ書誌を入れ、連携を外せば公開 DB 由来の値だけが消える。
 
-## 連携の決め方(`spinebox/linking.py:167 decide()`)
+## 連携の決め方(`spinebox/linking.py:163 decide()`)
 
 - 取得元ごとに 1 作品 1 行(`work_links`: `status` = `linked` / `pending` / `none`)。`manual` は利用者が選んだ連携
 - **自動で連携するのは、最良候補の確からしさ ≥ 0.75 かつ 2 位との差 ≥ 0.15**(`AUTO_LINK_MIN` / `LINK_MARGIN`)。足りなければ `pending`(確認待ち)で、0.5 以上の候補を最大 5 件見せる。

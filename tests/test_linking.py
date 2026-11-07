@@ -1005,3 +1005,24 @@ def test_english_values_already_in_the_db_turn_japanese_at_startup_but_manual_on
     f = client.get(f"/api/works/{wid}").json()["fields"]
     assert "ドラマ" in f["genres"]["value"] and "Drama" not in f["genres"]["value"]
     assert (f["tags"]["value"], f["tags"]["manual"]) == (["Drama", "My Tag"], True)
+
+
+# --- CamelCase のローマ字作品名の分割 (#195) ----------------------------------------------
+
+
+def test_query_splits_camel_case_romaji_title():
+    from spinebox.linking import _Context, _query
+    ctx = _Context("KakukakuShikajika", None, None, [])
+    assert _query("anilist", ctx).title == "Kakukaku Shikajika"
+
+    # 日本語混じりや英字を含む日本語作品名は誤分割しない
+    ctx_spy = _Context("SPYxFAMILY", None, None, [])
+    assert _query("anilist", ctx_spy).title == "SPYxFAMILY"
+
+
+def test_decide_threshold_is_not_loosened_for_ambiguous_matches():
+    from spinebox.linking import decide
+    # スコア 0.65 の曖昧一致候補は、単一候補であっても自動連携せず pending に留める
+    cand = [{"summary": {"source_id": "1", "score": 0.65, "title": "日本語タイトル", "kind": "manga"}}]
+    status, _, _, _ = decide(cand, "manga", hold=False, title_is_romaji=True)
+    assert status == "pending"
