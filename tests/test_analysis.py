@@ -337,7 +337,7 @@ def test_analyze_next_processes_one_volume_at_a_time(make_settings, library, nes
         "AND container_path IS NOT NULL")}
     assert set(rows) == {"inner1", "inner2", "inner3", "set v01-03"} and len(done) == 4
     assert rows["inner3"]["analyzed_version"] == "error" and "未対応" in rows["inner3"]["analysis_error"]
-    assert rows["inner1"]["analysis_error"] is None and rows["inner1"]["analyzed_version"].startswith("1:")
+    assert rows["inner1"]["analysis_error"] is None and rows["inner1"]["analyzed_version"].startswith("2:")
     assert conn.execute("SELECT COUNT(*) FROM volumes WHERE parent_id IS NOT NULL").fetchone()[0] == 3
     conn.close()
 
@@ -372,3 +372,26 @@ def test_background_analysis_is_off_by_default(make_client, nested_lib):
     with c:
         c.post("/api/scan")
         assert titles(c) == ["set v01-03"]
+
+
+def test_analyze_excludes_non_content_and_cover_only_folders_in_inner_archive(make_client, tmp_path):
+    """内側アーカイブの分解で非コンテンツディレクトリと表紙のみフォルダは子の巻にならない。"""
+    from conftest import page_bytes, write_zip, zip_bytes
+    lib = tmp_path / "lib"
+    inner = zip_bytes([
+        ("Vol1/001.jpg", page_bytes("v1/001")),
+        ("Vol1/002.jpg", page_bytes("v1/002")),
+        ("Vol2/001.jpg", page_bytes("v2/001")),
+        ("Vol2/002.jpg", page_bytes("v2/002")),
+        ("__MACOSX/ghost.jpg", page_bytes("mac")),
+        ("CoverOnly/cover.jpg", page_bytes("cover")),
+        ("CoverOnly/front_cover.jpg", page_bytes("cover2")),
+    ])
+    write_zip(lib / "parent.zip", [("inner.zip", inner)])
+    c, _ = make_client(lib)
+    c.post("/api/scan")
+    (parent,) = listed(c)
+    r = c.post(f"/api/volumes/{parent['id']}/analyze")
+    assert r.status_code == 200
+    titles = [ch["title"] for ch in r.json()["children"]]
+    assert titles == ["Vol1", "Vol2"]

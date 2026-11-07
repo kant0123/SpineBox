@@ -158,6 +158,7 @@ _DECIMAL_VOLUME = re.compile(r"\s*(?:第\s*)?\d{1,4}\.\d{1,3}\s*[巻話]\s*$")
 # 作品名として使えない、中身の無い名前
 _JUNK_RAW = (
     "cover", "covers", "image", "images", "img", "raw", "scan", "scans", "page", "pages", "jpg", "jpeg", "png",
+    "oebps", "ops", "metainf", "epub",
     "newfolder", "新しいフォルダ", "新しいフォルダー", "無題", "untitled", "download", "downloads", "comic", "comics",
     "manga", "漫画", "マンガ", "コミック",
 )

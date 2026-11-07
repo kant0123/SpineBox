@@ -34,8 +34,8 @@ from .archive.base import detect_format, inner_reader_problem
 from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
 from .config import Settings
-from .pages import is_image, natural_key, page_sort_key, sort_pages
-from .scanner import record_issues, resolve_source_path, root_is_accessible
+from .pages import is_cover, is_image, natural_key, page_sort_key, sort_pages
+from .scanner import _is_non_content_path, record_issues, resolve_source_path, root_is_accessible
 
 
 class VolumeNotFound(Exception):
@@ -459,9 +459,13 @@ def _units(found, container: str) -> list[analysis.Unit]:
     """
     groups: dict[analysis.UnitKey, list[str]] = {}
     for _, e, chain, _ in found:
+        if _is_non_content_path(e.parent):
+            continue
         groups.setdefault((chain, e.parent), []).append(e.name)
     units = []
     for (chain, prefix), names in groups.items():
+        if all(is_cover(n) for n in names):
+            continue
         if prefix:
             title = PurePosixPath(prefix.rstrip("/")).name
         else:
