@@ -20,7 +20,7 @@ export function WorkCoverPlaceholder() {
  *
  * kind が null(未割り当ての巻など)は漫画扱い。
  */
-function landscapeClass(kind: WorkKind | null | undefined, ar: number): string {
+export function landscapeClass(kind: WorkKind | null | undefined, ar: number): string {
   if (ar > 2.0) return "landscape-contain";
   if (ar > 1.2) return kind === "novel" ? "landscape-right" : "landscape-left";
   return "";
