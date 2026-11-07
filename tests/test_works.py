@@ -502,14 +502,35 @@ def test_alias_with_manual_title_only_proposes(make_env):
     assert p["rule"] == "alias" and p["status"] == "open" and len(by_title(client)) == 2
 
 
-def test_container_alias_matching_a_title_is_only_a_proposal(make_env):
+def test_container_alias_matching_a_title_auto_merges_without_manual(make_env):
+    """外側アーカイブ名の別名と作品名が完全一致する組は、手動が絡まなければ自動統合する(#214)。"""
     lib, _, client = make_env(["かくかくしかじか 第03巻.cbz"], scan=False)
+    write_zip(lib / "[東村アキコ] かくかくしかじか 第01-02巻.zip", [
+        (f"Kakukaku Shikajika v0{n}/{i}.jpg", page_bytes(f"k{n}{i}")) for n in (1, 2) for i in range(2)])
+    client.post("/api/scan")
+    assert len(by_title(client)) == 1
+    (w,) = client.get("/api/works").json()["works"]
+    assert w["title"] == "かくかくしかじか" and w["volume_count"] == 3
+    assert client.get("/api/works/proposals").json() == []
+    applied = client.get("/api/works/proposals?status=applied").json()
+    assert len(applied) == 1
+    p = applied[0]
+    assert p["rule"] == "alias" and p["confidence"] == 0.9
+    assert p["evidence"]["alias"]["alias_confidence"] == 0.5
+
+
+def test_container_alias_matching_a_title_stays_open_when_manual(make_env):
+    """外側アーカイブ名の別名と作品名が一致しても、手動の決定が絡む組は自動統合せず確認待ち(0.9)のまま残す(#214)。"""
+    lib, _, client = make_env(["かくかくしかじか 第03巻.cbz"])
+    wid = by_title(client)["かくかくしかじか"]["id"]
+    client.patch(f"/api/works/{wid}", json={"title": "かくかくしかじか"})  # 手動の作品名
     write_zip(lib / "[東村アキコ] かくかくしかじか 第01-02巻.zip", [
         (f"Kakukaku Shikajika v0{n}/{i}.jpg", page_bytes(f"k{n}{i}")) for n in (1, 2) for i in range(2)])
     client.post("/api/scan")
     assert len(by_title(client)) == 2
     (p,) = client.get("/api/works/proposals").json()
-    assert p["rule"] == "alias" and p["confidence"] == 0.5
+    assert p["rule"] == "alias" and p["status"] == "open" and p["confidence"] == 0.9
+    assert p["evidence"]["alias"]["alias_confidence"] == 0.5
 
 
 # --- 手動の編集 ----------------------------------------------------------------------------------

@@ -684,6 +684,7 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
     作品名どうし・作品名と別名の一致、または確かな出所(外側の名前以外)の別名どうしの一致を拾う。
     外側のアーカイブ名から付けた別名どうし(`Collection` など)の一致は拾わない。
     """
+    active = {st.assign[v]["work_id"] for v in st.listed if v in st.assign}
     holders: dict[str, list[int]] = defaultdict(list)
     for w in st.works.values():
         for norm in w.names:
@@ -707,7 +708,22 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
                 # 同じ公開 DB 項目に linked した組は「同じ作品である証拠」(#167)。別名の確信度で 0.9 に届かなくても
                 # 0.9 として扱い、手動の決定が絡まなければ自動統合する。元の確信度は alias_confidence に残す
                 shared = sorted(st.links.get(x, set()) & st.links.get(y, set()))
-                eff = max(conf, AUTO_MERGE_MIN) if shared else conf
+                # 外側アーカイブ名由来の別名が、別の作品の作品名と完全一致する場合も同じ作品の証拠と扱う(#214)。
+                # _container_aliases は 1 作品しか入らないソースにしか別名を付けないので、作品名との完全一致は
+                # 誤統合のリスクが低い。元の別名の確信度(0.5)は alias_confidence に残す。
+                # ただし、両方の作品が見えている巻を持っている(active)場合に限る。空になった作品は巻の組み替えの
+                # 残骸であり、単巻ファイル名由来の別名で自動統合すると過去の別名・提案を現役作品へ誤って引き継ぐため。
+                container_alias_matches_title = (
+                    (x in active and y in active)
+                    and (
+                        (nx.is_title and not ny.is_title and ny.source == SOURCE_CONTAINER)
+                        or (ny.is_title and not nx.is_title and nx.source == SOURCE_CONTAINER)
+                    )
+                )
+                if shared or container_alias_matches_title:
+                    eff = max(conf, AUTO_MERGE_MIN)
+                else:
+                    eff = conf
                 key = (x, y)
                 if key not in out or eff > out[key]["confidence"]:
                     out[key] = {"norm": norm, "confidence": round(eff, 3), "alias_confidence": round(conf, 3),

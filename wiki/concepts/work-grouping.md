@@ -68,7 +68,11 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
    確信度になるので、同じ項目に linked した 2 作品どうしも「同じ作品」の証拠になる(弱い連携なら確認待ちになるだけ)。
    両方の作品が同じ取得元・同じ公開 DB 項目(`source`・`source_id`)に linked している場合、その別名一致を
    確信度 0.9 として扱い、手動の決定が絡まなければ自動統合する(`_alias_evidence` が `work_links` の一致で引き上げる)。
-   元の別名の確信度は `alias_confidence` として根拠に残し、選んだ項目も `shared_item` に残す
+   元の別名の確信度は `alias_confidence` として根拠に残し、選んだ項目も `shared_item` に残す。
+   また、外側アーカイブ名由来の別名(`source=container`)が別の作品の作品名と完全一致する場合も、
+   確信度 0.9 として扱い、手動の決定が絡まなければ自動統合する(#214。外側アーカイブ名の別名は
+   そのソースに 1 作品しか入っていないときだけ付けるため誤統合のリスクが低く、元の確信度 0.5 は
+   `alias_confidence` に残す)
 
 確信度が 0.9 以上で、**どちらの作品にも手動の決定(手で直した作品名・著者・手動の巻の割り当て・手動で選んだ公開 DB の連携)が絡まない**ものだけ自動で統合する(`AUTO_MERGE_MIN`)。
 0.5 以上 0.9 未満、または手動が絡むものは提案(`open`)にして、利用者が「同じ作品として統合」/「別の作品」を選ぶ。0.5 未満は出さない。
@@ -97,8 +101,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1171 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1191 build_slots()` は
+`spinebox/works.py:1187 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1207 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
