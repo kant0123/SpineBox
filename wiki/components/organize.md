@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
-updated: 2026-11-06
+updated: 2026-11-07
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs, manga-reader]
 ---
 
@@ -60,7 +60,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 置き場は `spinebox/config.py:134 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:287 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:306 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
