@@ -898,3 +898,83 @@ def test_sync_does_not_touch_unnumbered_volume_rows(make_env):
     after = [tuple(r) for r in rows(settings, "SELECT id, updated_at FROM volumes ORDER BY id")]
     assert after == before
 
+
+
+def test_dismiss_junk_aliases_and_cleanup_junk_work_contamination(make_env):
+    """JUNK_NAMES の別名や、タイトルがジャンクな作品に付いた別名・open提案をクリーンアップする(#215)。"""
+    _, settings, client = make_env(["作品A v01.cbz", "作品B v01.cbz"])
+    ws = by_title(client)
+    wa = ws["作品A"]["id"]
+    wb = ws["作品B"]["id"]
+    conn = db.connect(settings.db_path)
+    now = db.now()
+    try:
+        with db.transaction(conn) as c:
+            # 1. 正常な作品 A に誤って oebps の別名が付いている
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, 'OEBPS', 'oebps', 'container', 0, 0.5, ?)""", (wa, now))
+            # 手動の別名(手動で付けたものは残す)
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, 'manual_junk', 'cover', 'manual', 1, 1.0, ?)""", (wa, now))
+
+            # 2. タイトルが OEBPS であるジャンク作品が存在し、別名に作品Bの名前が付いている
+            junk_id = c.execute("INSERT INTO works (created_at, updated_at) VALUES (?, ?)", (now, now)).lastrowid
+            c.execute("""INSERT INTO work_fields (work_id, field, value, source, manual, confidence, evidence, updated_at)
+                         VALUES (?, 'title', 'OEBPS', 'filename', 0, 0.9, '{}', ?)""", (junk_id, now))
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, '作品B', '作品b', 'container', 0, 0.5, ?)""", (junk_id, now))
+
+            # 3. ジャンク作品との open な統合提案が存在する
+            c.execute("""INSERT INTO work_merge_proposals (work_a, work_b, rule, confidence, evidence, status, created_at)
+                         VALUES (?, ?, 'alias', 0.5, '{}', 'open', ?)""", (junk_id, wb, now))
+    finally:
+        conn.close()
+
+    # sync 実行
+    client.post("/api/works/refresh")
+
+    conn = db.connect(settings.db_path)
+    try:
+        # wa の oebps 自動別名は dismissed_at が入っている
+        r1 = conn.execute("SELECT dismissed_at FROM work_aliases WHERE work_id = ? AND norm = 'oebps'", (wa,)).fetchone()
+        assert r1["dismissed_at"] is not None
+
+        # wa の手動別名は dismissed_at が NULL のまま
+        r2 = conn.execute("SELECT dismissed_at FROM work_aliases WHERE work_id = ? AND norm = 'cover'", (wa,)).fetchone()
+        assert r2["dismissed_at"] is None
+
+        # junk_id の「作品B」別名(norm="作品b")も dismissed_at が入っている
+        r3 = conn.execute("SELECT dismissed_at FROM work_aliases WHERE work_id = ? AND norm = '作品b'", (junk_id,)).fetchone()
+        assert r3["dismissed_at"] is not None
+
+        # junk_id と wb の open 提案は削除されている
+        props = conn.execute("SELECT * FROM work_merge_proposals WHERE work_a = ? OR work_b = ?", (junk_id, junk_id)).fetchall()
+        assert len(props) == 0
+    finally:
+        conn.close()
+
+
+def test_junk_names_are_not_used_as_alias_evidence_or_container_aliases(make_env):
+    """JUNK_NAMES が別名一致の統合提案やコンテナ別名として登録されないこと(#215)。"""
+    _, settings, client = make_env(["作品X v01.cbz", "作品Y v01.cbz"])
+    ws = by_title(client)
+    wx = ws["作品X"]["id"]
+    wy = ws["作品Y"]["id"]
+    conn = db.connect(settings.db_path)
+    now = db.now()
+    try:
+        with db.transaction(conn) as c:
+            # 両方の作品に手動で同じ JUNK_NAMES (cover) の別名を付ける(manual = 1 なので dismiss されない)
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, 'cover', 'cover', 'manual', 1, 1.0, ?)""", (wx, now))
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, 'cover', 'cover', 'manual', 1, 1.0, ?)""", (wy, now))
+    finally:
+        conn.close()
+
+    # 再計算
+    client.post("/api/works/refresh")
+
+    # cover で一致していても、JUNK_NAMES なので提案は生成されない
+    props = client.get("/api/works/proposals").json()
+    assert not any(p["work_a"]["title"] in ("作品X", "作品Y") and p["work_b"]["title"] in ("作品X", "作品Y") for p in props)

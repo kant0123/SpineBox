@@ -1,3 +1,7 @@
+## [2026-11-08] ingest | PR #215 fix: EPUB構造名(OEBPS等)による巻生成と名寄せ汚染の防止・クリーンアップ
+- 更新: [[work-grouping]], [[backend]]
+- 備考: scanner._NON_CONTENT_DIRS に oebps, ops, metainf, epub, mimetype を追加し SCAN_VERSION を 7、ANALYSIS_VERSION を 3 に引き上げ。naming.JUNK_NAMES を公開し、works.py の _container_aliases, _alias_evidence でスキップ。sync() 冒頭でジャンク名別名およびタイトルがジャンク名である作品の自動別名を dismiss し、open 提案を削除。
+
 # Log
 
 Wiki に対して何を・いつ行ったかの追記専用ログ。**新しいエントリは末尾に足す**(既存行は書き換えない)。

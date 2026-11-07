@@ -158,7 +158,7 @@ _DECIMAL_VOLUME = re.compile(r"\s*(?:第\s*)?\d{1,4}\.\d{1,3}\s*[巻話]\s*$")
 # 作品名として使えない、中身の無い名前
 _JUNK_RAW = (
     "cover", "covers", "image", "images", "img", "raw", "scan", "scans", "page", "pages", "jpg", "jpeg", "png",
-    "oebps", "ops", "metainf", "epub",
+    "oebps", "ops", "metainf", "meta-inf", "epub", "mimetype",
     "newfolder", "新しいフォルダ", "新しいフォルダー", "無題", "untitled", "download", "downloads", "comic", "comics",
     "manga", "漫画", "マンガ", "コミック",
 )
@@ -189,6 +189,10 @@ def normalize_title(text: str) -> str:
 
 
 _JUNK_NAMES = frozenset(normalize_title(x) for x in _JUNK_RAW)
+
+# 公開: 巻・作品名として使えない名前(EPUB の構造名・汎用名など)の正規化済み集合。
+# works.py などが別名・作品の汚染を防ぐために参照する。
+JUNK_NAMES = _JUNK_NAMES
 
 # 数を数えただけの名前(`57 files` `4 cover`)。配布元の接頭辞を落とすと残る、ファイル数・ページ数の
 # 見出しで、作品名ではない。実データでは `DLRAW.AC_57_files` が「57 files」になり、1〜109 files などの

@@ -337,7 +337,7 @@ def test_analyze_next_processes_one_volume_at_a_time(make_settings, library, nes
         "AND container_path IS NOT NULL")}
     assert set(rows) == {"inner1", "inner2", "inner3", "set v01-03"} and len(done) == 4
     assert rows["inner3"]["analyzed_version"] == "error" and "未対応" in rows["inner3"]["analysis_error"]
-    assert rows["inner1"]["analysis_error"] is None and rows["inner1"]["analyzed_version"].startswith("2:")
+    assert rows["inner1"]["analysis_error"] is None and rows["inner1"]["analyzed_version"].startswith("3:")
     assert conn.execute("SELECT COUNT(*) FROM volumes WHERE parent_id IS NOT NULL").fetchone()[0] == 3
     conn.close()
 
@@ -384,6 +384,7 @@ def test_analyze_excludes_non_content_and_cover_only_folders_in_inner_archive(ma
         ("Vol2/001.jpg", page_bytes("v2/001")),
         ("Vol2/002.jpg", page_bytes("v2/002")),
         ("__MACOSX/ghost.jpg", page_bytes("mac")),
+        ("OEBPS/page.jpg", page_bytes("oebps")),
         ("CoverOnly/cover.jpg", page_bytes("cover")),
         ("CoverOnly/front_cover.jpg", page_bytes("cover2")),
     ])

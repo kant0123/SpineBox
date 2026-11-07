@@ -20,7 +20,7 @@ from . import db
 from .naming import NumberCandidate, parse_number
 
 # 巻の単位の見分け方・登録の仕方を変えたら上げる(解析済みの巻を開いたときに解析し直させる)
-ANALYSIS_VERSION = 2
+ANALYSIS_VERSION = 3
 
 # (内側アーカイブから単位のあるアーカイブまでの入れ子の名前, アーカイブ内のフォルダ(末尾 `/`。直下なら空))
 UnitKey = tuple[tuple[str, ...], str]
