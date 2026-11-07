@@ -29,6 +29,7 @@ from .analysis import compute_findings
 from .config import MetadataSettings
 from .metadata import MetadataService, SearchQuery
 from .metadata.model import SearchOutcome
+from .metadata.match import is_romaji_word
 from .naming import normalize_title
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -222,7 +223,14 @@ def _context(c: sqlite3.Connection, work_id: int) -> _Context:
 
 
 def _query(source: str, ctx: _Context) -> SearchQuery:
-    return SearchQuery(ctx.title, author=ctx.author, kind=ctx.kind, limit=NDL_LIMIT if source == "ndl" else None)
+    title = ctx.title
+    if (title and not re.search(r"\s", title) and is_romaji_word(title)
+            and re.match(r"[A-Z][a-z]", title)):
+        split = re.sub(r"([a-z])([A-Z])", r"\1 \2", title)
+        split = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", split)
+        if split != title:
+            title = split
+    return SearchQuery(title, author=ctx.author, kind=ctx.kind, limit=NDL_LIMIT if source == "ndl" else None)
 
 
 # --- 取得 ------------------------------------------------------------------------------------
@@ -404,7 +412,8 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
     with db.transaction(conn) as c:
         hold = source != "ndl" and kind_unresolved(c, work_id)
         # 種別が決まっていなければ絞らない(ほかの候補が消えるのを避ける)。決まっていれば違う種別の候補は除く
-        status, chosen, shown, margin = decide(cands, _context(c, work_id).kind, hold)
+        _rctx = _context(c, work_id)
+        status, chosen, shown, margin = decide(cands, _rctx.kind, hold)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin,
               "responses": prev.get("responses", []),
