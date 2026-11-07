@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type WorkKind } from "../api";
+import { api } from "../api";
 
 /** 表紙の無い作品カードの枠。表紙付きカードと高さを揃え、タイトルの位置をそろえる(#132)。 */
 export function WorkCoverPlaceholder() {
@@ -13,16 +13,14 @@ export function WorkCoverPlaceholder() {
 /**
  * 横長(見開き)の表紙の表示方針(#75 の続き)。
  * - ar > 2.0: 見開きが明らか → 全体を縮小表示(contain)して欠けを避ける
- * - 1.2 < ar <= 2.0: 横長 → 種別で寄せ位置を変える
- *   (漫画→左寄せ、小説→右寄せ。日本語は右綴じなので表紙側が残る想定。
- *    実データで逆の方が良ければ 1 行で切替可能)
+ * - 1.2 < ar <= 2.0: 横長 → 右寄せ(日本語は右綴じなので、見開きの右ページ=表紙側が残る)
  * - それ以外: 通常の cover(中央クロップ)
  *
- * kind が null(未割り当ての巻など)は漫画扱い。
+ * 漫画・小説とも右綴じなので、寄せ位置は右で統一する(agy レビュー #194 WARNING 1)。
  */
-export function landscapeClass(kind: WorkKind | null | undefined, ar: number): string {
+export function landscapeClass(ar: number): string {
   if (ar > 2.0) return "landscape-contain";
-  if (ar > 1.2) return kind === "novel" ? "landscape-right" : "landscape-left";
+  if (ar > 1.2) return "landscape-right";
   return "";
 }
 
@@ -31,7 +29,7 @@ export function landscapeClass(kind: WorkKind | null | undefined, ar: number): s
  * `placeholder` なら同じ大きさの枠を残す(作品カード。#132)。付けなければ何も出さない(文字だけのカードのまま)。
  * 表紙を作るのは管理のデータ管理タブ(#83)のジョブ。
  */
-export function WorkCover({ volumeId, placeholder = false, kind = null }: { volumeId: number; placeholder?: boolean; kind?: WorkKind | null }) {
+export function WorkCover({ volumeId, placeholder = false }: { volumeId: number; placeholder?: boolean }) {
   const [state, setState] = useState<"loading" | "ok" | "none">("loading");
   const [extraClass, setExtraClass] = useState("");
   useEffect(() => {
@@ -51,7 +49,7 @@ export function WorkCover({ volumeId, placeholder = false, kind = null }: { volu
         const w = img.naturalWidth;
         const h = img.naturalHeight;
         if (w > 0 && h > 0) {
-          const cls = landscapeClass(kind, w / h);
+          const cls = landscapeClass(w / h);
           if (cls) setExtraClass(cls);
         }
         setState("ok");

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { api, ApiError, type WorkDetail, type WorkKind } from "../api";
+import { api, ApiError, type WorkDetail } from "../api";
 import { readHref, workHref, worksHref } from "../route";
 import { KIND_TEXT } from "./labels";
 import {
@@ -75,7 +75,7 @@ export function WorkTitles({ id }: { id: string }) {
     const body = (
       <>
         <span className="title-cover">
-          <WorkCover volumeId={row.primary.id} kind={work.kind} />
+          <WorkCover volumeId={row.primary.id} />
         </span>
         <span className="title-number">{row.label}</span>
         <span className="title-body">
@@ -202,13 +202,13 @@ export function WorkTitles({ id }: { id: string }) {
           </p>
         )}
       </section>
-      {picking && <DuplicatePicker row={picking} kind={work.kind} opener={opener.current} onClose={() => setPicking(null)} />}
+      {picking && <DuplicatePicker row={picking} opener={opener.current} onClose={() => setPicking(null)} />}
     </div>
   );
 }
 
 /** 重複した巻(同じ巻番号の別スキャン)から、読む巻を選ぶモーダル(#115) */
-function DuplicatePicker({ row, kind, opener, onClose }: { row: OwnedTitleRow; kind?: WorkKind | null; opener: HTMLElement | null; onClose: () => void }) {
+function DuplicatePicker({ row, opener, onClose }: { row: OwnedTitleRow; opener: HTMLElement | null; onClose: () => void }) {
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -257,7 +257,7 @@ function DuplicatePicker({ row, kind, opener, onClose }: { row: OwnedTitleRow; k
               {v.offline ? (
                 <span className="dup-choice">
                   <span className="title-cover">
-                    <WorkCover volumeId={v.id} kind={kind} />
+                    <WorkCover volumeId={v.id} />
                   </span>
                   <span className="title-body">
                     <span className="volume-title">{v.title}</span>
@@ -269,7 +269,7 @@ function DuplicatePicker({ row, kind, opener, onClose }: { row: OwnedTitleRow; k
               ) : (
                 <a className="dup-choice" href={readHref(v.id)}>
                   <span className="title-cover">
-                    <WorkCover volumeId={v.id} kind={kind} />
+                    <WorkCover volumeId={v.id} />
                   </span>
                   <span className="title-body">
                     <span className="volume-title">{v.title}</span>

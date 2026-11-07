@@ -33,7 +33,8 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   (以前は「表紙を作る」の後に `?rev=` を付けて同じ画面で取り直していたが、作成を画面から起動しなくなったので廃止した)
 - **横長(見開き)の表紙の表示。** `WorkCover` が画像の読み込み後に `naturalWidth/Height` からアスペクト比を判定し、
   CSS クラスを付ける(`frontend/src/works/WorkCover.tsx`)。ar > 2.0 は `landscape-contain`(全体を縮小表示、欠けを避ける)、
-  1.2 < ar <= 2.0 は種別で `landscape-left`(漫画) / `landscape-right`(小説)。それ以外は既定の中央クロップ。
+  1.2 < ar <= 2.0 は `landscape-right`(右寄せ。日本語は右綴じなので表紙側=右ページが残る)。それ以外は既定の中央クロップ。
+  (agy レビュー #194 WARNING 1 で、当初の「漫画→左寄せ」を「右寄せ」に修正。裏表紙側が表示されるのを避けるため)
   しきい値と方向は実データ(お気楽領主は全巻縦長、かくかくしかじかは 4 巻中 3 巻が横長 ar 1.41〜2.21)を根拠にした仮定で、
   日本語の右綴じを考慮して漫画・小説とも右寄せが正しい可能性がある(その場合は 1 行で切替)。
 

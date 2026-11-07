@@ -27,7 +27,7 @@ function Row({ item }: { item: BookmarkItem }) {
     return (
       <li className="bookmark-row">
         <a className="bookmark-main" href={workHref(w.id)}>
-          {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} kind={w.kind} />}
+          {w.cover_volume_id !== null && <WorkCover volumeId={w.cover_volume_id} />}
           <span className="work-text">
             <span className="badge kind-badge">作品</span>
             <span className="volume-title">{w.title}</span>
