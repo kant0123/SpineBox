@@ -5,7 +5,6 @@ import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
 import { ReadLaterButton } from "./ReadLaterButton";
-import { ViewTabs } from "./ViewTabs";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
@@ -106,7 +105,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       <header className="library-header">
         <h1>{scopeTitle(scope)}</h1>
       </header>
-      {scope.by === "all" && <ViewTabs current="works" />}
+
       {(scope.by === "author" || scope.by === "tag" || scope.by === "publisher") && (
         <p className="scope-back"><a className="back-link" href={facetListHref(scope.by)}>‹ {FILTER_LABELS[scope.by]}の一覧へ</a></p>
       )}
@@ -201,7 +200,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       {data && data.total > 0 && data.works.length === 0 && !filtering && scope.by !== "all" && (
         <p className="muted">この条件の作品はありません。</p>
       )}
-      {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります(「巻」の表示にあります)。</p>}
+      {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります。</p>}
       <ul className="work-grid">
         {data?.works.map((w) => {
           const missing = missingLabel(w);

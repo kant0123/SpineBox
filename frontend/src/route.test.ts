@@ -7,7 +7,7 @@ describe("parseRoute", () => {
   it("一覧とリーダーを見分ける", () => {
     expect(parseRoute("")).toEqual(HOME);
     expect(parseRoute("#/")).toEqual(HOME);
-    expect(parseRoute("#/volumes")).toEqual({ name: "library" });
+    expect(parseRoute("#/volumes")).toEqual(HOME);
     expect(parseRoute("#/read/12")).toEqual({ name: "read", id: "12" });
     expect(parseRoute("#/read/12/")).toEqual({ name: "read", id: "12" });
   });
