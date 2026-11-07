@@ -9,7 +9,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
 入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:963 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:984 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:18 WorkCover()`。
+`spinebox/app.py:984 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:32 WorkCover()`。
 
 ## 内容
 
@@ -31,6 +31,11 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   変わらないので、同じ行のタイトル位置がそろう。タイトル一覧・ブックマークの表紙は今までどおり何も出さない。
   サーバーは `ETag` + `Cache-Control: private, no-cache` なので、表紙を作った後に画面を開き直すと取り直す
   (以前は「表紙を作る」の後に `?rev=` を付けて同じ画面で取り直していたが、作成を画面から起動しなくなったので廃止した)
+- **横長(見開き)の表紙の表示。** `WorkCover` が画像の読み込み後に `naturalWidth/Height` からアスペクト比を判定し、
+  CSS クラスを付ける(`frontend/src/works/WorkCover.tsx`)。ar > 2.0 は `landscape-contain`(全体を縮小表示、欠けを避ける)、
+  1.2 < ar <= 2.0 は `landscape-right`(右寄せ。日本語は右綴じなので表紙側=右ページが残る)。それ以外は既定の中央クロップ。
+  (agy レビュー #194 WARNING 1 で、当初の「漫画→左寄せ」を「右寄せ」に修正。裏表紙側が表示されるのを避けるため)
+  しきい値と方向は実データ(お気楽領主は全巻縦長、かくかくしかじかは 4 巻中 3 巻が横長 ar 1.41〜2.21)を根拠にした仮定。
 
 ## なぜこうなっているか
 
