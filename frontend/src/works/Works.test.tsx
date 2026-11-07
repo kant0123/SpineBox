@@ -231,6 +231,7 @@ describe("作品の検索と絞り込み(#56)", () => {
   it("クエリ文字列は空の値を付けない", () => {
     expect(workQueryString({})).toBe("");
     expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
+    expect(workQueryString({ read_later: true })).toBe("?read_later=1");
     expect(normalizeSearch("ＯＫＩ カクｶｸ・x")).toBe("okiかくかくx");
   });
 
