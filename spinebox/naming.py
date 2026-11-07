@@ -235,6 +235,7 @@ def parse_work_name(name: str) -> WorkName | None:
             parts.append(("tag", content))
         text = text[m.end():]
 
+    text, dropped = _strip_trailing_decor(text)  # 数字でない末尾の括弧・著者列を番号の読みから外す
     found = _find_number(text)
     number = found[0] if found else None
     if found:
@@ -257,7 +258,7 @@ def parse_work_name(name: str) -> WorkName | None:
         title = title[:m.start()]
     title = _TRAILING_NOTE.sub("", title)
     title = _DECIMAL_VOLUME.sub("", title)
-    title = _clean_title(title)
+    title = _clean_title(title).rstrip("[(").strip()
 
     # 作品名が空で、先頭の括弧が著者として読まれていたなら、その括弧が作品名(`[作品名] 第1巻`)
     if not title and first_other is not None:
@@ -301,8 +302,10 @@ def _strip_trailing_decor(text: str) -> tuple[str, str]:
         if m is None:
             break
         content = next(g for g in m.groups() if g is not None).strip()
-        if re.fullmatch(r"\d+", content):
-            break  # (3) は装飾ではなく番号として読ませる
+        if (re.fullmatch(r"\d+", content) or
+                re.fullmatch(r"(?:第\s*)?\d+\s*[巻卷話话]", content) or
+                re.fullmatch(r"\d+[-–—]\d+", content)):
+            break  # (3)・(3巻)・[1-27] は装飾ではなく番号として読ませる
         dropped.insert(0, text[m.start():].strip())
         text = text[:m.start()]
     return text, " ".join(dropped)

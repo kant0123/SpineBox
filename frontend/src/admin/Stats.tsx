@@ -1,7 +1,7 @@
 // 管理の統計タブ(#85)。数はすべて GET /api/stats(DB と展開キャッシュの今の状態)。蔵書の切り替えに従う。
 import { useEffect, useState } from "react";
 import { api, type CacheUsage, type LibraryStats } from "../api";
-import { duplicatesHref, volumesHref } from "../route";
+import { duplicatesHref } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { formatBytes, formatCount } from "./format";
 
@@ -63,7 +63,7 @@ export function Stats() {
       <h2>蔵書</h2>
       <ul className="stat-grid">
         <Tile label="作品" value={w.total} note={`漫画 ${formatCount(w.manga)} / 小説 ${formatCount(w.novel)} / 種別未定 ${formatCount(w.kind_unknown)}`} />
-        <Tile label="巻" value={v.total} note={`画像 ${formatCount(v.images)} / 小説 ${formatCount(v.novels)}`} href={volumesHref} />
+        <Tile label="巻" value={v.total} note={`画像 ${formatCount(v.images)} / 小説 ${formatCount(v.novels)}`} />
         <Tile label="ページ" value={pages.total} note={pages.unknown_volumes ? `ページ数未確定の巻 ${formatCount(pages.unknown_volumes)}` : "画像の巻の合計"} />
         <Tile label="オフラインの巻" value={v.offline} />
       </ul>
@@ -79,8 +79,8 @@ export function Stats() {
         <Tile label="情報の補完待ち" value={w.link_pending} note="公開 DB の候補の確認待ち" />
         <Tile label="欠けのある作品" value={w.with_missing} />
         <Tile label="表紙なし" value={w.no_cover} note="まだ表紙を作っていない作品" />
-        <Tile label="作品にならなかった巻" value={stats.unassigned_volumes} href={volumesHref} />
-        <Tile label="読めなかったもの" value={stats.scan_issues} note="すべての蔵書(前回のスキャン)" href={volumesHref} />
+        <Tile label="作品にならなかった巻" value={stats.unassigned_volumes} />
+        <Tile label="読めなかったもの" value={stats.scan_issues} note="すべての蔵書(前回のスキャン)" />
       </ul>
       <h2>キャッシュ</h2>
       <ul className="stat-grid">

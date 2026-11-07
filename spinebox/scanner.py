@@ -34,14 +34,18 @@ from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import parse_number
 from .novel import FORMAT_EPUB, novel_format
-from .novel.epub import scan_problems as epub_scan_problems
-from .pages import is_image
+from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
+from .pages import is_cover, is_image
 
 log = logging.getLogger(__name__)
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
 # 2: 巻の名前から番号の候補(number_*)を記録する(#30)
-SCAN_VERSION = 2
+# 3: 末尾の装飾・「卷」・小数点の巻の読み方を変えた(#167)
+# 4: 拡張子が .zip でも META-INF/container.xml を含むアーカイブを EPUB 小説として扱う(#178)
+# 5: アーカイブ内の非コンテンツディレクトリ(__MACOSX, META-INF 等)を巻にしない(#179)
+# 6: 表紙画像だけを含むフォルダを巻にしない(#180)
+SCAN_VERSION = 6
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -127,6 +131,18 @@ def resolve_source_path(root: Path, rel_path: str) -> Path:
     return Path(full)
 
 
+# 非コンテンツ(メタデータ・システム)のディレクトリ名。大文字小文字は区別しない。
+_NON_CONTENT_DIRS = frozenset({"__macosx", "meta-inf", ".ds_store"})
+
+
+def _is_non_content_path(prefix: str) -> bool:
+    """prefix(末尾 `/` 付きでも可)が非コンテンツディレクトリの下なら True。"""
+    if not prefix:
+        return False
+    parts = PurePosixPath(prefix.rstrip("/")).parts
+    return any(part.casefold() in _NON_CONTENT_DIRS for part in parts)
+
+
 def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[VolumeSpec], list[Skip]]:
     """検証済みの目次から巻の候補を切り出す。内側アーカイブは名前を見るだけ。"""
     specs: list[VolumeSpec] = []
@@ -134,10 +150,13 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
     seen_inner: set[str] = set()
     groups: dict[str, list] = defaultdict(list)
     for e in listing.entries:
-        if is_image(e.name):
+        if is_image(e.name) and not _is_non_content_path(e.parent):
             groups[e.parent].append(e)
     dirs = {d.name: d for d in listing.dirs}
     for prefix, pages in groups.items():
+        # 表紙画像だけのフォルダは巻にしない(#180)
+        if all(is_cover(e.name) for e in pages):
+            continue
         if prefix:
             defining = dirs.get(prefix) or min(pages, key=lambda e: e.index)
             title = PurePosixPath(prefix.rstrip("/")).name
@@ -148,6 +167,8 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
         specs.append(VolumeSpec(None, prefix, title, raw, enc, len(pages)))
     for e in listing.entries:
         if not is_archive_name(e.name):
+            continue
+        if _is_non_content_path(e.parent):  # 非コンテンツディレクトリ内の内側アーカイブは巻にしない
             continue
         problem = depth_problem(1, limits)
         if problem:
@@ -410,6 +431,14 @@ class Scanner:
             self._source_failed(root_id, str(path), rel, "folder",
                                 "読める画像が 1 枚も無い: " + "; ".join(s.reason for s in unreadable[:3]))
             return
+        # 表紙画像だけのフォルダは巻にしない(#180)
+        if all(is_cover(f) for f in readable):
+            with db.transaction(self.conn) as c:
+                src = self._upsert_source(c, root_id, rel, "folder")
+                self._replace_volumes(c, src["id"], [])
+                c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                          (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+            return
         name = path.name if rel else (root.name or str(root))
         spec = VolumeSpec(None, "", name, _fs_name_bytes(name), "filesystem", len(readable))
         with db.transaction(self.conn) as c:
@@ -436,6 +465,10 @@ class Scanner:
         try:
             with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
                 listing = list_entries(reader, self.settings.limits)
+            # 拡張子に関わらず、META-INF/container.xml を含むアーカイブは EPUB 小説として扱う(#178)
+            if any(e.name == EPUB_CONTAINER for e in listing.entries):
+                self._scan_novel(root_id, rel, path, FORMAT_EPUB)
+                return
             issues.extend(listing.skipped)
             specs, more = archive_volume_specs(listing, path.name, self.settings.limits)
             issues.extend(more)

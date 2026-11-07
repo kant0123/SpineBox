@@ -3,7 +3,7 @@
 import { DataJobs } from "../data/DataJobs";
 import { FollowManage } from "../follows/Follows";
 import { WorkProposals } from "../works/WorkProposals";
-import { duplicatesHref, inboxHref, organizeHistoryHref, volumesHref } from "../route";
+import { duplicatesHref, inboxHref, organizeHistoryHref } from "../route";
 
 /** データ管理: ジョブ(スキャン・補完・表紙など。#83)・整理(#84)と、ほかの画面への入口 */
 export function DataPanel({ focus }: { focus?: "organize" }) {
@@ -13,7 +13,6 @@ export function DataPanel({ focus }: { focus?: "organize" }) {
       <section className="admin-links-block" aria-labelledby="admin-links-title">
         <h2 id="admin-links-title">ほかの画面</h2>
         <ul className="admin-links">
-          <li><a href={volumesHref}>巻の一覧</a>(中の巻を調べる・CBZ に整理)</li>
           <li><a href={duplicatesHref}>重複の候補</a></li>
           <li><a href={inboxHref}>受け入れ</a>(受け入れフォルダ → 整理案 → 承認で書庫へ)</li>
           <li><a href={organizeHistoryHref}>整理の履歴</a>(元に戻す)</li>

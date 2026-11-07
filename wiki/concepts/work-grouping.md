@@ -24,8 +24,10 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   簡体字の巻表示・話表示(`卷` `话`)は正規の字(`巻` `話`)と同じに読む(`spinebox/naming.py _fold_chars`)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品
 - **小数点の巻は番号なしの巻として作品に入れる。** `第04.5巻` は整数の `number_start`/`number_end` で持てないので番号にせず
-  (`parse_number()` は小数点の内側の `5巻` を拾わない)、作品名にも残さない(`parse_work_name()` が末尾の `第N.M巻/話` を落とす)。
-  欠け巻・重複枠の計算には入れず、番号の読めない巻として扱う
+  (`parse_number()` は小数点の内側の `5巻` を拾わない)、作品名にも残さない(`parse_work_name()` が末尾の装飾
+  `(txt+jpg)` を落としてから `第N.M巻/話` を落とす)。欠け巻・重複枠の計算には入れず、番号の読めない巻として扱う。
+  既存 DB の小数点の巻番号は、名寄せの `_apply_trailing_numbers()` が `parse_number()` で読めない番号として消す
+  (スキャンし直さなくても直る。番号を持たない巻の行は触らないので冪等)
 - **数の数えた名前は作品名にしない。** 配布元の接頭辞(`DLRAW.AC_`)を落とすと残る `57 files` `4 cover` のような名前は、
   ファイル数・ページ数の見出しで、作品名ではない(`spinebox/naming.py _COUNT_NAME`)。実データ(#158)では 1〜109 files などの
   74 作品・184 巻がこれでできていた。自分の名前が読めないので、外側の名前(`あつまれ!ふしぎ研究部 第01-20巻.rar`)から
@@ -50,7 +52,10 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   (例: `作品名 01`)で、手動の決定(作品名・巻の割り当て・公開 DB の連携)が絡まないなら系列名の作品へ付け替える
   (`spinebox/works.py _leaves_numbered_work()`)。付け替え先も、番号付きの作品(系列名を別名で持つだけ)には寄せず、
   無ければ系列名の作品を作る。留まると 1 巻 = 1 作品のまま、同じ公開 DB 項目の別名一致が総当たりの確認待ちになる
-  (実データ 2026-11-06: 1187 作品・確認待ち 3949 件のうち、この形が 479 作品・65 シリーズ、3612 件がこれに絡んでいた)
+  (実データ 2026-11-06: 1187 作品・確認待ち 3949 件のうち、この形が 479 作品・65 シリーズ、3612 件がこれに絡んでいた)。
+  付け替え先が既存の系列名の作品でも、`_merge_links()` が公開 DB の連携をその作品へ移す(新設の側だけに置かない)。
+  また、小数点の巻を誤読して作った 1 巻の作品名(`… 第04`)は、手動でない・公開 DB が置き換えていない・末尾の番号を持たない
+  とき、`_refresh_title()` が今の系列名へ直す(スキャンし直さなくても直る)
 
 ## 統合の規則
 
@@ -91,8 +96,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1099 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1119 build_slots()` は
+`spinebox/works.py:1133 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1153 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
@@ -129,3 +134,5 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - [[volume-split]] — 巻番号の候補、分解された子の巻の扱い
 - [[organize]] — CBZ 化で作品の割り当てを引き継ぐ
 - [[work-search]] — 作品名・別名・著者・巻の名前の全文検索。正規化は `normalize_title` を共用
+
+
