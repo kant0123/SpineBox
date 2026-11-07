@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 小説(EPUB・テキスト)の巻と縦書きリーダー。EPUB の HTML を信用しない 3 段の安全方針(サーバーの許可リスト・ブラウザの作り直し・CSP)、文字コード判定と分割、行の途中で切らないページ割り、区切り+割合の読書位置、却下した代替案
-updated: 2026-11-05
+updated: 2026-11-07
 related: [overview, backend, frontend, archive-reading, manga-reader]
 ---
 
