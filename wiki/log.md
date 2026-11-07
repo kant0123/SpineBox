@@ -454,3 +454,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] ingest | PR #197 (#195) CamelCase のローマ字作品名で公開DBの検索が当たるようにする
 - 更新: [[metadata-linking]], [[backend]]
 - 備考: #195。`linking._query` が CamelCase/PascalCase の連結されたローマ字作品名を空白区切りに変換してから検索するようになった（表示名・突き合わせ用の名前は変更しない）。分割は `match.is_romaji_word` でローマ字全体のときだけ行い、空白判定は `\s` で行う。`decide` の閾値は 0.75 のまま（低確信度候補は pending のまま）。テスト 2 件追加。wiki の linking.py 行番号参照を更新。
+
+## [2026-11-07] ingest | PR #201 inner archive decomposition の非コンテンツ dir・表紙のみフォルダ除外と EPUB 構造名の junk 化
+- 更新: [[backend]], [[volume-split]]
+- 備考: library.py:_units() でも __MACOSX / META-INF / .DS_Store 配下と表紙のみフォルダを単位(巻)にしないようにし、scanner.py:archive_volume_specs() と基準を統一。ANALYSIS_VERSION を 2 に上げ既存データを再解析させる。naming.py:_JUNK_RAW に oebps, ops, metainf, epub を追加し EPUB の構造名が作品名の候補になるのを防ぐ。agy APPROVE。
