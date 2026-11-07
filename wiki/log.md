@@ -333,6 +333,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-03] ingest | PR #127 全画面ページを DADS(v2.18.2)準拠に統一
 - 更新: [[frontend]], [[recurring-review-findings]]
 - 備考: #126(#112・#119 を含む)。`frontend/src/styles.css` の配色トークンをコントラスト 4.5:1(テキスト)/ 3:1(フォーム枠線 `--border-strong`・カード枠線 `--border`)以上に改め、二重フォーカスリング(黒 4px + 黄 `#ffd43d` 2px)・14px 未満の文字サイズの全廃・小ボタンの `::after` 44×44px タッチターゲット・768px ブレークポイント統一を適用した。全 9 箇所の `placeholder` と不要な `aria-live` を廃止して可視ラベル・サポートテキスト(`aria-describedby`・`aria-invalid`)に置き換え、ヘッドレス Chrome で全 22 ルート × 3 幅(375/768/1280px)× ライト/ダーク(132 状態)を実測して横スクロール 0 件・14px 未満 0 件を確認した。
+
 ## [2026-11-04] ingest | PR #128 worktree-cleanup.ps1 のジャンクション解除・.git 消失残骸の検出と pr-finish 後始末手順の統一
 - 更新: [[recurring-review-findings]]
 - 備考: #121(上流テンプレート側は `kant0123/ai-coding-template-mod-gemini-review#55` に起票)。マージ後に worktree ディレクトリが残っていた 3 件(`SpineBox-dads-ui`, `SpineBox-fix-admin-tab-clicks`, `SpineBox-issue-102`)の原因((1) `-Remove` 無しで `worktree-cleanup.ps1 -RemoveDirs` だけ実行して稼働中 worktree がスキップされ exit 0 になる、(2) `frontend/node_modules` 等の Windows ジャンクション(`ReparsePoint`)があると `git worktree remove` が ExitCode 0 のままジャンクションと親ディレクトリを残す、(3) 削除途中で `.git` ファイルだけ先に消えた残骸を `.git` ファイル必須の条件が見落とす)に対処した。`scripts/worktree-cleanup.ps1` に `Remove-ReparsePointsRecurse`(リンク先の中身を辿らずにジャンクション等を解除)と `Test-StaleWorktreeDir`(`.git` ファイルが消えていても、`.git` ディレクトリを持つ独立クローンを除き、空ディレクトリまたはメインツリー直下の項目名と 1 つ以上一致する兄弟ディレクトリを残骸として検出)を追加し、`pr-finish` スキル・`CLAUDE.md`・`.agent/rules/git-workflow.md`・`docs/development_workflow.md` の後始末コマンドを `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` + `git branch -D <branch>` に統一した。`tests/test_deploy_scripts.py` にジャンクション付き稼働 worktree の削除、`.git` 消失残骸の検出・削除と無関係フォルダ/通常クローンの保護、切り離し済みディレクトリへの `-Remove -RemoveDirs` のテストを追加した。
@@ -344,6 +345,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-05] ingest | PR #135 範囲指定の整理で CBZ 化もまとめて行う(include_cbz)
 - 更新: [[organize]], [[backend]], [[frontend]], [[bookmarks]] / [[work-grouping]](コード参照の行番号のずれのみ)
 - 備考: #133。データ管理 > 整理の「ファイル名・フォルダーの整理」に「CBZ 化もまとめて行う」(`include_cbz`)を足した。1 巻 = 1 CBZ は従来どおり改名・移動し、複数巻のアーカイブ・入れ子・画像フォルダ・CBZ でない 1 巻のアーカイブは、読める巻ごとに同じファイル名・フォルダーテンプレート + `.cbz`(ファイル名テンプレートが空なら巻の表示名を整理したもの)にする。CBZ 化する元は全巻を作業場で作って検証してから確定し、元は削除せず `trash/<操作ID>/original/` へ移す。失敗時は改名・CBZ 化をすべて巻き戻し、元に戻すは作った CBZ を `created/` へ移して元を戻す(読書位置・作品の割り当て・手動メタデータも往復)。元の一部の巻だけを外した・テンプレートの値が無い・サブフォルダ入り画像フォルダ・出力先の衝突は、連番にせず元全体を衝突にし、`exclude_volume_ids` で元の巻を外すと元全体をスキップする。`include_cbz=false` の計画・実行・画面は従来どおり。API は `POST /api/organize/range-plan` に `include_cbz` を足し、計画に `include_cbz`・`cbz_sources`、item に `cbz` status と `conversion` を返す。テストは `tests/test_organize_range.py` にプレビュー無変更、CBZ 化 + 改名の往復、衝突した元の除外、サブフォルダ入り画像フォルダ、計画後の元・出力先の変更、途中失敗の巻き戻し、元に戻せない場合、API を追加。frontend は `OrganizeFiles.test.tsx` にチェックボックス → プレビュー → 表示を追加し、175 tests passed・build 通過。モック API を 375px の iframe(内側 375px・横スクロールなし、チェックボックスのラベル 44px)で開き、チェック → プレビューで「CBZ 化(1 巻)」「作者A/まとめ.zip → 作者A/まとめ.cbz」が出ることを確認した。agy レビュー(1 回目)の WARNING: 出力先に missing の `sources` 行が残っていると、元に戻した後の再計画が常に衝突になる指摘を、元に戻した後の再計画・再実行テストで再現して修正した(CBZ 化からは `sources` の存在チェックを外す)。agy レビュー(2 回目)の WARNING: 1 巻 = 1 CBZ の巻ごとに `_classify_renames` を呼んで sources / 画像フォルダの SELECT が巻数ぶん出る N+1 を、1 回の呼び出しにまとめ、キャッシュを渡すようにして直した(計画の SELECT 数が巻数に比例しないテストを追加)。
+
 ## [2026-11-04] ingest | PR #134 表紙の無い作品カードに「表紙なし」の枠を出し、カードの大きさとタイトル位置を揃える
 - 更新: [[frontend]], [[cover-thumbnails]]
 - 備考: #132。#131 で表紙をカード全幅にした後、表紙の無い作品は同じ行の表紙付きカードの高さまで引き伸ばされ、タイトル位置もずれていた。`WorkCover` に `placeholder` を足し、`cover_volume_id` が無い・404 の作品カードでは `WorkCoverPlaceholder`(2:3、`aria-hidden`、中央に「表紙なし」)を出して枠を残す。`.work-grid` に `grid-auto-rows: 1fr` と `align-items: stretch` を足し、全行のカードを同じ高さにした。タイトル一覧・ブックマークの表紙は今までどおり(枠なし)。モック API を 375px / 768px / 1296px の iframe で開き、全カードの高さ(375px=623px、768px=501px、1296px=508px)と、同じ行のタイトル位置が揃うこと、横スクロールが無いことを確認した。`Works.test.tsx` は 404 と表紙なしのカードで枠が出ることを検証するよう更新した(28 tests passed、`npm run build` も通過)。
@@ -403,10 +405,19 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-06] ingest | PR #164 (#162) 系列名を別名に持つ 1 巻作品を系列へ戻し、確信度が上がった確認待ちを自動統合する
 - 更新: [[work-grouping]], [[backend]], [[bookmarks]], [[cover-thumbnails]], [[metadata-linking]](後ろ 4 つはコード参照の行番号だけ)
 - 備考: #162。#158 の後、確認待ちは 3949 件まで減ったが、確信度 100% の提案が統合されないままだった。原因は 2 つ。(1) 巻の割り当ては、名前から読み直した作品名が**今の作品の別名も含めた名前のどれか**と一致すれば動かさないため、公開 DB に linked した 1 巻 = 1 作品が系列名を別名に持つと、末尾の番号の系列(#157)で読めても留まっていた。作品名が「系列名 + 末尾の番号」そのもの(`マイホームヒーロー 01`)で手動の決定が絡まないなら系列名の作品へ付け替え(`_leaves_numbered_work()`)、付け替え先も番号付きの作品には寄せず、無ければ系列名の作品を作る。(2) 既に `open` の提案は根拠だけ更新して自動統合しなかったため、後から別名が確か(1.0)になって 100% になっても確認待ちのままだった。`open` でも 0.9 以上で手動の決定が絡まなければ自動統合し、行は `auto` の記録として残す(却下・分けた組は戻さない)。実データ(サーバーの API を読むだけ): 1187 作品・確認待ち 3949 件のうち 479 作品・65 シリーズがこの形で、3612 件がこれに絡む。確信度 0.9 以上は 3 件。`tests/test_works.py` に付け替え・手動の保護・既存 `open` の自動統合のテストを足し、直す前は 3 件とも落ちることを確認。
+
 ## [2026-11-06] ingest | PR #169 (#168) 管理画面に統合タブを作成
 - 更新: [[frontend]]
 - 備考: 管理タブに `proposals` (`統合`) を追加し、`WorkProposals` を `embedded` で載せた。`#/admin/proposals` と既存の `#/works/proposals` の両方から統合の提案を操作できる。
-<<<<<<< HEAD
+
+## [2026-11-07] ingest | PR #174 (#167) 末尾の番号の後の装飾・「卷」表記・小数点の巻を読み、同じ公開 DB 項目に linked した組を自動統合する
+- 更新: [[work-grouping]], [[recurring-review-findings]]、および行番号のずれ直しで [[backend]]・[[volume-split]]・[[metadata-linking]]・[[cover-thumbnails]]・[[work-search]]
+- 備考: #167。#162 の後、確認待ちの提案は 3949 → 232 件まで減ったが、残りは別名規則で 0.5〜0.896 のまま未統合で、名寄せの読み残しが大半。`trailing_number()` は末尾の装飾([レーベル] (レーベル) [AVIF]・ - 著者 & 著者)を落として読むようにし、落とした部分は evidence に残す。簡体字の巻表示・話表示(卷 话)は 巻 話 と同じに読む(_fold_chars)。小数点の巻(第04.5巻)は整数の番号で持てないので番号なしにし、作品名にも残さない。同じ取得元・同じ source_id に linked した組は別名一致を 0.9 として扱い、手動の決定が絡まなければ自動統合する(元の確信度は `alias_confidence`、shared_item を根拠に残す)。tests/test_naming.py・tests/test_works.py に 6 件足し、直す前は 6 件とも落ちることを確認。
+
+## [2026-11-07] ingest | PR #172 (#167) 既存 DB の小数点の巻番号・誤読した作品名を名寄せで直し、連携の移動と冪等を補う
+- 更新: [[work-grouping]], [[recurring-review-findings]]、[[frontend]] の統合の根拠表示
+- 備考: #174 が同じ範囲(装飾・`卷`・小数点の読み、同じ公開 DB 項目の自動統合)を先に実装・マージ済みなので、この PR はその上での補正。`parse_work_name()` が数字でない末尾の装飾(`(txt+jpg)`)を番号の読みの前に落とし、`(3巻)`・`[1-27]` のような数字の括弧は番号として残す。小数点の巻を誤読して作った 1 巻の作品名(`… 第04`)は `_refresh_title()` が今の系列名へ直す(スキャンし直さなくても直る)。既存 DB の小数点の巻番号は `_apply_trailing_numbers()` が `parse_number()` で読めない番号として消し、番号を持たない巻の行は触らない(冪等)。番号付きの作品を既存の系列名の作品へ付け替えるときも `_merge_links()` が公開 DB の連携を移す。フロントは統合の根拠に同じ公開 DB 項目への linked を表示する(文言のみ)。agy レビューで `_find_number` の添字境界・`_merge_links` の分岐位置・`SCAN_VERSION` の未更新・`_apply_trailing_numbers` の冪等条件を直した。スキーマ変更なし。
+
 ## [2026-11-07] ingest | PR #170 (#165) 欠けの番号が多すぎるときは件数だけを出し、内訳をツールチップで見せる
 - 更新: [[frontend]]
 - 備考: #165。作品カードのバッジと作品ページの「欠けている巻」で、欠けが 5 個以下のときは番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、カーソルを合わせるとツールチップで出る。DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う。組み立ては frontend/src/works/labels.ts:40 missingLabel()(MISSING_LIST_MAX = 5)。巻と話を合わせて数える。Vitest 184 件・バックエンド 1156 件パス、375px / 1280px のライト・ダークで横スクロール無しを確認した。
@@ -414,3 +425,19 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] ingest | PR #171 (#166) 一覧の作品名・著者をファイル名ではなく公開DBの日本語に
 - 更新: [[metadata-linking]], [[backend]]
 - 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。
+
+## [2026-11-07] ingest | PR #189 (#184) タイトル一覧の「N巻」列を外す
+- 更新: [[frontend]]
+- 備考: #184。タイトル一覧の行に表紙の右へ出ていた「N巻」の列は、巻名「作品名 第N巻」が番号を含むので冗長として外した(所持巻・欠け/最新巻とも)。重複モーダルの見出しなど番号の表示は残す。`frontend/src/works/WorkTitles.tsx:17 WorkTitles()` と不要になった `.title-number` を削除し、テストを「列が出ないこと」に変えた。
+
+## [2026-11-07] lint | PR #187 wiki/log.md のエントリ見出しの前の空行を揃える
+- 更新: なし
+- 備考: #183。コンフリクト標識は現在の origin/main に残っていなかったが、見出しの直前に空行が無いエントリが 5 件あった(#128・#134・#169・#174・#170 の見出しの前)。他のエントリと同じ 1 行区切りにした。py -3.12 で `python scripts/ci_local.py --no-report` を実行し、pytest 1250 passed・wiki-lint OK。フロントの 116 件は Node 26 の localStorage 問題(#130)で、この変更と無関係。
+
+## [2026-11-07] ingest | PR #188 (#185) 作品カードの巻数表示を既刊に変える
+- 更新: [[frontend]]
+- 備考: #185。作品カードの巻数タグを全N巻(〜M巻)から既刊N巻(〜M巻)に変更した。対象は frontend/src/works/Works.tsx の volume_count(見えている巻の数)・max_volume(手持ちの最大巻番号)で、公開 DB の全巻数 total_volumes ではない(候補の「全 N 巻」は WorkLinks.tsx の候補の表示でその意味のまま残す)。フロントの vitest 185 件・build 通過、モック API で既刊4巻(〜4巻)等の表示を確認した。
+
+## [2026-11-07] ingest | PR #191 (#190) 作品一覧に候補の確認待ち・統合の提案の絞り込みを追加
+- 更新: [[work-search]], [[backend]], [[metadata-linking]]
+- 備考: #190。作品カードの候補の確認待ち・統合の提案バッジを持つ作品だけを見る絞り込みが無く、全作品を流し見していた。「絞り込み」のチェックボックス(候補の確認待ちだけ・統合の提案だけ)を新設し、GET /api/works に link_pending=1 / pending_proposals=1 を追加した。モック API も同じ条件で絞る。フロント 186 件・バックエンド 1251 件パス(フロントは Node 26 の localStorage 問題 #130 の回避のため --pool=vmForks で実行。CI は Node 22 で通常のプール)。

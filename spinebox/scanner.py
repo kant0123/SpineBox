@@ -41,8 +41,9 @@ log = logging.getLogger(__name__)
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
 # 2: 巻の名前から番号の候補(number_*)を記録する(#30)
-# 3: EPUB を拡張子ではなく内容(META-INF/container.xml)で判定し、内部フォルダを巻にしない(#177)
-SCAN_VERSION = 3
+# 3: 末尾の装飾・「卷」・小数点の巻の読み方を変えた(#167)
+# 4: EPUB を拡張子ではなく内容(META-INF/container.xml)で判定し、内部フォルダを巻にしない(#177)
+SCAN_VERSION = 4
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """

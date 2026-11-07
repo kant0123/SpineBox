@@ -296,6 +296,8 @@ export interface WorkSummary {
   link_pending: number;
   /** 表紙にする巻(最小の巻番号の画像の巻。無ければ null)。画像は `api.thumbnailUrl()`(#75) */
   cover_volume_id: number | null;
+  /** 後で読む(#173)を付けている */
+  read_later?: boolean;
 }
 
 export type ReadingState = "unread" | "reading" | "finished";
@@ -312,6 +314,12 @@ export interface WorkQuery {
   tag?: string;
   publisher?: string;
   status?: ReadingState;
+  /** 後で読む(#173)を付けた作品だけ */
+  read_later?: boolean;
+  /** 候補の確認待ち(link_pending > 0)の作品だけ */
+  link_pending?: boolean;
+  /** 統合の提案(pending_proposals > 0)の作品だけ */
+  pending_proposals?: boolean;
   /** 蔵書の切り替え(#85。LibraryRoot の id)。その蔵書ルートの巻だけで一覧を作る */
   root?: string;
 }
@@ -332,6 +340,7 @@ export function workQueryString(query: WorkQuery = {}): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (typeof v === "string" && v.trim()) params.set(k, v.trim());
+    else if ((k === "read_later" || k === "link_pending" || k === "pending_proposals") && v === true) params.set(k, "1");
   }
   const text = params.toString();
   return text ? `?${text}` : "";
@@ -386,7 +395,13 @@ export interface DuplicateItem {
 
 export interface MergeEvidence {
   duplicate?: DuplicateItem[];
-  alias?: { norm: string; a: { name: string; source: string; is_title: boolean }; b: { name: string; source: string; is_title: boolean } };
+  alias?: {
+    norm: string;
+    a: { name: string; source: string; is_title: boolean };
+    b: { name: string; source: string; is_title: boolean };
+    shared_item?: [SourceName, string] | null;
+    alias_confidence?: number;
+  };
 }
 
 export interface WorkProposal {
@@ -606,6 +621,12 @@ export interface BookmarkState {
   created_at: string | null;
   work_id?: number;
   volume_id?: number;
+}
+
+export interface ReadLaterState {
+  work_id: number;
+  read_later: boolean;
+  created_at: string | null;
 }
 
 // 整理処理(CBZ 化・テンプレートでの改名と移動)。プレビュー → 実行 → 元に戻す(spinebox/organize/)
@@ -1061,6 +1082,9 @@ export const api = {
   /** 印を付ける(on)・外す。統合された作品の id なら吸収先が対象になる */
   setBookmark: (target: "work" | "volume", id: VolumeId, on: boolean) =>
     request<BookmarkState>(`/api/bookmarks/${target === "work" ? "works" : "volumes"}/${vid(id)}`, { method: on ? "PUT" : "DELETE" }),
+  /** 後で読む(#173)を付ける(on)・外す */
+  setReadLater: (id: number | string, on: boolean) =>
+    request<ReadLaterState>(`/api/read-later/works/${vid(id)}`, { method: on ? "PUT" : "DELETE" }),
   /** 受け入れフォルダの設定と、いま記録されている受け入れ待ちの本(ファイルは開かない) */
   inbox: () => request<InboxState>("/api/inbox"),
   /** 受け入れフォルダを走査して新しいものを検出する(読み取りだけ) */

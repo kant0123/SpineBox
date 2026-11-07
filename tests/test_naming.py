@@ -29,6 +29,9 @@ from spinebox.naming import normalize_title, parse_number, parse_work_name, trai
     ("第０１－０４巻", "volume", 1, 4),   # 全角の区切り
     ("第12話", "episode", 12, 12),
     ("第1-5話", "episode", 1, 5),
+    ("第01卷", "volume", 1, 1),        # 簡体字の巻表示も巻として読む
+    ("01卷", "volume", 1, 1),          # 簡体字の巻表示も巻として読む
+    ("第3话", "episode", 3, 3),        # 簡体字の話表示も話として読む
     ("ch.12", "episode", 12, 12),
     ("Ch 3", "episode", 3, 3),
     ("chapter12", "episode", 12, 12),
@@ -55,6 +58,8 @@ def test_parses_candidates(name, kind, start, end):
     "Step3",
     "Kitchen 2",
     "03-01",               # 逆順
+    "ようこそ実力至上主義の教室へ 第04.5巻",  # 小数点の巻は整数で持てない
+    "第04.5巻",            # 小数点の巻は整数で持てない
     "",
     "おまけ",
 ])
@@ -105,6 +110,7 @@ OKIRAKU_JP = "お気楽領主の楽しい領地防衛"
     ("TITLE vol.02", "TITLE", ()),
     ("[Author] Some Title - Vol.01 [Digital]", "Some Title", ("Author",)),
     ("作品名 全3巻", "作品名", ()),
+    ("ようこそ実力至上主義の教室へ 第04.5巻", "ようこそ実力至上主義の教室へ", ()),  # 小数点の巻は番号なしで作品名にも残さない
     ("作品名", "作品名", ()),
     ("01巻 作品名", "作品名", ()),
     ("作品 第12話", "作品", ()),
@@ -166,6 +172,11 @@ def test_romaji_and_japanese_names_are_not_the_same_work_by_name_alone():
     ("作品名(3)", "作品名", 3),
     ("作品名（０５）", "作品名", 5),          # 全角の括弧・数字
     ("[著者] 作品名 07.cbz", "[著者] 作品名", 7),
+    # 末尾の番号の後ろの装飾(括弧・著者列)は落として番号を読む
+    ("異種族レビュアーズ 2 [ドラゴンコミックスエイジ][AVIF]", "異種族レビュアーズ", 2),
+    ("お気楽領主の楽しい領地防衛 1 - 青色まろ & 赤池宗 & 転", "お気楽領主の楽しい領地防衛", 1),
+    ("ハズレ判定から始まったチート魔術士生活(コミック) : 2 (モンスターコミックス)",
+     "ハズレ判定から始まったチート魔術士生活(コミック)", 2),
 ])
 def test_trailing_number_candidate(name, base, number):
     t = trailing_number(name)
@@ -194,3 +205,14 @@ def test_trailing_number_alone_is_not_a_volume_number():
     # `Kitchen 2` が作品名のこともあるので、名前だけでは巻番号と決めない(spinebox/works.py が組で見る)
     assert parse_number("Kitchen 2") is None
     assert trailing_number("Kitchen 2").number == 2
+
+
+def test_trailing_number_evidence_keeps_dropped_decor():
+    t = trailing_number("異種族レビュアーズ 2 [ドラゴンコミックスエイジ][AVIF]")
+    assert "ドラゴンコミックスエイジ" in t.evidence and "AVIF" in t.evidence  # 落とした装飾は根拠に残す
+    t = trailing_number("お気楽領主の楽しい領地防衛 1 - 青色まろ & 赤池宗 & 転")
+    assert "青色まろ" in t.evidence  # 著者列も根拠に残す
+    t = trailing_number("ハズレ判定から始まったチート魔術士生活(コミック) : 2 (モンスターコミックス)")
+    assert "モンスターコミックス" in t.evidence
+    t = trailing_number("作品名 1 - 著者 [レーベル]")
+    assert "[レーベル]" in t.evidence  # 著者列と括弧装飾が併用されても落とした装飾は根拠に残す

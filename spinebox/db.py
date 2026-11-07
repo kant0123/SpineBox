@@ -453,6 +453,17 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 17: 後で読む(#173)。作品に対する印(ブックマーク #86 とは別物)。作品に 1 つだけ
+    #     (work_id が主キーの単一表)。利用者が付けた記録なので、蔵書がオフラインでも消さない。
+    #     作品の統合では吸収先へ移す(spinebox/read_later.py merge)。
+    [
+        """
+        CREATE TABLE read_later (
+            work_id INTEGER PRIMARY KEY REFERENCES works(id),
+            created_at TEXT NOT NULL
+        )
+        """,
+    ],
 ]
 
 

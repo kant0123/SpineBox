@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, isNovel, type Finding, type ScanResult, type VolumeNumber, type VolumeSummary } from "../api";
 import { duplicatesHref, inboxHref, organizeHref, readHref } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
-import { ViewTabs } from "../works/ViewTabs";
+
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
 
 /** 一覧のカードに出す読書状態の文言 */
@@ -141,7 +141,6 @@ export function Library() {
           </button>
         </div>
       </header>
-      <ViewTabs current="volumes" />
 
       {scanResult && (
         <div className="notice" role="status">
