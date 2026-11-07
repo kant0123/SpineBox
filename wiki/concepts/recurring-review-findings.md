@@ -393,7 +393,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/scanner.py:45 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
+- PR #172 — `spinebox/scanner.py:51 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
 
 ### 変化が無ければ書かない処理で、条件の抜けにより毎回書く
 

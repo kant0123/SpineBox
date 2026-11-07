@@ -37,6 +37,8 @@ from .novel import FORMAT_EPUB, novel_format
 from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
 from .pages import is_cover, is_image
 
+FORMAT_PDF = "pdf"
+
 log = logging.getLogger(__name__)
 
 # 巻の切り出し方を変えたら上げる(同じサイズ・mtime のアーカイブも読み直させるため)
@@ -372,6 +374,8 @@ class Scanner:
                               lambda rel, full=full, fmt=fmt: self._scan_novel(root_id, rel, Path(full), fmt))
                     elif is_archive_name(name):
                         visit("archive", full, lambda rel, full=full: self._scan_archive(root_id, rel, Path(full)))
+                    elif name.lower().endswith(".pdf"):
+                        visit("archive", full, lambda rel, full=full: self._scan_pdf(root_id, rel, Path(full)))
         except Exception as e:  # noqa: BLE001 (走査そのものの想定外。途中までの結果は残す)
             complete = False
             self._unexpected(e, f"蔵書フォルダ {safe_text(root)} の走査を中断")
@@ -526,6 +530,31 @@ class Scanner:
                 self._replace_volumes(c, src["id"], specs)
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+
+    def _scan_pdf(self, root_id: int, rel: str, path: Path) -> None:
+        """PDF ファイルを 1 巻として登録する。ページ数と暗号化の有無を調べる。"""
+        try:
+            st = path.stat()
+        except OSError as e:
+            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
+            return
+        with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "archive")
+        if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
+                and src["scan_version"] == SCAN_VERSION and not self.recheck):
+            return
+        from .organize.pdf import inspect_pdf
+        page_count, problems = inspect_pdf(path)
+        issues = [Skip(None, safe_text(p)) for p in problems]
+        specs: list[VolumeSpec] = []
+        if not issues and page_count > 0:
+            spec = VolumeSpec(None, "", path.stem, _fs_name_bytes(path.name), "filesystem", page_count, FORMAT_PDF)
+            specs.append(spec)
+        with db.transaction(self.conn) as c:
+            record_issues(c, src["id"], None, issues)
+            self._replace_volumes(c, src["id"], specs)
+            c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                      (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
 
     def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec], *, keep_analysis: bool = False) -> None:
         """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。
