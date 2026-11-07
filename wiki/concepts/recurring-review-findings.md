@@ -113,7 +113,7 @@ push 前に確かめること:
 - PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
 - PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 - PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
-- PR #219 — `spinebox/scanner.py:549 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
+- PR #219 — `spinebox/scanner.py:534 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
