@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 公開 DB の情報を作品・巻へ結線する規則(#50)。連携(work_links)の自動/確認待ちの基準、空欄だけを埋める・手動は不変・名前由来の値を置き換える条件、英語の語彙を日本語にして反映する規則(#74)、あらすじの廃止(#82)、失敗の扱い、保存場所(全文検索・絞り込みが乗る列)、却下した代替案
-updated: 2026-11-07
+updated: 2026-11-08
 related: [metadata-clients, metadata-sources, work-grouping, work-search, backend, frontend, overview, follow, data-jobs]
 ---
 
@@ -60,7 +60,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 
 | 規則 | 理由 |
 | --- | --- |
-| **訳すのは反映(`apply_work`)と、候補を画面へ出すとき(`spinebox/works.py:1419 _link_json()`)だけ。** `work_links.item` / `candidates` と生の応答は英語のまま | 対応表を足す・設定を変えると、取り直さずに次の反映(起動時・スキャン後)で全作品に効く。取得し直しは外部への要求とレート制限を食う |
+| **訳すのは反映(`apply_work`)と、候補を画面へ出すとき(`spinebox/works.py:1413 _link_json()`)だけ。** `work_links.item` / `candidates` と生の応答は英語のまま | 対応表を足す・設定を変えると、取り直さずに次の反映(起動時・スキャン後)で全作品に効く。取得し直しは外部への要求とレート制限を食う |
 | ジャンル・タグは対応表(AniList・MangaUpdates のジャンルは全語、タグは頻出のもの)で引く。表記の揺れ(`Teacher/s` と `Teacher`、ハイフン、全角、大文字小文字)は畳み、訳して同じになった語は 1 つにまとめる | MangaUpdates のタグ(categories)は利用者投稿で数千語あり全部は持てない。記録済みの応答に出る語はすべて引ける(`tests/test_ja_terms.py` が確かめる) |
 | **対応表に無い語は既定で入れない**(`[metadata] untranslated_terms = "hide"`。`keep` で英語のまま入れる) | 利用者が日本語で揃えたいと要望した。元の値は残っているので、`keep` にすれば次の起動で戻る。隠した語は絞り込みの候補にも出ない |
 | 出版社は NDL(日本語)が先。NDL の連携が無く MangaUpdates の原版元だけのときは、ローマ字名を対応表で日本語にする。**対応が無いローマ字名はそのまま出す** | 英語表記が入る経路はこれだけ(NDL が確認待ち・該当なしの作品)。出版社名は固有名なので、隠すより読める綴りで残す |

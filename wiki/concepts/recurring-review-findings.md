@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-07
+updated: 2026-11-08
 related: [overview]
 ---
 
@@ -423,5 +423,16 @@ push 前に確かめること:
 
 - PR #172 — `spinebox/works.py _assign_volumes()` — `_refresh_title()` を `norm in work.names` の分岐の内側に置いていた。小数点の巻を誤読した 1 巻作品は系列名の別名を持たないのが自然なので、`norm in work.names` が偽になり、作品名が直らず、新しい系列作品を作って元の作品が孤立した(agy レビューの WARNING。判定の前に呼ぶよう移し、テストから事前の `add_alias` を外した)
 
+### 撤回(revert)や一括削除で、維持すべき機能・ログ・テストを巻き添えで消す
 
+過去の PR の変更を撤回するとき、機械的な `git revert` や差分の一括削除をそのまま適用し、その PR より後に追記された時系列ログ(`wiki/log.md`)や、同じ PR に含まれていたが撤回対象ではない機能・ドキュメント記述・テストのアサーションまで一緒に消してしまう。追記専用ログの履歴が失われ、維持すべき機能のドキュメントと実装が乖離し、テストの検証が弱まる。
 
+push 前に確かめること:
+
+- `git revert` や削除を行う際、追記専用のファイル(`wiki/log.md`)の過去ログや後続 PR のエントリを上書き・削除していないか。revert も末尾に新しく追記しているか
+- 撤回する対象の機能以外の機能(同時に追加・修正されたが維持するもの)の記述・コード・テストを一緒に消していないか
+- `git diff` で削除された行を 1 行ずつ確認し、撤回対象外のキーワードが含まれていないか
+
+実例:
+
+- PR #213 — `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(agy レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
