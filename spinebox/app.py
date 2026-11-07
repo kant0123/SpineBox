@@ -486,7 +486,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.get("/api/volumes/{volume_id}")
     def get_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
-        if get_volume_row(conn, volume_id)["format"] is not None:
+        row = get_volume_row(conn, volume_id)
+        if row["format"] == "pdf":
+            raise HTTPException(422, "PDF の巻は直接閲覧できません(先に「CBZ に整理」を実行してください)")
+        if row["format"] is not None:
             return _get_novel(conn, volume_id)
         with library.open(conn, volume_id) as vol:
             # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)

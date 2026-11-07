@@ -469,3 +469,6 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-08] ingest | PR #216 (#214) 外側アーカイブ名由来の別名が作品名と完全一致する場合は自動統合する
 - 更新: [[work-grouping]], [[cover-thumbnails]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #214。外側アーカイブ名由来の別名(source=container)と作品名が正規化タイトルで一致する組の確信度を 0.9 に引き上げ、手動の決定が絡まなければ自動統合するようにした。外側アーカイブ名の別名は 1 作品しか入らないソースにしか付かないため誤統合のリスクが低く、元の確信度 0.5 は alias_confidence に残す。手動の決定が絡む組は 0.9 の確認待ちのまま残る。
+## [2026-11-08] ingest | PR #219 (#218) PDF ファイルの 1 巻 = 1 CBZ 変換機能の追加
+- 更新: [[organize]], [[backend]], [[bookmarks]], [[work-grouping]], [[recurring-review-findings]]
+- 備考: 自炊漫画 PDF を SpineBox で閲覧・管理可能にするため、範囲指定整理(include_cbz=True)および単巻整理で PDF を 1 巻 = 1 CBZ に変換するハイブリッド抽出方式(spinebox/organize/pdf.py)を実装。1 ページ 1 画像は無劣化抽出(ZIP_STORED)、回転・CMYK 補正、白紙・複数画像の合成レンダリングに対応。スキャナーで volumes.format='pdf' として検出し、整理の確定・退避・undo・delete_originals に完全対応。

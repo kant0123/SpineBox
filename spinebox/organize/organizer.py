@@ -229,7 +229,7 @@ class Organizer:
         if not source_path.exists():
             problems.append("元のファイル・フォルダが見つかりません(再スキャンしてください)")
             return self._finish_plan(plan, vols)
-        if any(v["format"] for v in vols):
+        if any(v["format"] in ("epub", "text") for v in vols):
             problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
             return self._finish_plan(plan, vols)
         if not vols:
@@ -240,6 +240,9 @@ class Organizer:
             problems.append("作業場・退避フォルダが元のフォルダの中にあります")
         if src["kind"] == "folder":
             self._inspect_folder(source_path, problems, warnings)
+        elif any(v["format"] == "pdf" for v in vols):
+            _, pdf_probs = self._inspect_pdf(source_path)
+            problems.extend(pdf_probs)
         else:
             self._inspect_archive(source_path, vols, problems, warnings)
         plan["fingerprint"] = fingerprint(source_path)
@@ -336,7 +339,7 @@ class Organizer:
                             "SELECT field, value FROM work_fields WHERE work_id = ?", (work_id,))}
                     fields = dict(fields_cache[work_id])
                 # 種別は作品の項目(manga / novel)を日本語にする。未決でも小説の巻(EPUB・テキスト)は小説と分かる
-                kind = fields.get(works.FIELD_KIND) or ("novel" if row["format"] else None)
+                kind = fields.get(works.FIELD_KIND) or ("novel" if row["format"] in ("epub", "text") else None)
                 fields["kind"] = KIND_LABELS.get(kind)
                 if fields.get("author"):  # 複数著者は保存値の「、」ではなく「・」でつなぐ(出力名だけ。保存値は変えない)
                     fields["author"] = "・".join(a.strip() for a in fields["author"].split(works.AUTHOR_SEPARATOR))
@@ -433,6 +436,7 @@ class Organizer:
 
     def _finish_plan(self, plan: dict, vols: list[dict]) -> dict:
         plan["volumes"] = [{"volume_id": v["id"], "title": v["title"], "page_count": v["page_count"],
+                            "format": v.get("format"),
                             "output_rel_path": v.get("output_rel_path")} for v in vols]
         return self._save_plan(plan)
 
@@ -501,10 +505,13 @@ class Organizer:
                     ctx.progress(i, len(vols), v["title"])
                 b = _Built(v, work_dir / f"{i + 1:04d}.cbz", out_root / v["output_rel_path"])
                 built.append(b)
-                with self.library.open(self.conn, v["volume_id"]) as opened:
-                    if not opened.page_names:
-                        raise OrganizeError(f"ページの無い巻は整理できません: {v['title']}")
-                    b.records = cbz.write_cbz(b.work_path, opened.page_names, opened.read_page)
+                if v.get("format") == "pdf":
+                    b.records = self._write_pdf_cbz(root, {"from_rel_path": plan["source_rel_path"]}, b.work_path)
+                else:
+                    with self.library.open(self.conn, v["volume_id"]) as opened:
+                        if not opened.page_names:
+                            raise OrganizeError(f"ページの無い巻は整理できません: {v['title']}")
+                        b.records = cbz.write_cbz(b.work_path, opened.page_names, opened.read_page)
                 if ctx is not None:
                     ctx.progress(i + 1, len(vols), v["title"])
             # 2. 全巻を読み直して検証する
@@ -984,13 +991,24 @@ class Organizer:
             it["conversion"] = True
             items.append(it)
             if r["format"]:
-                # 画像だけの EPUB(漫画)は、画像を取り出して CBZ にする(#153)。文字のある EPUB・テキストは小説
-                pages = self._epub_image_pages(root, r) if r["format"] == "epub" else None
-                if pages is None:
-                    it.update(status=ITEM_EXCLUDED, reason="小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                if r["format"] == "pdf":
+                    source_path = resolve_source_path(root, r["rel_path"])
+                    page_count, pdf_probs = self._inspect_pdf(source_path)
+                    if pdf_probs:
+                        it.update(status=ITEM_EXCLUDED, reason="; ".join(pdf_probs))
+                        continue
+                    it.update(page_count=page_count, is_pdf=True)
+                elif r["format"] == "epub":
+                    # 画像だけの EPUB(漫画)は、画像を取り出して CBZ にする(#153)。文字のある EPUB・テキストは小説
+                    pages = self._epub_image_pages(root, r)
+                    if pages is None:
+                        it.update(status=ITEM_EXCLUDED, reason="小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                        continue
+                    it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages],
+                              epub_sections=[i for i, _ in pages])
+                else:
+                    it.update(status=ITEM_EXCLUDED, reason="小説(テキスト)は CBZ にできません(名前は変えません)")
                     continue
-                it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages],
-                          epub_sections=[i for i, _ in pages])
             by_source.setdefault(r["source_id"], []).append(it)
             source_rows.setdefault(r["source_id"], r)
             try:
@@ -1026,7 +1044,9 @@ class Organizer:
                 r = source_rows[source_id]
                 source_path = resolve_source_path(root, r["rel_path"])
                 try:
-                    if r["format"] == "epub":
+                    if r["format"] == "pdf":
+                        problem, more = None, []  # 中身は計画で読んだ
+                    elif r["format"] == "epub":
                         problem, more = None, []  # 中身は計画で読んだ(画像だけの EPUB。本文の XHTML・CSS は入れない)
                     elif r["source_kind"] == "folder":
                         problem, more = self._folder_cbz_problem(r["root_id"], r["rel_path"], source_path,
@@ -1431,7 +1451,9 @@ class Organizer:
         """改名・移動の対象外の理由(1 巻 = 1 CBZ でない・オフラインなど)。対象なら None。"""
         if r["source_offline"] or not root_is_accessible(root):
             return "蔵書フォルダが今オフラインです"
-        if r["format"]:  # 小説(.epub / .txt)。CBZ ではなく、テンプレートの .cbz とも合わない
+        if r["format"]:  # 小説(.epub / .txt) や PDF。改名・移動は 1 巻 = 1 CBZ のみ
+            if r["format"] == "pdf":
+                return "PDF は改名・移動の対象外です(先に「CBZ に整理」を実行してください)"
             return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
         if not self._single_file(r) or not r["rel_path"].lower().endswith(".cbz"):
             return "1 巻 = 1 CBZ ではありません(先に「CBZ に整理」をテンプレートの名前で実行してください)"
@@ -1441,6 +1463,8 @@ class Organizer:
         """範囲の整理の対象外の理由。1 巻 = 1 ファイル(アーカイブ・小説)なら拡張子を保って動かせる。"""
         if r["source_offline"] or not root_is_accessible(root):
             return "蔵書フォルダが今オフラインです"
+        if r["format"] == "pdf":
+            return "PDF の巻です(整理画面で「CBZ に整理する」にチェックを入れてください)"
         if not self._single_file(r):
             if r["source_kind"] == "folder":
                 return "画像フォルダの巻です(この画面では動かしません。先に「CBZ に整理」してください)"
@@ -1651,6 +1675,8 @@ class Organizer:
                 built.append(b)
                 if it.get("epub_pages"):
                     b.records = self._write_epub_cbz(root, it, b.work_path)
+                elif it.get("is_pdf"):
+                    b.records = self._write_pdf_cbz(root, it, b.work_path)
                 else:
                     with self.library.open(self.conn, it["volume_id"]) as opened:
                         if not opened.page_names:
@@ -1705,6 +1731,15 @@ class Organizer:
         if plan.get("delete_originals") and sources:
             self._delete_trashed_originals(op_id, base)
         return self.get(op_id)
+
+    def _inspect_pdf(self, path: Path) -> tuple[int, list[str]]:
+        from .pdf import inspect_pdf
+        return inspect_pdf(path)
+
+    def _write_pdf_cbz(self, root: Path, it: dict, work_path: Path) -> list:
+        from .pdf import write_pdf_cbz
+        path = resolve_source_path(root, it["from_rel_path"])
+        return write_pdf_cbz(path, work_path)
 
     def _write_epub_cbz(self, root: Path, it: dict, work_path: Path) -> list:
         """画像だけの EPUB の画像を、計画で読んだ spine の順に CBZ へ入れる。エントリは名前で引き直す

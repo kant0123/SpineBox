@@ -522,3 +522,43 @@ def test_approve_busy_while_scanning(env, client):
         assert client.post("/api/inbox/sync").status_code == 409
     finally:
         app.state.scan_lock.release()
+
+
+def test_inbox_pdf_intake(env, client):
+    """受け入れフォルダに置かれた自炊 PDF が cbz モードでプレビュー・承認・CBZ化できること。"""
+    from tests.test_organize_pdf import make_simple_pdf
+
+    pdf_file = env.inbox / FOO / f"{FOO} 第03巻.pdf"
+    make_simple_pdf(pdf_file, num_pages=2)
+
+    # 同期
+    synced = client.post("/api/inbox/sync").json()
+    assert any(i["name"] == f"{FOO} 第03巻.pdf" for i in synced["items"])
+    item = next(i for i in synced["items"] if i["name"] == f"{FOO} 第03巻.pdf")
+
+    # プレビュー
+    preview = client.post("/api/inbox/preview", json={"items": [{"source_id": item["source_id"]}]}).json()
+    p_item = preview["items"][0]
+    assert p_item["status"] == "ready"
+    assert p_item["mode"] == "cbz"
+    assert p_item["volumes"][0]["format"] == "pdf"
+
+    # 承認
+    res = client.post("/api/inbox/approve", json={"items": [
+        {"source_id": p_item["source_id"], "expect_outputs": p_item["expect_outputs"]}]}).json()
+    assert res["results"][0]["ok"] is True
+
+    # 書庫に CBZ が作成され、元の PDF は inbox から移動している
+    out_cbz = env.lib / FOO / f"{FOO} 第03巻.cbz"
+    assert out_cbz.is_file()
+    assert not pdf_file.exists()
+
+    # 取り込み後の巻数が 3 に増加
+    assert len(client.get("/api/volumes").json()) == 3
+
+    # undo
+    op_id = res["results"][0]["op"]["op_id"]
+    assert client.post(f"/api/organize/{op_id}/undo").json()["state"] == "undone"
+    assert not out_cbz.exists()
+    assert pdf_file.is_file()
+    assert len(client.get("/api/volumes").json()) == 2

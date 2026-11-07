@@ -269,8 +269,8 @@ def test_archive_with_hostile_entry_names_and_many_issues_is_capped(conn, tmp_pa
 def test_unsupported_extensions_and_imageless_folders_are_ignored_quietly(conn, tmp_path, make_settings):
     lib = tmp_path / "lib"
     good(lib)
-    (lib / "book.pdf").write_bytes(b"%PDF-1.4")
-    (lib / "book.mobi").write_bytes(b"BOOKMOBI")  # .epub / .txt は小説の巻になる(#57。tests/test_novel.py)
+    (lib / "book.docx").write_bytes(b"PK\x03\x04docx")
+    (lib / "book.mobi").write_bytes(b"BOOKMOBI")  # .epub / .txt は小説、.pdf は PDF 巻になる
     (lib / "notes.md").write_text("x")
     (lib / "docfolder").mkdir()
     (lib / "docfolder" / "a.md").write_text("x")
