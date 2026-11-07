@@ -416,3 +416,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] ingest | PR #171 (#166) 一覧の作品名・著者をファイル名ではなく公開DBの日本語に
 - 更新: [[metadata-linking]], [[backend]]
 - 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。
+
+## [2026-11-07] ingest | PR #192 (#178, #179, #180) .zip 内 EPUB の内容判定・非コンテンツ dir 除外・表紙のみフォルダのスキップ
+- 更新: [[backend]], [[volume-split]]
+- 備考: SCAN_VERSION を 5 に上げ、既存 DB を再スキャンさせる。`.zip` でも `META-INF/container.xml` を含むアーカイブを EPUB 小説として扱う。`archive_volume_specs()` で `__MACOSX` / `META-INF` / `.DS_Store` 配下と表紙画像だけのフォルダを巻にしない。`_scan_folder()` でも表紙のみフォルダをスキップ。回帰テストを `tests/test_scanner.py` に追加。
