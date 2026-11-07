@@ -454,7 +454,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[work-search]], [[backend]], [[metadata-linking]]
 - 備考: #190。作品カードの候補の確認待ち・統合の提案バッジを持つ作品だけを見る絞り込みが無く、全作品を流し見していた。「絞り込み」のチェックボックス(候補の確認待ちだけ・統合の提案だけ)を新設し、GET /api/works に link_pending=1 / pending_proposals=1 を追加した。モック API も同じ条件で絞る。フロント 186 件・バックエンド 1251 件パス(フロントは Node 26 の localStorage 問題 #130 の回避のため --pool=vmForks で実行。CI は Node 22 で通常のプール)。
 
-
 ## [2026-11-07] ingest | PR #197 (#195) CamelCase のローマ字作品名で公開DBの検索が当たるようにする
 - 更新: [[metadata-linking]], [[backend]]
 - 備考: #195。`linking._query` が CamelCase/PascalCase の連結されたローマ字作品名を空白区切りに変換してから検索するようになった（表示名・突き合わせ用の名前は変更しない）。分割は `match.is_romaji_word` でローマ字全体のときだけ行い、空白判定は `\s` で行う。`decide` の閾値は 0.75 のまま（低確信度候補は pending のまま）。テスト 2 件追加。wiki の linking.py 行番号参照を更新。
@@ -462,3 +461,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-07] ingest | PR #201 inner archive decomposition の非コンテンツ dir・表紙のみフォルダ除外と EPUB 構造名の junk 化
 - 更新: [[backend]], [[volume-split]]
 - 備考: library.py:_units() でも __MACOSX / META-INF / .DS_Store 配下と表紙のみフォルダを単位(巻)にしないようにし、scanner.py:archive_volume_specs() と基準を統一。ANALYSIS_VERSION を 2 に上げ既存データを再解析させる。naming.py:_JUNK_RAW に oebps, ops, metainf, epub を追加し EPUB の構造名が作品名の候補になるのを防ぐ。agy APPROVE。
+
+## [2026-11-08] revert | PR #213 (#190) 作品一覧の候補の確認待ち・統合の提案フィルタを撤回
+- 更新: [[work-search]], [[backend]], [[metadata-linking]], [[recurring-review-findings]]
+- 備考: #190/#211。#207 以降で候補の確認待ち・統合の提案を専用画面で扱う方針のため、作品一覧の interim フィルタ(link_pending / pending_proposals)を撤回した。GET /api/works の link_pending / pending_proposals パラメータとフロントのチェックボックスを削除。read_later フィルタは残す。agy レビューの指摘(log.md の巻き込み削除、backend.md / work-search.md からの read_later 誤削除、Works.test.tsx のアサーション巻き込み削除)を修正し、recurring-review-findings に実例を記録。

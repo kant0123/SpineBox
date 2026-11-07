@@ -398,28 +398,6 @@ def test_strong_duplicate_evidence_merges_automatically_with_confidence_and_evid
     assert client.get("/api/works/proposals").json() == []
 
 
-def test_list_filter_by_link_pending_and_pending_proposals(two_names):
-    _, settings, client = two_names
-    add_candidate(settings, vid(client, "Okiraku v01"), vid(client, "お気楽 第01巻"), 60, 100)
-    client.post("/api/works/refresh")
-    # 候補の確認待ちを 1 件だけ作る(Okiraku)
-    conn = db.connect(settings.db_path)
-    try:
-        with db.transaction(conn) as c:
-            wid = next(w["id"] for w in client.get("/api/works").json()["works"] if w["title"] == "Okiraku")
-            c.execute("""INSERT INTO work_links (work_id, source, status, source_id, manual, confidence)
-                         VALUES (?, 'ndl', 'pending', NULL, 0, 0.5)""", (wid,))
-    finally:
-        conn.close()
-    # 統合の提案は 2 作品とも 1 件ずつ、候補の確認待ちは Okiraku だけ
-    assert {w["title"] for w in client.get("/api/works?pending_proposals=1").json()["works"]} == {"Okiraku", "お気楽"}
-    assert [w["title"] for w in client.get("/api/works?link_pending=1").json()["works"]] == ["Okiraku"]
-    assert [w["title"] for w in client.get("/api/works?link_pending=1&pending_proposals=1").json()["works"]] == ["Okiraku"]
-    # total は絞る前の作品数(2)のまま
-    assert client.get("/api/works?link_pending=1").json()["total"] == 2
-    assert client.get("/api/works?pending_proposals=1").json()["total"] == 2
-
-
 def test_low_confidence_becomes_a_proposal_and_is_not_merged(two_names):
     _, settings, client = two_names
     add_candidate(settings, vid(client, "Okiraku v01"), vid(client, "お気楽 第01巻"), 60, 100)
