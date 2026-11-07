@@ -24,7 +24,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - `作品名 01` `作品名(3)` の形も `parse_number()` では拾わない(`Kitchen 2` が作品名のこともある)。
   `spinebox/naming.py trailing_number()` が候補を返し、**同じ名前で末尾の番号だけが違う巻が 2 つ以上**のときだけ
   [[work-grouping]] が巻番号として `volumes.number_*` に入れる(スキャンでは書かない)
-- 読み方を変えたら `spinebox/scanner.py:45 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
+- 読み方を変えたら `spinebox/scanner.py:46 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
 
 ### 分解(巻の単位と子の巻)
 

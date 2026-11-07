@@ -28,7 +28,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/scanner.py:423 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
 | `spinebox/scanner.py:297 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
 | `spinebox/scanner.py:269 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:567 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:568 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:142 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:387 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:120 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
@@ -190,9 +190,9 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 - #30 で巻への分解と巻範囲の食い違いを足した([[volume-split]])。マイグレーション 2(`volumes` に親子・巻番号の候補・解析の版の列)。
   `SCAN_VERSION` を 2 にしたので、既存 DB は次のスキャンで全アーカイブの目次を読み直す(取り出しはしない)
-- #177 で EPUB を拡張子ではなく内容(`META-INF/container.xml` の有無)で判定するようにした。`SCAN_VERSION` を 3 に上げ、
-  既存 DB の EPUB を含むアーカイブ(拡張子が `.zip` でも)を再スキャンして、`OEBPS` などの内部フォルダを巻にしない。
-  `_scan_archive` は目次に `META-INF/container.xml` があれば `_scan_novel(..., FORMAT_EPUB)` に回す
+- #177 で EPUB を拡張子ではなく内容(`META-INF/container.xml` の有無)で判定するようにした。`SCAN_VERSION` を 4 に上げ
+  (origin/main の #167 で 3 に上げた分と合わせる)、既存 DB の EPUB を含むアーカイブ(拡張子が `.zip` でも)を再スキャンして、
+  `OEBPS` などの内部フォルダを巻にしない。`_scan_archive` は目次に `META-INF/container.xml` があれば `_scan_novel(..., FORMAT_EPUB)` に回す
 
 - #31 で整理処理を足した([[organize]])。マイグレーション 3(`organize_ops` / `organize_steps` / `organize_volumes` と `volumes.organized_op_id`)。
   クラウドで作ったブランチは版 2 だったが、#30 が先にマージされたため 3 番へ付け替えた(未リリースなので版番号の付け替えは可)。
