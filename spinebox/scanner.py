@@ -546,15 +546,15 @@ class Scanner:
         from .organize.pdf import inspect_pdf
         page_count, problems = inspect_pdf(path)
         issues = [Skip(None, safe_text(p)) for p in problems]
-        specs: list[VolumeSpec] = []
+        specs: list[VolumeSpec] | None = None
         if not issues and page_count > 0:
-            spec = VolumeSpec(None, "", path.stem, _fs_name_bytes(path.name), "filesystem", page_count, FORMAT_PDF)
-            specs.append(spec)
+            specs = [VolumeSpec(None, "", path.stem, _fs_name_bytes(path.name), "filesystem", page_count, FORMAT_PDF)]
         with db.transaction(self.conn) as c:
             record_issues(c, src["id"], None, issues)
-            self._replace_volumes(c, src["id"], specs)
-            c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
-                      (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+            if specs is not None:
+                self._replace_volumes(c, src["id"], specs)
+                c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                          (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
 
     def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec], *, keep_analysis: bool = False) -> None:
         """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。

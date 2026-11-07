@@ -288,3 +288,34 @@ def test_single_organize_pdf(env):
     assert res["state"] == "done"
     assert (root / "単巻" / "単体 第1巻.cbz").is_file()
     assert not pdf_path.exists()
+
+
+def test_scan_unreadable_pdf_does_not_update_source_size_or_drop_existing(env):
+    """読めない PDF は sources.size/mtime を記録せず、既存の巻を missing にしない。"""
+    root = env.root
+    pdf_path = root / "漫画" / "破損テスト 1巻.pdf"
+    make_simple_pdf(pdf_path, num_pages=2)
+
+    # 1 回目: 正常スキャン
+    Scanner(env.conn, env.settings).scan()
+    src = env.conn.execute("SELECT id, size FROM sources WHERE rel_path = '漫画/破損テスト 1巻.pdf'").fetchone()
+    assert src["size"] is not None
+    vol = env.conn.execute("SELECT id, missing FROM volumes WHERE source_id = ?", (src["id"],)).fetchone()
+    assert vol["missing"] == 0
+
+    # ファイルを破損させる
+    pdf_path.write_bytes(b"not a pdf anymore")
+    # mtime を進める
+    st = pdf_path.stat()
+    os.utime(pdf_path, (st.st_atime + 10, st.st_mtime + 10))
+
+    # 2 回目: 再スキャン。読めない PDF なので sources のサイズは更新されず既存巻も missing にならない
+    res = Scanner(env.conn, env.settings).scan()
+    assert any("読めない" in iss["reason"] for iss in res.issues)
+
+    src_after = env.conn.execute("SELECT id, size, mtime_ns FROM sources WHERE id = ?", (src["id"],)).fetchone()
+    # 失敗したため、新しいサイズや mtime_ns は反映されない
+    assert src_after["size"] == src["size"]
+
+    vol_after = env.conn.execute("SELECT id, missing FROM volumes WHERE id = ?", (vol["id"],)).fetchone()
+    assert vol_after["missing"] == 0  # missing にされない
