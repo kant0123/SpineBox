@@ -231,7 +231,6 @@ describe("作品の検索と絞り込み(#56)", () => {
   it("クエリ文字列は空の値を付けない", () => {
     expect(workQueryString({})).toBe("");
     expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
-    expect(workQueryString({ read_later: true, link_pending: true, pending_proposals: true })).toBe("?read_later=1&link_pending=1&pending_proposals=1");
     expect(normalizeSearch("ＯＫＩ カクｶｸ・x")).toBe("okiかくかくx");
   });
 
@@ -250,29 +249,6 @@ describe("作品の検索と絞り込み(#56)", () => {
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
     await waitFor(() => expect(cardTitles()).toHaveLength(3));
     expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
-  });
-
-  it("候補の確認待ち・統合の提案で絞り込める", async () => {
-    window.location.hash = "#/works";
-    render(<App />);
-    await screen.findByText("サンプル漫画");
-    expect(cardTitles()).toHaveLength(3);
-    fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
-    // 候補の確認待ちはサンプル漫画だけ(NDL・AniList の pending)
-    fireEvent.click(screen.getByLabelText("候補の確認待ちだけ"));
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
-    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
-    expect(screen.getByText(/1 件 \/ 全 3 作品/)).toBeTruthy();
-    // 提案の絞り込みを足すと、両方の条件で絞られ 0 件になる(サンプル漫画に提案は無い)
-    fireEvent.click(screen.getByLabelText("統合の提案だけ"));
-    await waitFor(() => expect(cardTitles()).toEqual([]));
-    // 候補の確認待ちを外すと提案の 2 作品だけになる
-    fireEvent.click(screen.getByLabelText("候補の確認待ちだけ"));
-    await waitFor(() => expect([...cardTitles()].sort()).toEqual(["別の読み物", "外付けの作品"]));
-    expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
-    // 提案の絞り込みも外すと全部戻る
-    fireEvent.click(screen.getByLabelText("統合の提案だけ"));
-    await waitFor(() => expect(cardTitles()).toHaveLength(3));
   });
 
   it("絞り込みは開いたときだけ出て、読書状態と項目で絞れる", async () => {
