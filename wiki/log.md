@@ -418,6 +418,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: 利用者の「ホーム・漫画・小説で表示するのは日本語タイトル」「作者も日本語に」の要望。`spinebox/linking.py` の `_prefer_japanese_value()` が、ファイル名・外側の名前由来の作品名・著者より公開DBの日本語(かな・漢字を含む)を優先する(確信度0.9未満でも)。手動の値は変えず、置き換えた元の作品名は別名と `evidence.replaced` に残し、連携を外すと戻す。
 
 
-## [2026-11-07] ingest | 表紙が横長(見開き)画像の場合の表示を改善
+## [2026-11-07] ingest | 表紙が横長(見開き)画像の場合の表示を改善(PR #194)
 - 更新: [[cover-thumbnails]], [[frontend]]
 - 備考: 作品カードの表紙(WorkCover)が画像読み込み後に aspect ratio を判定し、横長なら寄せ位置/全体表示を切り替える。ar > 2.0 は contain、1.2 < ar <= 2.0 は漫画→左寄せ/小説→右寄せ。しきい値と方向は実データ(お気楽領主は全巻縦長、かくかくしかじかは 4 巻中 3 巻が横長 ar 1.41〜2.21)を根拠にした仮定。WorkCover に kind プロップを追加し、Works/WorkTitles/Bookmarks の呼び出し元で work.kind を渡す。Vitest 185 件・tsc ビルドパス。
