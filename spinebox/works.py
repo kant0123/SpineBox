@@ -444,7 +444,9 @@ def _settle_claims(c, st: _State, claims: dict[int, OwnName], moved: dict[int, s
         if c.execute("SELECT 1 FROM work_volumes WHERE work_id = ? LIMIT 1", (w,)).fetchone():
             continue
         dest = dests.pop()
-        keep, drop = (w, dest) if _claim_keep_key(c, w)[:2] > _claim_keep_key(c, dest)[:2] else (dest, w)
+        # 移り先に手動の決定が絡むなら必ず移り先を残す(手動の作品を吸収させない)
+        prefer_w = not _manual_involved(c, dest) and _claim_keep_key(c, w)[:2] > _claim_keep_key(c, dest)[:2]
+        keep, drop = (w, dest) if prefer_w else (dest, w)
         merge_works(c, keep, drop, rule="container", confidence=CONF_CONTAINER_CLAIM, manual=False)
         summary.merged += 1
     # 3. 作品名を外側の日本語の名前に揃える

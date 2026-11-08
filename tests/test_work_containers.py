@@ -122,3 +122,31 @@ def test_the_container_claim_does_not_move_manual_decisions_and_is_idempotent(en
     client.post("/api/scan")
     client.post("/api/scan")
     assert titles(client) == [("手で付けた名前", 2)]
+
+
+def test_an_emptied_work_never_absorbs_a_work_with_a_manual_decision(env):
+    from spinebox import works
+    lib, scan = env
+    cbz(lib, "野人転生/Yajin Tensei v01.cbz")
+    cbz(lib, "野人転生/Yajin Tensei v02.cbz")
+    settings, client = scan()
+    wid = client.get("/api/works").json()["works"][0]["id"]
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:  # 利用者が選んだ公開 DB の連携(手動の決定。作品名は名前由来のまま)
+            c.execute("INSERT INTO work_links (work_id, source, status, source_id, manual) "
+                      "VALUES (?, 'mangaupdates', 'linked', 'x', 1)", (wid,))
+    finally:
+        conn.close()
+    # 前の同期で巻を持っていた、公開 DB の日本語の作品名の作品(今は空)
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            old = works._new_work(c, "野人転生", source=works.SOURCE_PUBLIC_DB, manual=False, confidence=1.0,
+                                  evidence=None)
+            st = works._State(c)
+            works._settle_claims(c, st, {}, {old: {wid}}, works.SyncSummary())
+        assert conn.execute("SELECT merged_into FROM works WHERE id = ?", (wid,)).fetchone()[0] is None
+        assert conn.execute("SELECT merged_into FROM works WHERE id = ?", (old,)).fetchone()[0] == wid
+    finally:
+        conn.close()
