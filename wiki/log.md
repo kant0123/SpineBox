@@ -474,7 +474,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: 自炊漫画 PDF を SpineBox で閲覧・管理可能にするため、範囲指定整理(include_cbz=True)および単巻整理で PDF を 1 巻 = 1 CBZ に変換するハイブリッド抽出方式(spinebox/organize/pdf.py)を実装。1 ページ 1 画像は無劣化抽出(ZIP_STORED)、回転・CMYK 補正、白紙・複数画像の合成レンダリングに対応。スキャナーで volumes.format='pdf' として検出し、整理の確定・退避・undo・delete_originals に完全対応。
 
 ## [2026-11-08] ingest | PR #221 (#220) 小数点チャプター表記や数字付きJUNK名の作品化防止と親フォルダ名の採用
-- 更新: [[work-grouping]]
+- 更新: [[work-grouping]], [[recurring-review-findings]]
 - 備考: #220。`Chapter 002.2` や `ch.02.5`、`第02.5話` などの小数点の巻・話・チャプター表記が `_in_decimal` で巻番号から除外された際に作品名全体として扱われ、子フォルダ名で独立作品化していた不具合を修正。`naming._find_decimal()` で該当部分を落とし、単独表記なら作品名候補 `None` として親フォルダ名を採用させるようにした。また、`cover2` や `scans 01` 等の単語+数字パターンを `is_junk_name()` で JUNK 名と判定し、親フォルダ名の採用および `sync()` での自動別名・提案クリーンアップに対応。
 
 ## [2026-11-08] ingest | 横長表紙の左寄せ修正とサムネイル解像度不足の改善(PR #224)
@@ -490,5 +490,5 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #207 の PR2。管理のタブを 統計 / 好み / スキャンと補完(旧データ管理)/ 整理 / フォロー管理 / タスクセンター にした。スキャンと補完は「いつもの更新」3 つだけを開き、残り 9 つは畳む。`daily_scan` と同じ処理の `scan` は一覧から外した(依頼・履歴は残す)。整理は範囲指定の整理と整理の履歴を 1 タブにし、旧 `#/data/organize`・`#/organize` はそこへ。「ほかの画面」の節は廃止。ジョブに `step_index` / `step_count`(`JobContext.plan()`)を足し、画面は「段 2/5: …」と「45 / 120」「45 件目」を分けて出す。
 
 ## [2026-11-09] ingest | PR #231 (#212) 作品の表示タイトルは日本語を正とする不変条件を明文化
-- 更新: [[work-grouping]]
+- 更新: [[work-grouping]], [[recurring-review-findings]]
 - 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。
