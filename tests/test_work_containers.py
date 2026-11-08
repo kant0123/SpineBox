@@ -191,3 +191,29 @@ def test_settling_claims_does_not_query_per_volume(env):
         conn.close()
     per_volume = [s for s in statements if "FROM work_volumes WHERE volume_id" in s]
     assert len(per_volume) < 5  # 巻の数(30)に比例しない
+
+
+def test_a_one_kanji_title_folder_still_claims_its_volumes(env):
+    lib, scan = env
+    cbz(lib, "岳/Gaku v01.cbz")
+    cbz(lib, "岳/Gaku v02.cbz")
+    _, client = scan()
+    assert titles(client) == [("岳", 2)]
+
+
+def test_prefix_sharing_japanese_titles_under_a_romaji_archive_stay_apart(env):
+    lib, scan = env
+    archive(lib, "Zombie Pack.zip", {"[作者] ゾンビ 第01巻": 3, "[作者] ゾンビだらけの世界 第01巻": 3})
+    _, client = scan()
+    assert [t for t, _ in titles(client)] == ["ゾンビ", "ゾンビだらけの世界"]
+
+
+def test_fragment_folders_alone_are_kept(env):
+    lib, scan = env
+    for d in ("作品/Cover", "作品/目次"):
+        (lib / d).mkdir(parents=True)
+        for i in range(2):
+            (lib / d / f"{i:03d}.jpg").write_bytes(page_bytes(f"{d}/{i}"))
+    (lib / "作品" / "cover.jpg").write_bytes(page_bytes("loose cover"))
+    _, client = scan()
+    assert len(client.get("/api/volumes").json()) == 2  # ほかに巻が無いので、断片の名前でも巻のまま

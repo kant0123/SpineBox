@@ -271,3 +271,14 @@ def test_extra_chapters_with_separators_are_labels(name):
 def test_extraordinary_is_not_a_label():
     from spinebox.naming import is_chapter_label
     assert not is_chapter_label("Extraordinary Life v01")
+
+
+@pytest.mark.parametrize("name", ["[サークル] 作品名 C100", "作品名 (C99)", "作品名 C98"])
+def test_comiket_numbers_are_not_episodes(name):
+    n = parse_number(name)
+    assert n is None or n.kind != "episode"
+
+
+def test_a_one_kanji_name_is_not_a_fragment():
+    from spinebox.naming import is_fragment_name
+    assert not is_fragment_name("岳") and is_fragment_name("c") and is_fragment_name("❺")

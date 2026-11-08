@@ -57,8 +57,8 @@ _RULES: list[tuple[str, str, re.Pattern]] = [
                                    re.IGNORECASE)),
     ("volume", "vN", re.compile(rf"{_LB}v\.?\s?{_NUM}(?:{_SEP}v?{_NUM})?(?=[A-Za-z]?(?![A-Za-z\d]))",
                                 re.IGNORECASE)),
-    ("episode", "ch.N", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?|c(?=\d))\.?\s*{_NUM}(?:{_SEP}{_NUM})?{_RB}",
-                                   re.IGNORECASE)),  # `c06-08` は章 6〜8
+    ("episode", "ch.N", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?|(?-i:c)(?=\d))\.?\s*{_NUM}(?:{_SEP}{_NUM})?{_RB}",
+                                   re.IGNORECASE)),  # `c06-08` は章 6〜8。大文字の `C100` はコミックマーケットの回なので読まない
     ("volume", "N-M", re.compile(rf"(?<![\d.\-]){_NUM}{_SEP}{_NUM}(?![\d.\-])")),
 ]
 
@@ -290,7 +290,8 @@ _FRAGMENT_COVER = re.compile(r"^\d{0,4}(?:covers?|表紙)$")
 def is_fragment_name(name: str) -> bool:
     """目次・表紙・広告など、本の断片を表す名前か(1 文字だけの名前 `c` `❺` も含む)。"""
     norm = normalize_title(_without_distributor(name))
-    return len(norm) <= 1 or norm in _FRAGMENT_NAMES or bool(_FRAGMENT_COVER.match(norm))
+    single = len(norm) <= 1 and not any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in norm)  # `岳` は作品名
+    return single or norm in _FRAGMENT_NAMES or bool(_FRAGMENT_COVER.match(norm))
 
 
 def _bracket_content(m: re.Match) -> str:

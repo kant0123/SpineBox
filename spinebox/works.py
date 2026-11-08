@@ -292,11 +292,6 @@ def _series_key(wn: WorkName) -> str:
     return normalize_title(" ".join(words)) or wn.norm
 
 
-def _same_series(a: str, b: str) -> bool:
-    if a == b:
-        return True
-    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
-    return len(short) >= 3 and long_.startswith(short)
 
 
 _TITLE_BREAK = re.compile(r"[\s~〜～\-－‐:：、,]+")
@@ -321,11 +316,22 @@ def _belongs_to(node_key: str, key: str, title: str = "", node_title: str = "") 
         _has_cjk(key) == _has_cjk(node_key) and _extends(key, node_key, node_title))
 
 
-def _group_keys(keys) -> list[list[str]]:
+def _same_series(a: str, b: str, titles: dict[str, str]) -> bool:
+    """同じ系列か。長い方が短い方に番号・`…編`・区切りの後ろの副題を足しただけのときだけ(`ゾンビ` と
+    `ゾンビだらけの世界` は別)。外側の名前との突き合わせ(`_belongs_to`)と同じ規則。"""
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return _extends(short, long_, titles.get(long_, ""))
+
+
+def _group_keys(items: dict[str, list]) -> list[list[str]]:
+    """系列名の鍵を同じ系列ごとにまとめる。items は 鍵 → [(巻, WorkName)](区切りの判定に作品名を使う)。"""
+    titles = {k: v[0][1].title for k, v in items.items() if v}
     groups: list[list[str]] = []
-    for k in sorted(set(keys), key=len):
+    for k in sorted(set(items), key=len):
         for g in groups:
-            if any(_same_series(k, x) for x in g):
+            if any(_same_series(k, x, titles) for x in g):
                 g.append(k)
                 break
         else:

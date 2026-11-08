@@ -430,7 +430,10 @@ class Scanner:
         parent = os.path.dirname(dirpath)
         try:
             siblings = [e for e in os.scandir(parent)
-                        if e.path != dirpath and (e.is_dir() or is_archive_name(e.name) or is_image(e.name))]
+                        if e.path != dirpath and (
+                            is_archive_name(e.name)
+                            or (e.is_dir() and not is_fragment_name(e.name))  # 断片どうしは互いを数えない
+                            or (is_image(e.name) and not is_cover(e.name)))]  # 表紙 1 枚は巻にならない(#180)
         except OSError:
             return False
         if not siblings:
