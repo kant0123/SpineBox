@@ -35,7 +35,7 @@ from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
 from .config import Settings
 from .pages import is_cover, is_image, natural_key, page_sort_key, sort_pages
-from .scanner import _is_non_content_path, record_issues, resolve_source_path, root_is_accessible
+from .scanner import _is_non_content_path, fragment_reason, record_issues, resolve_source_path, root_is_accessible
 
 
 class VolumeNotFound(Exception):
@@ -473,6 +473,10 @@ def _units(found, container: str) -> list[analysis.Unit]:
         else:
             title = PurePosixPath(chain[-1] if chain else container).stem
         units.append(analysis.Unit(chain, prefix, title, sorted(names, key=page_sort_key)))
+    # 目次・表紙だけの小さな束は本の断片なので巻にしない(ほかに巻があるときだけ。スキャンと同じ規則)
+    keep = [u for u in units if not (u.prefix and fragment_reason(u.title, len(u.page_names)))]
+    if keep:
+        units = keep
     units.sort(key=lambda u: (natural_key("/".join(u.chain)), natural_key(u.prefix)))
     return units
 
