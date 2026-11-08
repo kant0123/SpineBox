@@ -77,7 +77,7 @@ describe("確認", () => {
     await waitFor(() => expect(Number(reviewNav().querySelector(".count-badge")?.firstChild?.textContent ?? 0)).toBe(before - 1));
   });
 
-  it("作品ページに確認待ちがあれば、確認の画面への 1 行を出す", async () => {
+  it("作品ページに確認待ちがあれば、確認の画面へのリンクを出す(#210 で上部の案内にまとめた)", async () => {
     window.location.hash = "#/works/1";
     render(<App />);
     const link = await screen.findByRole("link", { name: "確認 > 公開DBの候補" });

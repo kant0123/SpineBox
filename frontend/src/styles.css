@@ -1267,7 +1267,19 @@ button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
 .review-work.done .work-cover { width: 32px; }
 .review-work.done h2 { font-size: 1rem; }
 .review-work .link-list { margin-top: 12px; }
-.review-hint { margin: 4px 0 8px; font-size: 0.875rem; }
+/* 作品ごとの確認待ち(#210)。カードでは表紙の左上に通知ドットを重ねる。--warn は白・--bg 上で 3:1 以上。
+   表紙の画像の上でも見分けられるよう --card の縁を付ける。何が待っているかは読み上げ名とツールチップで伝える */
+.notify-dot {
+  display: inline-block; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--warn); border: 2px solid var(--card); box-sizing: border-box;
+}
+.work-cover-wrap > .notify-dot { position: absolute; top: 8px; left: 8px; z-index: 1; width: 18px; height: 18px; box-shadow: var(--elevation-1); }
+.notify-dot.inline { width: 12px; height: 12px; border: 0; margin-right: 8px; vertical-align: 0; flex: none; }
+.review-pending { margin: 8px 0 16px; }
+.review-pending-head { display: flex; align-items: center; margin: 0 0 4px; font-weight: 700; }
+.review-pending ul { margin: 0; padding-left: 1.2em; }
+.review-pending li { margin: 4px 0; }
+@media (forced-colors: active) { .notify-dot { background: Mark; border-color: Canvas; forced-color-adjust: none; } }
 
 /* スキャンと補完(#207)。実行中は 1 行、「個別の処理」は畳む */
 .job-now { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--card); overflow-wrap: anywhere; }
