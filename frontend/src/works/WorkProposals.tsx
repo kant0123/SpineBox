@@ -1,28 +1,86 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type WorkBrief, type WorkProposal } from "../api";
 import { workHref, worksHref } from "../route";
-import { confidenceText, evidenceLines } from "./labels";
+import { confidenceText } from "./labels";
+import { distinctAliases, proposalEvidence, titleDiff, volumeChips, type TitleParts } from "./proposalView";
 
-function Side({ w }: { w: WorkBrief }) {
+/** 別名をそのまま並べる上限。これより多い分は折りたたむ */
+const ALIASES_SHOWN = 1;
+
+function Title({ w, parts }: { w: WorkBrief; parts: TitleParts | null }) {
   return (
-    <div className="dup-side">
-      <a className="dup-title" href={workHref(w.id)}>
-        {w.title}
-      </a>
-      <dl className="dup-facts">
+    <a className="dup-title" href={workHref(w.id)}>
+      {parts ? (
+        <>
+          {parts.head}
+          {parts.diff && <mark className="proposal-diff">{parts.diff}</mark>}
+          {parts.tail}
+        </>
+      ) : (
+        w.title
+      )}
+    </a>
+  );
+}
+
+function Side({ w, parts, titles }: { w: WorkBrief; parts: TitleParts | null; titles: string[] }) {
+  const aliases = distinctAliases(w.aliases, titles);
+  const shown = aliases.slice(0, ALIASES_SHOWN);
+  const more = aliases.slice(ALIASES_SHOWN);
+  const chips = volumeChips(w);
+  const unseen = w.volume_count - w.volumes.length;
+  return (
+    <div className="dup-side proposal-side">
+      <Title w={w} parts={parts} />
+      <dl className="dup-facts proposal-facts">
         <dt>著者</dt>
         <dd>{w.author ?? "なし"}</dd>
         <dt>別名</dt>
-        <dd>{w.aliases.length ? w.aliases.join(" / ") : "なし"}</dd>
-        <dt>巻({w.volume_count})</dt>
         <dd>
-          {w.volumes.map((v) => v.title).join("、")}
-          {w.volume_count > w.volumes.length ? " …" : ""}
+          {aliases.length === 0 ? (
+            "なし"
+          ) : (
+            <>
+              <ul className="proposal-aliases">
+                {shown.map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+              {more.length > 0 && (
+                <details className="proposal-more">
+                  <summary>ほか {more.length} 件</summary>
+                  <ul className="proposal-aliases">
+                    {more.map((a, i) => (
+                      <li key={i}>{a}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </>
+          )}
+        </dd>
+        <dt>巻</dt>
+        <dd>
+          <span className="proposal-count">{w.volume_count} 冊</span>
+          {chips.length > 0 && (
+            <ul className="proposal-chips" aria-label="巻の内訳">
+              {chips.map((c) => (
+                <li key={c.label}>
+                  {c.label}
+                  {c.count > 1 && <span className="proposal-chip-count"> ×{c.count}</span>}
+                </li>
+              ))}
+              {unseen > 0 && <li className="proposal-chip-more">ほか {unseen} 冊</li>}
+            </ul>
+          )}
         </dd>
       </dl>
     </div>
   );
 }
+
+/** 確信度の基準の説明。カードごとに繰り返さず、一覧の上に 1 回だけ出す */
+export const PROPOSAL_RULE = "自動で統合する基準は確信度 90% 以上です。手で直した作品が絡むものは、確信度にかかわらず確認待ちになります。";
 
 /** 統合の提案 1 件。承認 = 2 つの作品を 1 つにまとめる。却下 = 別の作品として、再計算でも戻さない。 */
 export function ProposalCard({ p, dismissed = false, onChanged }: { p: WorkProposal; dismissed?: boolean; onChanged: () => void }) {
@@ -40,20 +98,23 @@ export function ProposalCard({ p, dismissed = false, onChanged }: { p: WorkPropo
       setBusy(false);
     }
   };
+  const parts = titleDiff(p.a.title, p.b.title);
   return (
-    <li className="dup-card">
-      <div className="dup-sides">
-        <Side w={p.a} />
-        <Side w={p.b} />
+    <li className="dup-card proposal-card">
+      <div className="dup-sides proposal-sides">
+        <Side w={p.a} parts={parts?.[0] ?? null} titles={[p.a.title, p.b.title]} />
+        <Side w={p.b} parts={parts?.[1] ?? null} titles={[p.a.title, p.b.title]} />
       </div>
-      <p className="dup-evidence">
-        確信度 <strong>{confidenceText(p.confidence)}</strong>(自動で統合する基準は 90% 以上で、手で直した作品が絡むものは常に確認待ち)
-      </p>
-      <ul className="evidence-lines">
-        {evidenceLines(p.evidence).map((line, i) => (
-          <li key={i}>{line}</li>
-        ))}
-      </ul>
+      <div className="proposal-reason">
+        <p className="proposal-confidence">
+          確信度 <strong>{confidenceText(p.confidence)}</strong>
+        </p>
+        <ul className="evidence-lines">
+          {proposalEvidence(p).map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      </div>
       <div className="dup-actions">
         {dismissed ? (
           <button type="button" className="small" onClick={() => act("restore")} disabled={busy}>
@@ -121,6 +182,7 @@ export function WorkProposals({ embedded = false, onChanged }: { embedded?: bool
         別々の作品になっているが、同じ本かもしれない組です。承認するまで統合しません。名前は候補であり、確信度が低いものは自動で決めつけません。
         統合しても巻・読書位置は消えません(あとで巻を別の作品へ移して分けられます)。
       </p>
+      <p className="muted">{PROPOSAL_RULE}</p>
       <div className="dup-toolbar">
         <div className="dup-search">
           <label htmlFor="proposal-search-input">作品名・著者で探す</label>
