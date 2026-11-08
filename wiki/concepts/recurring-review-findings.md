@@ -121,6 +121,7 @@ push 前に確かめること:
 - PR #219 — `spinebox/app.py:499 get_volume` / `spinebox/thumbs.py:118 get` / `spinebox/library.py:142 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(agy レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
 - PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(agy レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
 - PR #219 — `spinebox/organize/intake.py:132 preview()` — `novel` 判定から PDF を除外して `mode="cbz"` に流れるようにしたのに、`mode == "cbz"` 内の検査で PDF の分岐を置かず 7-Zip 未対応として恒常的に blocked になり、`_volume_dict` に format を引き継がず execute 時に library.open に流れて VolumeUnreadable になっていた(agy レビューの WARNING。`_inspect_pdf` 呼び出しと `_volume_dict` への format 引き継ぎを足して修正)
+- PR #249 — `spinebox/works.py _belongs_to()` — 巻の名前が外側の名前より長い向きには「番号・…編・区切りの後ろの副題」の検査を足したのに、外側の方が長い向きは単なる前方一致のままで、`魔法使いの嫁` のフォルダが `魔法使い 第01巻` を取り込んだ。両向きを同じ `_extends()` で見るようにした(agy レビューの WARNING)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
@@ -135,6 +136,7 @@ push 前に確かめること:
 実例:
 
 - PR #144 — `spinebox/organize/organizer.py _plan_range_cbz()` — 単巻の振り分け(`_classify_renames`)が単巻どうしの重複だけで衝突・譲りを決め、同じ名前の CBZ 化の元と比べなかった。単巻が同数で衝突していると、ファイル数の少ない元が `cbz` のまま確定した(単巻 5・5 と画像フォルダ 2 で再現し、`dedupe=False` で全体の判定へ寄せた)
+- PR #249 — `spinebox/scanner.py archive_volume_specs()` — 目次・表紙の断片を「ほかに巻があるときだけ」除く判定を、画像のフォルダだけを並べた時点で行い、後から足す内側アーカイブを数えていなかった(断片と内側アーカイブだけのアーカイブで断片が巻に残る)。全部の巻の候補を並べた後に判定するよう移した(agy レビューの WARNING)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
@@ -236,6 +238,7 @@ push 前に確かめること:
 - PR #91 — `spinebox/organize/organizer.py name_values()` — 範囲指定が蔵書ルート全体の巻を渡すのに、巻ごとに 3 回 SELECT していた(20000 巻で 1.1 秒。10 万巻規模で効く)。文の数を数えるテストを足して `IN` でまとめて引くようにした
 - PR #94 — `spinebox/stats.py collect()` — 全作品の表紙の有無を見るのに、作品ごとに `is_built()`(巻の行を 1 件 SELECT)を呼んでいた。`get_volume_rows()` で 500 件ずつ IN でまとめて引く `Thumbnails.are_built()` にし、文の数が巻の数に比例しないことを `set_trace_callback` で確かめるテストを足した
 - PR #135 — `spinebox/organize/organizer.py _plan_range_cbz()` — `include_cbz` の計画で 1 巻 = 1 CBZ の巻ごとに `_classify_renames([r], ...)` を呼び、その中の `sources`・画像フォルダの SELECT が巻数ぶん出た。1 回の `_classify_renames` にまとめ、`folder_sources` / `source_paths` のキャッシュを渡すようにした。計画の SELECT 数が巻数に比例しないことを `set_trace_callback` で確かめるテストを足した
+- PR #249 — `spinebox/works.py _settle_claims()` — 作品名を揃える段で、一覧の巻ごとに `work_volumes` を 1 件 SELECT していた(1 万巻で 2 万文)。割り当てを一度に引く辞書にし、文の数が巻の数に比例しないテストを足した(agy レビューの WARNING)
 
 ### 共有すべき状態を、呼び出しごとに作るインスタンスに持たせている
 
@@ -375,6 +378,7 @@ push 前に確かめること:
 実例:
 
 - PR #172 — `spinebox/naming.py:108 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(agy レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
+- PR #249 — `spinebox/naming.py _CHAPTER_LABEL` — `extra` の単語境界が `_` を単語の文字として扱うので `extra_01` に当たらなかった(さらに書き込み時のエスケープ誤りで `` が後退文字になっていた)。`(?![a-z])` にし、`extra_01` `Extra-02` `Extraordinary` のテストを足した(agy レビューの WARNING)
 
 ### 共通の後処理を分岐の片側だけに置いている
 

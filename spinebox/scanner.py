@@ -186,12 +186,6 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
             title = fix_mojibake(PurePosixPath(archive_name).stem)[0]
             raw, enc = _fs_name_bytes(archive_name), "filesystem"
         specs.append(VolumeSpec(None, prefix, title, raw, enc, len(pages)))
-    # 目次・表紙だけの小さな束は本の断片なので巻にしない(ほかに巻があるときだけ。理由は記録する)
-    reasons = {id(sp): fragment_reason(sp.title, sp.page_count) for sp in specs if sp.entry_prefix}
-    if any(reasons.get(id(sp)) is None for sp in specs):
-        for sp in [sp for sp in specs if reasons.get(id(sp))]:
-            specs.remove(sp)
-            skipped.append(Skip(sp.entry_prefix, reasons[id(sp)]))
     for e in listing.entries:
         if not is_archive_name(e.name):
             continue
@@ -208,6 +202,14 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
         seen_inner.add(e.name)
         inner_title = fix_mojibake(PurePosixPath(e.name).stem)[0]
         specs.append(VolumeSpec(e.name, "", inner_title, e.raw_name, e.encoding, None))
+    # 目次・表紙だけの小さな束は本の断片なので巻にしない(ほかに巻 ― 内側アーカイブも含む ― があるときだけ。
+    # 理由は記録する)。内側アーカイブを足した後で判定する
+    reasons = {id(sp): fragment_reason(sp.title, sp.page_count)
+               for sp in specs if sp.entry_prefix and sp.page_count is not None}
+    if any(reasons.get(id(sp)) is None for sp in specs):
+        for sp in [sp for sp in specs if reasons.get(id(sp))]:
+            specs.remove(sp)
+            skipped.append(Skip(sp.entry_prefix, reasons[id(sp)]))
     return specs, skipped
 
 

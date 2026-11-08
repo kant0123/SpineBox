@@ -260,3 +260,14 @@ def test_web_novel_parts_and_c_ranges_are_episodes():
 @pytest.mark.parametrize("name", ["16_files", "bbjjf1_y_files", "Manga-Zip.info_2_files", "03s", "01b"])
 def test_saved_page_folders_and_marked_numbers_are_not_work_names(name):
     assert parse_work_name(name) is None
+
+
+@pytest.mark.parametrize("name", ["extra_01", "Extra-02", "bonus", "omake 3"])
+def test_extra_chapters_with_separators_are_labels(name):
+    from spinebox.naming import is_chapter_label
+    assert is_chapter_label(name)
+
+
+def test_extraordinary_is_not_a_label():
+    from spinebox.naming import is_chapter_label
+    assert not is_chapter_label("Extraordinary Life v01")

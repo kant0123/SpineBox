@@ -263,7 +263,7 @@ def is_junk_name(norm: str) -> bool:
 
 _CHAPTER_LABEL = re.compile(
     r"^\s*(?:第\s*\d{1,4}\s*(?:話|部分|章|回|幕|節)|\d{1,4}\s*話|(?:chap(?:ter)?|ch|ep(?:isode)?)\.?\s*\d{1,4}"
-    r"|#\s*\d{1,4}|(?:特別|番外|外伝)[編篇]|おまけ|extra|bonus|omake)",
+    r"|#\s*\d{1,4}|(?:特別|番外|外伝)[編篇]|おまけ|(?:extra|bonus|omake)(?![a-z]))",
     re.IGNORECASE)
 
 

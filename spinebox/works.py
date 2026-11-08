@@ -302,18 +302,23 @@ def _same_series(a: str, b: str) -> bool:
 _TITLE_BREAK = re.compile(r"[\s~〜～\-－‐:：、,]+")
 
 
-def _belongs_to(node_key: str, key: str, title: str = "") -> bool:
-    """系列名 key が外側の名前 node_key の作品の巻か(同じ名前、`名前 + 番号`、`名前 + …編`、
-    区切りの後ろに副題が続く `名前 副題`)。"""
+def _extends(short: str, long_key: str, long_title: str) -> bool:
+    """long が short に番号・`…編`・区切りの後ろの副題を足しただけの名前か(`ゾンビ` と `ゾンビだらけの…` は別)。"""
+    if len(short) < 3 or not long_key.startswith(short):
+        return False
+    if _SUFFIX_OK.match(long_key[len(short):]):
+        return True
+    pieces = _TITLE_BREAK.split(long_title)
+    return any(normalize_title(" ".join(pieces[:i])) == short for i in range(1, len(pieces)))
+
+
+def _belongs_to(node_key: str, key: str, title: str = "", node_title: str = "") -> bool:
+    """系列名 key が外側の名前 node_key の作品の巻か(同じ名前、片方がもう片方に `番号` `…編` `区切り + 副題` を
+    足しただけの名前)。外側が長い方(`フシノカミ ~辺境から…~` の下の `フシノカミ`)も同じ規則で見る。"""
     if key == node_key:
         return True
-    if len(node_key) >= 3 and key.startswith(node_key):
-        if _SUFFIX_OK.match(key[len(node_key):]):
-            return True
-        # 区切り(空白・~・-)までの前半が外側の名前と同じなら、副題付きの同じ作品(`ゾンビ` と `ゾンビだらけの…` は別)
-        pieces = _TITLE_BREAK.split(title)
-        return any(normalize_title(" ".join(pieces[:i])) == node_key for i in range(1, len(pieces)))
-    return len(key) >= 3 and node_key.startswith(key) and _has_cjk(key) == _has_cjk(node_key)
+    return _extends(node_key, key, title) or (
+        _has_cjk(key) == _has_cjk(node_key) and _extends(key, node_key, node_title))
 
 
 def _group_keys(keys) -> list[list[str]]:
@@ -361,7 +366,7 @@ def _container_claims(st: _State) -> dict[int, OwnName]:
                 free.append(r)
                 continue
             k = _series_key(wn)
-            if _belongs_to(nkey, k, wn.title):
+            if _belongs_to(nkey, k, wn.title, nwn.title):
                 mine.append(r)
             elif _has_cjk(wn.title):
                 jp[k].append((r, wn))
@@ -451,22 +456,20 @@ def _settle_claims(c, st: _State, claims: dict[int, OwnName], moved: dict[int, s
         summary.merged += 1
     # 3. 作品名を外側の日本語の名前に揃える
     by_work: dict[int, set[tuple[str, str]]] = defaultdict(set)
-    titles: dict[str, str] = {}
+    work_of = dict(c.execute("SELECT volume_id, work_id FROM work_volumes").fetchall())  # 巻ごとに引かない
     for vid in st.listed:
-        r = c.execute("SELECT work_id FROM work_volumes WHERE volume_id = ?", (vid,)).fetchone()
-        if r is None:
+        wid = work_of.get(vid)
+        if wid is None:
             continue
         cl = claims.get(vid)
         key = (cl.name.norm, cl.name.title) if cl is not None and _has_cjk(cl.name.title) else ("", "")
-        by_work[r["work_id"]].add(key)
-        if cl is not None:
-            titles[cl.name.norm] = cl.name.title
+        by_work[wid].add(key)
     own_titles: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for r in st.vols:
-        a = c.execute("SELECT work_id FROM work_volumes WHERE volume_id = ?", (r["id"],)).fetchone()
+        wid = work_of.get(r["id"])
         own = own_name(r)
-        if a is not None and own is not None:
-            own_titles[a["work_id"]][own.name.title] += 1
+        if wid is not None and own is not None:
+            own_titles[wid][own.name.title] += 1
     for wid, keys in by_work.items():
         norm, title = next(iter(keys)) if len(keys) == 1 else ("", "")
         if not norm:

@@ -150,3 +150,44 @@ def test_an_emptied_work_never_absorbs_a_work_with_a_manual_decision(env):
         assert conn.execute("SELECT merged_into FROM works WHERE id = ?", (old,)).fetchone()[0] == wid
     finally:
         conn.close()
+
+
+def test_a_fragment_next_to_inner_archives_is_skipped(env):
+    """外側のアーカイブに目次のフォルダと内側アーカイブだけがあるときも、目次は巻にしない(内側アーカイブもほかの巻)。"""
+    import io
+    import zipfile
+    lib, scan = env
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w") as z:
+        for i in range(3):
+            z.writestr(f"{i:03d}.jpg", page_bytes(f"inner/{i}"))
+    write_zip(lib / "Series.zip", [*[(f"CONTENTS/{i:03d}.jpg", page_bytes(f"c/{i}")) for i in range(3)],
+                                   ("Series v01.zip", inner.getvalue())])
+    _, client = scan()
+    assert [v["title"] for v in client.get("/api/volumes").json()] == ["Series v01"]
+
+
+def test_a_longer_folder_name_does_not_swallow_a_shorter_different_title(env):
+    lib, scan = env
+    cbz(lib, "魔法使いの嫁/[作者] 魔法使いの嫁 第01巻.cbz")
+    cbz(lib, "魔法使いの嫁/魔法使い 第01巻.cbz")
+    cbz(lib, "フシノカミ ~辺境から始める文明再生記~/フシノカミ 第01巻.cbz")
+    _, client = scan()
+    assert [t for t, _ in titles(client)] == ["フシノカミ ~辺境から始める文明再生記", "魔法使い", "魔法使いの嫁"]
+
+
+def test_settling_claims_does_not_query_per_volume(env):
+    from spinebox import db as sdb, works
+    lib, scan = env
+    for n in range(1, 31):
+        cbz(lib, f"固有スキル/Koyuu Skill v{n:02d}.cbz", pages=1)
+    settings, _ = scan()
+    conn = sdb.connect(settings.db_path)
+    statements: list[str] = []
+    try:
+        conn.set_trace_callback(statements.append)
+        works.sync(conn)
+    finally:
+        conn.close()
+    per_volume = [s for s in statements if "FROM work_volumes WHERE volume_id" in s]
+    assert len(per_volume) < 5  # 巻の数(30)に比例しない
