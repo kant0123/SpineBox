@@ -458,9 +458,13 @@ export function createMockWorks(
     if (method === "GET" && path === "/api/works/proposals") {
       const status = new URLSearchParams(query).get("status") ?? "open";
       const wantDismissed = status === "dismissed";
+      const words = (new URLSearchParams(query).get("q") ?? "").toLowerCase().split(/\s+/).filter(Boolean);
       return res(200, proposals.filter((p) => p.dismissed === wantDismissed && (wantDismissed || p.status === "open")).map((p) => ({
         ...p, a: brief(find(p.a.id)!), b: brief(find(p.b.id)!),
-      })));
+      })).filter((p) => {
+        const hay = [p.a, p.b].flatMap((w) => [w.title, w.author ?? "", ...w.aliases]).join("\n").toLowerCase();
+        return words.every((t) => hay.includes(t));
+      }));
     }
     const dec = path.match(/^\/api\/works\/proposals\/(\d+)\/(approve|dismiss|restore)$/);
     if (dec && method === "POST") {

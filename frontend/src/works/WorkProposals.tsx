@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type WorkBrief, type WorkProposal } from "../api";
 import { workHref, worksHref } from "../route";
 import { confidenceText, evidenceLines } from "./labels";
@@ -80,15 +80,28 @@ export function WorkProposals({ embedded = false, onChanged }: { embedded?: bool
   const [showDismissed, setShowDismissed] = useState(false);
   const [items, setItems] = useState<WorkProposal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
 
+  // 入力が止まってから絞り込む(1 文字ごとにサーバーへ問い合わせない)
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(input), 300);
+    return () => clearTimeout(t);
+  }, [input]);
+
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     try {
-      setItems(await api.listProposals(showDismissed ? "dismissed" : "open"));
+      const got = await api.listProposals(showDismissed ? "dismissed" : "open", query);
+      if (mine !== latest.current) return; // 後から出した要求の結果を、古い応答で上書きしない
+      setItems(got);
       setError(null);
     } catch {
+      if (mine !== latest.current) return;
       setError("統合の提案を読み込めませんでした。サーバーが動いているか確認してください。");
     }
-  }, [showDismissed]);
+  }, [showDismissed, query]);
 
   useEffect(() => {
     void load();
@@ -109,6 +122,10 @@ export function WorkProposals({ embedded = false, onChanged }: { embedded?: bool
         統合しても巻・読書位置は消えません(あとで巻を別の作品へ移して分けられます)。
       </p>
       <div className="dup-toolbar">
+        <label className="dup-search">
+          作品名・著者で探す
+          <input type="search" value={input} onChange={(e) => setInput(e.target.value)} placeholder="空白区切りで AND" />
+        </label>
         <label>
           <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />
           却下・分けたものを表示
@@ -120,7 +137,7 @@ export function WorkProposals({ embedded = false, onChanged }: { embedded?: bool
         </div>
       )}
       {items === null && !error && <p className="muted">読み込み中…</p>}
-      {items?.length === 0 && <p className="muted">{showDismissed ? "却下した提案はありません。" : "確認待ちの提案はありません。"}</p>}
+      {items?.length === 0 && <p className="muted">{query.trim() ? "該当する提案はありません。" : showDismissed ? "却下した提案はありません。" : "確認待ちの提案はありません。"}</p>}
       <ul className="dup-list">
         {items?.map((p) => (
           <ProposalCard key={p.id} p={p} dismissed={showDismissed} onChanged={() => { void load(); onChanged?.(); }} />

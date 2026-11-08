@@ -1,7 +1,7 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-08
+updated: 2026-11-09
 related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -74,7 +74,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `PATCH /api/volumes/{id}/metadata` / `POST .../metadata/{field}/reset` | 巻の書誌(`publisher` `label` `released` `isbn`)を手動で保存 / 自動に戻す。ISBN・発売日の形式違いは 422 |
 | `POST /api/works/{id}/aliases` / `DELETE .../aliases/{alias_id}` | 別名を足す(手動)/ 外す(再計算で戻らない)。詳細を返す |
 | `POST /api/works/{id}/merge` / `POST /api/works/assign` | 手動の統合 `{"other_id"}`(同じ作品は 409)/ 巻の付け替え `{"volume_ids", "work_id" \| null, "title"?}`(null は新しい作品へ分ける)。`{"work_id"}` を返す。どちらも手動の決定になる |
-| `GET /api/works/proposals?status=open\|dismissed\|applied` / `POST .../proposals/{id}/approve\|dismiss\|restore` | 統合の提案と、その承認・却下・戻す。無い id は 404、状態に合わない操作(確認待ちでない提案の承認・却下、却下されていない提案の `restore`)は 409。承認は手動の統合として扱う |
+| `GET /api/works/proposals?status=open\|dismissed\|applied&q=` / `POST .../proposals/{id}/approve\|dismiss\|restore` | 統合の提案と、その承認・却下・戻す。`q`(#208)は組の両側の作品名・著者・別名への絞り込みで、空白区切りは AND、正規化は作品検索と同じ(`works.py _proposal_matches()`)。語は a・b を合わせて判定し、open / dismissed のみ(applied は無視)。確認の件数(`/api/review/counts`)は絞り込まない。無い id は 404、状態に合わない操作(確認待ちでない提案の承認・却下、却下されていない提案の `restore`)は 409。承認は手動の統合として扱う |
 | `GET /api/review/counts` / `GET /api/review/links` | 確認の画面(#207)。件数 `{"links", "proposals", "duplicates", "total"}`(links は作品の数、duplicates は組の数。どれも画面の一覧に出るものだけ: 見えている作品・`list_proposals("open")`・両方が見えている重複の組)/ 公開 DB の候補が確認待ちの作品の詳細 `{"works": [<GET /api/works/{id} と同じ形>]}`(並びは作品の一覧と同じ)。選ぶのは既存の `.../links/{source}/choose` |
 | `POST /api/works/refresh` | 名寄せの再計算(`{"works_created", "volumes_assigned", "merged", "proposals_open"}`)。起動時・スキャン・重複スキャンの終わり・巻の解析の後にも自動で走る。ほかのジョブが動いていれば 409 |
 | `POST /api/duplicates/scan` | 見た目の指紋を作って重複候補を出す明示操作。既定は裏で動かして 202 + `{running, started_at, finished_at, done, total, summary, error}`。`?wait=true` は終わるまで待つ(ほかのジョブが動いていれば 409)。既定は待ち行列に入り、待ちの間も `running: true`(`status: "queued"`)。同じジョブが待ち・実行中なら新しく積まない。状態に `job_id`・`status` が付く([[data-jobs]]) |

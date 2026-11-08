@@ -599,6 +599,8 @@ button.small::after {
 .dup-badge { text-decoration: none; border-color: var(--accent); color: var(--accent); }
 .dup-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
 .dup-toolbar label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+.dup-toolbar .dup-search { flex: 1 1 260px; flex-wrap: wrap; cursor: auto; }
+.dup-search input { flex: 1 1 200px; min-width: 0; min-height: 44px; padding: 0 12px; font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
 .dup-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 14px; }
 .dup-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; min-width: 0; }
 .dup-sides { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }

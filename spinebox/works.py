@@ -1446,8 +1446,19 @@ def _merge_json(conn, r, roots: dict[int, int]) -> dict:
             "titles": [_title_of(conn, r["work_a"])[0], _title_of(conn, r["work_b"])[0]]}
 
 
-def list_proposals(conn: sqlite3.Connection, status: str = "open") -> list[dict]:
-    """統合の提案。status は open(確認待ち)/ dismissed(却下・分離)/ applied(統合済み: 自動と承認)。"""
+def _proposal_matches(item: dict, wanted: list[str]) -> bool:
+    """提案の組(a・b)の作品名・著者・別名に、検索語がすべて含まれるか(#208)。語は a・b を合わせて判定する。
+    正規化は作品の検索・名寄せと同じ(`search.normalize`)。"""
+    texts = []
+    for side in (item["a"], item["b"]):
+        texts.extend([side["title"], side["author"], *side["aliases"]])
+    hay = "\n".join(search.normalize(t) for t in texts if t)
+    return all(t in hay for t in wanted)
+
+
+def list_proposals(conn: sqlite3.Connection, status: str = "open", q: str | None = None) -> list[dict]:
+    """統合の提案。status は open(確認待ち)/ dismissed(却下・分離)/ applied(統合済み: 自動と承認)。
+    q は作品名・著者・別名の絞り込み(空白区切りで AND、open / dismissed のみ。#208)。"""
     wanted = {"open": ("open",), "dismissed": ("dismissed",), "applied": ("auto", "approved")}.get(status)
     if wanted is None:
         raise InvalidValue("status は open / dismissed / applied")
@@ -1455,6 +1466,7 @@ def list_proposals(conn: sqlite3.Connection, status: str = "open") -> list[dict]
     vols = _listed_volumes(conn)
     roots = _roots(conn)
     marks = ",".join("?" * len(wanted))
+    words = search.terms(q) if status != "applied" else []
     out = []
     for r in conn.execute(f"SELECT * FROM work_merge_proposals WHERE status IN ({marks}) ORDER BY confidence DESC, id",
                           wanted):
@@ -1464,7 +1476,7 @@ def list_proposals(conn: sqlite3.Connection, status: str = "open") -> list[dict]
                 out.append(_merge_json(conn, r, roots))
         elif a != b and a in vols and b in vols:
             item = _proposal_json(r, works, vols, roots)
-            if item is not None:
+            if item is not None and (not words or _proposal_matches(item, words)):
                 out.append(item)
     return out
 
