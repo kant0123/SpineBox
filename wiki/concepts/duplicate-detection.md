@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 別スキャンの重複候補の検出。全ページの dHash の集合と巻番号の候補で判定し、自動では消さない。しきい値の根拠(実データの距離の分布)、全ページを指紋にした理由、却下の持ち方、計算の範囲
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, volume-split, extraction-cache, archive-reading, organize, work-grouping, cover-thumbnails, data-jobs]
 ---
 
