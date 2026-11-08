@@ -115,6 +115,11 @@ OKIRAKU_JP = "お気楽領主の楽しい領地防衛"
     ("01巻 作品名", "作品名", ()),
     ("作品 第12話", "作品", ()),
     ("[作品名] 第1巻", "作品名", ()),                                    # 括弧の中しか作品名が無いなら作品名
+    ("スキルがなければレベルを上げる Chapter 002.2", "スキルがなければレベルを上げる", ()),  # 小数点チャプター落とし(#220)
+    ("スキルがなければレベルを上げる ch.02.2", "スキルがなければレベルを上げる", ()),
+    ("スキルがなければレベルを上げる 第02.5話", "スキルがなければレベルを上げる", ()),
+    ("Chapter 002.2 スキルがなければレベルを上げる", "スキルがなければレベルを上げる", ()),
+    ("[東村アキコ] かくかくしかじか Chapter 002.2", "かくかくしかじか", ("東村アキコ",)),
 ])
 def test_parse_work_name(name, title, authors):
     wn = parse_work_name(name)
@@ -126,6 +131,10 @@ def test_parse_work_name(name, title, authors):
 
 @pytest.mark.parametrize("name", [
     "DLRAW.TO_001.jpg", "001", "第01巻", "v01", "Vol.1", "cover", "新しいフォルダー", "", "2019", "[DL版]",
+    # 小数点のチャプター・話数のみの名前は作品名と読まない(#220)
+    "Chapter 002.2", "Chapter 002.3", "Chapter 002.4", "Chapter 003.1", "ch. 02.5", "ch02.5", "第02.5話", "02.5話", "02.5巻", "Vol.02.5", "v02.5",
+    # 単語の後ろに数字が付いたJUNK名・チャプター単体(#220)
+    "cover2", "cover02", "scans 01", "raw1", "images 2", "page01", "Chapter", "Episode",
 ])
 def test_parse_work_name_without_a_title(name):
     assert parse_work_name(name) is None
