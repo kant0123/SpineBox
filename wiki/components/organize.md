@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB や PDF も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
+summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB や PDF も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す、途中で落ちた操作の起動時の復旧(#36)。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-09
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs, manga-reader]
 ---
@@ -35,30 +35,31 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | パス | 役割 |
 | --- | --- |
 | `spinebox/organize/organizer.py:183 plan` | 計画。DB・stat・外側アーカイブの目次だけを読み、問題(実行不可)と注意を出す。整理の単位(読める巻)を選ぶのもここ |
-| `spinebox/organize/organizer.py:349 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出 |
-| `spinebox/organize/organizer.py:262 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
+| `spinebox/organize/organizer.py:356 _unanalyzed` | 中の巻をまだ調べていない内側アーカイブの検出 |
+| `spinebox/organize/organizer.py:269 _template_outputs` | CBZ 化の出力先をテンプレートで決める。値の集め方は `name_values`(作品は統合の吸収先、番号は名前から読んだ候補) |
 | `spinebox/organize/template.py:207 NameTemplate` | テンプレートの検証(設定の読み込み時)と 1 巻ぶんの展開・無害化。`check_path_length` が全体の長さを見る |
 | `spinebox/organize/organizer.py:456 execute` | 作成 → 全巻検証 → 確定 → 退避 → 空フォルダ削除 → DB。失敗時の巻き戻しもここ |
 | `spinebox/organize/organizer.py:626 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、復元先フォルダ再作成、途中失敗時に「実行済み」へ戻す |
-| `spinebox/organize/organizer.py:871 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
+| `spinebox/organize/organizer.py:868 recover_interrupted` | 起動時の復旧(#36)。実行・元に戻すの途中で落ちた操作を、ジャーナルの手順を逆順に戻して元の状態へ(実行中 → failed、元に戻す途中 → done)。呼ぶのは `spinebox/app.py recover_interrupted_organize()`(`create_app` の中の lifespan の先頭。ほかの操作はまだ動いていない) |
+| `spinebox/organize/organizer.py:948 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
 | `spinebox/organize/organizer.py:758 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
 | `spinebox/organize/organizer.py:786 _rmdir_empty_parents` | 移動・退避後に空になった親フォルダをルートの手前まで再帰的に削除し、`rmdir` としてジャーナルに記録(#155) |
-| `spinebox/organize/organizer.py:892 plan_range` | 範囲指定の整理の計画(#84)。範囲のパスは `range_path`、フォルダを選ぶ一覧は `range_folders`。振り分けは `plan_rename` と共有の `_classify_renames`、対象の判定は `_range_ineligible`。`include_cbz=True` は `_plan_range_cbz` へ |
-| `spinebox/organize/organizer.py:945 _plan_range_cbz` | 範囲指定の CBZ 化もまとめて行う計画(#133)。1 巻 = 1 CBZ は改名・移動、それ以外は元(1 ファイル・フォルダ・画像だけの EPUB)の巻を CBZ 化する。勝ち負けの決め直しと、元を止める・選択待ちにする判定(#153)もここ |
-| `spinebox/organize/organizer.py:1217 _supersede_smaller_outputs` | 同じ名前の巻のうちファイル数の少ない方を整理しないにする(#143)。改名・移動側は `_classify_renames`。選び方は `_smaller_than_top` |
+| `spinebox/organize/organizer.py:969 plan_range` | 範囲指定の整理の計画(#84)。範囲のパスは `range_path`、フォルダを選ぶ一覧は `range_folders`。振り分けは `plan_rename` と共有の `_classify_renames`、対象の判定は `_range_ineligible`。`include_cbz=True` は `_plan_range_cbz` へ |
+| `spinebox/organize/organizer.py:1022 _plan_range_cbz` | 範囲指定の CBZ 化もまとめて行う計画(#133)。1 巻 = 1 CBZ は改名・移動、それ以外は元(1 ファイル・フォルダ・画像だけの EPUB)の巻を CBZ 化する。勝ち負けの決め直しと、元を止める・選択待ちにする判定(#153)もここ |
+| `spinebox/organize/organizer.py:1294 _supersede_smaller_outputs` | 同じ名前の巻のうちファイル数の少ない方を整理しないにする(#143)。改名・移動側は `_classify_renames`。選び方は `_smaller_than_top` |
 | `spinebox/organize/organizer.py:83 _mark_kept_peers` | 利用者が整理しないにした巻のうち、同じ名前で残る巻がある巻に `superseded_by` を付ける(競合で別の行を選んだ結果。#153) |
-| `spinebox/organize/organizer.py:1759 _delete_trashed_originals` | 「CBZ 化した元を削除する」を選んだ操作だけ、確定・DB の記録の後でその操作の退避フォルダの中を消す(#153) |
+| `spinebox/organize/organizer.py:1836 _delete_trashed_originals` | 「CBZ 化した元を削除する」を選んだ操作だけ、確定・DB の記録の後でその操作の退避フォルダの中を消す(#153) |
 | `spinebox/novel/epub.py:188 image_pages` | 画像だけの EPUB(漫画)の spine 順のページ。文字のある区切りが 1 つでもあれば None。計画は `_epub_image_pages`、実行は `_write_epub_cbz` |
 | `spinebox/organize/pdf.py:191 write_pdf_cbz` | PDF からページ画像を抽出して CBZ を作成する。基本は無劣化抽出、回転・CMYK 補正、白紙・複数画像の合成レンダリングを行うハイブリッド方式。検査は `inspect_pdf` |
-| `spinebox/organize/organizer.py:1640 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
-| `spinebox/organize/organizer.py:1870 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
+| `spinebox/organize/organizer.py:1717 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
+| `spinebox/organize/organizer.py:1947 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
 | `spinebox/organize/template.py:273 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
 | `spinebox/organize/cleanup.py:47 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定・修復は `spinebox/mojibake.py fix_mojibake` |
 | `spinebox/mojibake.py:59 fix_mojibake` | 複数パターンの文字コード誤読(CP437/CP850/CP1252/Latin-1 欧文誤読、CP932/EUC-JP 誤読)の安全な検出と修復。命名解析やスキャン時のタイトルにも適用 |
 | `frontend/src/organize/OrganizeFiles.tsx:843 OrganizeFilesSection` | 整理画面の中身。管理の整理タブ(`frontend/src/admin/panels.tsx:15 OrganizePanel()`。#207 まではデータ管理タブの下の節。[[data-jobs]])にこの部品と整理の履歴を置く。1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行の 3 段、入力欄ごとの項目の差し込み、Esc・フォーカストラップ・フォーカス返却つきのフォルダー選択、結果の見出しへのフォーカス(#149)。結果は要約・競合の行選択・実行内容・整理しない内容のリスト(#151。`ClashGroups` / `RangeWork` / `RangeRest`)。旧 `#/data/organize`・`#/organize` は整理タブを開く(巻の一覧のヘッダーの「ファイル名の整理」は外した) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:2050 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークとしおり(#136。[[manga-reader]])は写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
+| `spinebox/organize/organizer.py:2127 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークとしおり(#136。[[manga-reader]])は写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
 置き場は `spinebox/config.py:134 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
@@ -78,6 +79,10 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
   済んだかどうかを判断して戻せる。DB 更新(新しい巻の登録・読書位置)で失敗しても、退避と確定を逆順に戻す
 - **元に戻すも消さない。** 作った CBZ は `trash/<操作ID>/created/` へ移すだけ。元の場所に別のファイル・フォルダが
   できていたら、何も動かさずに止める
+- **途中で落ちても、起動時に戻す(#36)。** 手順は移動の前に pending で書き、終わったら done にするので、落ちた後も
+  どこまで進んだかが分かる。pending の移動は「移動が済んだか」を移動元・移動先の有無で判定する(両方あるか両方無いときは
+  戻さず `rollback_failed` / `undo_failed` で残す)。戻すのは起動時だけ(同じプロセスの操作と重ねない)。
+  元の削除(`delete_original`)の記録は戻さない(消したものは戻せない)
 - **計画から実行までに元が変わっていたら止める。** `fingerprint()`(アーカイブはサイズ・mtime、フォルダは直下の各エントリ)で
   比べる。失敗した操作は再実行できず、計画から作り直す
 - **元の巻レコードは消さない。** `volumes.organized_op_id` を立てて一覧・閲覧から外し、元のソースは missing にする。
@@ -276,13 +281,19 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 - `same_drive` は存在する祖先で判定する。まだ無い作業場を作る前に調べられるようにするため。テストでは
   `Organizer(same_drive=...)` で差し替えて別ドライブ構成を作る(`move=` で途中失敗も作れる)
 - 実行と元に戻すはスキャンと同じロックで直列化する(`/api/scan` と同時に走ると半端な状態を走査する)。#83 からはデータ管理のジョブ全部と同じロックで、ジョブの実行中・待ち中は 409。整理そのものはジョブに入れない([[data-jobs]])
-- プロセスが実行中に落ちると、操作は `running` のまま残る。ジャーナルに各移動の from / to と状態があるので手で戻せるが、
-  起動時の自動復旧は無い(#36)
+- プロセスが実行中・元に戻す途中に落ちると、操作は `running` / `undoing` のまま残る。起動時に `recover_interrupted` が
+  ジャーナルを逆順に戻す(#36)。蔵書フォルダがオフラインの間は何も動かさず状態も変えないので、次の起動で再び試す。
+  戻せなかった手順が残ったときは `rollback_failed` / `undo_failed` にして、ジャーナルと置いたファイルを消さずに残す
 - 新しい CBZ の巻は、スキャナーが同じ CBZ から作るのと同じ形(直下の画像 = `entry_prefix ''`、`SCAN_VERSION` つき)で
   登録する。スキャナーの切り出し方を変えたら、ここも合わせないと次のスキャンで巻 id が変わる
 
 ## 経緯
 
+- #36 で、実行・元に戻すの途中でプロセスが落ちた操作を、起動時にジャーナルから戻すようにした(`recover_interrupted`)。
+  #31 の実装中に見つけた課題。以前は操作が `running` / `undoing` のまま残り、画面からは何もできなかった。
+  テストは `tests/test_organize_recovery.py`: 確定の途中・退避の途中(移動は済んだが記録前)・元に戻す途中で落とした状態を作り、
+  起動後に元の場所へ戻ること、オフラインなら何もせず次の起動で戻すこと、戻した後にもう一度元に戻せることを確かめる。
+  復旧は起動時だけにした。実行中の操作と重ならないよう、`GET /api/organize` のたびに戻す案は採らなかった
 - #218 で、自炊漫画 PDF を 1 巻 = 1 CBZ に整理する機能を追加した。基本は pypdf による埋め込み画像の無劣化抽出(ZIP_STORED)を行い、回転属性・CMYK の補正、白紙・複数画像ページの合成レンダリングを行うハイブリッド抽出方式(`spinebox/organize/pdf.py`)を採用。スキャナーで `volumes.format = 'pdf'` として検出し、範囲指定整理(`include_cbz=True`)および単巻整理で CBZ 化できるようにした。
 
 

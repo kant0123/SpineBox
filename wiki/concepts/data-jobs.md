@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: データ管理とジョブ(#83)。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期を 1 本ずつ動かす待ち行列と履歴(jobs 表)。依頼は待ち行列、その場で結果を返す API は他が動いていれば 409、中止は区切りで止める。1 本ずつにした理由と却下した代替案
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize, follow]
 ---
 
@@ -17,7 +17,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | --- | --- |
 | `spinebox/jobs.py:149 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
 | `spinebox/datajobs.py:88 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
-| `spinebox/app.py:302 run_job_now()` / `spinebox/app.py:531 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/app.py:317 run_job_now()` / `spinebox/app.py:545 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:204 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:149 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 | `spinebox/jobs.py:111 plan()` | 複数の段のジョブの段の数。`step()` が段の番号を 1 つ進め、`step_index` / `step_count` で返す(#207) |
