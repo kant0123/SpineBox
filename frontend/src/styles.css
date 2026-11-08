@@ -622,7 +622,27 @@ button.small::after {
 .dup-samples li span { grid-column: 1 / -1; }
 .dup-samples img { width: 100%; max-height: 220px; object-fit: contain; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
 .dup-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+/* 統合の提案のカード(#243)。スマホでは 2 作品を縦に積み、区切り線で分ける */
+.proposal-sides { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.proposal-side { padding: 8px 0; }
+.proposal-side + .proposal-side { border-top: 1px solid var(--surface-divider); }
+.proposal-diff { background: #fff0b3; color: #1a1a1a; border-radius: 2px; padding: 0 2px; }
+.proposal-facts dd { margin-bottom: 4px; }
+.proposal-aliases { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.proposal-count { font-weight: 700; }
+.proposal-chips { list-style: none; padding: 0; margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.proposal-chips li { padding: 0 8px; line-height: 1.7; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--fg); white-space: nowrap; }
+.proposal-chips .proposal-chip-count { color: var(--muted); }
+.proposal-chips .proposal-chip-more { border-style: dashed; color: var(--muted); }
+.proposal-more { margin-top: 4px; }
+.proposal-more summary { cursor: pointer; color: var(--accent); min-height: 24px; display: inline-flex; align-items: center; }
+.proposal-reason { margin-top: 8px; padding: 8px 12px; background: var(--bg); color: var(--fg); border-radius: 8px; overflow-wrap: anywhere; }
+.proposal-confidence { margin: 0; }
+.proposal-confidence strong { font-size: 1.125rem; }
+.proposal-reason .evidence-lines { margin-bottom: 0; }
 @media (min-width: 768px) {
+  .proposal-sides { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .proposal-side + .proposal-side { border-top: 0; border-left: 1px solid var(--surface-divider); padding-left: 24px; }
   .dup-sides { gap: 24px; }
   .dup-facts { grid-template-columns: auto 1fr; gap: 2px 8px; }
   .dup-facts dt { font-size: inherit; margin-top: 0; }

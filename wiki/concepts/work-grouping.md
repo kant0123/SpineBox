@@ -50,7 +50,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   (実データ 2026-11-06: 4610 巻のうち 782 巻・73 組が該当。確認待ちの提案 6123 件のうち 3500 件超がこれだけで消えた)
 - **作品の表示タイトルは、利用可能な限り日本語を正とする。** ローマ字(`okirakuryoshunotanoshiryochi` など)はファイル名由来の候補・別名として残し、
   表示タイトルと名寄せの代表(統合で残す作品)には使わない(#212)。日本語の出どころは公開 DB の連携・手動編集・コンテナ名。
-  - 統合で残す作品は `spinebox/works.py:606 choose_survivor()` が決める: 手動の作品名 > 日本語の作品名 > 巻の多い方 > id の若い方。
+  - 統合で残す作品は `spinebox/works.py:609 choose_survivor()` が決める: 手動の作品名 > 日本語の作品名 > 巻の多い方 > id の若い方。
   - ファイル名・外側の名前由来のローマ字の作品名・著者は、公開 DB の日本語で置き換える(確信度 0.9 未満でも)。
     `spinebox/linking.py:502 _prefer_japanese_value()`。日本語同士の置き換えは確信度 0.9 の規則に委ねる([[metadata-linking]])。
 - **系列として読めた巻は、系列名を別名に持つだけの 1 巻作品に留めない。** 巻の割り当ては、読み直した作品名が
@@ -139,8 +139,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1483 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1503 build_slots()` は
+`spinebox/works.py:1486 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1506 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果

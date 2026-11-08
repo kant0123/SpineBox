@@ -13,7 +13,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 
 ## 内容
 
-- **表紙にする巻は `spinebox/works.py:1620 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
+- **表紙にする巻は `spinebox/works.py:1623 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
   巻番号が最小のもの。番号の無い巻は後ろ、同じ番号(重複)は巻の名前の自然順。`GET /api/works` の各作品に `cover_volume_id` で載る
 - **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。作品カード枠(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小した JPEG
   (`spinebox/thumbs.py:74 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`。横長画像の最大幅は 1440。#222 で低解像度化を防ぐため縦横比に応じた計算に改善し、版を 2 に上げた)
