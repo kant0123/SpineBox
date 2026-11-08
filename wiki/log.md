@@ -482,5 +482,5 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #222。横長(見開き)表紙の寄せ方向を、PR #194 での右寄せから実データに合わせて左寄せ(landscape-left)に修正(自炊本スキャン等では左側に表表紙、右側に裏表紙・バーコード等があるため)。また、横長表紙で thumbnail() の指定矩形 contain 縮小により高さが 160px 等に縮み、カード枠(2:3)で切り抜いた際に実質 107x160 ピクセルが拡大表示されてボケていた問題を修正。作品カード(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小(最大幅 1440)する calc_thumbnail_size() を導入し、THUMB_VERSION を 2 に上げてキャッシュを自動更新。pytest・vitest・tsc パス。
 
 ## [2026-11-08] ingest | PR #(未定) (#207) 確認の画面を新設し、公開 DB の候補・統合の提案・重複の候補を集めた
-- 更新: [[frontend]], [[backend]], [[metadata-linking]], [[duplicate-detection]], [[work-grouping]]
+- 更新: [[frontend]], [[backend]], [[metadata-linking]], [[duplicate-detection]], [[work-grouping]](コード参照の行番号: [[bookmarks]], [[inbox]], [[manga-reader]], [[cover-thumbnails]], [[server-setup]])
 - 備考: #207 の PR1。利用者の判断待ちを `#/review` の 3 タブに集め、サイドバーに件数つきの「確認」を足した。公開 DB の候補は作品ページを開かずに選べる。旧 `#/works/proposals`・`#/admin/proposals`・`#/duplicates` は確認のタブへ振り替え、管理の「統合」タブは外した。API は `GET /api/review/counts`・`GET /api/review/links`。管理タブの整理と進捗バーは PR2。
