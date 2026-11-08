@@ -362,9 +362,10 @@ def test_container_name_becomes_alias_and_author_only_when_it_holds_one_work(mak
     write_zip(lib / "詰め合わせ.zip", [("AAA v01/1.jpg", page_bytes("a")), ("BBB v01/1.jpg", page_bytes("b"))])
     client.post("/api/scan")
     ws = by_title(client)
-    k = ws["Kakukaku Shikajika"]
-    assert k["author"] == "東村アキコ" and k["author_source"] == "container"
-    assert [(a["alias"], a["source"], a["confidence"]) for a in k["aliases"]] == [("かくかくしかじか", "container", 0.5)]
+    # 1 作品だけを収めた外側の名前は、日本語ならそのまま作品名になり、巻のローマ字の名前は別名に残る(#247)
+    k = ws["かくかくしかじか"]
+    assert k["author"] == "東村アキコ"
+    assert [(a["alias"], a["source"]) for a in k["aliases"]] == [("Kakukaku Shikajika", "filename")]
     assert ws["AAA"]["aliases"] == [] and ws["BBB"]["aliases"] == []  # 詰め合わせの名前はどの作品の別名にもならない
 
 
@@ -513,25 +514,23 @@ def test_container_alias_matching_a_title_auto_merges_without_manual(make_env):
     (w,) = client.get("/api/works").json()["works"]
     assert w["title"] == "かくかくしかじか" and w["volume_count"] == 3
     assert client.get("/api/works/proposals").json() == []
-    applied = client.get("/api/works/proposals?status=applied").json()
-    assert len(applied) == 1
-    p = applied[0]
-    assert p["rule"] == "alias" and p["confidence"] == 0.9
-    assert p["evidence"]["alias"]["alias_confidence"] == 0.5
+    # 外側の名前(日本語)がそのまま巻の作品名になるので、統合を経ずに同じ作品へ入る(#247)
+    assert client.get("/api/works/proposals?status=applied").json() == []
 
 
-def test_container_alias_matching_a_title_stays_open_when_manual(make_env):
-    """外側アーカイブ名の別名と作品名が一致しても、手動の決定が絡む組は自動統合せず確認待ち(0.9)のまま残す(#214)。"""
+def test_container_name_assigns_volumes_to_a_manually_titled_work_without_changing_it(make_env):
+    """外側の名前(日本語)で読んだ巻は、同じ名前の作品が手動の作品名でもその作品に入る。作品名は手動のまま(#247)。
+    巻の名前がその作品名と同じときと同じ扱い(作品どうしの統合ではないので、手動の決定は変わらない)。"""
     lib, _, client = make_env(["かくかくしかじか 第03巻.cbz"])
     wid = by_title(client)["かくかくしかじか"]["id"]
     client.patch(f"/api/works/{wid}", json={"title": "かくかくしかじか"})  # 手動の作品名
     write_zip(lib / "[東村アキコ] かくかくしかじか 第01-02巻.zip", [
         (f"Kakukaku Shikajika v0{n}/{i}.jpg", page_bytes(f"k{n}{i}")) for n in (1, 2) for i in range(2)])
     client.post("/api/scan")
-    assert len(by_title(client)) == 2
-    (p,) = client.get("/api/works/proposals").json()
-    assert p["rule"] == "alias" and p["status"] == "open" and p["confidence"] == 0.9
-    assert p["evidence"]["alias"]["alias_confidence"] == 0.5
+    ws = by_title(client)
+    assert list(ws) == ["かくかくしかじか"] and ws["かくかくしかじか"]["volume_count"] == 3
+    assert client.get(f"/api/works/{wid}").json()["title_manual"] is True
+    assert client.get("/api/works/proposals").json() == []
 
 
 # --- 手動の編集 ----------------------------------------------------------------------------------
@@ -583,7 +582,7 @@ def test_removed_alias_is_not_added_back(make_env):
     client.post("/api/scan")
     assert client.get(f"/api/works/{w['id']}").json()["aliases"] == []
     assert client.delete(f"/api/works/{w['id']}/aliases/999").status_code == 404
-    client.post(f"/api/works/{w['id']}/aliases", json={"alias": "かくかくしかじか"})  # 手で足し直せる
+    client.post(f"/api/works/{w['id']}/aliases", json={"alias": alias["alias"]})  # 手で足し直せる
     assert client.get(f"/api/works/{w['id']}").json()["aliases"][0]["manual"] is True
 
 

@@ -151,7 +151,7 @@ def _is_non_content_path(prefix: str) -> bool:
 
 # 本の断片(目次・表紙・広告だけの束)とみなすページ数の上限。名前が断片の名前で、これ以下のときだけ巻にしない
 FRAGMENT_MAX_PAGES = 15
-SAVED_PAGE_MAX_PAGES = 3  # ブラウザの「ページを保存」のフォルダ(`xxx_files`)に画像が数枚だけ(ページの部品)
+SAVED_PAGE_MAX_PAGES = 1  # ブラウザの「ページを保存」のフォルダ(`xxx_files`)に画像が 1 枚だけ(ページの部品。`57_files` は本文のことがある)
 _SAVED_PAGE_DIR = re.compile(r"[_\s]files$", re.IGNORECASE)
 
 

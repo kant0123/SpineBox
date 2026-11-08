@@ -895,8 +895,8 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             _fill_author(c, st.works[target], own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
         if leaves:
             _merge_links(c, target, work.id)
-        if cur is not None and cur["work_id"] != target:
-            moved[cur["work_id"]].add(target)
+        if cur is not None and cur["work_id"] != target and own.container:
+            moved[cur["work_id"]].add(target)  # 外側の名前で動かした巻だけ(ほかの付け替えは提案の規則に任せる)
         _put_assignment(c, vid, target, SOURCE_FILENAME, False, own.confidence, own.evidence())
         st.assign[vid] = {"work_id": target, "manual": 0, "source": SOURCE_FILENAME}
         _keep_own_alias(c, st, target, alias)
