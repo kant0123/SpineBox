@@ -473,6 +473,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[organize]], [[backend]], [[bookmarks]], [[work-grouping]], [[recurring-review-findings]]
 - 備考: 自炊漫画 PDF を SpineBox で閲覧・管理可能にするため、範囲指定整理(include_cbz=True)および単巻整理で PDF を 1 巻 = 1 CBZ に変換するハイブリッド抽出方式(spinebox/organize/pdf.py)を実装。1 ページ 1 画像は無劣化抽出(ZIP_STORED)、回転・CMYK 補正、白紙・複数画像の合成レンダリングに対応。スキャナーで volumes.format='pdf' として検出し、整理の確定・退避・undo・delete_originals に完全対応。
 
-## [2026-11-08] ingest | 横長表紙の左寄せ修正とサムネイル解像度不足の改善(#222)
+## [2026-11-08] ingest | 横長表紙の左寄せ修正とサムネイル解像度不足の改善(PR #224)
 - 更新: [[cover-thumbnails]], [[backend]]
 - 備考: #222。横長(見開き)表紙の寄せ方向を、PR #194 での右寄せから実データに合わせて左寄せ(landscape-left)に修正(自炊本スキャン等では左側に表表紙、右側に裏表紙・バーコード等があるため)。また、横長表紙で thumbnail() の指定矩形 contain 縮小により高さが 160px 等に縮み、カード枠(2:3)で切り抜いた際に実質 107x160 ピクセルが拡大表示されてボケていた問題を修正。作品カード(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小(最大幅 1440)する calc_thumbnail_size() を導入し、THUMB_VERSION を 2 に上げてキャッシュを自動更新。pytest・vitest・tsc パス。
