@@ -497,3 +497,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #232 docs: 作品の表示タイトルは日本語を正とする不変条件を追加
 - 更新: [[work-grouping]]
 - 備考: CLAUDE.md の「蔵書を扱う不変条件」に追記。コードは既に日本語優先のため変更なし。
+
+## [2026-11-09] ingest | PR #232 agy レビュー指摘(規約の写しの更新漏れ)の反映
+- 更新: [[recurring-review-findings]]
+- 備考: .agent/rules/spinebox-invariants.md にも日本語タイトル優先の不変条件を追記し、誤りの種類に実例を追加。

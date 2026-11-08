@@ -119,6 +119,7 @@ push 前に確かめること:
 - PR #219 — `spinebox/app.py:488 get_volume` / `spinebox/thumbs.py:79 get` / `spinebox/library.py:142 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(agy レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
 - PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(agy レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
 - PR #219 — `spinebox/organize/intake.py:135 preview()` — `novel` 判定から PDF を除外して `mode="cbz"` に流れるようにしたのに、`mode == "cbz"` 内の検査で PDF の分岐を置かず 7-Zip 未対応として恒常的に blocked になり、`_volume_dict` に format を引き継がず execute 時に library.open に流れて VolumeUnreadable になっていた(agy レビューの WARNING。`_inspect_pdf` 呼び出しと `_volume_dict` への format 引き継ぎを足して修正)
+- PR #232 — `.agent/rules/spinebox-invariants.md` — `CLAUDE.md` の「蔵書を扱う不変条件」に日本語タイトル優先を足したが、冒頭で「同じ PR でここも直す」と明記された写しを更新していなかった(agy レビューの WARNING。同じ追記を写しへ入れて修正)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
