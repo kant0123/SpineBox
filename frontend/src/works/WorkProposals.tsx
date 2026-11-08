@@ -75,7 +75,8 @@ export function ProposalCard({ p, dismissed = false, onChanged }: { p: WorkPropo
   );
 }
 
-export function WorkProposals({ embedded = false }: { embedded?: boolean }) {
+/** onChanged: 承認・却下・戻したとき(確認の件数を取り直す。#207) */
+export function WorkProposals({ embedded = false, onChanged }: { embedded?: boolean; onChanged?: () => void }) {
   const [showDismissed, setShowDismissed] = useState(false);
   const [items, setItems] = useState<WorkProposal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +123,7 @@ export function WorkProposals({ embedded = false }: { embedded?: boolean }) {
       {items?.length === 0 && <p className="muted">{showDismissed ? "却下した提案はありません。" : "確認待ちの提案はありません。"}</p>}
       <ul className="dup-list">
         {items?.map((p) => (
-          <ProposalCard key={p.id} p={p} dismissed={showDismissed} onChanged={() => void load()} />
+          <ProposalCard key={p.id} p={p} dismissed={showDismissed} onChanged={() => { void load(); onChanged?.(); }} />
         ))}
       </ul>
     </div>

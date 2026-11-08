@@ -29,7 +29,7 @@ describe("ルートと文言", () => {
   it("作品・作品ページ・提案のルートを読む", () => {
     expect(parseRoute("#/works")).toEqual({ name: "works", scope: { by: "all" } });
     expect(parseRoute("#/works/12")).toEqual({ name: "work", id: "12" });
-    expect(parseRoute("#/works/proposals")).toEqual({ name: "work-proposals" });
+    expect(parseRoute("#/works/proposals")).toEqual({ name: "review", tab: "proposals" }); // 確認へ移した(#207)
     expect(parseRoute("#/works/abc")).toEqual({ name: "works", scope: { by: "all" } });
   });
 
@@ -62,7 +62,7 @@ describe("作品の一覧", () => {
     // 別名は作品ページで見る(一覧のカードには出さない)
     expect(within(card).queryByText(/別名/)).toBeNull();
     expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1/titles");
-    expect(screen.getByText(/統合の提案が 1 件/).closest("a")!.getAttribute("href")).toBe("#/works/proposals");
+    expect((await screen.findByText(/確認待ちが \d+ 件/)).closest("a")!.getAttribute("href")).toBe("#/review");
     // 巻の一覧は廃止した
   });
 

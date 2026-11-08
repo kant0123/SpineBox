@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 別スキャンの重複候補の検出。全ページの dHash の集合と巻番号の候補で判定し、自動では消さない。しきい値の根拠(実データの距離の分布)、全ページを指紋にした理由、却下の持ち方、計算の範囲
-updated: 2026-11-02
+updated: 2026-11-08
 related: [overview, backend, frontend, volume-split, extraction-cache, archive-reading, organize, work-grouping, cover-thumbnails, data-jobs]
 ---
 
@@ -110,7 +110,7 @@ related: [overview, backend, frontend, volume-split, extraction-cache, archive-r
 ## 関連
 
 - [[backend]] — API 契約(`/api/duplicates` 系、`duplicate_count`)とマイグレーション 4
-- [[frontend]] — 重複候補の画面と一覧の印
+- [[frontend]] — 重複候補の画面(確認の重複の候補タブ。#207)と一覧の印
 - [[work-grouping]] — 重複候補を、作品の統合の根拠(確信度 = 一致ページ比)に使う。却下した候補は根拠にしない
 - [[volume-split]] — 重複を食い違いにしない理由。重複は本ページの候補として出す
 - [[extraction-cache]] — 指紋のための内側アーカイブの取り出しは、通常の閲覧と同じキャッシュ・上限を使う

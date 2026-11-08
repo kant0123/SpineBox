@@ -572,6 +572,14 @@ export interface FollowReleaseWork {
   releases: FollowRelease[];
 }
 
+/** 確認(#207)の件数。links は作品の数、proposals は提案の数、duplicates は組の数 */
+export interface ReviewCounts {
+  links: number;
+  proposals: number;
+  duplicates: number;
+  total: number;
+}
+
 export interface WorkDetail extends WorkSummary {
   title_confidence: number | null;
   follow?: WorkFollow;
@@ -1050,6 +1058,9 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ volume_ids: volumeIds, work_id: workId, ...(title ? { title } : {}) }),
     }),
+  reviewCounts: () => request<ReviewCounts>("/api/review/counts"),
+  /** 公開データベースの候補が確認待ちの作品(作品ページと同じ形) */
+  reviewLinks: () => request<{ works: WorkDetail[] }>("/api/review/links"),
   listProposals: (status: "open" | "dismissed" | "applied" = "open") => request<WorkProposal[]>(`/api/works/proposals?status=${status}`),
   decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
     request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),

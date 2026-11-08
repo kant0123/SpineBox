@@ -2,7 +2,7 @@
 // タブは #/admin/<tab> で直接開ける(統計は #/admin)。
 import { useEffect, useRef, type ComponentType } from "react";
 import { adminHref, type AdminTab } from "../route";
-import { DataPanel, FollowsPanel, ProposalsPanel, TasksPanel } from "./panels";
+import { DataPanel, FollowsPanel, TasksPanel } from "./panels";
 import { Preferences } from "./Preferences";
 import { Stats } from "./Stats";
 
@@ -10,7 +10,6 @@ export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   stats: "統計",
   preferences: "好み",
   data: "データ管理",
-  proposals: "統合",
   follows: "フォロー管理",
   tasks: "タスクセンター",
 };
@@ -23,7 +22,6 @@ const PANELS: Record<AdminTab, ComponentType<{ focus?: "organize" }>> = {
   stats: Stats,
   preferences: Preferences,
   data: DataPanel,
-  proposals: ProposalsPanel,
   follows: FollowsPanel,
   tasks: TasksPanel,
 };

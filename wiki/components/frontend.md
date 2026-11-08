@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-07
+updated: 2026-11-08
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -12,7 +12,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 ## 責務
 
-- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・作品の一覧 / 作品ページ / 統合の提案の画面([[work-grouping]])・リーダー(巻情報の取得・読み込み待ち・取得失敗の表示と、読書位置の保存と再開の結線。表示は [[manga-reader]] / [[novel-reader]])・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す・範囲指定の整理(テンプレートの入力・パラメーターのチップ・パスの例・CBZ 化もまとめて行う・プレビュー → 実行 → まとめて元に戻す)([[organize]])。表示設定(表紙単独)は端末ごとに `localStorage` へ
+- する: 一覧(`GET /api/volumes`)・スキャンの起動(`POST /api/scan`)・巻の食い違いのバッジと説明・「中の巻を調べる」(`POST /api/volumes/{id}/analyze`)・重複候補の画面と一覧の印([[duplicate-detection]])・作品の一覧 / 作品ページ / 統合の提案の画面([[work-grouping]])・利用者の判断待ちを集めた確認の画面(#207。公開 DB の候補・統合の提案・重複の候補)・リーダー(巻情報の取得・読み込み待ち・取得失敗の表示と、読書位置の保存と再開の結線。表示は [[manga-reader]] / [[novel-reader]])・整理(CBZ 化)のプレビュー → 実行と、履歴からの元に戻す・範囲指定の整理(テンプレートの入力・パラメーターのチップ・パスの例・CBZ 化もまとめて行う・プレビュー → 実行 → まとめて元に戻す)([[organize]])。表示設定(表紙単独)は端末ごとに `localStorage` へ
 - しない: ページの並び順・ページ数・オフライン判定・巻番号と食い違いの判定。どれもバックエンドが決めた `pages[]`・`offline`・`findings` をそのまま使う
 
 ## 入口となるファイル
@@ -22,23 +22,24 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:72 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
-| `frontend/src/admin/Admin.tsx:30 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・統合(`WorkProposals` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
+| `frontend/src/admin/Admin.tsx:30 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
 | `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
-| `frontend/src/duplicates/Duplicates.tsx:99 Duplicates()` | 重複候補の画面(`#/duplicates`)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
+| `frontend/src/review/Review.tsx:16 Review()` | 確認(`#/review/<tab>`。#207)。タブは公開DBの候補(`links`、`frontend/src/review/ReviewLinks.tsx:63 ReviewLinks()`)・統合の提案(`WorkProposals` の `embedded`)・重複の候補(`Duplicates` の `embedded`)。件数はサイドバーの「確認」のバッジと共通の `frontend/src/review/reviewCounts.tsx:14 ReviewCountsProvider()`(`GET /api/review/counts`) |
+| `frontend/src/duplicates/Duplicates.tsx:100 Duplicates()` | 重複候補の画面(確認の重複の候補タブ。旧 `#/duplicates` も同じタブを開く)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:78 WorkProposals()`(`#/works/proposals`)。(「作品 / 巻」の切り替えは廃止) |
+| `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:79 WorkProposals()`(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
 | `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
 | `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。`view="data"` の上に「ジョブ / 整理」の節内リンクを置き、`focus="organize"`(`#/data/organize`)は整理の見出しへスクロールしてフォーカスする(#149)。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:32 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
-| `frontend/src/api.ts:946 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:954 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:81 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:166 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -64,7 +65,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:132 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:143 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
@@ -147,6 +148,16 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   行頭の「N巻」の列は置かない。巻名「作品名 第N巻」に番号が含まれ、列が冗長なため。重複モーダルの見出し「N巻 の重複」など番号の表示は残す
 - **重複した巻は 1 行にまとめ、押したらモーダルで選ばせる(#115)。** 同じ巻番号の別スキャンは同じ本なので、行を分けると持っている巻の数と全体の進捗が水増しされる。行の代表は読んでいる巻(読了 > 読書中 > オフラインでない巻)にし、押すと `#/read/<id>` を選ぶモーダルを出す。モーダルでは元の名前を出す(名前の揺れが選ぶ手がかりになる)。「重複」の印は残す。Esc で閉じ、閉じたら開いた行へフォーカスを戻す。Tab はモーダルの中を回す(背後の行へフォーカスを移さない)
 - **欠け・最新巻はフォローの「続刊を調べる」の結果だけを使う(#115)。** タイトル一覧を開くたびに公開 DB を引き直すと、閲覧の画面が取得元の遅さ・失敗に引きずられる。`work.follow.releases`(フォロー中で、最後に調べた結果)があるときだけ、点線の行で番号の位置(欠け)と後ろ(最新巻)に出す。持っていないので押してもリーダーへは行かせない
+- **利用者の判断を待っているものは「確認」(`#/review`)に 1 か所に集め、処理を動かす・設定するものは管理に置く(#207)。**
+  公開 DB の候補は作品ページで 1 件ずつ、統合の提案は `#/works/proposals` と管理の「統合」タブの 2 か所、重複の候補は管理のタブの外(`#/duplicates`。開くと管理のタブが消え、戻り先がホーム)にあり、
+  作業中に作品ページ ⇔ 一覧を行き来していた。旧 URL は `parseRoute()` で確認のタブへ振り替える(ブックマーク・一覧の印のリンクを壊さない)。
+  サイドバーと各タブの件数は `GET /api/review/counts` で、画面に出るものだけを数える(開いても何も出ない件数を出さない。[[backend]])。画面が変わるたびと、確認の画面で何かを決めたときに取り直す。
+  ホームの帯は「統合の提案が N 件」から「確認待ちが N 件」(3 種の合計)へ。作品カードのバッジは #210 で扱うのでそのまま。作品ページの「公開データベース」には確認待ちがあるとき確認の画面への 1 行を出し、作品ページでの選択も残す
+- **公開DBの候補タブは、作品ページを開かずにその場で選ぶ(#207)。** 1 作品 1 枠で表紙・作品名・巻数と、確認待ちの取得元だけの `WorkLinks` を出す(連携済み・該当なしは作品ページで見る)。
+  選び終えた作品は一覧から消さず「確認済み」に畳む(詰めると直後のタップが次の作品のボタンに当たる)。押したボタンが消えるので、次の確認待ちの見出し(最後ならその行の見出し)へフォーカスを移す。
+  NDL を選ぶと保留だった取得元が保存済みの応答で決まるので、その間は「反映しています…」を出す
+- **件数のバッジの読み上げ用の文字(`.sr-only`)はバッジの中に留める(`.count-badge` を `position: relative`)。** 外に出ると横に流れるタブの列の外にはみ出し、
+  375px で開いたタブを `scrollIntoView` で送るとき画面ごと横に 58px ずれた(visual viewport が動く。`scrollWidth` では検出できない)
 
 ## 画面構成(#85。Peach との対応)
 
@@ -157,10 +168,11 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
 | ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
 | フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86)。どちらも単独の画面をそのままサイドバーの中に出す |
-| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 同じ 6 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `proposals` / `follows` / `tasks`) |
+| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統合を除く 5 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `follows` / `tasks`)。統合の提案は確認へ移した(#207) |
+| (無し) | 確認(`#/review/<tab>`。#207)。サイドバーの管理の上に件数のバッジつきで置く |
 | 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
 
-- **既存の画面はサイドバーの中に収め、どのナビの下かを `activeNav()` で決める。** 作品ページ・巻の一覧・提案はホーム、重複の候補・受け入れ・整理は管理。
+- **既存の画面はサイドバーの中に収め、どのナビの下かを `activeNav()` で決める。** 作品ページ・巻の一覧はホーム、統合の提案・重複の候補は確認、受け入れ・整理は管理。
   リーダーだけはサイドバーを出さない(読むときに画面を狭めない)。直リンク `#/read/<id>` もそのまま
 - **横長では常に表示し、開閉ボタンでアイコンだけの帯(60px)にする。スマホ幅(CSS の 768px 未満)ではハンバーガーの引き出し。**
   幅の判定は CSS だけで行い、JS は「細くしたか(`spinebox.sidebar`)」と「引き出しが開いているか」だけを持つ(回転で幅が変わっても状態が食い違わない)。
@@ -176,7 +188,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
   画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため
 - **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)
-- **管理のタブへの組み込み(`frontend/src/admin/panels.tsx`)。** フォロー管理は `FollowManage`(`embedded` で見出しを外す)、統合は `WorkProposals`(`embedded` で見出しを外す)、データ管理・タスクセンターは `DataJobs`(下)と、データ管理の下の今ある画面(巻の一覧のスキャン・重複の候補・受け入れ・整理の履歴)への入口。
+- **管理のタブへの組み込み(`frontend/src/admin/panels.tsx`)。** フォロー管理は `FollowManage`(`embedded` で見出しを外す)、データ管理・タスクセンターは `DataJobs`(下)と、データ管理の下の今ある画面(受け入れ・整理の履歴)への入口。
   作品一覧のヘッダーにあった「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」も、データ管理のタブへ集約した(#102)。
   タブの中に置いた既存の画面は、自前の余白・幅の上限を CSS(`.admin-panel .library` ほか)で外して二重に空かないようにする。
   旧 `#/follows/manage`・`#/data` は管理のフォロー管理タブを開く(`followManageHref` は `#/admin/follows`)。単独の `#/data/organize` は管理のデータ管理タブの整理の節を開く
@@ -218,6 +230,8 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #207 で確認の画面(`#/review`)を足し、統合の提案・重複の候補を移した。モック API の 1280px(ライト・ダーク)と 375px で、公開DBの候補の「これを採用」→ 確認済みに畳まれる・サイドバーの件数が 3 → 2、
+  旧 `#/admin/proposals`・`#/duplicates` の振り替え、375px の引き出しの件数、横スクロール 0 を確認した。375px のタブの横ずれ(上の `.sr-only`)はこの確認で見つけた。`npm test` 182 件・`npm run build` が通った
 - #161 で作品カードの高さを中身に合わせた。`.work-grid` の `grid-auto-rows: 1fr` は、グリッドの高さが
   不定のとき全行を一覧で一番高いカードの高さに揃えるため、バッジの少ない作品ほど内側の下に空白が残っていた
   (1280px で 29 / 59px、375px で 59px)。タイトルの位置を揃える目的(#132)は表紙の枠(表紙なしを含む)で

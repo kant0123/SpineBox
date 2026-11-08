@@ -388,6 +388,20 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     if (b) return b;
     const rl = handleReadLater(method, path);
     if (rl) return rl;
+    // 確認(#207)。件数は画面に出るものだけを数える(バックエンドと同じ)
+    if (method === "GET" && (path === "/api/review/counts" || path === "/api/review/links")) {
+      const pendingWorks = mockWorks.listed(null).filter((x) => mockWorks.summary(x).link_pending > 0);
+      if (path === "/api/review/links") {
+        return json(200, { works: pendingWorks.map((x) => mockWorks.handle("GET", `/api/works/${x.id}`, "", null)!.body) });
+      }
+      const listedIds = new Set(volumes.filter((v) => !v.hidden).map((v) => String(v.id)));
+      const counts = {
+        links: pendingWorks.length,
+        proposals: (mockWorks.handle("GET", "/api/works/proposals", "status=open", null)!.body as unknown[]).length,
+        duplicates: candidates.filter((c) => !c.dismissed && listedIds.has(String(c.a.id)) && listedIds.has(String(c.b.id))).length,
+      };
+      return json(200, { ...counts, total: counts.links + counts.proposals + counts.duplicates });
+    }
     const w = mockWorks.handle(method, path, rawPath.split("?")[1] ?? "", parsed);
     if (w) return json(w.status, w.body);
 
