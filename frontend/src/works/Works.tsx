@@ -5,6 +5,7 @@ import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
 import { ReadLaterButton } from "./ReadLaterButton";
+import { NotifyDot } from "./ReviewPending";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
@@ -196,6 +197,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                     <WorkCoverPlaceholder />
                   )}
                 </a>
+                <NotifyDot work={w} />
                 <ReadLaterButton id={w.id} initial={w.read_later ?? false} label={w.title} onChange={onReadLaterChange} />
               </div>
               <a className="work-link work-text-link" href={workTitlesHref(w.id)}>
@@ -212,8 +214,6 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
                         欠け {missing.text}
                       </span>
                     )}
-                    {w.pending_proposals > 0 && <span className="badge">統合の提案</span>}
-                    {w.link_pending > 0 && <span className="badge">候補の確認待ち</span>}
                     {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
                     {w.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[w.reading_state]}</span>}
                   </span>

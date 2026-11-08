@@ -7,6 +7,7 @@ import { parseRoute } from "../route";
 import { confidenceText, evidenceLines, missingLabel, missingText } from "./labels";
 import { workQueryString } from "../api";
 import { normalizeSearch } from "../mock/mockWorks";
+import { NotifyDot, ReviewPendingNotice } from "./ReviewPending";
 
 let backend: ReturnType<typeof createMockBackend>;
 
@@ -381,7 +382,7 @@ describe("公開データベースの情報(#50)", () => {
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    expect(within(card).getByText("候補の確認待ち")).toBeTruthy();
+    expect(within(card).getByRole("img", { name: "確認待ちあり(公開DBの候補)" })).toBeTruthy();
     const credits = await screen.findByRole("contentinfo", { name: "利用している公開データベース" });
     expect(within(credits).getByRole("link", { name: "国立国会図書館サーチ" }).getAttribute("href")).toBe("https://ndlsearch.ndl.go.jp/");
     expect(credits.textContent).toContain("NDL サーチ API");
@@ -526,5 +527,44 @@ describe("統合された作品のページ", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "情報を取得" }));
     await waitFor(() => expect(window.location.hash).toBe("#/works/3"));
+  });
+});
+
+describe("作品ごとの確認待ち(#210)", () => {
+  it("作品カードでは文字のタグではなく通知ドット 1 つにまとめ、待っていない作品には出さない", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    const sample = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const ext = screen.getByText("外付けの作品").closest("li")!;
+    expect(within(sample).queryByText("候補の確認待ち")).toBeNull();
+    expect(within(ext).queryByText("統合の提案")).toBeNull();
+    const dot = within(ext).getByRole("img", { name: "確認待ちあり(統合の提案)" });
+    expect(dot.getAttribute("title")).toBe("確認待ちあり(統合の提案)");
+    expect(within(ext).getAllByRole("img", { name: /確認待ちあり/ })).toHaveLength(1);
+  });
+
+  it("作品ページから確認の該当タブへ移れる", async () => {
+    window.location.hash = "#/works/2";
+    render(<App />);
+    const notice = await screen.findByRole("region", { name: "この作品の確認待ち" });
+    expect(within(notice).getByRole("link", { name: "確認 > 統合の提案" }).getAttribute("href")).toBe("#/review/proposals");
+    expect(within(notice).queryByRole("link", { name: "確認 > 公開DBの候補" })).toBeNull();
+  });
+
+  it("タイトル一覧にも同じ案内が出て、公開DBの候補へ移れる", async () => {
+    window.location.hash = "#/works/1/titles";
+    render(<App />);
+    const notice = await screen.findByRole("region", { name: "この作品の確認待ち" });
+    expect(within(notice).getByRole("link", { name: "確認 > 公開DBの候補" }).getAttribute("href")).toBe("#/review");
+  });
+
+  it("確認待ちが無ければドットも案内も出さない", () => {
+    const { container } = render(
+      <>
+        <NotifyDot work={{ pending_proposals: 0, link_pending: 0 }} />
+        <ReviewPendingNotice work={{ pending_proposals: 0, link_pending: 0 }} />
+      </>,
+    );
+    expect(container.innerHTML).toBe("");
   });
 });
