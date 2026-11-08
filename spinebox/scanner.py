@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -32,7 +33,7 @@ from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archiv
                       open_archive)
 from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
-from .naming import parse_number
+from .naming import is_fragment_name, parse_number
 from .novel import FORMAT_EPUB, novel_format
 from .mojibake import fix_mojibake
 from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
@@ -50,7 +51,7 @@ log = logging.getLogger(__name__)
 # 6: 表紙画像だけを含むフォルダを巻にしない(#180)
 # 7: EPUB の構造名(OEBPS 等)を非コンテンツディレクトリにして巻にしない(#215)
 # 8: タイトル生成および巻番号抽出に文字化け修復(fix_mojibake)を適用(#223)
-SCAN_VERSION = 8
+SCAN_VERSION = 9
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -148,6 +149,21 @@ def _is_non_content_path(prefix: str) -> bool:
     return any(part.casefold() in _NON_CONTENT_DIRS for part in parts)
 
 
+# 本の断片(目次・表紙・広告だけの束)とみなすページ数の上限。名前が断片の名前で、これ以下のときだけ巻にしない
+FRAGMENT_MAX_PAGES = 15
+SAVED_PAGE_MAX_PAGES = 1  # ブラウザの「ページを保存」のフォルダ(`xxx_files`)に画像が 1 枚だけ(ページの部品。`57_files` は本文のことがある)
+_SAVED_PAGE_DIR = re.compile(r"[_\s]files$", re.IGNORECASE)
+
+
+def fragment_reason(title: str, pages: int) -> str | None:
+    """巻にしない断片なら理由(登録不要)。ほかに巻がある入れ物の中でだけ使う。"""
+    if pages <= FRAGMENT_MAX_PAGES and is_fragment_name(title):
+        return f"登録不要: 目次・表紙などの断片({pages} ページ)なので巻にしない"
+    if pages <= SAVED_PAGE_MAX_PAGES and _SAVED_PAGE_DIR.search(title.strip()):
+        return f"登録不要: 保存したページの部品({pages} ページ)なので巻にしない"
+    return None
+
+
 def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[VolumeSpec], list[Skip]]:
     """検証済みの目次から巻の候補を切り出す。内側アーカイブは名前を見るだけ。"""
     specs: list[VolumeSpec] = []
@@ -186,6 +202,14 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
         seen_inner.add(e.name)
         inner_title = fix_mojibake(PurePosixPath(e.name).stem)[0]
         specs.append(VolumeSpec(e.name, "", inner_title, e.raw_name, e.encoding, None))
+    # 目次・表紙だけの小さな束は本の断片なので巻にしない(ほかに巻 ― 内側アーカイブも含む ― があるときだけ。
+    # 理由は記録する)。内側アーカイブを足した後で判定する
+    reasons = {id(sp): fragment_reason(sp.title, sp.page_count)
+               for sp in specs if sp.entry_prefix and sp.page_count is not None}
+    if any(reasons.get(id(sp)) is None for sp in specs):
+        for sp in [sp for sp in specs if reasons.get(id(sp))]:
+            specs.remove(sp)
+            skipped.append(Skip(sp.entry_prefix, reasons[id(sp)]))
     return specs, skipped
 
 
@@ -365,6 +389,8 @@ class Scanner:
                     break
                 dirnames[:] = self._walkable_dirs(dirpath, dirnames, excluded)
                 images = sorted(f for f in filenames if is_image(f))
+                if images and self._is_fragment_folder(dirpath, len(images)):
+                    images = []  # 理由は _is_fragment_folder が記録した
                 if images:
                     visit("folder", dirpath,
                           lambda rel, dirpath=dirpath, images=images:
@@ -395,6 +421,25 @@ class Scanner:
             now = db.now()
             c.execute("UPDATE library_roots SET online = 1, last_checked_at = ?, last_online_at = ? WHERE id = ?",
                       (now, now, root_id))
+
+    def _is_fragment_folder(self, dirpath: str, pages: int) -> bool:
+        """画像のフォルダが本の断片(目次・表紙だけ)で、隣にほかの巻(フォルダ・アーカイブ)があるなら記録して True。"""
+        reason = fragment_reason(os.path.basename(dirpath), pages)
+        if reason is None:
+            return False
+        parent = os.path.dirname(dirpath)
+        try:
+            siblings = [e for e in os.scandir(parent)
+                        if e.path != dirpath and (
+                            is_archive_name(e.name)
+                            or (e.is_dir() and not is_fragment_name(e.name))  # 断片どうしは互いを数えない
+                            or (is_image(e.name) and not is_cover(e.name)))]  # 表紙 1 枚は巻にならない(#180)
+        except OSError:
+            return False
+        if not siblings:
+            return False
+        self._record_pathless(dirpath, reason)
+        return True
 
     def _walkable_dirs(self, dirpath: str, dirnames: list[str], excluded: set[str]) -> list[str]:
         """辿るサブフォルダ。整理処理の置き場と、祖先へ戻るリンク(ジャンクションの循環)は辿らない。"""

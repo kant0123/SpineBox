@@ -26,7 +26,8 @@ from dataclasses import dataclass, field, replace
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
-from .naming import JUNK_NAMES, is_junk_name, normalize_title, parse_number, parse_work_name, trailing_number
+from .naming import (JUNK_NAMES, WorkName, is_chapter_label, is_fragment_name, is_junk_name, normalize_title,
+                     parse_number, parse_work_name, trailing_number)
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -66,6 +67,7 @@ SOURCE_PUBLIC_DB = "public_db"    # 公開 DB(国立国会図書館サーチ・A
 CONF_OWN_NAME = 0.9          # 巻自身の名前から作品名を読めた
 CONF_ENCLOSING_NAME = 0.6    # 巻自身の名前に作品名が無く、外側の名前から読んだ
 CONF_CONTAINER_ALIAS = 0.5   # 作品の全部の巻を含む外側のアーカイブの名前(別名・著者の候補)
+CONF_CONTAINER_CLAIM = 0.8   # 1 作品だけを収めた外側のフォルダ・アーカイブの名前で割り当てた(`_container_claims`)
 AUTO_MERGE_MIN = 0.9         # この確信度以上で、手動の決定が絡まなければ自動で統合する
 PROPOSE_MIN = 0.5            # これ未満は提案にも出さない
 VISUAL_ONLY_CAP = 0.85       # 見た目だけ(巻番号が不明)の重複候補は自動統合しない
@@ -122,13 +124,17 @@ class OwnName:
     name: object  # WorkName
     level: int
     text: str
+    container: bool = False  # 1 作品だけを収めた外側の名前で決めた(`_container_claims`)
 
     @property
     def confidence(self) -> float:
+        if self.container:
+            return CONF_CONTAINER_CLAIM
         return CONF_OWN_NAME if self.level == 0 else CONF_ENCLOSING_NAME
 
     def evidence(self) -> dict:
-        return {"name": self.text, "level": "volume" if self.level == 0 else "enclosing", **self.name.as_dict()}
+        level = "container" if self.container else ("volume" if self.level == 0 else "enclosing")
+        return {"name": self.text, "level": level, **self.name.as_dict()}
 
 
 def own_name(row, series: dict | None = None) -> OwnName | None:
@@ -227,6 +233,288 @@ class _State:
             return None
         cands.sort(key=lambda i: (not self.works[i].names[norm].is_title, i))
         return cands[0]
+
+
+# --- 1 作品だけを収めた外側の名前(フォルダ・アーカイブ)による割り当て ------------------------------
+#
+# 蔵書は「作品名のフォルダ(多くは日本語)の下に、配布元ごとにばらばらの名前(ローマ字・日本語・章の見出し)の
+# 巻が並ぶ」形が多い。巻の名前だけで作品を決めると、ローマ字の巻・日本語の巻・章のフォルダが別々の作品に
+# 割れる(実データ 2026-11-09: 16 のフォルダ・アーカイブが 292 作品になった)。そこで、外側の名前のうち
+# **中に 1 つの作品しか入っていない**と言えるものを、その下の巻の作品名にする。
+#
+# 「1 つの作品しか入っていない」の判定(外側の名前を N とする):
+# - 下の巻ごとに、巻 → N の手前までの名前で最初に作品名と読めた名前(系列名)を取る。章の見出し(`第4話 …`)・
+#   断片(`CONTENTAS`)・番号だけ(`17` `03s`)・保存ページのフォルダ(`16_files`)は系列名にしない
+#   (どこにも無ければ「名前の無い巻」)
+# - N が日本語: 系列名が N と同じか `N + 番号` `N + …編` なら N の巻。N と違う日本語の系列が 2 つ以上あれば
+#   N はまとめのフォルダ(`小説`)なので何もしない。違う日本語の系列が無く、ローマ字の系列が 1 つだけ
+#   (または N の名前の巻が 1 つでもある)なら、ローマ字の巻も N の巻(ローマ字と日本語は字面で結べないため、
+#   入れ物の中で他に候補が無いことを根拠にする)
+# - N がローマ字: 日本語の系列がちょうど 1 つで、N と違うローマ字の系列が無ければ、全部をその日本語の作品にする
+# 巻ごとに、当てはまる外側の名前のうち日本語の作品名になる最も内側のものを採る(無ければ最も外側)。
+
+_CATEGORY_NAMES = frozenset(normalize_title(x) for x in (
+    "小説", "ライトノベル", "ラノベ", "漫画", "マンガ", "コミック", "コミックス", "技術本", "技術書", "本", "書籍",
+    "雑誌", "画集", "写真集", "同人誌", "まとめ", "その他", "未分類", "novel", "novels", "lightnovel", "comic",
+    "comics", "book", "books", "magazine", "magazines", "misc", "others", "library",
+))
+# ローマ字の系列名の末尾に付く配布の印(`… raw v03` `… jp v08s`)。系列の突き合わせでだけ落とす
+_ROMAJI_NOISE = frozenset({"raw", "raws", "jp", "jpn", "jap", "dl", "fix", "fixed", "digital", "end", "complete",
+                           "hq", "hd", "s", "b", "w", "zip", "rar", "jpg"})
+_SAVED_PAGE = re.compile(r"[_\s]files$", re.IGNORECASE)  # ブラウザの「ページを保存」のフォルダ(`16_files`)
+_SUFFIX_OK = re.compile(r"^(?:\d.*|.{0,8}[編篇]|[上中下]|[上中下]巻)$")
+
+
+def _path_parts(r) -> list[str]:
+    """巻の場所を外側から並べる(蔵書ルートからのフォルダ → アーカイブ → 入れ子 → アーカイブ内のフォルダ)。
+    最後の要素が巻そのもの。"""
+    try:
+        inner = json.loads(r["inner_path"]) if r["inner_path"] else []
+    except ValueError:
+        inner = []
+    return (_segments(r["rel_path"]) + _segments(r["container_path"]) + [str(x) for x in inner]
+            + _segments(r["entry_prefix"]))
+
+
+def _series_name(text: str) -> WorkName | None:
+    """作品名(系列名)として数える名前。章の見出し・断片・保存ページのフォルダは数えない。"""
+    if not text or is_chapter_label(text) or is_fragment_name(text) or _SAVED_PAGE.search(text.strip()):
+        return None
+    return parse_work_name(text)
+
+
+def _series_key(wn: WorkName) -> str:
+    if _has_cjk(wn.title):
+        return re.sub(r"(?<=[^a-z0-9])[a-z]$", "", wn.norm)  # 末尾の版の印(`…件c`)
+    words = [w for w in re.split(r"[\s_.\-]+", unicodedata.normalize("NFKC", wn.title).casefold()) if w]
+    while len(words) > 1 and words[-1] in _ROMAJI_NOISE:
+        words.pop()
+    return normalize_title(" ".join(words)) or wn.norm
+
+
+
+
+_TITLE_BREAK = re.compile(r"[\s~〜～\-－‐:：、,]+")
+
+
+def _extends(short: str, long_key: str, long_title: str) -> bool:
+    """long が short に番号・`…編`・区切りの後ろの副題を足しただけの名前か(`ゾンビ` と `ゾンビだらけの…` は別)。"""
+    if len(short) < 3 or not long_key.startswith(short):
+        return False
+    if _SUFFIX_OK.match(long_key[len(short):]):
+        return True
+    pieces = _TITLE_BREAK.split(long_title)
+    return any(normalize_title(" ".join(pieces[:i])) == short for i in range(1, len(pieces)))
+
+
+def _belongs_to(node_key: str, key: str, title: str = "", node_title: str = "") -> bool:
+    """系列名 key が外側の名前 node_key の作品の巻か(同じ名前、片方がもう片方に `番号` `…編` `区切り + 副題` を
+    足しただけの名前)。外側が長い方(`フシノカミ ~辺境から…~` の下の `フシノカミ`)も同じ規則で見る。"""
+    if key == node_key:
+        return True
+    return _extends(node_key, key, title) or (
+        _has_cjk(key) == _has_cjk(node_key) and _extends(key, node_key, node_title))
+
+
+def _same_series(a: str, b: str, titles: dict[str, str]) -> bool:
+    """同じ系列か。長い方が短い方に番号・`…編`・区切りの後ろの副題を足しただけのときだけ(`ゾンビ` と
+    `ゾンビだらけの世界` は別)。外側の名前との突き合わせ(`_belongs_to`)と同じ規則。"""
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return _extends(short, long_, titles.get(long_, ""))
+
+
+def _group_keys(items: dict[str, list]) -> list[list[str]]:
+    """系列名の鍵を同じ系列ごとにまとめる。items は 鍵 → [(巻, WorkName)](区切りの判定に作品名を使う)。"""
+    titles = {k: v[0][1].title for k, v in items.items() if v}
+    groups: list[list[str]] = []
+    for k in sorted(set(items), key=len):
+        for g in groups:
+            if any(_same_series(k, x, titles) for x in g):
+                g.append(k)
+                break
+        else:
+            groups.append([k])
+    return groups
+
+
+def _container_claims(st: _State) -> dict[int, OwnName]:
+    parts_of: dict[int, list[str]] = {}
+    under: dict[tuple, list] = defaultdict(list)
+    for r in st.vols:
+        parts = _path_parts(r)
+        parts_of[r["id"]] = parts
+        for i in range(len(parts) - 1):
+            under[tuple(parts[:i + 1])].append(r)
+
+    def series_below(r, depth: int) -> WorkName | None:
+        parts = parts_of[r["id"]]
+        for text in [r["title"], *reversed(parts[depth + 1:-1])]:
+            wn = _series_name(text)
+            if wn is not None:
+                return wn
+        return None
+
+    found: dict[int, list[tuple[int, WorkName, str]]] = defaultdict(list)
+    for key, rows in under.items():
+        depth, text = len(key) - 1, key[-1]
+        nwn = _series_name(text)
+        if nwn is None or nwn.norm in _CATEGORY_NAMES:
+            continue
+        node_jp, nkey = _has_cjk(nwn.title), _series_key(nwn)
+        mine, free = [], []
+        jp: dict[str, list] = defaultdict(list)
+        ro: dict[str, list] = defaultdict(list)
+        for r in rows:
+            wn = series_below(r, depth)
+            if wn is None:
+                free.append(r)
+                continue
+            k = _series_key(wn)
+            if _belongs_to(nkey, k, wn.title, nwn.title):
+                mine.append(r)
+            elif _has_cjk(wn.title):
+                jp[k].append((r, wn))
+            else:
+                ro[k].append((r, wn))
+        jg, rg = _group_keys(jp), _group_keys(ro)
+        if node_jp:
+            if len(jg) >= 2:
+                continue  # まとめのフォルダ(`小説`)
+            claimed = mine + free
+            if not jg and (len(rg) <= 1 or mine):
+                claimed += [r for items in ro.values() for r, _ in items]
+            title = nwn
+        else:
+            if rg or len(jg) > 1:
+                continue
+            if jg:
+                names = [wn for k in jg[0] for _, wn in jp[k]]
+                counts: dict[str, int] = defaultdict(int)
+                for wn in names:
+                    counts[wn.title] += 1
+                best = min(counts, key=lambda t: (-counts[t], len(t)))
+                title = next(wn for wn in names if wn.title == best)
+                claimed = mine + free + [r for k in jg[0] for r, _ in jp[k]]
+            else:
+                title, claimed = nwn, mine + free
+        for r in claimed:
+            found[r["id"]].append((depth, title, text))
+
+    out: dict[int, OwnName] = {}
+    for vid, cands in found.items():
+        cands.sort(key=lambda x: x[0])  # 外側から
+        jp_cands = [x for x in cands if _has_cjk(x[1].title)]
+        _, wn, text = jp_cands[-1] if jp_cands else cands[0]
+        out[vid] = OwnName(wn, 1, text, container=True)
+    return out
+
+
+def _claim_keep_key(c, work_id: int):
+    """外側の名前でまとめるときに残す作品の順: 手動の作品名 > 公開 DB の日本語の作品名 > 日本語 > 巻の多い方 > id。"""
+    r = c.execute("SELECT value, source, manual FROM work_fields WHERE work_id = ? AND field = ?",
+                  (work_id, FIELD_TITLE)).fetchone()
+    title, source, manual = (r["value"] or "", r["source"], bool(r["manual"])) if r else ("", "", False)
+    n = c.execute("SELECT COUNT(*) FROM work_volumes WHERE work_id = ?", (work_id,)).fetchone()[0]
+    return (manual, source == SOURCE_PUBLIC_DB and _has_cjk(title), _has_cjk(title), n, -work_id)
+
+
+def _settle_claims(c, st: _State, claims: dict[int, OwnName], moved: dict[int, set[int]],
+                   summary: SyncSummary) -> None:
+    """外側の名前で割り当てた後の片付け。
+
+    1. 同じ外側の名前の巻が複数の作品に分かれていたら 1 つに統合する(巻ごとの作品が、公開 DB の系列名を別名に
+       持つせいで動かなかった組。`オーバーロード 1 …` `オーバーロード 10 …` など)
+    2. 巻が全部ほかの作品へ移って空になった作品は、移り先へ統合する(残すと同じ別名の空の作品が総当たりの提案になる)
+    3. 名前から付けた作品名を、外側の日本語の名前に揃える(全部の巻が同じ外側の名前で割り当たっているとき)
+    手動の決定が絡む作品は動かさない(提案の規則に任せる)。
+    """
+    def root(i: int) -> int:
+        return root_of(c, i) or i
+
+    groups: dict[str, set[int]] = defaultdict(set)
+    for vid, cl in claims.items():
+        a = st.assign.get(vid)
+        if a is not None and not a.get("manual"):
+            groups[cl.name.norm].add(a["work_id"])  # 外側と入れ子で同じ作品名になったもの(`Fushi no Kami …`)も 1 つ
+    for ids in groups.values():
+        ids = {root(i) for i in ids}
+        ids = {i for i in ids if not _manual_involved(c, i)}
+        if len(ids) < 2:
+            continue
+        keep = max(ids, key=lambda i: _claim_keep_key(c, i))
+        for drop in sorted(ids - {keep}):
+            merge_works(c, keep, drop, rule="container", confidence=CONF_CONTAINER_CLAIM, manual=False)
+            summary.merged += 1
+    for w, targets in moved.items():
+        w = root(w)
+        dests = {root(t) for t in targets} - {w}
+        if len(dests) != 1 or _manual_involved(c, w):
+            continue
+        if c.execute("SELECT 1 FROM work_volumes WHERE work_id = ? LIMIT 1", (w,)).fetchone():
+            continue
+        dest = dests.pop()
+        # 移り先に手動の決定が絡むなら必ず移り先を残す(手動の作品を吸収させない)
+        prefer_w = not _manual_involved(c, dest) and _claim_keep_key(c, w)[:2] > _claim_keep_key(c, dest)[:2]
+        keep, drop = (w, dest) if prefer_w else (dest, w)
+        merge_works(c, keep, drop, rule="container", confidence=CONF_CONTAINER_CLAIM, manual=False)
+        summary.merged += 1
+    # 3. 作品名を外側の日本語の名前に揃える
+    by_work: dict[int, set[tuple[str, str]]] = defaultdict(set)
+    work_of = dict(c.execute("SELECT volume_id, work_id FROM work_volumes").fetchall())  # 巻ごとに引かない
+    for vid in st.listed:
+        wid = work_of.get(vid)
+        if wid is None:
+            continue
+        cl = claims.get(vid)
+        key = (cl.name.norm, cl.name.title) if cl is not None and _has_cjk(cl.name.title) else ("", "")
+        by_work[wid].add(key)
+    own_titles: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for r in st.vols:
+        wid = work_of.get(r["id"])
+        own = own_name(r)
+        if wid is not None and own is not None:
+            own_titles[wid][own.name.title] += 1
+    for wid, keys in by_work.items():
+        norm, title = next(iter(keys)) if len(keys) == 1 else ("", "")
+        if not norm:
+            # 前の読み方で付いた、今は作品名と読めない作品名(`bbjjf1 y files`)は、巻の名前の多数で付け直す
+            f = c.execute("SELECT value, source, manual FROM work_fields WHERE work_id = ? AND field = ?",
+                          (wid, FIELD_TITLE)).fetchone()
+            cands = own_titles.get(wid)
+            if (f is None or f["manual"] or f["source"] != SOURCE_FILENAME or not cands
+                    or parse_work_name(f["value"] or "") is not None):
+                continue
+            title = min(cands, key=lambda t: (-cands[t], len(t)))
+            norm = normalize_title(title)
+        f = c.execute("SELECT value, source, manual FROM work_fields WHERE work_id = ? AND field = ?",
+                      (wid, FIELD_TITLE)).fetchone()
+        if f is None or f["manual"] or f["source"] not in (SOURCE_FILENAME, SOURCE_MERGE, SOURCE_CONTAINER):
+            continue
+        old = f["value"] or ""
+        if normalize_title(old) == norm or (_has_cjk(old) and norm.startswith(normalize_title(old))):
+            continue
+        readable = parse_work_name(old) is not None
+        if readable:
+            _insert_alias(c, wid, old, SOURCE_FILENAME, manual=False, confidence=CONF_OWN_NAME, evidence=None)
+        if len(keys) == 1 and next(iter(keys))[0]:
+            _set_field(c, wid, FIELD_TITLE, title, SOURCE_CONTAINER, False, CONF_CONTAINER_CLAIM, {"container": title})
+        else:
+            _set_field(c, wid, FIELD_TITLE, title, SOURCE_FILENAME, False, CONF_OWN_NAME, {"name": title})
+
+
+def _keep_own_alias(c, st: _State, work_id: int, own: OwnName | None) -> None:
+    """外側の名前で割り当てた巻の、巻自身の名前(ローマ字の作品名など)を作品の別名に残す。"""
+    if own is None or own.level != 0 or is_junk_name(own.name.norm):
+        return
+    work = st.works.get(work_id)
+    if work is None or own.name.norm in work.names:
+        return
+    if _insert_alias(c, work_id, own.name.title, SOURCE_FILENAME, manual=False, confidence=own.confidence,
+                     evidence=own.evidence()):
+        work.names[own.name.norm] = _Name(own.name.title, SOURCE_FILENAME, own.confidence, False)
+        st._add_index(work_id, own.name.norm, work.names[own.name.norm])
 
 
 @dataclass
@@ -340,7 +628,7 @@ def merge_works(c, keep: int, drop: int, *, rule: str, confidence: float, manual
     手動の統合・承認(manual)で動かした巻は手動の割り当てにする。drop の作品名は keep の別名に残す
     (その名前の巻がまた見つかっても、keep に入る)。
     """
-    source = {"duplicate": SOURCE_DUPLICATE, "alias": SOURCE_ALIAS}.get(rule, SOURCE_MANUAL)
+    source = {"duplicate": SOURCE_DUPLICATE, "alias": SOURCE_ALIAS, "container": SOURCE_CONTAINER}.get(rule, SOURCE_MANUAL)
     merge_info = {"merged_from": drop, "merged_into": keep, "rule": rule, "confidence": confidence}
     for m in c.execute("SELECT * FROM work_volumes WHERE work_id = ?", (drop,)).fetchall():
         was_manual = bool(m["manual"])
@@ -564,6 +852,8 @@ def _apply_trailing_numbers(c, st: _State, series: dict[int, dict]) -> None:
 def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
     series = _trailing_series(st)
     _apply_trailing_numbers(c, st, series)
+    claims = _container_claims(st)
+    moved: dict[int, set[int]] = defaultdict(set)
     for r in st.vols:
         vid = r["id"]
         cur = st.assign.get(vid)
@@ -580,6 +870,10 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
                 continue
         want = series.get(vid)
         own = own_name(r, want)
+        claim = claims.get(vid)
+        alias = None
+        if claim is not None and (own is None or claim.name.norm != own.name.norm):
+            alias, own = own, claim  # 巻自身の名前(ローマ字など)は、割り当てた作品の別名に残す
         if own is None:
             continue
         norm = own.name.norm
@@ -591,6 +885,7 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             if cur["source"] == SOURCE_FILENAME:
                 _refresh_assignment(c, vid, cur, own)
             _fill_author(c, work, own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
+            _keep_own_alias(c, st, work.id, alias)
             continue
         target = st.find_work(norm)
         if want is not None and target is not None and _numbered_variant(st.works[target].title, norm):
@@ -609,9 +904,13 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             _fill_author(c, st.works[target], own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
         if leaves:
             _merge_links(c, target, work.id)
+        if cur is not None and cur["work_id"] != target and own.container:
+            moved[cur["work_id"]].add(target)  # 外側の名前で動かした巻だけ(ほかの付け替えは提案の規則に任せる)
         _put_assignment(c, vid, target, SOURCE_FILENAME, False, own.confidence, own.evidence())
         st.assign[vid] = {"work_id": target, "manual": 0, "source": SOURCE_FILENAME}
+        _keep_own_alias(c, st, target, alias)
         summary.volumes_assigned += 1
+    _settle_claims(c, st, claims, moved, summary)
 
 
 def _refresh_assignment(c, vid: int, cur: dict, own: OwnName) -> None:

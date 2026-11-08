@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 別スキャンの重複候補の検出。全ページの dHash の集合と巻番号の候補で判定し、自動では消さない。しきい値の根拠(実データの距離の分布)、全ページを指紋にした理由、却下の持ち方、計算の範囲
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, volume-split, extraction-cache, archive-reading, organize, work-grouping, cover-thumbnails, data-jobs]
 ---
 
@@ -23,7 +23,7 @@ related: [overview, backend, frontend, volume-split, extraction-cache, archive-r
 
 ### 計算するのは明示操作だけ
 
-- `POST /api/duplicates/scan`(`spinebox/duplicates.py:283 DuplicateScanner`)が、指紋の無い・版の古い・前回失敗した巻の指紋を作り、最後に候補を計算し直す。
+- `POST /api/duplicates/scan`(`spinebox/duplicates.py:282 DuplicateScanner`)が、指紋の無い・版の古い・前回失敗した巻の指紋を作り、最後に候補を計算し直す。
   **スキャンでは計算しない**(内側アーカイブを取り出すため。スキャンが内側アーカイブを取り出さない不変条件のとおり)
 - 既定は裏のスレッドで動かして 202 を返し、進み具合(`done` / `total`)は `GET /api/duplicates` の `scan` に出る。`?wait=true` は終わるまで待つ(テスト・手動用)。
   データ管理のジョブ(`duplicates`。[[data-jobs]])として 1 本ずつ動き、ほかのジョブの実行中は待ち行列に入る(`?wait=true` は 409)。中止すると、それまでに作った指紋は残り候補は前回のまま

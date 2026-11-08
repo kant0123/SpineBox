@@ -49,14 +49,16 @@ _RB = r"(?!\d)"
 _RULES: list[tuple[str, str, re.Pattern]] = [
     ("volume", "第N巻", re.compile(rf"第\s*{_NUM}(?:{_SEP}{_NUM})?\s*巻")),
     ("episode", "第N話", re.compile(rf"第\s*{_NUM}(?:{_SEP}{_NUM})?\s*話")),
+    # Web 小説の章(`第100部分:コツ.txt`)。話と同じく 1 つずつの単位
+    ("episode", "第N部分", re.compile(rf"第\s*{_NUM}(?:{_SEP}{_NUM})?\s*部分")),
     ("volume", "N巻", re.compile(rf"(?<![\d全第]){_NUM}(?:{_SEP}{_NUM})?\s*巻")),
     ("episode", "N話", re.compile(rf"(?<![\d全第]){_NUM}(?:{_SEP}{_NUM})?\s*話")),
     ("volume", "Vol.N", re.compile(rf"{_LB}vol(?:ume)?\.?\s*{_NUM}(?:{_SEP}(?:vol(?:ume)?\.?\s*)?{_NUM})?{_RB}",
                                    re.IGNORECASE)),
     ("volume", "vN", re.compile(rf"{_LB}v\.?\s?{_NUM}(?:{_SEP}v?{_NUM})?(?=[A-Za-z]?(?![A-Za-z\d]))",
                                 re.IGNORECASE)),
-    ("episode", "ch.N", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?)\.?\s*{_NUM}(?:{_SEP}{_NUM})?{_RB}",
-                                   re.IGNORECASE)),
+    ("episode", "ch.N", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?|(?-i:c)(?=\d))\.?\s*{_NUM}(?:{_SEP}{_NUM})?{_RB}",
+                                   re.IGNORECASE)),  # `c06-08` は章 6〜8。大文字の `C100` はコミックマーケットの回なので読まない
     ("volume", "N-M", re.compile(rf"(?<![\d.\-]){_NUM}{_SEP}{_NUM}(?![\d.\-])")),
 ]
 
@@ -186,6 +188,7 @@ _JUNK_RAW = (
     "chapter", "chapters", "episode", "episodes",
     "newfolder", "新しいフォルダ", "新しいフォルダー", "無題", "untitled", "download", "downloads", "comic", "comics",
     "manga", "漫画", "マンガ", "コミック",
+    "chap", "src", "source", "sources", "pc",
 )
 
 
@@ -236,6 +239,9 @@ _JUNK_SUFFIX_WORDS = (
 )
 _JUNK_NUMBERED = re.compile(rf"^(?:{'|'.join(sorted(set(_JUNK_SUFFIX_WORDS)))})\d{{1,5}}$")
 
+# 番号に版の印が付いただけの名前(`03s` `01b` `10a`)。巻のフォルダ名で、作品名ではない
+_NUMBER_WITH_MARK = re.compile(r"^\d{1,4}[a-z]{1,2}$")
+
 
 def is_junk_name(norm: str) -> bool:
     """作品名として使えない、中身の無い名前(正規化後)か。"""
@@ -245,7 +251,47 @@ def is_junk_name(norm: str) -> bool:
         or norm in _JUNK_NAMES
         or bool(_COUNT_NAME.match(norm))
         or bool(_JUNK_NUMBERED.match(norm))
+        or bool(_NUMBER_WITH_MARK.match(norm))
     )
+
+
+# --- 章の見出し・断片(作品名にしない名前) ---------------------------------------------------------
+#
+# 巻の中の章のフォルダ(`第4話 CAオブザデッド①(前編)` `第100部分:コツ` `chap 038` `特別編:…`)は、
+# 名前に日本語の題が入っていても作品名ではない。作品は外側のフォルダ・アーカイブから決める(works.py の
+# 外側の名前による割り当て)。目次・表紙だけの小さな束(`CONTENTAS` `c` `❺`)は本の断片で、巻にしない。
+
+_CHAPTER_LABEL = re.compile(
+    r"^\s*(?:第\s*\d{1,4}\s*(?:話|部分|章|回|幕|節)|\d{1,4}\s*話|(?:chap(?:ter)?|ch|ep(?:isode)?)\.?\s*\d{1,4}"
+    r"|#\s*\d{1,4}|(?:特別|番外|外伝)[編篇]|おまけ|(?:extra|bonus|omake)(?![a-z]))",
+    re.IGNORECASE)
+
+
+def _without_distributor(name: str) -> str:
+    text = _fold_chars(unicodedata.normalize("NFKC", strip_known_ext(fix_mojibake(name)[0]))).strip()
+    m = _DISTRIBUTOR.match(text)
+    if m and (m.group("date") or m.group("site")) and m.end() > 0:
+        text = text[m.end():]
+    return text
+
+
+def is_chapter_label(name: str) -> bool:
+    """巻の中の章・話・特別編の見出し(`第4話 …` `第100部分:…` `chap 038` `特別編:…`)か。"""
+    return bool(_CHAPTER_LABEL.match(_without_distributor(name)))
+
+
+_FRAGMENT_NAMES = frozenset(normalize_title(x) for x in (
+    "contents", "contentas", "content", "toc", "目次", "もくじ", "credit", "credits", "cover", "covers",
+    "表紙", "奥付", "ad", "ads", "広告", "info", "readme",
+))
+_FRAGMENT_COVER = re.compile(r"^\d{0,4}(?:covers?|表紙)$")
+
+
+def is_fragment_name(name: str) -> bool:
+    """目次・表紙・広告など、本の断片を表す名前か(1 文字だけの名前 `c` `❺` も含む)。"""
+    norm = normalize_title(_without_distributor(name))
+    single = len(norm) <= 1 and not any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in norm)  # `岳` は作品名
+    return single or norm in _FRAGMENT_NAMES or bool(_FRAGMENT_COVER.match(norm))
 
 
 def _bracket_content(m: re.Match) -> str:
@@ -257,10 +303,15 @@ def _clean_title(text: str) -> str:
     return text.strip(" -–—:;,.~〜/|\\").strip()
 
 
+_SAVED_PAGE_DIR = re.compile(r"[_\s]files$", re.IGNORECASE)
+
+
 def parse_work_name(name: str) -> WorkName | None:
     """名前(パスなら最後の要素)から作品名・著者の候補を取り出す。作品名と読める部分が無ければ None。"""
     name, _ = fix_mojibake(name)
     text = _fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))).strip()
+    if _SAVED_PAGE_DIR.search(text):
+        return None  # ブラウザの「ページを保存」で付くフォルダ(`16_files` `bbjjf1_y_files`)。作品名ではない
     parts: list[tuple[str, str]] = []
 
     m = _DISTRIBUTOR.match(text)

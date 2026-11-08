@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import page_bytes, snapshot, write_zip, zip_bytes
-from spinebox import db
+from spinebox import analysis, db
 from spinebox.app import create_app
 from spinebox.cache import ExtractionCache
 from spinebox.library import Library
@@ -337,7 +337,7 @@ def test_analyze_next_processes_one_volume_at_a_time(make_settings, library, nes
         "AND container_path IS NOT NULL")}
     assert set(rows) == {"inner1", "inner2", "inner3", "set v01-03"} and len(done) == 4
     assert rows["inner3"]["analyzed_version"] == "error" and "未対応" in rows["inner3"]["analysis_error"]
-    assert rows["inner1"]["analysis_error"] is None and rows["inner1"]["analyzed_version"].startswith("3:")
+    assert rows["inner1"]["analysis_error"] is None and rows["inner1"]["analyzed_version"].startswith(f"{analysis.ANALYSIS_VERSION}:")
     assert conn.execute("SELECT COUNT(*) FROM volumes WHERE parent_id IS NOT NULL").fetchone()[0] == 3
     conn.close()
 

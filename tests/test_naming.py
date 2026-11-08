@@ -225,3 +225,60 @@ def test_trailing_number_evidence_keeps_dropped_decor():
     assert "モンスターコミックス" in t.evidence
     t = trailing_number("作品名 1 - 著者 [レーベル]")
     assert "[レーベル]" in t.evidence  # 著者列と括弧装飾が併用されても落とした装飾は根拠に残す
+
+
+# --- 章の見出し・断片・保存ページ(全体同期の名寄せ) ---------------------------------------------
+
+@pytest.mark.parametrize("name", ["DLRAW.TO_第4話 CAオブザデッド①(前編)", "第100部分:コツ", "DLRAW.TO_chap 038",
+                                  "特別編:ショークラブオブザデッド", "番外編 その1", "Chapter 12"])
+def test_chapter_labels_are_recognised(name):
+    from spinebox.naming import is_chapter_label
+    assert is_chapter_label(name)
+
+
+@pytest.mark.parametrize("name", ["[作者] 29歳独身中堅冒険者の日常 01", "Koyuu Skill v01", "第二次世界大戦"])
+def test_titles_are_not_chapter_labels(name):
+    from spinebox.naming import is_chapter_label
+    assert not is_chapter_label(name)
+
+
+@pytest.mark.parametrize("name, expected", [("DLRAW.TO_CONTENTAS", True), ("DLRAW.TO_c", True), ("DLRAW.TO_❺", True),
+                                            ("Manga-Zip.info_4_cover", True), ("目次", True),
+                                            ("Koyuu Skill v01", False), ("57 files", False)])
+def test_fragment_names(name, expected):
+    from spinebox.naming import is_fragment_name
+    assert is_fragment_name(name) is expected
+
+
+def test_web_novel_parts_and_c_ranges_are_episodes():
+    n = parse_number("第100部分:コツ")
+    assert (n.kind, n.start) == ("episode", 100)
+    w = parse_work_name("[作者] 植物魔法チート 逆転人生始まった件c06-08")
+    assert w.title == "植物魔法チート 逆転人生始まった件" and (w.number.kind, w.number.start, w.number.end) == ("episode", 6, 8)
+
+
+@pytest.mark.parametrize("name", ["16_files", "bbjjf1_y_files", "Manga-Zip.info_2_files", "03s", "01b"])
+def test_saved_page_folders_and_marked_numbers_are_not_work_names(name):
+    assert parse_work_name(name) is None
+
+
+@pytest.mark.parametrize("name", ["extra_01", "Extra-02", "bonus", "omake 3"])
+def test_extra_chapters_with_separators_are_labels(name):
+    from spinebox.naming import is_chapter_label
+    assert is_chapter_label(name)
+
+
+def test_extraordinary_is_not_a_label():
+    from spinebox.naming import is_chapter_label
+    assert not is_chapter_label("Extraordinary Life v01")
+
+
+@pytest.mark.parametrize("name", ["[サークル] 作品名 C100", "作品名 (C99)", "作品名 C98"])
+def test_comiket_numbers_are_not_episodes(name):
+    n = parse_number(name)
+    assert n is None or n.kind != "episode"
+
+
+def test_a_one_kanji_name_is_not_a_fragment():
+    from spinebox.naming import is_fragment_name
+    assert not is_fragment_name("岳") and is_fragment_name("c") and is_fragment_name("❺")

@@ -21,12 +21,12 @@ related: [overview, backend, frontend, archive-reading, manga-reader]
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/scanner.py:503 _scan_novel()` | 小説の登録。危険な名前・上限超え・container.xml の無い EPUB は理由を `scan_issues` に残して巻にしない |
+| `spinebox/scanner.py:549 _scan_novel()` | 小説の登録。危険な名前・上限超え・container.xml の無い EPUB は理由を `scan_issues` に残して巻にしない |
 | `spinebox/novel/books.py:59 Books` | 巻を開いて区切りの HTML と画像を返す。テキストの復号・区切りと EPUB の構造は元ファイルの版ごとに数冊だけメモリに覚える |
 | `spinebox/novel/epub.py:100 open_book()` | EPUB の解析。参照の解決は `resolve_href()`、XML は `parse_xml()`(実体宣言を拒む) |
 | `spinebox/novel/sanitize.py:185 sanitize_html()` | サーバー側の無害化(1 段目) |
 | `spinebox/novel/text.py:24 decode_text()` | 文字コード判定。分割は `split_sections()`、青空文庫形式のルビは `line_to_html()` |
-| `frontend/src/novel/NovelReader.tsx:59 NovelReader()` | リーダー。行の位置の測り方は `measureColumns()` |
+| `frontend/src/novel/NovelReader.tsx:61 NovelReader()` | リーダー。行の位置の測り方は `measureColumns()` |
 | `frontend/src/novel/pagination.ts:40 pageStarts()` | ページの切れ目・位置の換算・ページ送りの純粋関数 |
 | `frontend/src/novel/sanitize.ts:58 sanitizeFragment()` | ブラウザ側の無害化(2 段目) |
 
@@ -45,7 +45,7 @@ API(`GET /api/volumes/{id}` の `format`・`sections`・`encoding`、`/sections/
 2. **ブラウザでの作り直し(`sanitizeFragment`)。** サーバーが返した HTML も信用せず、`DOMParser`(スクリプトを実行せず画像も読み込まない文書)で
    解析し、同じ許可リストで新しい要素を作って入れる。`innerHTML` / `dangerouslySetInnerHTML` は使わない
 3. **CSP。** すべての応答に `Content-Security-Policy`(`script-src 'self'` でインラインのスクリプト・イベントハンドラを止め、
-   `connect-src` / `img-src` も自分のオリジンだけ)と `X-Content-Type-Options: nosniff` を付ける(`spinebox/app.py:47 APP_CSP`)。
+   `connect-src` / `img-src` も自分のオリジンだけ)と `X-Content-Type-Options: nosniff` を付ける(`spinebox/app.py:49 APP_CSP`)。
    画像の資源は直接開かれても何も動かないよう `default-src 'none'; sandbox` を付ける
 
 **EPUB の CSS は使わない。** `url()` での外部読み込み・`@import`・画面を覆う配置(偽の UI)を止めるため。見た目はリーダーの CSS が決める。
