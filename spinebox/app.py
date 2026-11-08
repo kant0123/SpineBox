@@ -273,8 +273,19 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             except Exception:  # noqa: BLE001 (裏の処理で本体を止めない)
                 log.exception("%s に失敗しました", kind_label(kind))
 
+    def recover_interrupted_organize() -> None:
+        """起動時に、実行・元に戻すの途中で落ちた整理を戻す(#36)。ほかの操作はまだ動いていないのでここで行う。失敗しても起動は止めない。"""
+        conn = db.connect(settings.db_path)
+        try:
+            Organizer(conn, settings, library).recover_interrupted()
+        except Exception:  # noqa: BLE001 (復旧の失敗で起動を止めない。操作は実行中のまま残り、次の起動で再試行する)
+            log.exception("途中で止まった整理の復旧に失敗しました")
+        finally:
+            conn.close()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        recover_interrupted_organize()
         stop = threading.Event()
         if settings.background_analysis:
             threading.Thread(target=background_loop, name="spinebox-analysis", daemon=True,
