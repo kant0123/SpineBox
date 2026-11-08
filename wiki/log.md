@@ -506,3 +506,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[work-grouping]], [[recurring-review-findings]]
 - 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。
 
+
+## [2026-11-09] ingest | PR #237 (#235) ラップアップ報告の項目を CLAUDE.md に規定
+- 更新: [[recurring-review-findings]]
+- 備考: #235。CLAUDE.md の「エージェントの応答・作業方針」に、絵文字つきラップアップの必須項目と、書く前の作業漏れ自己点検を追加。コードは変更なし。agy の指摘(相対参照「上の」・prune と cleanup の食い違い)を台帳に追記。
