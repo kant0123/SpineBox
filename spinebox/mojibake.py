@@ -33,7 +33,7 @@ _JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
 _ZEN_KANA = re.compile(r"[\u3041-\u3096\u30a1-\u30fa]")
 _HAN_KANA_SEQ = re.compile(r"[｡-ﾟ]{2,}")
 _WESTERN_TEXT = re.compile(
-    r"^[A-Za-z0-9\s_.,'\"!?()\[\]\-~#&+:;\\/=@%*<>{}^`|\u00a0-\u024f\u2000-\u206f\u20a0-\u20cf]+$"
+    r"^[A-Za-z0-9\s_.,'\"!?()\[\]\-~#&+:;\\/=@%*<>{}^`|\u00a0-\u024f\u2000-\u206f\u20a0-\u20cf\u2100-\u214f]+$"
 )
 
 # 欧文コードページの候補
@@ -80,9 +80,10 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
         # EUC-JP のかな(0xA4xx, 0xA5xx)が CP932 で半角カナに化けたものだけを安全に対象とする
         # (半角カナや第2水準漢字の連続が偶然 EUC-JP の漢字としてデコードされる誤爆を防ぐため、
         #  元テキストに半角カナの連続を含み、かつ復元結果に全角かなが含まれることを必須とする)
-        if _HAN_KANA_SEQ.search(text):
+        if re.search(r"[｡-ﾟ]{4,}", text):
             fixed = _redecode(text, "cp932", "euc-jp")
-            if fixed is not None and _has_japanese(fixed) and _ZEN_KANA.search(fixed):
+            if (fixed is not None and _has_japanese(fixed) and
+                    len(_ZEN_KANA.findall(fixed)) >= 2 and sum(not c.isascii() for c in fixed) >= 2):
                 return fixed, "文字化けを直しました(EUC-JP の名前を Shift_JIS として読んだもの)"
 
         return text, None
@@ -107,7 +108,8 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
                 # - 欧文テキスト(is_western)の場合: 全角かなが2文字以上復元された場合のみ修復
                 #   (欧文単語 'château' 等の â(CP437:0x83)+ASCII小文字が偶然 CP932 のカタカナ1文字 'フ' になる誤爆を排除)
                 # - 欧文テキストでない場合: 全角かなが含まれるか、漢字が2文字以上(かつ Latin-1/CP1252->CP932 誤爆でない)
-                has_kana = len(zen_kana) >= 2 if is_western else bool(zen_kana)
+                has_kana_seq = bool(re.search(r"[ぁ-ゖァ-ヺ]{2,}", fixed))
+                has_kana = has_kana_seq if is_western else bool(zen_kana)
                 if has_kana or (kanji_count >= 2 and not is_western and not is_latin_to_sjis):
                     candidates.append((
                         fixed,

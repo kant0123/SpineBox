@@ -82,6 +82,14 @@ def test_fix_mojibake_specific_user_reported_cases():
     "mâle",
     "pâte",
     "bâtiment",
+    "château de grâce",
+    "château gâteau",
+    "château™",
+    # 正常な半角カナ単語 (EUC-JP 誤爆防止)
+    "ｴｱ 01",
+    "ｵﾝ 02",
+    "ｵﾚ 01",
+    "ｴｷ 01",
     # 正常な日本語
     "東京",
     "鬼滅の刃 23",
