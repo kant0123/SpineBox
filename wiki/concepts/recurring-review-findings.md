@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview]
 ---
 
@@ -80,6 +80,7 @@ push 前に確かめること:
 
 実例:
 
+- PR #225 — `tests/test_mojibake.py` — `spinebox/mojibake.py` で新規追加した EUC-JP 誤読修復分岐や半角カナの安全性テストが欠落していた(agy レビューの WARNING。テストケースを追加)
 - PR #8 — `review/agy_review.py` — `cmd_review` / `cmd_triage` / `cmd_check` / `call_agy` / `ci_state` にテストが無かった
 - PR #23 — `review/agy_review.py call_agy()` — 再試行時の `--conversation` 付与にテストが無かった
 - PR #61 — `spinebox/app.py background_metadata()` — 設定で有効にしたときに常駐する裏のスレッドにテストが無かった(既存の裏の解析は `tests/test_analysis.py` に有る。足したら同じ形で足す)
@@ -398,6 +399,7 @@ push 前に確かめること:
 
 実例:
 
+- PR #225 — `spinebox/scanner.py:52 SCAN_VERSION` — タイトル生成と巻番号抽出に文字化け修復(`fix_mojibake`)を適用したのに `SCAN_VERSION` を 7 のままにしていた(agy レビューの WARNING。8 に上げた)
 - PR #172 — `spinebox/scanner.py:51 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
 
 ### 変化が無ければ書かない処理で、条件の抜けにより毎回書く
@@ -443,3 +445,21 @@ push 前に確かめること:
 
 - PR #213 — `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(agy レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
 - PR #216 — `wiki/log.md` — スクリプトによる文字列の一括置換(`replace`)で、最新エントリだけでなく過去の PR (#159, #160, #164, #174, #172) の更新行まで同じ文字列として置換され、同一ページへの重複リンクが混入していた(agy レビューの WARNING。過去ログを元に戻し最新エントリのみ追記する形に修正)
+
+### 文字化け修復の判定で、正常な別文字コードの文字列が偶然デコードされる誤爆を考えていない
+
+文字コードの誤読を再デコードで修復する際、対象エンコーディングのバイト範囲が重なる別の正常な文字列(例: CP932 の半角カナ 2 文字が EUC-JP の第 1 水準漢字 1 文字とバイト値が完全一致する)が偶然エラーなくデコードできてしまうことを考慮せず、緩い条件(漢字 2 文字以上など)だけで修復成功と判定している。正常な半角カナや第 2 水準漢字を含むタイトルが別の無関係な漢字に不可逆的に置換される。
+
+push 前に確かめること:
+
+- 再デコードが成功するバイト範囲に、意図しない正常な文字列(半角カナ、アクセント付き欧文文字、第 2 水準漢字など)が含まれうるか
+- 元の文字列の特徴(半角カナの連続など)と、復元後の文字列の特徴(全角ひらがな・カタカナを含むかなど)の両面でガードしているか
+- 正常な半角カナの連続(ｱｲｳｴ など)や欧文単語を入力にした安全性のテストがあるか
+
+実例:
+
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で `len(_JAPANESE.findall(fixed)) >= 2` だけで成功としていたため、正常な半角カナ `ｱｲｳｴ`(4文字)が EUC-JP の漢字 `塊慨` に誤変換されていた(agy レビューの CRITICAL。元テキストの半角カナ連続と復元後の全角かな必須の二重ガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で `kanji_count >= 2` を無条件で許容していたため、小文字アクセント付き母音を複数含む欧文単語 `élégant`・`téléphone`・`céréale` 等が Latin-1 経由で Shift_JIS 第 2 水準漢字のバイト列と偶然一致して `齔齠ant` 等に誤変換されていた(agy レビューの CRITICAL。テキストが欧文文字・記号のみで構成される場合は全角かな必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で、テキストが欧文文字のみ(`is_western`)の場合でも全角かな 1 文字で無条件に修復判定していたため、フランス語単語に含まれる `â`(CP437 で 0x83)の直後に ASCII 小文字が続く単語 `château`・`gâteau`・`grâce` 等が、Shift_JIS のカタカナ 1 文字(0x83 0x74='フ', 0x83 0x63='ツ' 等)を含む文字列 `chフeau`・`grツe` 等に不可逆的に誤変換されていた(agy レビューの CRITICAL。`is_western` の場合は連続した全角かな 2 文字以上を必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で半角カナ 2 文字以上(`[｡-ﾟ]{2,}`)かつ全角かな 1 文字としていたため、正常な半角カナ 2 文字単語 `ｴｱ`・`ｵﾝ` 等が EUC-JP の全角かな 1 文字 `か`・`ヱ` に誤変換されていた(agy レビューの CRITICAL。元テキストに半角カナ 4 文字以上の連続を含み、かつ復元後に全角かな 2 文字以上および非 ASCII 文字 2 文字以上を必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — `château de grâce` のように複数単語に `â` を含むタイトルで散発したカタカナが計 2 文字となりガードをすり抜ける問題、および商標記号 `™`(`℀-⅏`)が `_WESTERN_TEXT` から漏れて誤変換される問題(agy レビューの CRITICAL。`has_kana_seq` による連続全角かな必須化と正規表現拡張で修正)

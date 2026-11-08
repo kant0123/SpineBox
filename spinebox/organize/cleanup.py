@@ -3,10 +3,7 @@
 整理画面でテンプレートを空にしたとき(と、ファイル名テンプレートが空でフォルダーだけ振り分けるとき)の名前に使う。
 直すのはファイル名の本体だけで、拡張子とフォルダ名は変えない(フォルダには他の巻も入っているため)。
 
-- 文字化け: 検出できる範囲だけ。UTF-8 の名前を Shift_JIS(cp932)として読んだもの(「縺薙ｓ縺ｫ縺｡縺ｯ」)と、
-  Shift_JIS / UTF-8 の名前を Windows-1252(Latin-1)として読んだもの(「‚±‚ñ‚É‚¿‚Í」「ã“ã‚“」)。
-  読み直した結果が厳密に復号でき、かなか漢字を含み、元より短い(または記号だけの名前が日本語になる)ときだけ直す。
-  本物の日本語の名前を別の文字に化けさせないため、少しでも怪しければ直さない
+- 文字化け: 複数パターンの文字コード誤読(spinebox/mojibake.py)を検出して修復する。
 - 濁点・半濁点の分離(macOS 由来の NFD)を結合する
 - 制御文字は取り除き、タブは空白にする
 - Windows で使えない文字(`< > : " / \\ | ? *`)は全角にする(「:」→「:」。意味を残すため `_` にはしない)
@@ -21,6 +18,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from ..mojibake import fix_mojibake
 from .fs import MAX_STEM, safe_stem
 from .template import ValueMissing
 
@@ -29,9 +27,6 @@ _WIN_BAD = {c: chr(ord(c) + 0xFEE0) for c in '<>:"/\\|?*'}
 _FULLWIDTH_ALNUM = re.compile(r"[０-９Ａ-Ｚａ-ｚ]")
 _HALFWIDTH_KANA = re.compile(r"[｡-ﾟ]+")
 _SPACES = re.compile(r"[ 　]+")
-_JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
-_LATIN1_HIGH = re.compile(r"[\u0080-ÿŒœŠšŸŽžƒˆ˜–—"
-                          r"‘-„†-•…‰‹›€™]")
 # 拡張子とみなす末尾(英数字 1〜5 文字)。「第1.5巻」のような名前の途中のドットは拡張子にしない
 _EXT = re.compile(r"\.[A-Za-z0-9]{1,5}$")
 
@@ -47,39 +42,6 @@ def split_ext(name: str) -> tuple[str, str]:
     if not m or m.start() == 0:
         return name, ""
     return name[:m.start()], m.group(0)
-
-
-def _has_japanese(text: str) -> bool:
-    return _JAPANESE.search(text) is not None
-
-
-def _redecode(text: str, wrong: str, right: str) -> str | None:
-    try:
-        fixed = text.encode(wrong).decode(right)
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        return None
-    if fixed == text or _CONTROL.search(fixed) or "�" in fixed:
-        return None
-    return fixed
-
-
-def fix_mojibake(text: str) -> tuple[str, str | None]:
-    """(直した名前, 何を直したか)。直せない・化けていないなら (text, None)。"""
-    if text.isascii():
-        return text, None
-    # UTF-8 の名前を Shift_JIS として読んだもの。UTF-8 の 3 バイトの文字が Shift_JIS の 1.5 文字になるので、直すと短くなる
-    fixed = _redecode(text, "cp932", "utf-8")
-    if fixed is not None and _has_japanese(fixed) and len(fixed) < len(text) \
-            and sum(not c.isascii() for c in fixed) >= 2:
-        return fixed, "文字化けを直しました(UTF-8 の名前を Shift_JIS として読んだもの)"
-    # Latin-1 系として読んだもの。元は日本語の文字を含まず、Latin-1 の上半分の文字だけで化けている
-    if not _has_japanese(text) and _LATIN1_HIGH.search(text):
-        for wrong in ("cp1252", "latin-1"):
-            for right, label in (("utf-8", "UTF-8"), ("cp932", "Shift_JIS")):
-                fixed = _redecode(text, wrong, right)
-                if fixed is not None and _has_japanese(fixed):
-                    return fixed, f"文字化けを直しました({label} の名前を欧文の文字コードとして読んだもの)"
-    return text, None
 
 
 def clean_stem(stem: str) -> Cleaned:

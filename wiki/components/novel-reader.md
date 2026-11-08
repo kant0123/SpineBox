@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 小説(EPUB・テキスト)の巻と縦書きリーダー。EPUB の HTML を信用しない 3 段の安全方針(サーバーの許可リスト・ブラウザの作り直し・CSP)、文字コード判定と分割、行の途中で切らないページ割り、区切り+割合の読書位置、却下した代替案
-updated: 2026-11-07
+updated: 2026-11-09
 related: [overview, backend, frontend, archive-reading, manga-reader]
 ---
 
@@ -21,7 +21,7 @@ related: [overview, backend, frontend, archive-reading, manga-reader]
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/scanner.py:495 _scan_novel()` | 小説の登録。危険な名前・上限超え・container.xml の無い EPUB は理由を `scan_issues` に残して巻にしない |
+| `spinebox/scanner.py:503 _scan_novel()` | 小説の登録。危険な名前・上限超え・container.xml の無い EPUB は理由を `scan_issues` に残して巻にしない |
 | `spinebox/novel/books.py:59 Books` | 巻を開いて区切りの HTML と画像を返す。テキストの復号・区切りと EPUB の構造は元ファイルの版ごとに数冊だけメモリに覚える |
 | `spinebox/novel/epub.py:100 open_book()` | EPUB の解析。参照の解決は `resolve_href()`、XML は `parse_xml()`(実体宣言を拒む) |
 | `spinebox/novel/sanitize.py:185 sanitize_html()` | サーバー側の無害化(1 段目) |
