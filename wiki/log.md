@@ -493,3 +493,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 新規: `spinebox/mojibake.py`、`tests/test_mojibake.py`
 - 更新: [[organize]], [[backend]], [[novel-reader]], [[work-grouping]], [[recurring-review-findings]]
 - 備考: #223。ZIP / DOS の欧米既定コードページ (CP437) で解釈された Shift_JIS (例: `ÅTèo...` → `週刊少年サンデー 2023年09号`、`ûéôs...` → `魔都精兵のスレイブ 第14巻`) を含む、CP437/CP850/CP1252/Latin-1 による欧文誤読、および Shift_JIS/EUC-JP/UTF-8 の取り違えなど複数パターンの文字化けに対応した修復モジュール `spinebox/mojibake.py` を実装。制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語 (`café`・`Amélie`・`São Paulo`・`élégant` 等) や正常な日本語を壊さない安全条件を維持。ファイル名整理 (`cleanup.py`) だけでなく、スキャン時の巻タイトル生成 (`scanner.py`) および作品名・巻番号の抽出 (`naming.py` の `parse_number` / `parse_work_name` / `trailing_number`) にも適用し、文字化けしたファイル名やアーカイブ内エントリからでも自動的に正しい作品名・巻番号を認識・登録可能にした。
+
+## [2026-11-09] ingest | #212 docs: 作品の表示タイトルは日本語を正とする不変条件を追加
+- 更新: [[work-grouping]]
+- 備考: CLAUDE.md の「蔵書を扱う不変条件」に追記。コードは既に日本語優先のため変更なし。

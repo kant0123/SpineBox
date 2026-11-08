@@ -36,6 +36,10 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   この名前を読ませると、同じ公開 DB 項目に linked した 73 の作品どうしが別名で結ばれて 2000 組超の提案になり、
   末尾の番号の系列(#157)としては「files」1〜109 巻という作品にもなる
 - **EPUB の構造名や汎用名、数字付きゴミ名は作品名・別名にしない。** `oebps` `ops` `metainf` `meta-inf` `epub` `mimetype` `cover` `image` `chapter` `episode` などは作品名として中身のない名前(`spinebox/naming.py JUNK_NAMES`)。また、`cover2` や `scans 01` のように単語の後ろに数字が付いた名前も作品名として中身のない名前(`spinebox/naming.py is_junk_name()`)。スキャン・分解で非コンテンツディレクトリとして巻にしない(`spinebox/scanner.py _NON_CONTENT_DIRS`、`SCAN_VERSION=7`、`ANALYSIS_VERSION=3`)。名寄せでは `_container_aliases` での別名登録や `_alias_evidence` での統合提案の根拠にしない。子フォルダが `cover2` のような名前でも作品名とならず親フォルダ名が採用される(#220)。さらに既存 DB に紛れ込んだ汚染を解消するため、`sync()` の冒頭で `is_junk_name()` に該当する自動別名、およびタイトルがジャンク名である非手動作品に付いた自動別名を `dismissed_at` で外し、ジャンク作品との確認待ち提案を削除する(#215, #220)。
+- **作品の表示タイトル・名寄せのキーは日本語を正とする**(#212。`CLAUDE.md` の不変条件)。実データには正規化タイトルが
+  ローマ字のまま残る作品(`okirakuryoshunotanoshiryochi`)があるが、日本語が正しく、ローマ字はファイル名由来の候補に過ぎない。
+  公開 DB・手動編集・コンテナ名由来の日本語が得られるなら日本語を作品名に採り、ローマ字は別名として残す
+  (統合で残す側は `spinebox/works.py:327 choose_survivor()`、公開 DB の項目の置き換えは `spinebox/linking.py:502 _prefer_japanese_value()` が日本語を優先する)
 - **確信度の目安。** 自分の名前から 0.9、巻の名前に作品名が無く外側の名前から読んだものは 0.6(`CONF_*` 定数)。
   外側のアーカイブ・フォルダの名前は、**その全部の巻が 1 つの作品に入っているときだけ**別名・著者の候補(0.5)にする
   (複数作品の入れ物の名前を別名にすると、別作品を混ぜる根拠になるため)
