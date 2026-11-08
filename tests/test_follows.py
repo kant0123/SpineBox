@@ -126,6 +126,12 @@ def test_gaps_and_new_volumes_are_told_apart_and_sorted_by_release(env_factory):
     assert w["latest_released"] == "2015-03"
 
 
+def test_release_dates_sort_newest_first_and_a_year_only_date_comes_after_its_months():
+    """発売日が年だけの巻は、同じ年の年月・年月日つきの巻より後ろに並ぶ(#93)。"""
+    dates = ["2015", "2015-03", "2015-01", "2016", "2015-03-15", "2014-12"]
+    assert sorted(dates, key=follows._desc) == ["2016", "2015-03-15", "2015-03", "2015-01", "2015", "2014-12"]
+
+
 def test_only_volumes_of_the_works_kind_are_counted(env_factory):
     """漫画と小説が同名で並ぶ作品は、連携した(作品の種別に合う)組の巻だけを数える。"""
     files = [f"{OKIRAKU} 第0{n}巻.cbz" for n in (1, 2, 3)]
