@@ -497,3 +497,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #230 feat: #208 統合の提案に作品名・著者の絞り込みを追加
 - 更新: [[backend]], [[frontend]]
 - 備考: `GET /api/works/proposals` に `q` を追加(サーバー側で絞る)。確認の件数は絞り込まない。
+
+## [2026-11-09] ingest | #76 install_task.ps1 の稼働確認 URL を設定ファイルの host / port から決める
+- 更新: [[server-setup]]
+- 備考: #76。`-Action Status` と `Register` の稼働確認 URL を、`-PythonPath` の Python で `python -m spinebox --print-bind` を読んで決める(update_spinebox.ps1 と同じ規則。0.0.0.0 / :: は 127.0.0.1 / ::1、`-ConfigPath` は `SPINEBOX_CONFIG` で渡す)。`-HealthUrl` は指定したときだけ使う(既定は空)。Register は登録前に Python が解決でき設定が読めることを確かめ、解決できない Python は案内つきで止める。`-WhatIf` に稼働確認の URL を出す。テストは `tests/test_deploy_scripts.py` に 4 件足した。

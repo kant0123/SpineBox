@@ -1,7 +1,7 @@
 ---
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, archive-reading, extraction-cache]
 ---
 
@@ -77,7 +77,10 @@ Python 自体・展開途中のバッファ(1 回のまとめ取り出しは最�
   引数が不正(Python・設定ファイル・リポジトリが無い)なときは exit 2 で止まり、再起動ループに入らない
   (再起動しても直らないので)
 - Python は登録時に絶対パスへ解決して渡す(SYSTEM は利用者の PATH を持たない)。`py` ランチャーなら
-  `-PythonPath py -PythonArguments "-3.12"`
+  `-PythonPath py -PythonArguments "-3.12"`。解決できない・`python -m spinebox --print-bind` が動かない Python は、
+  登録前に止めて案内を出す(Windows ストアの python の別名などを登録しないため)
+- 稼働確認の URL(`Status` と登録時の表示)は、`-PythonPath` の Python で `--print-bind` を読んで決める。
+  `-ConfigPath` を渡したときはその設定を使う(`SPINEBOX_CONFIG` と同じ扱い)。`-HealthUrl` は指定したときだけ使う(#76)
 - `-WhatIf` は登録内容を表示するだけ。システム設定の変更なので、**開発機では登録していない**
 
 ## 更新手順
@@ -88,7 +91,7 @@ Python 自体・展開途中のバッファ(1 回のまとめ取り出しは最�
 `/healthz` の応答と、稼働中のコミットがリポジトリの HEAD と一致することを確かめる。
 
 - `/healthz` の URL は `python -m spinebox --print-bind`(設定の host / port)から決める。`host = "0.0.0.0"` なら 127.0.0.1 で確かめる。
-  手で `-HealthUrl` を合わせる必要が無い(#20 では省いて Status が失敗した。`install_task.ps1` 側の既定値は #76)
+  手で `-HealthUrl` を合わせる必要が無い(#20 では省いて Status が失敗した。`install_task.ps1 -Action Status` も同じ規則。#76)
 - 途中の手順が失敗しても最後に起動し直す(止めたまま放置しない)。`git pull` が失敗したならコードは前の版のまま。
   ビルドが失敗したときは `frontend/dist` が前の版のままか壊れている可能性があるので、ログを見て直してから更新し直す
 - `-DryRun` で何も変えずに手順だけ表示できる(管理者権限も要らない)。Python は既定で `py -3.12`(`-PythonPath` / `-PythonArguments` で変えられる)

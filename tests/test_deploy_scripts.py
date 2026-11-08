@@ -35,6 +35,11 @@ def run_ps(args, **kw):
                           capture_output=True, timeout=120, **kw)
 
 
+def both_decodings(data):
+    # PowerShell の出力の文字コードは環境で変わる(cp932 / utf-8)ので、両方で読んで部分文字列を探す
+    return data.decode("cp932", "replace") + data.decode("utf-8", "replace")
+
+
 @pytest.mark.parametrize("name", SCRIPTS)
 def test_scripts_are_utf8_with_bom(name):
     # BOM が無いと Windows PowerShell 5.1 が CP932 として読み、日本語が化けてスクリプトが動かない
@@ -113,11 +118,14 @@ def test_register_whatif_prints_the_plan_and_changes_nothing(tmp_path):
     name = "SpineBoxTest-" + uuid.uuid4().hex[:8]
     conf = tmp_path / "config.toml"
     conf.write_text("", encoding="utf-8")
+    # 設定の host が 0.0.0.0 でも、稼働確認の URL は設定の port と 127.0.0.1 から決まる(#76)
     r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Register", "-WhatIf", "-TaskName", name,
-                "-RepoPath", str(fake_repo(tmp_path, 0)), "-PythonPath", sys.executable, "-ConfigPath", str(conf)])
+                "-RepoPath", str(fake_bind_repo(tmp_path, "0.0.0.0 8123")), "-PythonPath", sys.executable,
+                "-PythonArguments", "-B", "-ConfigPath", str(conf)])
     out = r.stdout.decode("cp932", "replace") + r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     assert name in out and "start_spinebox.ps1" in out and "-ConfigPath" in out
+    assert "http://127.0.0.1:8123/healthz" in out
     after = run_ps(["-Command", f"(Get-ScheduledTask -TaskName '{name}' -ErrorAction SilentlyContinue | Measure-Object).Count"])
     assert after.stdout.decode("ascii", "replace").strip() == "0"
 
@@ -126,6 +134,38 @@ def test_register_whatif_prints_the_plan_and_changes_nothing(tmp_path):
 def test_register_rejects_a_missing_repo():
     r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Register", "-WhatIf", "-RepoPath", "no-such-repo"])
     assert r.returncode != 0
+
+
+@needs_windows_ps
+def test_register_stops_before_registering_when_python_is_missing_or_cannot_read_the_config(tmp_path):
+    # 解決できない Python・設定を読めない Python は登録前に止め、案内(フルパスを渡す)を出す
+    name = "SpineBoxTest-" + uuid.uuid4().hex[:8]
+    r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Register", "-WhatIf", "-TaskName", name,
+                "-RepoPath", str(fake_bind_repo(tmp_path / "a", "0.0.0.0 8123")), "-PythonPath", "no-such-python-xyz"])
+    assert r.returncode != 0 and "-PythonPath に python.exe のフルパス" in both_decodings(r.stdout + r.stderr)
+    r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Register", "-WhatIf", "-TaskName", name,
+                "-RepoPath", str(fake_repo(tmp_path / "b", 3)), "-PythonPath", sys.executable, "-PythonArguments", "-B"])
+    assert r.returncode != 0 and "設定を読めません" in both_decodings(r.stdout + r.stderr)
+
+
+@needs_windows_ps
+def test_status_derives_the_health_url_from_the_config(tmp_path):
+    # -HealthUrl を省くと設定の host / port から決める。0.0.0.0 は 127.0.0.1 で確かめる。タスク未登録でも確かめる
+    name = "SpineBoxTest-" + uuid.uuid4().hex[:8]
+    r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Status", "-TaskName", name,
+                "-RepoPath", str(fake_bind_repo(tmp_path, "0.0.0.0 8123")), "-PythonPath", sys.executable,
+                "-PythonArguments", "-B"])
+    out = r.stdout.decode("utf-8", "replace") + r.stdout.decode("cp932", "replace")
+    assert r.returncode == 0, out
+    assert "http://127.0.0.1:8123/healthz" in out
+
+
+@needs_windows_ps
+def test_status_reports_when_the_health_url_cannot_be_decided(tmp_path):
+    # 設定を読めないときは Status を落とさず、URL を決められないと表示する
+    r = run_ps(["-File", str(DEPLOY / "install_task.ps1"), "-Action", "Status", "-TaskName", "SpineBoxTest-" + uuid.uuid4().hex[:8],
+                "-RepoPath", str(fake_repo(tmp_path, 3)), "-PythonPath", sys.executable, "-PythonArguments", "-B"])
+    assert r.returncode == 0 and "稼働確認の URL を決められません" in both_decodings(r.stdout)
 
 
 @needs_windows_ps

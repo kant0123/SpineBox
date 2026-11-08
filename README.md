@@ -59,7 +59,6 @@ Windows のサーバー機に常駐させ、LAN 内の別の端末からブラ�
    .\deploy\install_task.ps1 -Action Register -StartNow `
      -PythonPath "<py -3.12 -c 'import sys; print(sys.executable)' で表示されたパス>" `
      -ConfigPath "$PWD\config.local.toml" `
-     -HealthUrl "http://<サーバー機の LAN アドレス>:8000/healthz" `
      -UserName "$env:USERDOMAIN\$env:USERNAME"
    ```
 
