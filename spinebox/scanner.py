@@ -34,6 +34,7 @@ from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import parse_number
 from .novel import FORMAT_EPUB, novel_format
+from .mojibake import fix_mojibake
 from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
 from .pages import is_cover, is_image
 
@@ -162,10 +163,10 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
             continue
         if prefix:
             defining = dirs.get(prefix) or min(pages, key=lambda e: e.index)
-            title = PurePosixPath(prefix.rstrip("/")).name
+            title = fix_mojibake(PurePosixPath(prefix.rstrip("/")).name)[0]
             raw, enc = defining.raw_name, defining.encoding
         else:
-            title = PurePosixPath(archive_name).stem
+            title = fix_mojibake(PurePosixPath(archive_name).stem)[0]
             raw, enc = _fs_name_bytes(archive_name), "filesystem"
         specs.append(VolumeSpec(None, prefix, title, raw, enc, len(pages)))
     for e in listing.entries:
@@ -182,7 +183,8 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
             skipped.append(Skip(e.name, "同じ名前の内側アーカイブが複数ある(最初の 1 つだけを巻にした)"))
             continue
         seen_inner.add(e.name)
-        specs.append(VolumeSpec(e.name, "", PurePosixPath(e.name).stem, e.raw_name, e.encoding, None))
+        inner_title = fix_mojibake(PurePosixPath(e.name).stem)[0]
+        specs.append(VolumeSpec(e.name, "", inner_title, e.raw_name, e.encoding, None))
     return specs, skipped
 
 
@@ -445,7 +447,8 @@ class Scanner:
                           (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
             return
         name = path.name if rel else (root.name or str(root))
-        spec = VolumeSpec(None, "", name, _fs_name_bytes(name), "filesystem", len(readable))
+        title = fix_mojibake(name)[0]
+        spec = VolumeSpec(None, "", title, _fs_name_bytes(name), "filesystem", len(readable))
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "folder")
             record_issues(c, src["id"], None, unreadable)
@@ -511,7 +514,7 @@ class Scanner:
             return
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
-        spec = VolumeSpec(None, "", path.stem, _fs_name_bytes(path.name), "filesystem", None, fmt)
+        spec = VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem", None, fmt)
         if fmt == FORMAT_EPUB:
             try:
                 with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
@@ -548,7 +551,7 @@ class Scanner:
         issues = [Skip(None, safe_text(p)) for p in problems]
         specs: list[VolumeSpec] | None = None
         if not issues and page_count > 0:
-            specs = [VolumeSpec(None, "", path.stem, _fs_name_bytes(path.name), "filesystem", page_count, FORMAT_PDF)]
+            specs = [VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem", page_count, FORMAT_PDF)]
         with db.transaction(self.conn) as c:
             record_issues(c, src["id"], None, issues)
             if specs is not None:
