@@ -136,7 +136,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - [[duplicate-detection]] — 統合の最大の根拠。重複候補を作る側
 - [[backend]] — API(`/api/works*`)と契約
-- [[frontend]] — 作品の一覧・作品ページ・統合の提案の画面
+- [[frontend]] — 作品の一覧・作品ページ・統合の提案の画面(確認の統合の提案タブ。#207)
 - [[volume-split]] — 巻番号の候補、分解された子の巻の扱い
 - [[organize]] — CBZ 化で作品の割り当てを引き継ぐ
 - [[work-search]] — 作品名・別名・著者・巻の名前の全文検索。正規化は `normalize_title` を共用

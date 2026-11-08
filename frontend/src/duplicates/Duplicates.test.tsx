@@ -24,9 +24,9 @@ afterEach(() => {
 });
 
 describe("ルート", () => {
-  it("#/duplicates を重複候補の画面として読む", () => {
-    expect(parseRoute("#/duplicates")).toEqual({ name: "duplicates" });
-    expect(parseRoute("#/duplicates/")).toEqual({ name: "duplicates" });
+  it("#/duplicates は確認の重複の候補タブを開く(#207)", () => {
+    expect(parseRoute("#/duplicates")).toEqual({ name: "review", tab: "duplicates" });
+    expect(parseRoute("#/duplicates/")).toEqual({ name: "review", tab: "duplicates" });
   });
 });
 

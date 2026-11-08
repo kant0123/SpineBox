@@ -96,7 +96,8 @@ function Candidate({ c, onChanged }: { c: DuplicateCandidate; onChanged: () => v
   );
 }
 
-export function Duplicates({ pollMs = 1500 }: { pollMs?: number }) {
+/** embedded: 確認のタブ(#207)の中に置く(見出しと「一覧へ戻る」を外す)。onChanged: 却下・戻す・調べ終えたとき */
+export function Duplicates({ pollMs = 1500, embedded = false, onChanged }: { pollMs?: number; embedded?: boolean; onChanged?: () => void }) {
   const [showDismissed, setShowDismissed] = useState(false);
   const [candidates, setCandidates] = useState<DuplicateCandidate[] | null>(null);
   const [scan, setScan] = useState<DuplicateScanState | null>(null);
@@ -131,6 +132,13 @@ export function Duplicates({ pollMs = 1500 }: { pollMs?: number }) {
     return () => clearInterval(t);
   }, [running, pollMs, load]);
 
+  // 調べ終えたら確認の件数も取り直す
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !running) onChanged?.();
+    wasRunning.current = running;
+  }, [running, onChanged]);
+
   const start = async () => {
     try {
       setScan(await api.scanDuplicates());
@@ -143,12 +151,14 @@ export function Duplicates({ pollMs = 1500 }: { pollMs?: number }) {
 
   return (
     <div className="library duplicates">
-      <header className="library-header">
-        <h1>重複の候補</h1>
-        <a className="back-link" href={libraryHref}>
-          一覧へ戻る
-        </a>
-      </header>
+      {!embedded && (
+        <header className="library-header">
+          <h1>重複の候補</h1>
+          <a className="back-link" href={libraryHref}>
+            一覧へ戻る
+          </a>
+        </header>
+      )}
       <p className="muted">
         同じ本の別スキャンかもしれない巻の組です。ここでは何も削除せず、動かしません。
         ページの見た目と巻番号の候補から選んだ「疑い」で、確定ではありません。
@@ -182,7 +192,7 @@ export function Duplicates({ pollMs = 1500 }: { pollMs?: number }) {
       )}
       <ul className="dup-list">
         {candidates?.map((c) => (
-          <Candidate key={c.id} c={c} onChanged={() => void load()} />
+          <Candidate key={c.id} c={c} onChanged={() => { void load(); onChanged?.(); }} />
         ))}
       </ul>
     </div>

@@ -71,11 +71,13 @@ describe("サイドバー", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "ホーム" })).toBeTruthy();
     await waitFor(() => expect(workTitles()).toContain("サンプル漫画"));
-    const links = within(nav()).getAllByRole("link").map((a) => a.textContent);
-    expect(links).toEqual(["ホーム", "フォロー", "漫画", "小説", "著者", "タグ", "出版社", "ブックマーク", "管理"]);
+    const links = within(nav()).getAllByRole("link").map((a) => a.querySelector(".sidebar-label")!.textContent);
+    expect(links).toEqual(["ホーム", "フォロー", "漫画", "小説", "著者", "タグ", "出版社", "ブックマーク", "確認", "管理"]);
     expect(within(nav()).getByRole("link", { name: "ホーム" }).getAttribute("aria-current")).toBe("page");
     // 既存の画面は近いナビの下に収まる
     await navigate("#/duplicates");
+    expect(within(nav()).getByRole("link", { name: /^確認/ }).getAttribute("aria-current")).toBe("page");
+    await navigate("#/inbox");
     expect(within(nav()).getByRole("link", { name: "管理" }).getAttribute("aria-current")).toBe("page");
     await navigate("#/works/1");
     expect(within(nav()).getByRole("link", { name: "ホーム" }).getAttribute("aria-current")).toBe("page");
@@ -285,22 +287,21 @@ describe("著者・タグ・出版社の一覧", () => {
 });
 
 describe("管理", () => {
-  it("タブが統計・好み・データ管理・統合・フォロー管理・タスクセンターの順に並ぶ", async () => {
+  it("タブが統計・好み・データ管理・フォロー管理・タスクセンターの順に並ぶ(統合は確認へ移した)", async () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "データ管理", "統合", "フォロー管理", "タスクセンター"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "データ管理", "フォロー管理", "タスクセンター"]);
     expect(tabs.map((t) => t.getAttribute("href"))).toEqual([
       "#/admin",
       "#/admin/preferences",
       "#/admin/data",
-      "#/admin/proposals",
       "#/admin/follows",
       "#/admin/tasks",
     ]);
     expect(tabs[0].getAttribute("aria-current")).toBe("page");
     await navigate("#/admin/data");
-    expect(screen.getByRole("link", { name: "重複の候補" }).getAttribute("href")).toBe("#/duplicates");
+    expect(screen.queryByRole("link", { name: "重複の候補" })).toBeNull(); // 確認へ移した(#207)
     expect(screen.getByRole("link", { name: "受け入れ" }).getAttribute("href")).toBe("#/inbox");
     expect(await screen.findByRole("heading", { name: "整理" })).toBeTruthy(); // #84 の整理
     await navigate("#/admin/tasks");

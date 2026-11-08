@@ -290,11 +290,13 @@ def test_api_scan_list_dismiss_flow(api):
     listed = {v["title"]: v for v in api.get("/api/volumes").json()}
     assert listed["Book v01"]["duplicate_count"] == 1 and listed["別 第01巻"]["duplicate_count"] == 1
     assert listed["Other v01"]["duplicate_count"] == 0
+    assert api.get("/api/review/counts").json()["duplicates"] == 1  # 確認の画面(#207)は組の数
 
     assert api.post(f"/api/duplicates/{cand['id']}/dismiss").json() == {"id": cand["id"], "dismissed": True}
     assert api.get("/api/duplicates").json()["candidates"] == []
     assert [c["id"] for c in api.get("/api/duplicates?status=dismissed").json()["candidates"]] == [cand["id"]]
     assert all(v["duplicate_count"] == 0 for v in api.get("/api/volumes").json())
+    assert api.get("/api/review/counts").json()["duplicates"] == 0
     api.post("/api/duplicates/scan?wait=true")  # 再計算しても復活しない
     assert api.get("/api/duplicates").json()["candidates"] == []
     assert api.post(f"/api/duplicates/{cand['id']}/restore").json() == {"id": cand["id"], "dismissed": False}

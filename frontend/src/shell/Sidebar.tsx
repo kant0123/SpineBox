@@ -1,14 +1,15 @@
 // 常に表示するサイドバー(#85。Peach の画面構成)。上に蔵書の切り替えと開閉、ナビ、下にライト/ダークと設定。
 // 横長では常に表示し、開閉ボタンでアイコンだけの細い帯にできる。スマホ幅(CSS の 768px 未満)ではハンバーガーで開く引き出し。
 import {
-  adminHref, bookmarksHref, facetListHref, followsHref, homeHref, mangaHref, novelsHref,
+  adminHref, bookmarksHref, facetListHref, followsHref, homeHref, mangaHref, novelsHref, reviewHref,
   type Route,
 } from "../route";
+import { useReviewCounts } from "../review/reviewCounts";
 import { Icon, type IconName } from "./icons";
 import { useLibraryScope } from "./libraryScope";
 import type { Theme } from "./theme";
 
-export type NavKey = "home" | "follow" | "manga" | "novel" | "author" | "tag" | "publisher" | "bookmark" | "admin";
+export type NavKey = "home" | "follow" | "manga" | "novel" | "author" | "tag" | "publisher" | "bookmark" | "review" | "admin";
 
 interface NavItem {
   key: NavKey;
@@ -26,6 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "tag", label: "タグ", href: facetListHref("tag"), icon: "tag" },
   { key: "publisher", label: "出版社", href: facetListHref("publisher"), icon: "publisher" },
   { key: "bookmark", label: "ブックマーク", href: bookmarksHref, icon: "bookmark" },
+  { key: "review", label: "確認", href: reviewHref(), icon: "review" },
   { key: "admin", label: "管理", href: adminHref(), icon: "admin" },
 ];
 
@@ -40,16 +42,16 @@ export function activeNav(route: Route): NavKey | null {
       return route.field;
     case "work":
     case "work-titles":
-    case "work-proposals":
     case "work-organize":
       return "home";
     case "follows":
       return "follow";
     case "bookmarks":
       return "bookmark";
+    case "review":
+      return "review";
     case "admin":
     case "organize-files":
-    case "duplicates":
     case "inbox":
     case "organize-history":
     case "organize-plan":
@@ -73,6 +75,7 @@ interface Props {
 export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTheme, onNavigate, id }: Props) {
   const { root, libraries, setRoot } = useLibraryScope();
   const active = activeNav(route);
+  const { counts } = useReviewCounts();
   const current = libraries?.find((l) => String(l.id) === root);
   return (
     <aside className="sidebar" id={id} aria-label="サイドバー">
@@ -101,6 +104,12 @@ export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTh
               <a href={item.href} aria-current={active === item.key ? "page" : undefined} title={item.label} onClick={onNavigate}>
                 <span className="sidebar-icon"><Icon name={item.icon} /></span>
                 <span className="sidebar-label">{item.label}</span>
+                {item.key === "review" && (counts?.total ?? 0) > 0 && (
+                  <span className="count-badge sidebar-count">
+                    {counts!.total}
+                    <span className="sr-only">件の確認待ち</span>
+                  </span>
+                )}
               </a>
             </li>
           ))}

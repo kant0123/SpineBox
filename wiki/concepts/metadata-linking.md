@@ -113,6 +113,8 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 
 - [[follow]] は NDL の連携だけを短い有効期限で取り直し(`fetch_work(..., sources=("ndl",))`)、連携した組の巻ごとの書誌から蔵書に無い巻番号を数える。連携の規則は変えずに乗っている
 
+- 確認待ち(`pending`)の作品は、作品ページのほか確認の画面(`#/review`。#207)でまとめて選べる。一覧は `GET /api/review/links`(`spinebox/app.py:698 review_links()`)で、選ぶ API は作品ページと同じ([[frontend]])
+
 ## 却下した案
 
 - **連携を 1 作品 1 行(取得元をまとめる)にする**: 取得元ごとに候補も失敗も違い、NDL の割れを AniList が引きずる構造になる。取得元ごとの行にして、保留の連鎖(`kind_unresolved`)だけを明示した

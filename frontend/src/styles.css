@@ -1222,3 +1222,32 @@ button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
   /* 表紙に重ねる後で読むのボタンも影でしか境界を表さないので線を足す(#173) */
   .read-later-button { border: 1px solid ButtonText; }
 }
+
+/* 確認(#207)。件数のバッジはサイドバーとタブで共通。--accent 地に --accent-fg で 4.5:1 以上 */
+.count-badge {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.5rem; height: 1.5rem; padding: 0 6px; margin-left: 8px; border-radius: 999px;
+  /* 中の読み上げ用の文字(.sr-only は absolute)をバッジの中に留める。外に出るとタブの列の外へはみ出し、スマホで画面ごと横にずれた */
+  position: relative;
+  background: var(--accent); color: var(--accent-fg); font-size: 0.875rem; font-weight: 700; line-height: 1;
+}
+.admin-tabs a[aria-current="page"] .count-badge { background: var(--accent-fg); color: var(--accent); }
+.sidebar-count { margin-left: auto; }
+.app-shell.collapsed .sidebar-nav a { position: relative; }
+.app-shell.collapsed .sidebar-count { position: absolute; top: 2px; right: 4px; margin: 0; min-width: 1.25rem; height: 1.25rem; padding: 0 4px; }
+@media (max-width: 767px) {
+  .app-shell.collapsed .sidebar-count { position: static; margin-left: auto; }
+}
+.review-progress { font-weight: 700; margin: 8px 0; }
+.review-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 12px; }
+.review-work { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; }
+.review-work.done { padding: 8px 12px; }
+.review-work-head { display: flex; gap: 12px; align-items: flex-start; }
+.review-work-head .work-cover { flex: none; width: 56px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; }
+.review-work-title { flex: 1; min-width: 0; }
+.review-work-title h2 { font-size: 1.125rem; margin: 0 0 4px; }
+.review-work-title p { margin: 0; font-size: 0.875rem; }
+.review-work.done .work-cover { width: 32px; }
+.review-work.done h2 { font-size: 1rem; }
+.review-work .link-list { margin-top: 12px; }
+.review-hint { margin: 4px 0 8px; font-size: 0.875rem; }

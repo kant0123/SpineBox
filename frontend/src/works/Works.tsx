@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
-import { facetListHref, workProposalsHref, workTitlesHref, type WorksScope } from "../route";
+import { facetListHref, reviewHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
 import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
@@ -65,7 +65,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
 
   const loadProposals = useCallback(async () => {
     try {
-      setPending((await api.listProposals("open")).length);
+      setPending((await api.reviewCounts()).total);
     } catch {
       // 提案の件数は補助の表示なので、取れなくても一覧は出す
     }
@@ -114,8 +114,8 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       )}
       {pending > 0 && (
         <div className="notice" role="status">
-          <a href={workProposalsHref}>統合の提案が {pending} 件あります</a>
-          (同じ作品かもしれない組。承認するまで統合しません)
+          <a href={reviewHref()}>確認待ちが {pending} 件あります</a>
+          (公開データベースの候補・統合の提案・重複の候補。選ぶまで何も変えません)
         </div>
       )}
       <form className="work-search" role="search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
