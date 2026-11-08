@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB や PDF も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs, manga-reader]
 ---
 
@@ -53,7 +53,8 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:1640 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
 | `spinebox/organize/organizer.py:1870 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
 | `spinebox/organize/template.py:273 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
-| `spinebox/organize/cleanup.py:85 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定は `fix_mojibake` |
+| `spinebox/organize/cleanup.py:47 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定・修復は `spinebox/mojibake.py fix_mojibake` |
+| `spinebox/mojibake.py:59 fix_mojibake` | 複数パターンの文字コード誤読(CP437/CP850/CP1252/Latin-1 欧文誤読、CP932/EUC-JP 誤読)の安全な検出と修復。命名解析やスキャン時のタイトルにも適用 |
 | `frontend/src/organize/OrganizeFiles.tsx:843 OrganizeFilesSection` | 整理画面の中身。管理の整理タブ(`frontend/src/admin/panels.tsx:15 OrganizePanel()`。#207 まではデータ管理タブの下の節。[[data-jobs]])にこの部品と整理の履歴を置く。1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行の 3 段、入力欄ごとの項目の差し込み、Esc・フォーカストラップ・フォーカス返却つきのフォルダー選択、結果の見出しへのフォーカス(#149)。結果は要約・競合の行選択・実行内容・整理しない内容のリスト(#151。`ClashGroups` / `RangeWork` / `RangeRest`)。旧 `#/data/organize`・`#/organize` は整理タブを開く(巻の一覧のヘッダーの「ファイル名の整理」は外した) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
@@ -61,7 +62,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 置き場は `spinebox/config.py:134 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:307 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:313 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
@@ -171,10 +172,12 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 - **設定 `name_template` は #58 の書き方のまま読む**(`[` `]` はその文字。新しい変数は `<レーベル>` などで使える)。画面の「設定のテンプレート」は
   `NameTemplate.range_templates()` で `{}` 記法へ読み替えたもの(同じ名前に展開されることをテストで確かめている)。角括弧の意味を設定でも変えると、
   `[<著者>] <作品名>` のような既存の設定の出力が黙って変わるため
-- **ファイル名の整理**(`cleanup.py`): Windows で使えない文字は全角に(`_` にすると意味が消える)、制御文字は除く、全角英数字は半角・半角カナは全角、
-  全角の空白は半角にして続いた空白は 1 つ、前後の空白・ドット、NFD の濁点、予約名。全角の記号(!・()はそのまま。文字化けは UTF-8 を Shift_JIS として読んだもの・
-  Shift_JIS / UTF-8 を Latin-1 系として読んだものだけを、厳密に復号でき・かなか漢字が出て・(前者は)短くなるときだけ直す。本物の日本語の名前を化けさせないことを
-  優先し、判定に迷うものは直さない。何を直したかを巻ごとにプレビューへ出す。**フォルダ名は整理しない**(他の巻も入っているフォルダを 1 巻の操作で変えない)
+- **ファイル名の整理**(`cleanup.py` / `mojibake.py`): Windows で使えない文字は全角に(`_` にすると意味が消える)、制御文字は除く、全角英数字は半角・半角カナは全角、
+  全角の空白は半角にして続いた空白は 1 つ、前後の空白・ドット、NFD の濁点、予約名。全角の記号(!・()はそのまま。文字化け修復(`fix_mojibake`)は複数パターンに対応:
+  ZIP / DOS の欧米既定である CP437 や CP850・CP1252・Latin-1 でデコードされた Shift_JIS(例: `ÅTèo...` → `週刊少年サンデー`)/UTF-8、および Shift_JIS/EUC-JP の誤読。
+  制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語(`café`・`Amélie`・`São Paulo` 等)や正常な日本語を壊さない
+  安全条件を守る。スキャン時のタイトル生成(`scanner.py`)や命名解析(`naming.py`)にも適用され、文字化けしたファイル名からでも正しい作品名・巻番号を自動認識する。
+  何を直したかを巻ごとにプレビューへ出す。**フォルダ名は整理しない**(他の巻も入っているフォルダを 1 巻の操作で変えない)
 - **既定(`include_cbz=False`)の対象は 1 巻 = 1 ファイルの巻(CBZ・zip / rar / 7z・小説)。CBZ 化はしない。** 複数巻のまとめ・入れ子・画像フォルダは理由つきで対象外にし、
   画像の巻は「テンプレートの名前で CBZ に整理」へ案内する
 - **`include_cbz=True` なら、1 巻 = 1 CBZ は従来どおり改名・移動し、それ以外の元も CBZ 化する(#133)。** 対象は複数巻のアーカイブ・入れ子・画像フォルダ・

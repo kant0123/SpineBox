@@ -489,6 +489,12 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]], [[data-jobs]], [[organize]], [[inbox]], [[cover-thumbnails]], [[backend]]
 - 備考: #207 の PR2。管理のタブを 統計 / 好み / スキャンと補完(旧データ管理)/ 整理 / フォロー管理 / タスクセンター にした。スキャンと補完は「いつもの更新」3 つだけを開き、残り 9 つは畳む。`daily_scan` と同じ処理の `scan` は一覧から外した(依頼・履歴は残す)。整理は範囲指定の整理と整理の履歴を 1 タブにし、旧 `#/data/organize`・`#/organize` はそこへ。「ほかの画面」の節は廃止。ジョブに `step_index` / `step_count`(`JobContext.plan()`)を足し、画面は「段 2/5: …」と「45 / 120」「45 件目」を分けて出す。
 
+## [2026-11-09] ingest | PR #225 (#223) 複数パターンの文字コード化け(CP437欧文誤読・CP932/EUC-JP誤読)の検出・修復とスキャナ/命名連携
+- 新規: `spinebox/mojibake.py`、`tests/test_mojibake.py`
+- 更新: [[organize]], [[backend]], [[novel-reader]], [[work-grouping]], [[recurring-review-findings]]
+- 備考: #223。ZIP / DOS の欧米既定コードページ (CP437) で解釈された Shift_JIS (例: `ÅTèo...` → `週刊少年サンデー 2023年09号`、`ûéôs...` → `魔都精兵のスレイブ 第14巻`) を含む、CP437/CP850/CP1252/Latin-1 による欧文誤読、および Shift_JIS/EUC-JP/UTF-8 の取り違えなど複数パターンの文字化けに対応した修復モジュール `spinebox/mojibake.py` を実装。制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語 (`café`・`Amélie`・`São Paulo`・`élégant` 等) や正常な日本語を壊さない安全条件を維持。ファイル名整理 (`cleanup.py`) だけでなく、スキャン時の巻タイトル生成 (`scanner.py`) および作品名・巻番号の抽出 (`naming.py` の `parse_number` / `parse_work_name` / `trailing_number`) にも適用し、文字化けしたファイル名やアーカイブ内エントリからでも自動的に正しい作品名・巻番号を認識・登録可能にした。
+
 ## [2026-11-09] ingest | PR #231 (#212) 作品の表示タイトルは日本語を正とする不変条件を明文化
 - 更新: [[work-grouping]], [[recurring-review-findings]]
 - 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。
+
