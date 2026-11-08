@@ -75,6 +75,13 @@ def test_fix_mojibake_specific_user_reported_cases():
     "éléments",
     "L'élégant : Tome 1",
     "Un café élégant – Roman",
+    "château",
+    "gâteau",
+    "grâce",
+    "crâne",
+    "mâle",
+    "pâte",
+    "bâtiment",
     # 正常な日本語
     "東京",
     "鬼滅の刃 23",

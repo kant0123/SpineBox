@@ -103,7 +103,12 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
                 # 安全条件: 全角ひらがな・カタカナがあるか、欧文単語でない場合に漢字が2文字以上
                 # (欧文単語 'élégant' 等のアクセント文字が偶然 CP932 の第2水準漢字になる誤爆を排除)
                 is_latin_to_sjis = wrong in ("latin-1", "cp1252") and right == "cp932"
-                if zen_kana or (kanji_count >= 2 and not is_western and not is_latin_to_sjis):
+                # 安全条件:
+                # - 欧文テキスト(is_western)の場合: 全角かなが2文字以上復元された場合のみ修復
+                #   (欧文単語 'château' 等の â(CP437:0x83)+ASCII小文字が偶然 CP932 のカタカナ1文字 'フ' になる誤爆を排除)
+                # - 欧文テキストでない場合: 全角かなが含まれるか、漢字が2文字以上(かつ Latin-1/CP1252->CP932 誤爆でない)
+                has_kana = len(zen_kana) >= 2 if is_western else bool(zen_kana)
+                if has_kana or (kanji_count >= 2 and not is_western and not is_latin_to_sjis):
                     candidates.append((
                         fixed,
                         f"文字化けを直しました({label} の名前を欧文の文字コードとして読んだもの)",

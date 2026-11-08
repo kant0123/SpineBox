@@ -460,3 +460,4 @@ push 前に確かめること:
 
 - PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で `len(_JAPANESE.findall(fixed)) >= 2` だけで成功としていたため、正常な半角カナ `ｱｲｳｴ`(4文字)が EUC-JP の漢字 `塊慨` に誤変換されていた(agy レビューの CRITICAL。元テキストの半角カナ連続と復元後の全角かな必須の二重ガードに修正)
 - PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で `kanji_count >= 2` を無条件で許容していたため、小文字アクセント付き母音を複数含む欧文単語 `élégant`・`téléphone`・`céréale` 等が Latin-1 経由で Shift_JIS 第 2 水準漢字のバイト列と偶然一致して `齔齠ant` 等に誤変換されていた(agy レビューの CRITICAL。テキストが欧文文字・記号のみで構成される場合は全角かな必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で、テキストが欧文文字のみ(`is_western`)の場合でも全角かな 1 文字で無条件に修復判定していたため、フランス語単語に含まれる `â`(CP437 で 0x83)の直後に ASCII 小文字が続く単語 `château`・`gâteau`・`grâce` 等が、Shift_JIS のカタカナ 1 文字(0x83 0x74='フ', 0x83 0x63='ツ' 等)を含む文字列 `chフeau`・`grツe` 等に不可逆的に誤変換されていた(agy レビューの CRITICAL。`is_western` の場合は全角かな 2 文字以上を必須とするガードに修正)
