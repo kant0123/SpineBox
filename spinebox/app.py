@@ -675,9 +675,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return job.summary
 
     @app.get("/api/works/proposals")
-    def list_work_proposals(status: str = "open", conn: sqlite3.Connection = Depends(get_conn)):
-        """統合の提案。status は open / dismissed / applied。"""
-        return works.list_proposals(conn, status)
+    def list_work_proposals(status: str = "open", q: str | None = None,
+                            conn: sqlite3.Connection = Depends(get_conn)):
+        """統合の提案。status は open / dismissed / applied。q は作品名・著者・別名の絞り込み(#208)。"""
+        return works.list_proposals(conn, status, q)
 
     # --- 確認(#207): 利用者の判断を待っているもの ------------------------------------------
 

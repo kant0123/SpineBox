@@ -494,6 +494,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[organize]], [[backend]], [[novel-reader]], [[work-grouping]], [[recurring-review-findings]]
 - 備考: #223。ZIP / DOS の欧米既定コードページ (CP437) で解釈された Shift_JIS (例: `ÅTèo...` → `週刊少年サンデー 2023年09号`、`ûéôs...` → `魔都精兵のスレイブ 第14巻`) を含む、CP437/CP850/CP1252/Latin-1 による欧文誤読、および Shift_JIS/EUC-JP/UTF-8 の取り違えなど複数パターンの文字化けに対応した修復モジュール `spinebox/mojibake.py` を実装。制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語 (`café`・`Amélie`・`São Paulo`・`élégant` 等) や正常な日本語を壊さない安全条件を維持。ファイル名整理 (`cleanup.py`) だけでなく、スキャン時の巻タイトル生成 (`scanner.py`) および作品名・巻番号の抽出 (`naming.py` の `parse_number` / `parse_work_name` / `trailing_number`) にも適用し、文字化けしたファイル名やアーカイブ内エントリからでも自動的に正しい作品名・巻番号を認識・登録可能にした。
 
+## [2026-11-09] ingest | PR #230 feat: #208 統合の提案に作品名・著者の絞り込みを追加
+- 更新: [[backend]], [[frontend]]
+- 備考: `GET /api/works/proposals` に `q` を追加(サーバー側で絞る)。確認の件数は絞り込まない。
+
 ## [2026-11-09] ingest | PR #231 (#212) 作品の表示タイトルは日本語を正とする不変条件を明文化
 - 更新: [[work-grouping]], [[recurring-review-findings]]
 - 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。

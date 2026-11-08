@@ -353,6 +353,17 @@ describe("統合の提案", () => {
     await waitFor(() => expect(screen.getByText("却下した提案はありません。")).toBeTruthy());
   });
 
+  it("作品名・著者で絞り込める(#208)", async () => {
+    window.location.hash = "#/works/proposals";
+    render(<App />);
+    await screen.findByText("外付けの作品");
+    const box = screen.getByLabelText("作品名・著者で探す");
+    fireEvent.change(box, { target: { value: "存在しない作品" } });
+    await waitFor(() => expect(screen.getByText("該当する提案はありません。")).toBeTruthy());
+    fireEvent.change(box, { target: { value: "読み物" } });
+    expect(await screen.findByText("外付けの作品")).toBeTruthy();
+  });
+
   it("承認すると 2 つの作品が 1 つになる", async () => {
     window.location.hash = "#/works/proposals";
     render(<App />);
