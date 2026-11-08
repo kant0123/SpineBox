@@ -501,3 +501,8 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #238 (#36) 途中で落ちた整理を起動時に戻す
 - 更新: [[organize]], [[backend]], [[bookmarks]], [[inbox]], [[manga-reader]], [[cover-thumbnails]], [[data-jobs]], [[metadata-linking]], [[recurring-review-findings]], [[work-grouping]]
 - 備考: #36。実行・元に戻すの途中でプロセスが落ちると操作が running / undoing のまま残り、画面から何もできなかった。起動時の lifespan で `recover_interrupted`(spinebox/organize/organizer.py)が、ジャーナルの手順を逆順に戻す。実行中は failed、元に戻す途中は done へ戻す。pending の移動は移動元・移動先の有無で済んだかを判定し、両方あるか両方無いときは rollback_failed / undo_failed で残す。蔵書フォルダがオフラインなら何もせず次の起動で再試行する。テストは tests/test_organize_recovery.py(確定・退避・元に戻すの途中で落とした状態、オフライン、アプリの起動、範囲指定の CBZ 化)。
+
+## [2026-11-09] ingest | PR #231 (#212) 作品の表示タイトルは日本語を正とする不変条件を明文化
+- 更新: [[work-grouping]], [[recurring-review-findings]]
+- 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。
+
