@@ -514,6 +514,10 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[recurring-review-findings]]
 - 備考: #235。CLAUDE.md の「エージェントの応答・作業方針」に、絵文字つきラップアップの必須項目と、書く前の作業漏れ自己点検を追加。コードは変更なし。agy の指摘(相対参照「上の」・prune と cleanup の食い違い)を台帳に追記。
 
+## [2026-11-09] ingest | PR #234 (#93) 発売日が年だけの巻を同じ年の年月つきの巻より後ろに並べる
+- 更新: [[follow]], [[backend]]
+- 備考: #93。`follows._desc()` が発売日の文字をそのまま比べていたため、`2015` が `2015-03` より先に並んでいた(同じ年の中で月の分からない巻が新しい扱いで先頭に出た)。`YYYY-MM-DD` に足して(足りない月・日は `00`)から比べるように変えた。サイドバーの作品の並びと作品内の巻の並びの両方に効く。テストは `tests/test_follows.py` に並びと発売日なしの鍵を足した。
+
 ## [2026-11-09] ingest | PR #240 (#70) 読めないアーカイブの理由を 7-Zip の 1 行に
 - 更新: [[archive-reading]], [[recurring-review-findings]]
 - 備考: #70。7-Zip の非ゼロ終了の理由を、標準エラーの先頭のエラーの塊 1 行にし、アーカイブのパスを `<ファイル>` に置き換えた。標準エラーの全文は logger `spinebox.archive.sevenzip` に残す。コードは `spinebox/archive/sevenzip.py` の `_failure()` / `_error_line()`。

@@ -290,8 +290,13 @@ def list_releases(conn: sqlite3.Connection, include_seen: bool = False) -> list[
 
 
 def _desc(text: str | None) -> tuple:
-    # 発売日(`2015-03` / `2015`)の新しい順に並べるための鍵
-    return tuple(-ord(ch) for ch in (text or ""))
+    # 発売日の新しい順に並べるための鍵。`2015` / `2015-03` / `2015-03-15` を `YYYY-MM-DD` に足してから比べる。
+    # 足す月・日は 00 なので、同じ年・月の中では月・日が分かるものより後ろになる(足さないと `2015` が `2015-03` より先)
+    if not text:
+        return ()
+    parts = [p.zfill(2) for p in text.split("-")[:3]]
+    parts += ["00"] * (3 - len(parts))
+    return tuple(-ord(ch) for ch in "-".join(parts))
 
 
 def mark_seen(conn: sqlite3.Connection, work_id: int, volumes: list[int] | None = None) -> int:
