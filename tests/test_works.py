@@ -184,6 +184,7 @@ def test_a_work_with_a_manual_link_is_not_folded_into_the_series(make_env):
     assert set(by_title(client)) == {"作品名 1", "作品名"}
     (p,) = client.get("/api/works/proposals").json()  # 0.9 でも手動が絡むので確認待ち
     assert (p["status"], p["confidence"]) == ("open", 0.9)
+    assert client.get("/api/review/counts").json()["proposals"] == 1  # 確認の画面(#207)
 
 
 def test_an_open_proposal_is_merged_when_the_evidence_becomes_certain(make_env):

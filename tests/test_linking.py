@@ -689,6 +689,29 @@ def test_list_and_detail_expose_kind_genres_tags_and_pending_counts(env_factory)
     assert "少年向け" in summary["genres"] and summary["tags"]
 
 
+def test_review_lists_works_with_pending_candidates_and_counts(env_factory):
+    """確認の画面(#207): 確認待ちの作品を作品ページと同じ形で並べ、選ぶと一覧と件数から消える。"""
+    env = env_factory("okiraku", OKIRAKU_FILES)
+    wid = env.work_id()
+    assert env.client.get("/api/review/links").json() == {"works": []}
+    assert env.client.get("/api/review/counts").json() == {"links": 0, "proposals": 0, "duplicates": 0, "total": 0}
+    env.fetch(wid)
+
+    (item,) = env.client.get("/api/review/links").json()["works"]
+    assert item["id"] == wid and item["link_pending"] == 3
+    ndl = env.link(item, "ndl")
+    assert ndl["status"] == "pending" and len(ndl["candidates"]) >= 2
+    assert env.client.get("/api/review/counts").json() == {"links": 1, "proposals": 0, "duplicates": 0, "total": 1}
+
+    manga = next(c for c in ndl["candidates"] if c["kind"] == "manga")
+    env.client.post(f"/api/works/{wid}/links/ndl/choose", json={"source_id": manga["source_id"]})
+    env.fetch(wid)  # 種別が決まり、保留だった取得元も決まる
+    remaining = env.client.get("/api/review/links").json()["works"]
+    counts = env.client.get("/api/review/counts").json()
+    assert counts["links"] == len(remaining) and counts["total"] == counts["links"]
+    assert all(w["link_pending"] > 0 for w in remaining)
+
+
 # --- 整理(CBZ 化)で巻が置き換わっても、巻の書誌を失わない ------------------------------------------
 
 

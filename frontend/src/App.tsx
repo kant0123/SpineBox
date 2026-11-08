@@ -3,12 +3,12 @@ import { parseRoute, type Route } from "./route";
 import { Admin } from "./admin/Admin";
 import { FacetList } from "./browse/FacetList";
 import { Reader } from "./reader/Reader";
-import { Duplicates } from "./duplicates/Duplicates";
 import { AppShell } from "./shell/AppShell";
 import { LibraryScopeProvider } from "./shell/libraryScope";
 import { WorkPage } from "./works/WorkPage";
 import { WorkTitles } from "./works/WorkTitles";
-import { WorkProposals } from "./works/WorkProposals";
+import { Review } from "./review/Review";
+import { ReviewCountsProvider } from "./review/reviewCounts";
 import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
 import { FollowReleases } from "./follows/Follows";
@@ -26,8 +26,6 @@ function Page({ route }: { route: Route }) {
       return <WorkOrganize key={route.id} workId={route.id} />;
     case "organize-history":
       return <OrganizeHistory />;
-    case "duplicates":
-      return <Duplicates />;
     case "inbox":
       return <Inbox />;
     case "organize-files":
@@ -36,8 +34,8 @@ function Page({ route }: { route: Route }) {
       return <WorkPage key={route.id} id={route.id} />;
     case "work-titles":
       return <WorkTitles key={route.id} id={route.id} />;
-    case "work-proposals":
-      return <WorkProposals />;
+    case "review":
+      return <Review tab={route.tab} />;
     case "facets":
       return <FacetList key={route.field} field={route.field} />;
     case "follows":
@@ -65,9 +63,11 @@ export function App() {
       {route.name === "read" ? ( // リーダーはサイドバーを出さず全画面
         <Reader key={route.id} id={route.id} />
       ) : (
-        <AppShell route={route}>
-          <Page route={route} />
-        </AppShell>
+        <ReviewCountsProvider trigger={route}>
+          <AppShell route={route}>
+            <Page route={route} />
+          </AppShell>
+        </ReviewCountsProvider>
       )}
     </LibraryScopeProvider>
   );

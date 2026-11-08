@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 
 export type IconName =
-  | "home" | "follow" | "manga" | "novel" | "author" | "tag" | "publisher" | "bookmark" | "admin" | "clock"
+  | "home" | "follow" | "manga" | "novel" | "author" | "tag" | "publisher" | "bookmark" | "review" | "admin" | "clock"
   | "menu" | "collapse" | "expand" | "sun" | "moon" | "settings" | "library";
 
 const PATHS: Record<IconName, ReactNode> = {
@@ -14,6 +14,7 @@ const PATHS: Record<IconName, ReactNode> = {
   tag: <><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" /><circle cx="8" cy="8" r="1.5" /></>,
   publisher: <path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6M3 21h18" />,
   bookmark: <path d="M6 3h12v18l-6-4-6 4z" />,
+  review: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 12l3 3 5-6" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   admin: <><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12" /></>,
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,

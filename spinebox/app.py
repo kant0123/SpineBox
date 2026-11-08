@@ -679,6 +679,26 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         """統合の提案。status は open / dismissed / applied。"""
         return works.list_proposals(conn, status)
 
+    # --- 確認(#207): 利用者の判断を待っているもの ------------------------------------------
+
+    def _link_pending_work_ids(conn: sqlite3.Connection) -> list[int]:
+        """公開 DB の候補が確認待ちの作品(一覧に見えている作品だけ。並びは作品の一覧と同じ)。"""
+        return [w["id"] for w in works.list_works(conn)["works"] if w["link_pending"] > 0]
+
+    @app.get("/api/review/counts")
+    def review_counts(conn: sqlite3.Connection = Depends(get_conn)):
+        """確認の画面の件数。どれも画面の一覧に出るものだけを数える(開いても何も出ない件数を出さない)。
+        links は作品の数、proposals は提案の数、duplicates は組の数。"""
+        counts = {"links": len(_link_pending_work_ids(conn)),
+                  "proposals": len(works.list_proposals(conn, "open")),
+                  "duplicates": sum(candidate_counts(conn).values()) // 2}
+        return {**counts, "total": sum(counts.values())}
+
+    @app.get("/api/review/links")
+    def review_links(conn: sqlite3.Connection = Depends(get_conn)):
+        """公開 DB の候補が確認待ちの作品の詳細(作品ページと同じ形)。選ぶのは POST /api/works/{id}/links/{source}/choose。"""
+        return {"works": [work_detail(conn, wid) for wid in _link_pending_work_ids(conn)]}
+
     @app.post("/api/works/proposals/{proposal_id}/{action}")
     def decide_work_proposal(proposal_id: int, action: str, conn: sqlite3.Connection = Depends(get_conn)):
         """action: approve(統合する)/ dismiss(別の作品として却下)/ restore(却下を取り消す)。"""

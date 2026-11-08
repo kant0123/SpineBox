@@ -10,9 +10,13 @@ export type WorksScope =
   | { by: "kind"; kind: "manga" | "novel" }
   | { by: FacetField; value: string };
 
-/** 管理のタブ(#85。Peach の管理と同じ並び) */
-export const ADMIN_TABS = ["stats", "preferences", "data", "proposals", "follows", "tasks"] as const;
+/** 管理のタブ(#85。Peach の管理と同じ並び)。統合の提案は確認(#207)へ移した */
+export const ADMIN_TABS = ["stats", "preferences", "data", "follows", "tasks"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
+
+/** 確認(#207)のタブ: 利用者の判断を待っているもの(公開 DB の候補・統合の提案・重複の候補)を 1 か所に集める */
+export const REVIEW_TABS = ["links", "proposals", "duplicates"] as const;
+export type ReviewTab = (typeof REVIEW_TABS)[number];
 
 export type Route =
   | { name: "works"; scope: WorksScope }
@@ -20,17 +24,16 @@ export type Route =
   | { name: "organize-history" }
   | { name: "organize-plan"; id: string; naming: "title" | "template" }
   | { name: "work-organize"; id: string }
-  | { name: "duplicates" }
   | { name: "work"; id: string }
   /** 作品のタイトル(巻)の一覧。作品カードから開き、管理ページ(`#/works/<id>`)へはボタンで移る */
   | { name: "work-titles"; id: string }
-  | { name: "work-proposals" }
   | { name: "inbox" }
   | { name: "organize-files" }
   | { name: "facets"; field: FacetField }
   | { name: "follows" }
   | { name: "bookmarks" }
-  | { name: "admin"; tab: AdminTab };
+  | { name: "admin"; tab: AdminTab }
+  | { name: "review"; tab: ReviewTab };
 
 const FACET_PATHS: Record<string, FacetField> = { authors: "author", tags: "tag", publishers: "publisher" };
 const FACET_PATH_OF: Record<FacetField, string> = { author: "authors", tag: "tags", publisher: "publishers" };
@@ -46,6 +49,14 @@ export function parseRoute(hash: string): Route {
   if (/^\/follows\/?$/.test(h)) return { name: "follows" };
   if (/^\/follows\/manage\/?$/.test(h)) return { name: "admin", tab: "follows" };
   if (/^\/bookmarks\/?$/.test(h)) return { name: "bookmarks" };
+  // 統合の提案は管理のタブ・作品の下の画面から確認(#207)へ移した。旧 URL も同じ画面を開く
+  if (/^\/admin\/proposals\/?$/.test(h) || /^\/works\/proposals\/?$/.test(h)) return { name: "review", tab: "proposals" };
+  if (/^\/duplicates\/?$/.test(h)) return { name: "review", tab: "duplicates" };
+  const review = h.match(/^\/review(?:\/([a-z]+))?\/?$/);
+  if (review) {
+    const tab = (REVIEW_TABS as readonly string[]).includes(review[1] ?? "") ? (review[1] as ReviewTab) : "links";
+    return { name: "review", tab };
+  }
   const admin = h.match(/^\/admin(?:\/([a-z]+))?\/?$/);
   if (admin) {
     const tab = (ADMIN_TABS as readonly string[]).includes(admin[1] ?? "") ? (admin[1] as AdminTab) : "stats";
@@ -62,11 +73,9 @@ export function parseRoute(hash: string): Route {
     }
   }
   if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
-  if (/^\/duplicates\/?$/.test(h)) return { name: "duplicates" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
   if (/^\/data\/?$/.test(h)) return { name: "admin", tab: "data" };
   if (/^\/data\/organize\/?$/.test(h)) return { name: "organize-files" };
-  if (/^\/works\/proposals\/?$/.test(h)) return { name: "work-proposals" };
   const w = h.match(/^\/works\/(\d+)(?:\/(organize|titles))?\/?$/);
   if (w) {
     if (w[2] === "organize") return { name: "work-organize", id: w[1] };
@@ -95,7 +104,9 @@ export const libraryHref = "#/";
 export const homeHref = libraryHref;
 /** 巻の一覧は廃止し、ホーム(作品一覧)へ戻す */
 export const volumesHref = homeHref;
-export const duplicatesHref = "#/duplicates";
+export const reviewHref = (tab: ReviewTab = "links") => (tab === "links" ? "#/review" : `#/review/${tab}`);
+/** 重複の候補(確認のタブ。#207) */
+export const duplicatesHref = reviewHref("duplicates");
 /** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
 export const inboxHref = "#/inbox";
 /** 範囲指定の整理(ファイル名・フォルダーのテンプレート、ファイル名の整理)。データ管理ページ(#83)の「整理」節の単独版 */
@@ -111,7 +122,8 @@ export const followsHref = "#/follows";
 export const followManageHref = "#/admin/follows";
 /** ブックマーク(#86)。サイドバー(#85)の「ブックマーク」の行き先 */
 export const bookmarksHref = "#/bookmarks";
-export const workProposalsHref = "#/works/proposals";
+/** 統合の提案(確認のタブ。#207。旧 `#/works/proposals`・`#/admin/proposals` も同じ画面を開く) */
+export const workProposalsHref = reviewHref("proposals");
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
 /** 作品のタイトル(巻)の一覧。作品カードの行き先 */
 export const workTitlesHref = (id: string | number) => `${workHref(id)}/titles`;

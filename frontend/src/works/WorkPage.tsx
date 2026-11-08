@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type SourceName, type WorkDetail, type WorkEditBody, type WorkFieldName, type WorkKind, type WorkSummary, type WorkVolume } from "../api";
 import { progressLabel } from "../library/Library";
-import { readHref, workHref, workOrganizeHref, workTitlesHref, worksHref } from "../route";
+import { readHref, reviewHref, workHref, workOrganizeHref, workTitlesHref, worksHref } from "../route";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
 import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, missingLabel, sourceText } from "./labels";
@@ -300,6 +300,11 @@ export function WorkPage({ id }: { id: string }) {
             {busy ? "取得中…" : "情報を取得"}
           </button>
         </div>
+        {work.link_pending > 0 && (
+          <p className="review-hint">
+            確認待ちの候補があります。ほかの作品の候補とまとめて選ぶなら <a href={reviewHref("links")}>確認 &gt; 公開DBの候補</a>
+          </p>
+        )}
         <WorkLinks work={work} busy={busy} run={run} onWork={apply} />
       </section>
 
