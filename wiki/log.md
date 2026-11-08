@@ -503,6 +503,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。
 
 
-## [2026-11-09] ingest | PR #TBD (#70) 読めないアーカイブの理由を 7-Zip の 1 行に
+## [2026-11-09] ingest | PR #240 (#70) 読めないアーカイブの理由を 7-Zip の 1 行に
 - 更新: [[archive-reading]]
 - 備考: #70。7-Zip の非ゼロ終了の理由を、標準エラーの先頭のエラーの塊 1 行にし、アーカイブのパスを `<ファイル>` に置き換えた。標準エラーの全文は logger `spinebox.archive.sevenzip` に残す。コードは `spinebox/archive/sevenzip.py` の `_failure()` / `_error_line()`。
