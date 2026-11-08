@@ -37,8 +37,8 @@ param(
     [string]$LogDir = "",
     # 空なら SYSTEM。指定するとパスワードを尋ねる
     [string]$UserName = "",
-    # Status が応答を確かめる URL(設定の host / port に合わせる)
-    [string]$HealthUrl = "http://127.0.0.1:8000/healthz",
+    # Status が応答を確かめる URL。空なら設定の host / port から決める(python -m spinebox --print-bind。0.0.0.0 は 127.0.0.1 で確かめる)
+    [string]$HealthUrl = "",
     # Register 後すぐにタスクを開始する
     [switch]$StartNow
 )
@@ -71,6 +71,50 @@ function Get-ExistingTask {
     return Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 }
 
+# 解決できない Python を登録しないための案内(SYSTEM は利用者の PATH を持たないので、フルパスを渡してもらう)
+function Get-PythonHint {
+    param([string]$Python)
+    $msg = "Python が見つかりません: {0}。-PythonPath に python.exe のフルパスを渡してください " +
+           "(例: py -3.12 -c `"import sys; print(sys.executable)`" で表示されたパス。py ランチャーなら -PythonPath py -PythonArguments `"-3.12`")"
+    return ($msg -f $Python)
+}
+
+# 設定の host / port から稼働確認の URL を決める(update_spinebox.ps1 と同じ規則)。
+# 設定の警告は stderr に出うるので標準出力だけを読む。Python が解決できない・設定が読めないときは例外。
+function Get-HealthUrl {
+    param([string]$Repo, [string]$Python, [string]$PythonArgs, [string]$Config)
+    $cmd = Get-Command $Python -ErrorAction SilentlyContinue
+    if (-not $cmd) { throw (Get-PythonHint $Python) }
+    $pre = @()
+    if ($PythonArgs) { $pre = @($PythonArgs -split "\s+" | Where-Object { $_ }) }
+    $savedConfig = $env:SPINEBOX_CONFIG
+    $errFile = [System.IO.Path]::GetTempFileName()
+    $ErrorActionPreference = "Continue"
+    if ($Config) { $env:SPINEBOX_CONFIG = $Config }
+    Push-Location $Repo
+    try {
+        $out = @(& $cmd.Source @($pre + @("-m", "spinebox", "--print-bind")) 2>$errFile)
+        $code = $LASTEXITCODE
+        $err = (Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)
+    }
+    finally {
+        Pop-Location
+        if ($Config) {
+            if ($null -eq $savedConfig) { Remove-Item Env:SPINEBOX_CONFIG -ErrorAction SilentlyContinue } else { $env:SPINEBOX_CONFIG = $savedConfig }
+        }
+        Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+    }
+    if ($code -ne 0) { throw ("設定を読めません(python -m spinebox --print-bind の終了コード {0})。{1} {2}" -f $code, ($out -join " "), $err) }
+    $line = @($out | Where-Object { "$_" -match '^\s*(\S+)\s+(\d+)\s*$' })
+    if ($line.Count -eq 0) { throw "--print-bind の出力を解釈できません: $($out -join ' ')" }
+    [void]("$($line[-1])" -match '^\s*(\S+)\s+(\d+)\s*$')
+    $h = $Matches[1]; $p = $Matches[2]
+    if ($h -eq "0.0.0.0") { $h = "127.0.0.1" }
+    elseif ($h -eq "::") { $h = "::1" }
+    if ($h -like "*:*") { $h = "[$h]" }
+    return "http://${h}:${p}/healthz"
+}
+
 # SpineBox のプロセス: ラッパー(start_spinebox.ps1 を動かしている PowerShell)と、`python -m spinebox`(py ランチャー含む)。
 # ラッパーを先に並べる(python だけ止めてもラッパーが起動し直すため、止める順序に使う)
 function Get-SpineBoxProcesses {
@@ -95,12 +139,17 @@ function Show-Status {
     $procs = @(Get-SpineBoxProcesses)
     if ($procs.Count -eq 0) { Write-Host "SpineBox のプロセス: なし" }
     foreach ($p in $procs) { Write-Host ("SpineBox のプロセス: PID={0} {1}" -f $p.ProcessId, $p.CommandLine) }
+    $url = $HealthUrl
+    if (-not $url) {
+        try { $url = Get-HealthUrl -Repo $RepoPath -Python $PythonPath -PythonArgs $PythonArguments -Config $ConfigPath }
+        catch { Write-Host ("稼働確認の URL を決められません: {0}" -f $_.Exception.Message); return }
+    }
     try {
-        $resp = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 5
-        Write-Host ("{0} -> {1} {2}" -f $HealthUrl, [int]$resp.StatusCode, $resp.Content)
+        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
+        Write-Host ("{0} -> {1} {2}" -f $url, [int]$resp.StatusCode, $resp.Content)
     }
     catch {
-        Write-Host ("{0} -> 応答なし ({1})" -f $HealthUrl, $_.Exception.Message)
+        Write-Host ("{0} -> 応答なし ({1})" -f $url, $_.Exception.Message)
     }
 }
 
@@ -111,7 +160,7 @@ function Register-SpineBoxTask {
     if (-not $repo -or -not (Test-Path -LiteralPath (Join-Path $repo "spinebox\__main__.py"))) {
         throw "RepoPath に spinebox\__main__.py が見つかりません: $RepoPath"
     }
-    if (-not (Get-Command $PythonPath -ErrorAction SilentlyContinue)) { throw "Python が見つかりません: $PythonPath" }
+    if (-not (Get-Command $PythonPath -ErrorAction SilentlyContinue)) { throw (Get-PythonHint $PythonPath) }
     $config = ""
     if ($ConfigPath) {
         if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw "設定ファイルが見つかりません: $ConfigPath" }
@@ -119,6 +168,8 @@ function Register-SpineBoxTask {
     }
     # 登録時のカレントやユーザーの PATH に依存させないため、Python は絶対パスにして渡す
     $python = (Get-Command $PythonPath).Source
+    # 登録前に、この Python で設定を読めて稼働確認の URL が決まることを確かめる(Windows ストアの python の別名など、動かない Python を登録しない)
+    $healthUrl = Get-HealthUrl -Repo $repo -Python $python -PythonArgs $PythonArguments -Config $config
     $arguments = Get-TaskArguments -Script $startScript -Repo $repo -Python $python -PythonArgs $PythonArguments -Config $config -Logs $LogDir
 
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arguments -WorkingDirectory $repo
@@ -131,6 +182,7 @@ function Register-SpineBoxTask {
     Write-Host "  タスク名: $TaskName"
     Write-Host ("  実行ユーザー: {0}" -f $(if ($UserName) { $UserName } else { "SYSTEM" }))
     Write-Host "  トリガー: OS の起動 30 秒後(ログオン不要)"
+    Write-Host "  稼働確認の URL(設定の host / port から): $healthUrl"
     Write-Host "  実行: powershell.exe $arguments"
 
     if ((Get-ExistingTask) -and -not $WhatIfPreference) { Write-Host "  (既存のタスクを置き換えます)" }
