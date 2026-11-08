@@ -116,7 +116,7 @@ push 前に確かめること:
 - PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
 - PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 - PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
-- PR #219 — `spinebox/scanner.py:580 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
+- PR #219 — `spinebox/scanner.py:583 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
 - PR #219 — `spinebox/organize/organizer.py:1022 _plan_range_cbz()` — 計画全体の `problems` と同じ名前の変数を PDF 検査の戻り値受け取りに使ったため、前段で拾った未解析アーカイブ等の問題リストが上書きされて消失した(agy レビューの WARNING。`pdf_probs` にリネームして修正)
 - PR #219 — `spinebox/app.py:499 get_volume` / `spinebox/thumbs.py:118 get` / `spinebox/library.py:142 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(agy レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
 - PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(agy レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
@@ -394,7 +394,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:846 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
+- PR #172 — `spinebox/works.py:852 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
 
 ### 解析規則を変えたのに、既存データを読み直す版を上げていない
 
@@ -423,7 +423,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:826 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+- PR #172 — `spinebox/works.py:832 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
 
 ### 前提条件の内側に置いた処理が、前提を満たさない自然な状態で実行されない
 
