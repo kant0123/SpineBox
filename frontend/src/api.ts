@@ -1064,7 +1064,8 @@ export const api = {
   reviewCounts: () => request<ReviewCounts>("/api/review/counts"),
   /** 公開データベースの候補が確認待ちの作品(作品ページと同じ形) */
   reviewLinks: () => request<{ works: WorkDetail[] }>("/api/review/links"),
-  listProposals: (status: "open" | "dismissed" | "applied" = "open") => request<WorkProposal[]>(`/api/works/proposals?status=${status}`),
+  listProposals: (status: "open" | "dismissed" | "applied" = "open", q = "") =>
+    request<WorkProposal[]>(`/api/works/proposals?status=${status}${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`),
   decideProposal: (id: number, action: "approve" | "dismiss" | "restore") =>
     request<{ id: number; status: string }>(`/api/works/proposals/${id}/${action}`, { method: "POST" }),
   /** フォロー管理: フォロー中の作品と、続刊の確認の進み具合 */

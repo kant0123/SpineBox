@@ -463,3 +463,18 @@ push 前に確かめること:
 - PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で、テキストが欧文文字のみ(`is_western`)の場合でも全角かな 1 文字で無条件に修復判定していたため、フランス語単語に含まれる `â`(CP437 で 0x83)の直後に ASCII 小文字が続く単語 `château`・`gâteau`・`grâce` 等が、Shift_JIS のカタカナ 1 文字(0x83 0x74='フ', 0x83 0x63='ツ' 等)を含む文字列 `chフeau`・`grツe` 等に不可逆的に誤変換されていた(agy レビューの CRITICAL。`is_western` の場合は連続した全角かな 2 文字以上を必須とするガードに修正)
 - PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で半角カナ 2 文字以上(`[｡-ﾟ]{2,}`)かつ全角かな 1 文字としていたため、正常な半角カナ 2 文字単語 `ｴｱ`・`ｵﾝ` 等が EUC-JP の全角かな 1 文字 `か`・`ヱ` に誤変換されていた(agy レビューの CRITICAL。元テキストに半角カナ 4 文字以上の連続を含み、かつ復元後に全角かな 2 文字以上および非 ASCII 文字 2 文字以上を必須とするガードに修正)
 - PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — `château de grâce` のように複数単語に `â` を含むタイトルで散発したカタカナが計 2 文字となりガードをすり抜ける問題、および商標記号 `™`(`℀-⅏`)が `_WESTERN_TEXT` から漏れて誤変換される問題(agy レビューの CRITICAL。`has_kana_seq` による連続全角かな必須化と正規表現拡張で修正)
+
+### 新しい画面・モックが、同じ種類の既存の画面とバックエンドの規約から外れる
+
+検索欄などを足すとき、同じ種類の既存の画面(作品一覧の検索)の書き方・設計方針(`wiki/components/frontend.md`)と、
+バックエンドの規則(正規化)を確かめずに書く。placeholder で説明する、境界色のトークンが違う、モック API だけ単純な部分一致になる、など。
+
+push 前に確かめること:
+
+- 同じ種類の入力・表示が既にあるなら、その実装(`Works.tsx` の検索欄など)と Wiki の方針(入力欄に placeholder を使わず、サポートテキストと `aria-describedby` で示す)に揃えているか
+- バックエンドが正規化して比べる項目を、モック API でも同じ関数(`normalizeSearch`)で比べているか。モックだけ通って実機で結果が違う状態になっていないか
+- テストが、足した対象(著者・別名など)のそれぞれに当たる入力を持っているか(名前だけで当てて通していないか)
+
+実例:
+
+- PR #230 — `frontend/src/works/WorkProposals.tsx` / `frontend/src/mock/mockWorks.ts` / `tests/test_linking.py` — 統合の提案の絞り込みで、placeholder での説明・モックの単純な `toLowerCase()` 比較・著者と別名が空のテストを、agy レビューで指摘された
