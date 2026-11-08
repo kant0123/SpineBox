@@ -33,12 +33,12 @@ const fileChips = () => within(screen.getByRole("group", { name: "ファイル�
 const folderChips = () => within(screen.getByRole("group", { name: "フォルダーテンプレートに項目を差し込む" }));
 
 describe("範囲指定の整理", () => {
-  it("単独のルートで開け、管理のデータ管理タブの整理の節に出る", async () => {
-    expect(parseRoute(organizeFilesHref)).toEqual({ name: "organize-files" });
+  it("管理の整理タブ(#207)で開ける", async () => {
+    expect(parseRoute(organizeFilesHref)).toEqual({ name: "admin", tab: "organize" });
     window.location.hash = organizeFilesHref;
     render(<App />);
     await screen.findByLabelText("ファイル名テンプレート");
-    expect(screen.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "整理" }).getAttribute("aria-current")).toBe("page");
   });
 
   it("ファイル名の整理だけをプレビューし、実行してからまとめて元に戻せる", async () => {

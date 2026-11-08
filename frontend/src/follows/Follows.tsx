@@ -209,11 +209,11 @@ export function FollowManage({ embedded = false }: { embedded?: boolean }) {
         {embedded ? <span /> : <h1>フォロー管理</h1>}
         <div className="header-actions">
           <a className="header-link" href={followsHref}>
-            フォロー
+            続刊・欠けの一覧を見る
           </a>
           {data && (
             <button type="button" onClick={() => void check()} disabled={running || !data.available || data.follows.length === 0}>
-              {running ? `調べています… ${state!.done} / ${state!.total}` : "続刊を調べる"}
+              {running ? `調べています… ${state!.done} / ${state!.total}` : "すべての続刊を調べる"}
             </button>
           )}
         </div>

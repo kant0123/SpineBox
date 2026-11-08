@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createMockBackend } from "../mock/mockBackend";
 import { parseRoute } from "../route";
-import { DataJobs, summaryText } from "./DataJobs";
+import type { Job } from "../api";
+import { DataJobs, countText, stepText, summaryText } from "./DataJobs";
 
 let backend: ReturnType<typeof createMockBackend>;
 
@@ -28,29 +29,33 @@ describe("ルートと入口", () => {
     expect(parseRoute("#/data/")).toEqual({ name: "admin", tab: "data" });
     window.location.hash = "#/data";
     render(<App />);
-    await screen.findByText("補完待ちの作品を補完");
+    await screen.findByText("足りない作品情報を補う");
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" }));
-    expect(tabs.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
+    expect(tabs.getByRole("link", { name: "スキャンと補完" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("heading", { name: "履歴" })).toBeNull(); // 履歴はタスクセンター
     expect(tabs.getByRole("link", { name: "タスクセンター" }).getAttribute("href")).toBe("#/admin/tasks");
     window.location.hash = "#/admin/tasks";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
     expect(await screen.findByRole("heading", { name: "履歴" })).toBeTruthy();
-    expect(screen.queryByText("補完待ちの作品を補完")).toBeNull(); // 依頼の一覧はデータ管理
+    expect(screen.queryByText("足りない作品情報を補う")).toBeNull(); // 依頼の一覧はデータ管理
   });
 });
 
 describe("データ管理の画面", () => {
   it("ジョブを見出しごとに説明と対象の件数つきで並べ、履歴は新しい順で失敗の理由を出す", async () => {
     render(<DataJobs pollMs={20} />);
-    const daily = (await screen.findByText("補完待ちの作品を補完")).closest("li")!;
+    const daily = (await screen.findByText("足りない作品情報を補う")).closest("li")!;
     expect(within(daily).getByText("登録済みの 3 作品が補完待ち")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "日常の同期" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "ライブラリ全体" })).toBeTruthy();
+    // いつもの更新(3 つ)だけを開いて見せ、ほかは畳む(#207)。daily_scan と同じ処理の scan は出さない
+    const daily3 = screen.getByRole("heading", { name: "いつもの更新" }).parentElement!;
+    expect(within(daily3).getAllByRole("listitem").map((li) => li.querySelector("strong")!.textContent)).toEqual([
+      "新しいファイルを取り込む", "足りない作品情報を補う", "ライブラリ全体を同期"]);
+    expect(screen.queryByText("ファイルのスキャンのみ", { selector: ".job-kind strong" })).toBeNull();
     expect(within(screen.getByText("中の巻を調べる").closest("li")!).getByText("未解析 1 巻")).toBeTruthy();
     expect(within(screen.getByText("作品情報のみ補完").closest("li")!).getByLabelText("全作品を取り直す")).toBeTruthy();
     // 作品一覧のヘッダーから移した操作(#102)
-    const individual = screen.getByRole("heading", { name: "個別" }).parentElement!;
+    const individual = screen.getByText("個別の処理(9)").closest("details")!;
+    expect(individual.open).toBe(false);
     expect(within(individual).getByText("表紙のみ補完")).toBeTruthy();
     expect(within(individual).getByText("重複を調べる")).toBeTruthy();
     expect(within(individual).getByText("作品の名寄せを計算し直す")).toBeTruthy();
@@ -65,9 +70,9 @@ describe("データ管理の画面", () => {
 
   it("依頼すると実行中に進み具合が出て、2 本目は待ち行列に入り、終わると履歴に移る", async () => {
     render(<DataJobs pollMs={20} />);
-    fireEvent.click(await screen.findByRole("button", { name: "ライブラリ全体のメンテナンスを実行" }));
+    fireEvent.click(await screen.findByRole("button", { name: "全ファイルを確かめ直すを実行" }));
     const running = screen.getByRole("heading", { name: "実行中" }).parentElement!;
-    await within(running).findByText("ライブラリ全体のメンテナンス");
+    await within(running).findByText("全ファイルを確かめ直す");
     fireEvent.click(screen.getByRole("button", { name: "重複を調べるを実行" }));
     await within(running).findByText("待ち行列");
     expect(within(running).getByText("重複を調べる")).toBeTruthy();
@@ -99,33 +104,30 @@ describe("データ管理の画面", () => {
   });
 });
 
-describe("整理の節", () => {
-  it("データ管理の下に「整理」節があり、単独の入口 #/data/organize も同じページの整理へ移る", async () => {
-    window.location.hash = "#/data";
-    render(<App />);
-    const section = (await screen.findByRole("heading", { name: "整理" })).closest("section")!;
-    expect(within(section).getByLabelText("ファイル名テンプレート")).toBeTruthy();
-    expect(screen.getByText("補完待ちの作品を補完")).toBeTruthy(); // 同じページにジョブの一覧もある
-    // 節内リンクは見出しへフォーカスを移す
-    fireEvent.click(screen.getByRole("button", { name: "ジョブ" }));
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "実行中" }));
-    fireEvent.click(screen.getByRole("button", { name: "整理" }));
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "整理" }));
-    cleanup();
+describe("整理のタブ", () => {
+  it("整理は管理の「整理」タブ。旧 #/data/organize・#/organize も同じタブを開き、スキャンと補完のタブには出さない", async () => {
+    for (const hash of ["#/admin/organize", "#/data/organize", "#/organize"]) {
+      expect(parseRoute(hash)).toEqual({ name: "admin", tab: "organize" });
+    }
     window.location.hash = "#/data/organize";
     render(<App />);
-    await screen.findByLabelText("ファイル名テンプレート");
-    expect(screen.getByRole("link", { name: "データ管理" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("heading", { name: "実行中" })).toBeTruthy();
-    // 単独の入口では、ジョブの一覧の下でも整理の見出しへフォーカスが移る
-    const organize = screen.getByRole("heading", { name: "整理" });
-    await waitFor(() => expect(document.activeElement).toBe(organize));
+    expect(await screen.findByLabelText("ファイル名テンプレート")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "整理" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "整理の履歴" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "受け入れ" }).getAttribute("href")).toBe("#/inbox");
+    expect(screen.queryByText("足りない作品情報を補う")).toBeNull();
+    cleanup();
+    window.location.hash = "#/admin/data";
+    render(<App />);
+    await screen.findByText("足りない作品情報を補う");
+    expect(screen.queryByLabelText("ファイル名テンプレート")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "ほかの画面" })).toBeNull(); // #207 で廃止
   });
 
   it("整理を実行・元に戻すとタスクセンターの履歴にも残る", async () => {
-    window.location.hash = "#/data";
+    window.location.hash = "#/admin/organize";
     render(<App />);
-    const section = (await screen.findByRole("heading", { name: "整理" })).closest("section")!;
+    const section = (await screen.findByRole("heading", { name: "ファイル名・フォルダーの整理" })).closest("section")!;
     await within(section).findByRole("option", { name: "E:/漫画" });
     fireEvent.click(within(section).getByRole("button", { name: "プレビュー" }));
     fireEvent.click(await within(section).findByRole("button", { name: /^実行\(/ }));
@@ -145,5 +147,36 @@ describe("summaryText", () => {
     expect(summaryText({ scan: { volumes: 3 }, analyze: { analyzed: 2, errors: 1 }, thumbnails: { made: 0, existing: 2 } }))
       .toBe("スキャン: 3 巻・中の巻: 解析 2 巻・読めない 1 件・表紙: 作成済み 2");
     expect(summaryText(null)).toBe("");
+  });
+});
+
+describe("進み具合の文言(#207)", () => {
+  const base = { step: "中の巻を調べる", step_index: 2, step_count: 5, done: 45, total: 120 } as unknown as Job;
+  it("複数の段は「段 i/n」を付け、件数は総数があれば「n / 総数」、無ければ「n 件目」", () => {
+    expect(stepText(base)).toBe("段 2/5: 中の巻を調べる");
+    expect(stepText({ ...base, step_count: null, step_index: null })).toBe("中の巻を調べる");
+    expect(stepText({ ...base, step_count: 1, step_index: 1 })).toBe("中の巻を調べる");
+    expect(stepText({ ...base, step: null })).toBe("");
+    expect(countText(base)).toBe("45 / 120");
+    expect(countText({ ...base, total: null })).toBe("45 件目");
+    expect(countText({ ...base, total: null, done: null })).toBe("");
+  });
+
+  it("スキャンと補完では実行中を 1 行で出し、詳しい進み具合はタスクセンター", async () => {
+    render(<DataJobs pollMs={60} view="data" />);
+    fireEvent.click(await screen.findByRole("button", { name: "ライブラリ全体を同期を実行" }));
+    const now = await screen.findByText(/段 \d\/5/);
+    expect(now.closest(".job-now")!.querySelector("a")!.getAttribute("href")).toBe("#/admin/tasks");
+    expect(screen.queryByRole("heading", { name: "実行中" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "中止" })).toBeNull(); // 中止はタスクセンター
+  });
+
+  it("タスクセンターは段と件数を分けて出し、総数の無い段は aria-valuetext で読み上げる", async () => {
+    render(<DataJobs pollMs={60} view="all" />);
+    fireEvent.click(await screen.findByRole("button", { name: "ライブラリ全体を同期を実行" }));
+    const bar = await screen.findByRole("progressbar");
+    await waitFor(() => expect(bar.getAttribute("aria-valuetext") ?? bar.getAttribute("aria-valuenow")).toBeTruthy());
+    await screen.findByText(/^段 [2-5]\/5: /, {}, { timeout: 3000 });
+    await waitFor(() => expect(bar.getAttribute("aria-valuenow")).toBe("33"), { timeout: 3000 });
   });
 });

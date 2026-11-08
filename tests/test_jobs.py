@@ -14,7 +14,7 @@ from spinebox import db
 from spinebox.app import create_app
 from spinebox.config import InboxSetting, MetadataSettings
 from spinebox.datajobs import KINDS
-from spinebox.jobs import Busy, JobCancelled, JobRunner, NotCancellable
+from spinebox.jobs import Busy, Job, JobCancelled, JobContext, JobRunner, NotCancellable
 from spinebox.metadata.http import HttpFetcher
 from spinebox.scanner import Scanner
 
@@ -281,7 +281,10 @@ def test_catalog_lists_every_job_with_counts(app_env):
     client, _, _ = app_env
     client.post("/api/scan")
     kinds = {k["kind"]: k for k in client.get("/api/jobs/catalog").json()["kinds"]}
-    assert list(kinds) == [k.kind for k in KINDS]
+    assert list(kinds) == [k.kind for k in KINDS if k.listed]
+    # 「新しいファイルを取り込む」と同じ処理の scan は一覧に出さない(依頼はできる。#207)
+    assert "scan" not in kinds and [k["kind"] for k in kinds.values() if k["group"] == "いつもの更新"] == [
+        "daily_scan", "daily_metadata", "full_sync"]
     assert kinds["analyze"]["count"] >= 1 and kinds["analyze"]["count_text"].startswith("未解析")
     assert kinds["inbox_sync"]["available"] is True
     # 取得元が無効なら公開 DB のジョブは動かせない(理由つき)
@@ -460,7 +463,8 @@ def test_analyze_job_records_unreadable_archives_without_7zip(app_env):
     client.post("/api/scan")
     job = wait_job(client, client.post("/api/jobs", json={"kind": "analyze"}).json()["id"])
     assert job["status"] == "succeeded" and job["summary"]["analyzed"] >= 1
-    assert client.get("/api/jobs/catalog").json()["kinds"][8]["count"] == 0  # 未解析は残らない(読めないものも記録済み)
+    kinds = {k["kind"]: k for k in client.get("/api/jobs/catalog").json()["kinds"]}
+    assert kinds["analyze"]["count"] == 0  # 未解析は残らない(読めないものも記録済み)
 
 
 def test_background_analysis_is_recorded_as_one_row(make_settings, tmp_path):
@@ -498,7 +502,7 @@ def test_metadata_jobs_with_a_fake_network(make_settings, tmp_path):
     assert kinds["daily_metadata"]["count"] == 1 and kinds["daily_metadata"]["count_text"] == "登録済みの 1 作品が補完待ち"
     job = wait_job(client, client.post("/api/jobs", json={"kind": "daily_metadata"}).json()["id"])
     assert job["status"] == "succeeded" and job["summary"]["fetched"] == 1
-    assert client.get("/api/jobs/catalog").json()["kinds"][1]["count"] == 0
+    assert {k["kind"]: k for k in client.get("/api/jobs/catalog").json()["kinds"]}["daily_metadata"]["count"] == 0
     job = wait_job(client, client.post("/api/jobs", json={"kind": "metadata", "params": {"all": True}}).json()["id"])
     assert job["params"] == {"all": True} and job["summary"]["works"] == 1
     job = wait_job(client, client.post("/api/jobs", json={"kind": "metadata_thumbs"}).json()["id"])
@@ -603,3 +607,38 @@ def test_background_follow_check_is_recorded_as_one_row(make_settings, tmp_path)
     rows = [j for j in env.client.get("/api/jobs").json()["history"] if j["kind"] == "background_follow"]
     assert len(rows) == 1 and rows[0]["origin"] == "background" and rows[0]["label"] == "裏の続刊の確認"
     assert rows[0]["summary"]["works"] >= 1
+
+
+def test_step_numbers_count_up_within_the_planned_steps():
+    """複数の段のジョブは「段 i / n」を出す(#207)。段ごとに件数が 0 に戻っても全体のどこかが分かる。"""
+    job = Job(1, "full_sync", "ライブラリ全体を同期", "jobs", {}, "running", "2026-11-08T00:00:00+00:00")
+    ctx = JobContext(job)
+    ctx.step("ひとつだけ")  # 段の数を決めていないジョブは番号を出さない
+    assert (job.step_index, job.step_count) == (None, None)
+    ctx.plan(2)
+    ctx.step("ファイルのスキャン")
+    ctx.progress(3, 10)
+    assert job.to_json()["step_index"] == 1 and job.to_json()["step_count"] == 2
+    ctx.step("表紙の作成")
+    assert (job.step, job.step_index, job.done, job.total) == ("表紙の作成", 2, None, None)
+    ctx.step("数え間違えた段")  # 段の数を超えても番号は段の数で止める
+    assert job.step_index == 2
+
+
+def test_full_sync_plans_its_steps(app_env):
+    """全体の同期は、取得元が無効なら 4 段(公開データベースを飛ばす)で、最後の段まで数える。"""
+    client, _, _ = app_env
+    seen: list[tuple] = []
+    original = JobContext.step
+
+    def spy(self, name):
+        original(self, name)
+        seen.append((self.job.step_index, self.job.step_count, name))
+
+    JobContext.step = spy
+    try:
+        job = wait_job(client, client.post("/api/jobs", json={"kind": "full_sync"}).json()["id"])
+    finally:
+        JobContext.step = original
+    assert job["status"] == "succeeded", job
+    assert [s[:2] for s in seen] == [(1, 4), (2, 4), (3, 4), (4, 4)]

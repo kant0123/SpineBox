@@ -1,21 +1,32 @@
-// 管理のデータ管理・フォロー管理・タスクセンターのタブ(#85)。
-// データ管理とタスクセンターは #83 のジョブ(`DataJobs`)、整理は #84、フォロー管理は #87 の画面を載せている。
+// 管理のタブの中身(#85)。スキャンと補完・タスクセンターは #83 のジョブ(`DataJobs`)、整理は #84、フォロー管理は #87 の画面を載せる。
+// #207 で整理を独立したタブにし、「ほかの画面」の節を廃止した(重複の候補は確認へ、整理の履歴は整理タブへ)。
 import { DataJobs } from "../data/DataJobs";
 import { FollowManage } from "../follows/Follows";
-import { inboxHref, organizeHistoryHref } from "../route";
+import { OrganizeHistory } from "../organize/Organize";
+import { OrganizeFilesSection } from "../organize/OrganizeFiles";
+import { inboxHref } from "../route";
 
-/** データ管理: ジョブ(スキャン・補完・表紙など。#83)・整理(#84)と、ほかの画面への入口 */
-export function DataPanel({ focus }: { focus?: "organize" }) {
+/** スキャンと補完: スキャン・補完・表紙などの処理を依頼する(#83) */
+export function DataPanel() {
+  return <DataJobs view="data" />;
+}
+
+/** 整理: 範囲指定の整理(#84)と、整理の履歴(元に戻す) */
+export function OrganizePanel() {
   return (
     <div className="admin-section">
-      <DataJobs view="data" focus={focus} />
-      <section className="admin-links-block" aria-labelledby="admin-links-title">
-        <h2 id="admin-links-title">ほかの画面</h2>
-        <ul className="admin-links">
-          <li><a href={inboxHref}>受け入れ</a>(受け入れフォルダ → 整理案 → 承認で書庫へ)</li>
-          <li><a href={organizeHistoryHref}>整理の履歴</a>(元に戻す)</li>
-        </ul>
+      <section className="job-section" aria-labelledby="organize-files-title">
+        <h2 id="organize-files-title">ファイル名・フォルダーの整理</h2>
+        <OrganizeFilesSection />
       </section>
+      <section className="job-section organize-history-section" aria-labelledby="organize-history-title">
+        <h2 id="organize-history-title">整理の履歴</h2>
+        <OrganizeHistory embedded />
+      </section>
+      {/* 受け入れは利用が少なく、今後の扱いを決めていない(#207)。入口だけ残す */}
+      <p className="muted">
+        受け入れフォルダから書庫へ入れるときは <a href={inboxHref}>受け入れ</a>。
+      </p>
     </div>
   );
 }

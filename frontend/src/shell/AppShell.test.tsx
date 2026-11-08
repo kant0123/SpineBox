@@ -287,27 +287,30 @@ describe("著者・タグ・出版社の一覧", () => {
 });
 
 describe("管理", () => {
-  it("タブが統計・好み・データ管理・フォロー管理・タスクセンターの順に並ぶ(統合は確認へ移した)", async () => {
+  it("タブが統計・好み・スキャンと補完・整理・フォロー管理・タスクセンターの順に並ぶ(統合は確認へ移した)", async () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "データ管理", "フォロー管理", "タスクセンター"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "スキャンと補完", "整理", "フォロー管理", "タスクセンター"]);
     expect(tabs.map((t) => t.getAttribute("href"))).toEqual([
       "#/admin",
       "#/admin/preferences",
       "#/admin/data",
+      "#/admin/organize",
       "#/admin/follows",
       "#/admin/tasks",
     ]);
     expect(tabs[0].getAttribute("aria-current")).toBe("page");
     await navigate("#/admin/data");
     expect(screen.queryByRole("link", { name: "重複の候補" })).toBeNull(); // 確認へ移した(#207)
+    expect(await screen.findByRole("button", { name: "ライブラリ全体を同期を実行" })).toBeTruthy(); // #83 のジョブ
+    await navigate("#/admin/organize");
+    expect(await screen.findByRole("heading", { name: "ファイル名・フォルダーの整理" })).toBeTruthy(); // #84 の整理
     expect(screen.getByRole("link", { name: "受け入れ" }).getAttribute("href")).toBe("#/inbox");
-    expect(await screen.findByRole("heading", { name: "整理" })).toBeTruthy(); // #84 の整理
     await navigate("#/admin/tasks");
     expect(await screen.findByRole("heading", { name: "履歴" })).toBeTruthy(); // #83 のタスクセンター
     await navigate("#/admin/follows");
-    expect(await screen.findByRole("button", { name: "続刊を調べる" })).toBeTruthy(); // #87 のフォロー管理
+    expect(await screen.findByRole("button", { name: "すべての続刊を調べる" })).toBeTruthy(); // #87 のフォロー管理
     await navigate("#/admin/proposals");
     expect(await screen.findByRole("button", { name: "同じ作品として統合" })).toBeTruthy(); // 統合の提案
   });

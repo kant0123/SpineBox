@@ -25,8 +25,8 @@ describe("parseRoute", () => {
     expect(parseRoute("#/works/4/titles/")).toEqual({ name: "work-titles", id: "4" });
     expect(workTitlesHref(4)).toBe("#/works/4/titles");
     expect(parseRoute("#/read/7/template")).toEqual(HOME);
-    expect(parseRoute(organizeHistoryHref)).toEqual({ name: "organize-history" });
-    expect(parseRoute("#/organize/")).toEqual({ name: "organize-history" });
+    expect(parseRoute(organizeHistoryHref)).toEqual({ name: "admin", tab: "organize" }); // 管理の整理タブ(#207)
+    expect(parseRoute("#/organize/")).toEqual({ name: "admin", tab: "organize" });
   });
   it("壊れた値・知らないパスはホーム", () => {
     expect(parseRoute("#/read/%E3")).toEqual(HOME);

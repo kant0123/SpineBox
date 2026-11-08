@@ -1080,14 +1080,6 @@ button.facet-star.on:hover:not(:disabled) { color: var(--warn); }
 .admin-panel h2 { font-size: 1.25rem; margin: 20px 0 8px; }
 /* タブの中に置いた既存の画面は、管理のページの余白に任せる(二重の余白・幅の上限を外す) */
 .admin-panel .library, .admin-panel .organize { padding: 0; max-width: none; margin: 0; }
-.admin-links { padding-left: 1.2em; }
-.admin-links li { margin: 8px 0; }
-.admin-links a { color: var(--accent); }
-.admin-links-block { margin-top: 40px; padding-top: 8px; border-top: 1px solid var(--border-strong); }
-.admin-links-block h2 { margin-top: 16px; }
-/* データ管理の節内リンク(#149)。ジョブの一覧が長いので「整理」を 1 クリックで開けるようにする */
-.data-jump { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
-.data-jump-label { font-size: 0.875rem; color: var(--muted); font-weight: 700; }
 .stats-scope { margin: 0; }
 .stat-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .stat-tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
@@ -1139,7 +1131,8 @@ a.stat-body .stat-label { color: var(--accent); text-decoration: underline; font
 .job-running { background: var(--card); border: 2px solid var(--accent); border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .job-running > button { align-self: flex-start; }
 .job-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; overflow-wrap: anywhere; }
-.job-progress-text { font-size: 0.875rem; }
+.job-progress-text { font-size: 0.875rem; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.job-count-text { font-variant-numeric: tabular-nums; font-weight: 700; }
 .job-current { font-size: 0.875rem; overflow-wrap: anywhere; }
 .job-bar { height: 8px; border-radius: 4px; background: var(--surface-divider); border: 1px solid var(--border); overflow: hidden; }
 .job-bar span { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
@@ -1251,3 +1244,13 @@ button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
 .review-work.done h2 { font-size: 1rem; }
 .review-work .link-list { margin-top: 12px; }
 .review-hint { margin: 4px 0 8px; font-size: 0.875rem; }
+
+/* スキャンと補完(#207)。実行中は 1 行、「個別の処理」は畳む */
+.job-now { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--card); overflow-wrap: anywhere; }
+.job-more { margin-top: 20px; }
+.job-more > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 1.125rem; font-weight: 700; color: var(--fg); }
+.job-more > summary::-webkit-details-marker { display: none; }
+.job-more > summary::before { content: "▸"; display: inline-block; width: 1.25em; }
+.job-more[open] > summary::before { content: "▾"; }
+.job-more[open] > summary { margin-bottom: 8px; }
+.organize-history-section { margin-top: 32px; padding-top: 8px; border-top: 1px solid var(--border-strong); }
