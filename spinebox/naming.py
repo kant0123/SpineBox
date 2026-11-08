@@ -29,6 +29,8 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
+from .mojibake import fix_mojibake
+
 # 名前の末尾から外す拡張子(`Vol.1` の `.1` を拡張子として落とさないため、知っているものだけ)
 _KNOWN_EXTS = frozenset({
     ".zip", ".cbz", ".rar", ".cbr", ".7z", ".cb7", ".pdf", ".epub", ".txt",
@@ -119,6 +121,7 @@ def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
 
 def parse_number(name: str) -> NumberCandidate | None:
     """名前(パスなら最後の要素)から巻・話の番号の候補を 1 つ返す。見つからなければ None。"""
+    name, _ = fix_mojibake(name)
     found = _find_number(_fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))))
     return found[0] if found else None
 
@@ -256,6 +259,7 @@ def _clean_title(text: str) -> str:
 
 def parse_work_name(name: str) -> WorkName | None:
     """名前(パスなら最後の要素)から作品名・著者の候補を取り出す。作品名と読める部分が無ければ None。"""
+    name, _ = fix_mojibake(name)
     text = _fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))).strip()
     parts: list[tuple[str, str]] = []
 
@@ -379,6 +383,7 @@ def trailing_number(name: str) -> TrailingNumber | None:
     末尾の番号の後ろの括弧・著者列(`作品名 2 [レーベル][AVIF]` `作品名 1 - 著者 & 著者`)は装飾として
     落としてから読み、落とした部分は evidence に残す。
     """
+    name, _ = fix_mojibake(name)
     text = _fold_chars(unicodedata.normalize("NFKC", strip_known_ext(name))).strip()
     text, dropped = _strip_trailing_decor(text)
     m = _TRAILING_NUMBER.match(text)

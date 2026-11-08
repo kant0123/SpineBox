@@ -62,10 +62,12 @@ gh issue list --state open --search "<キーワード>"
 ## 4. 起票する
 
 ```bash
-gh issue create --label <bug|...> --title "<一文で症状>" --body "<本文>"
+gh issue create --label <bug|...> --label <優先度:高|優先度:中|優先度:低> --title "<一文で症状>" --body "<本文>"
 # Projects を使う場合のみ:
 # gh project item-add <番号> --owner <owner> --url <作成された issue の URL>
 ```
+
+**優先度ラベル(`優先度:高` / `優先度:中` / `優先度:低`)を必ず 1 つ付ける。** 迷ったら中。
 
 本文には次を書く。**推測でなく、実際に確認した事実を書く。**
 
