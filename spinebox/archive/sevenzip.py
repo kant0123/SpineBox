@@ -13,7 +13,9 @@ CRC で確かめる(`read_entries`)。ソリッド 7z では 1 エントリご�
 """
 from __future__ import annotations
 
+import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,11 +30,13 @@ from ..config import ExtractionLimits
 from .base import ArchiveEntry, ArchiveError, ArchiveReader, LimitExceeded, UnsupportedArchive
 from .safety import entry_limit_problem
 
+log = logging.getLogger(__name__)
+
 EXTS = (".7z", ".cb7", ".rar", ".cbr")
 LIST_TIMEOUT_SEC = 300
 EXTRACT_TIMEOUT_SEC = 1800
 _CHUNK = 1024 * 1024
-_STDERR_TAIL = 400
+_ERROR_LINE_MAX = 200  # 画面・一覧の理由に出す 7-Zip のエラー行の上限(字数)
 # 目次の「リンク」を表すキー。リンクは画像として読まない
 _LINK_KEYS = ("Symbolic Link", "Hard Link")
 
@@ -152,8 +156,42 @@ def _entries_from_records(records):
 # --- 外部コマンドの実行 -------------------------------------------------------
 
 
-def _tail(data: bytes) -> str:
-    return data.decode("utf-8", errors="replace").strip()[-_STDERR_TAIL:]
+def _archive_arg(cmd: list[str]) -> str:
+    """list_command / extract_command は `--` の直後にアーカイブのパスを置く。"""
+    if "--" in cmd and cmd.index("--") + 1 < len(cmd):
+        return cmd[cmd.index("--") + 1]
+    return ""
+
+
+def _error_line(text: str, archive: str) -> str:
+    """標準エラーの先頭のエラーの塊(`ERROR:` で始まる行から空行・`ERRORS:` の手前まで)を 1 行にする。
+    7-Zip は `ERROR: <パス> : <パス>` のあとに `Open ERROR: 理由` を続けるので、塊で読むと理由が残る。
+    改行・アーカイブのフルパスは出さない(`<ファイル>` に置き換える)。"""
+    lines = [ln.strip() for ln in re.split(r"\r\n|\r|\n", text)]
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("ERROR")), None)
+    if start is None:
+        block = [ln for ln in lines if ln][:1]
+    else:
+        block = []
+        for ln in lines[start:]:
+            if not ln or ln.startswith("ERRORS"):
+                break
+            block.append(ln)
+    if not block:
+        return "(標準エラーの出力なし)"
+    line = " ".join(block)
+    if archive:
+        for form in {archive, archive.replace("\\", "/")}:
+            line = line.replace(form, "<ファイル>")
+    line = "".join(ch for ch in line if ch.isprintable())
+    return line[:_ERROR_LINE_MAX]
+
+
+def _failure(cmd: list[str], returncode: int, stderr: bytes) -> ArchiveError:
+    """7-Zip の非ゼロ終了を ArchiveError にする。理由は先頭のエラー行だけ、標準エラーの全文はログに残す。"""
+    text = stderr.decode("utf-8", errors="replace").strip()
+    log.warning("7-Zip が失敗した(終了コード %s): %s\n%s", returncode, _archive_arg(cmd), text)
+    return ArchiveError(f"7-Zip が失敗した(終了コード {returncode}): {_error_line(text, _archive_arg(cmd))}")
 
 
 def _popen(cmd: list[str], **kw) -> subprocess.Popen:
@@ -179,7 +217,7 @@ def _run_capture(cmd: list[str], timeout: float) -> bytes:
             raise
         if proc.returncode != 0:
             err.seek(0)
-            raise ArchiveError(f"7-Zip が失敗した(終了コード {proc.returncode}): {_tail(err.read())}")
+            raise _failure(cmd, proc.returncode, err.read())
     return out
 
 
@@ -216,7 +254,7 @@ def _stream(cmd: list[str], dest: BinaryIO, max_bytes: int, timeout: float) -> i
             raise ArchiveError(f"7-Zip が {timeout:g} 秒で終わらない")
         if proc.returncode != 0:
             err.seek(0)
-            raise ArchiveError(f"7-Zip が失敗した(終了コード {proc.returncode}): {_tail(err.read())}")
+            raise _failure(cmd, proc.returncode, err.read())
     return written
 
 
