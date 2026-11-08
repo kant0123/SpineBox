@@ -473,7 +473,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[organize]], [[backend]], [[bookmarks]], [[work-grouping]], [[recurring-review-findings]]
 - 備考: 自炊漫画 PDF を SpineBox で閲覧・管理可能にするため、範囲指定整理(include_cbz=True)および単巻整理で PDF を 1 巻 = 1 CBZ に変換するハイブリッド抽出方式(spinebox/organize/pdf.py)を実装。1 ページ 1 画像は無劣化抽出(ZIP_STORED)、回転・CMYK 補正、白紙・複数画像の合成レンダリングに対応。スキャナーで volumes.format='pdf' として検出し、整理の確定・退避・undo・delete_originals に完全対応。
 
-## [2026-11-08] ingest | PR #223 複数パターンの文字コード化け(CP437欧文誤読・CP932/EUC-JP誤読)の検出・修復とスキャナ/命名連携
+## [2026-11-08] ingest | PR #225 (#223) 複数パターンの文字コード化け(CP437欧文誤読・CP932/EUC-JP誤読)の検出・修復とスキャナ/命名連携
 - 新規: `spinebox/mojibake.py`、`tests/test_mojibake.py`
 - 更新: [[organize]]
 - 備考: #223。ZIP / DOS の欧米既定コードページ (CP437) で解釈された Shift_JIS (例: `ÅTèo...` → `週刊少年サンデー 2023年09号`、`ûéôs...` → `魔都精兵のスレイブ 第14巻`) を含む、CP437/CP850/CP1252/Latin-1 による欧文誤読、および Shift_JIS/EUC-JP/UTF-8 の取り違えなど複数パターンの文字化けに対応した修復モジュール `spinebox/mojibake.py` を実装。制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語 (`café`・`Amélie`・`São Paulo` 等) や正常な日本語を壊さない安全条件を維持。ファイル名整理 (`cleanup.py`) だけでなく、スキャン時の巻タイトル生成 (`scanner.py`) および作品名・巻番号の抽出 (`naming.py` の `parse_number` / `parse_work_name` / `trailing_number`) にも適用し、文字化けしたファイル名やアーカイブ内エントリからでも自動的に正しい作品名・巻番号を認識・登録可能にした。
