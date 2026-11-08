@@ -1,6 +1,6 @@
 ---
 type: concept
-summary: 作品カードの表紙(#75)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のデータ管理タブの「表紙のみ補完」)で作る理由と、却下した代替案
+summary: 作品カードの表紙(#75, #222)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。作品カード枠(2:3)を満たす高精細化と横長表紙の左寄せ表示、一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のデータ管理タブの「表紙のみ補完」)で作る理由と、却下した代替案
 updated: 2026-11-08
 related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection, data-jobs]
 ---
@@ -8,15 +8,15 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 # 表紙のサムネイル
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
-入口は `spinebox/thumbs.py:63 Thumbnails`、API は `spinebox/app.py:963 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:984 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:32 WorkCover()`。
+入口は `spinebox/thumbs.py:102 Thumbnails`、API は `spinebox/app.py:963 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
+`spinebox/app.py:984 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:30 WorkCover()`。
 
 ## 内容
 
-- **表紙にする巻は `spinebox/works.py:1324 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
+- **表紙にする巻は `spinebox/works.py:1330 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
   巻番号が最小のもの。番号の無い巻は後ろ、同じ番号(重複)は巻の名前の自然順。`GET /api/works` の各作品に `cover_volume_id` で載る
-- **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。Pillow で 240x360 に収めた JPEG
-  (`spinebox/thumbs.py:38 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`)
+- **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。作品カード枠(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小した JPEG
+  (`spinebox/thumbs.py:73 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`。横長画像の最大幅は 1440。#222 で低解像度化を防ぐため縦横比に応じた計算に改善し、版を 2 に上げた)
 - **置き場は `data_dir/thumbs/`。** 展開キャッシュと同じ `ExtractionCache`(キーの sha256 の名前・LRU)を別のディレクトリと上限
   (`thumb_cache_limit_bytes`、既定 256 MiB)で使う。キーは作り方の版・大きさ・元ファイルのパス・サイズ・mtime・巻の位置
   (`container_path` / `inner_path` / `entry_prefix`)。元が変われば別のキーになり、古いものは LRU で消える。消えてもよいもの
@@ -33,8 +33,8 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   (以前は「表紙を作る」の後に `?rev=` を付けて同じ画面で取り直していたが、作成を画面から起動しなくなったので廃止した)
 - **横長(見開き)の表紙の表示。** `WorkCover` が画像の読み込み後に `naturalWidth/Height` からアスペクト比を判定し、
   CSS クラスを付ける(`frontend/src/works/WorkCover.tsx`)。ar > 2.0 は `landscape-contain`(全体を縮小表示、欠けを避ける)、
-  1.2 < ar <= 2.0 は `landscape-right`(右寄せ。日本語は右綴じなので表紙側=右ページが残る)。それ以外は既定の中央クロップ。
-  (agy レビュー #194 WARNING 1 で、当初の「漫画→左寄せ」を「右寄せ」に修正。裏表紙側が表示されるのを避けるため)
+  1.2 < ar <= 2.0 は `landscape-left`(左寄せ。実データの見開きスキャン等では左側に表表紙、右側に裏表紙・バーコード等があるため。#222)。それ以外は既定の中央クロップ。
+  (PR #194 で一時的に右寄せにしたが、BLUE GIANT 特別編などの実データで裏表紙側が表示されてしまう問題があり左寄せに修正)
   しきい値と方向は実データ(お気楽領主は全巻縦長、かくかくしかじかは 4 巻中 3 巻が横長 ar 1.41〜2.21)を根拠にした仮定。
 
 ## なぜこうなっているか
@@ -71,4 +71,3 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 - [[work-grouping]] — 表紙の巻を選ぶ作品の巻
 - [[volume-split]] — 開いて分解すると表紙の巻が子の巻に移る
 - [[duplicate-detection]] — 同じく Pillow で 1 ページずつ読む処理(画素数の上限を共用)
-

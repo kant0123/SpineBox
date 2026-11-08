@@ -1,5 +1,5 @@
 ## [2026-11-08] ingest | PR #217 fix: EPUB構造名(OEBPS等)による巻生成と名寄せ汚染の防止・クリーンアップ
-- 更新: [[work-grouping]], [[backend]]
+- 更新: [[work-grouping]], [[cover-thumbnails]], [[metadata-linking]], [[recurring-review-findings]], [[work-search]], [[backend]]
 - 備考: scanner._NON_CONTENT_DIRS に oebps, ops, metainf, epub, mimetype を追加し SCAN_VERSION を 7、ANALYSIS_VERSION を 3 に引き上げ。naming.JUNK_NAMES を公開し、works.py の _container_aliases, _alias_evidence でスキップ。sync() 冒頭でジャンク名別名およびタイトルがジャンク名である作品の自動別名を dismiss し、open 提案を削除。
 
 # Log
@@ -473,7 +473,15 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[organize]], [[backend]], [[bookmarks]], [[work-grouping]], [[recurring-review-findings]]
 - 備考: 自炊漫画 PDF を SpineBox で閲覧・管理可能にするため、範囲指定整理(include_cbz=True)および単巻整理で PDF を 1 巻 = 1 CBZ に変換するハイブリッド抽出方式(spinebox/organize/pdf.py)を実装。1 ページ 1 画像は無劣化抽出(ZIP_STORED)、回転・CMYK 補正、白紙・複数画像の合成レンダリングに対応。スキャナーで volumes.format='pdf' として検出し、整理の確定・退避・undo・delete_originals に完全対応。
 
+## [2026-11-08] ingest | PR #221 (#220) 小数点チャプター表記や数字付きJUNK名の作品化防止と親フォルダ名の採用
+- 更新: [[work-grouping]]
+- 備考: #220。`Chapter 002.2` や `ch.02.5`、`第02.5話` などの小数点の巻・話・チャプター表記が `_in_decimal` で巻番号から除外された際に作品名全体として扱われ、子フォルダ名で独立作品化していた不具合を修正。`naming._find_decimal()` で該当部分を落とし、単独表記なら作品名候補 `None` として親フォルダ名を採用させるようにした。また、`cover2` や `scans 01` 等の単語+数字パターンを `is_junk_name()` で JUNK 名と判定し、親フォルダ名の採用および `sync()` での自動別名・提案クリーンアップに対応。
+
+## [2026-11-08] ingest | 横長表紙の左寄せ修正とサムネイル解像度不足の改善(PR #224)
+- 更新: [[cover-thumbnails]], [[backend]]
+- 備考: #222。横長(見開き)表紙の寄せ方向を、PR #194 での右寄せから実データに合わせて左寄せ(landscape-left)に修正(自炊本スキャン等では左側に表表紙、右側に裏表紙・バーコード等があるため)。また、横長表紙で thumbnail() の指定矩形 contain 縮小により高さが 160px 等に縮み、カード枠(2:3)で切り抜いた際に実質 107x160 ピクセルが拡大表示されてボケていた問題を修正。作品カード(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小(最大幅 1440)する calc_thumbnail_size() を導入し、THUMB_VERSION を 2 に上げてキャッシュを自動更新。pytest・vitest・tsc パス。
+
 ## [2026-11-08] ingest | PR #225 (#223) 複数パターンの文字コード化け(CP437欧文誤読・CP932/EUC-JP誤読)の検出・修復とスキャナ/命名連携
 - 新規: `spinebox/mojibake.py`、`tests/test_mojibake.py`
 - 更新: [[organize]], [[backend]], [[novel-reader]], [[work-grouping]], [[recurring-review-findings]]
-- 備考: #223。ZIP / DOS の欧米既定コードページ (CP437) で解釈された Shift_JIS (例: `ÅTèo...` → `週刊少年サンデー 2023年09号`、`ûéôs...` → `魔都精兵のスレイブ 第14巻`) を含む、CP437/CP850/CP1252/Latin-1 による欧文誤読、および Shift_JIS/EUC-JP/UTF-8 の取り違えなど複数パターンの文字化けに対応した修復モジュール `spinebox/mojibake.py` を実装。制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語 (`café`・`Amélie`・`São Paulo` 等) や正常な日本語を壊さない安全条件を維持。ファイル名整理 (`cleanup.py`) だけでなく、スキャン時の巻タイトル生成 (`scanner.py`) および作品名・巻番号の抽出 (`naming.py` の `parse_number` / `parse_work_name` / `trailing_number`) にも適用し、文字化けしたファイル名やアーカイブ内エントリからでも自動的に正しい作品名・巻番号を認識・登録可能にした。
+- 備考: #223。ZIP / DOS の欧米既定コードページ (CP437) で解釈された Shift_JIS (例: `ÅTèo...` → `週刊少年サンデー 2023年09号`、`ûéôs...` → `魔都精兵のスレイブ 第14巻`) を含む、CP437/CP850/CP1252/Latin-1 による欧文誤読、および Shift_JIS/EUC-JP/UTF-8 の取り違えなど複数パターンの文字化けに対応した修復モジュール `spinebox/mojibake.py` を実装。制御文字・置換文字の排除、全角ひらがな・カタカナまたは漢字 2 文字以上を要件とし、欧文の正規アクセント単語 (`café`・`Amélie`・`São Paulo`・`élégant` 等) や正常な日本語を壊さない安全条件を維持。ファイル名整理 (`cleanup.py`) だけでなく、スキャン時の巻タイトル生成 (`scanner.py`) および作品名・巻番号の抽出 (`naming.py` の `parse_number` / `parse_work_name` / `trailing_number`) にも適用し、文字化けしたファイル名やアーカイブ内エントリからでも自動的に正しい作品名・巻番号を認識・登録可能にした。

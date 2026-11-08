@@ -13,14 +13,12 @@ export function WorkCoverPlaceholder() {
 /**
  * 横長(見開き)の表紙の表示方針(#75 の続き)。
  * - ar > 2.0: 見開きが明らか → 全体を縮小表示(contain)して欠けを避ける
- * - 1.2 < ar <= 2.0: 横長 → 右寄せ(日本語は右綴じなので、見開きの右ページ=表紙側が残る)
+ * - 1.2 < ar <= 2.0: 横長 → 左寄せ(自炊本の見開きスキャン等では左側に表表紙が配置される #222)
  * - それ以外: 通常の cover(中央クロップ)
- *
- * 漫画・小説とも右綴じなので、寄せ位置は右で統一する(agy レビュー #194 WARNING 1)。
  */
 export function landscapeClass(ar: number): string {
   if (ar > 2.0) return "landscape-contain";
-  if (ar > 1.2) return "landscape-right";
+  if (ar > 1.2) return "landscape-left";
   return "";
 }
 

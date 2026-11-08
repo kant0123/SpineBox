@@ -977,3 +977,59 @@ def test_junk_names_are_not_used_as_alias_evidence_or_container_aliases(make_env
     # cover で一致していても、JUNK_NAMES なので提案は生成されない
     props = client.get("/api/works/proposals").json()
     assert not any(p["work_a"]["title"] in ("作品X", "作品Y") and p["work_b"]["title"] in ("作品X", "作品Y") for p in props)
+
+
+def test_decimal_chapter_and_junk_subfolder_use_enclosing_name(make_env):
+    """小数点のチャプター表記や cover2 などのフォルダは作品名にならず親フォルダ名を採用する(#220)。"""
+    lib, _, client = make_env(scan=False)
+    p = lib / "スキルのなければレベルを上げる"
+    for name in ("Chapter 002.2", "Chapter 002.3", "cover2"):
+        d = p / name
+        d.mkdir(parents=True)
+        for i in range(2):
+            (d / f"{i + 1:04d}.jpg").write_bytes(page_bytes(f"{name}/{i}"))
+    client.post("/api/scan")
+    ws = by_title(client)
+    assert set(ws) == {"スキルのなければレベルを上げる"}
+    w = client.get(f"/api/works/{ws['スキルのなければレベルを上げる']['id']}").json()
+    assert w["volume_count"] == 3 and w["title_confidence"] == 0.6
+
+
+def test_dismiss_junk_aliases_cleans_up_numbered_junk(make_env):
+    """cover2 や chapter0022 など数字付きJUNK名を持つ自動別名やジャンク作品をクリーンアップする(#220)。"""
+    _, settings, client = make_env(["作品A v01.cbz"])
+    ws = by_title(client)
+    wa = ws["作品A"]["id"]
+    conn = db.connect(settings.db_path)
+    now = db.now()
+    try:
+        with db.transaction(conn) as c:
+            # 1. 正常な作品 A に誤って cover2 の別名が付いている
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, 'cover2', 'cover2', 'container', 0, 0.5, ?)""", (wa, now))
+            # 2. タイトルが Chapter 002.2 である非手動作品が存在する
+            junk_id = c.execute("INSERT INTO works (created_at, updated_at) VALUES (?, ?)", (now, now)).lastrowid
+            c.execute("""INSERT INTO work_fields (work_id, field, value, source, manual, confidence, evidence, updated_at)
+                         VALUES (?, 'title', 'Chapter 002.2', 'filename', 0, 0.9, '{}', ?)""", (junk_id, now))
+            c.execute("""INSERT INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at)
+                         VALUES (?, 'スキルのなければレベルを上げる', 'スキルのなければレベルを上げる', 'container', 0, 0.5, ?)""", (junk_id, now))
+            # 3. ジャンク作品との open な提案
+            c.execute("""INSERT INTO work_merge_proposals (work_a, work_b, rule, confidence, evidence, status, created_at)
+                         VALUES (?, ?, 'alias', 0.5, '{}', 'open', ?)""", (junk_id, wa, now))
+    finally:
+        conn.close()
+
+    client.post("/api/works/refresh")
+
+    conn = db.connect(settings.db_path)
+    try:
+        r1 = conn.execute("SELECT dismissed_at FROM work_aliases WHERE work_id = ? AND norm = 'cover2'", (wa,)).fetchone()
+        assert r1["dismissed_at"] is not None
+
+        r2 = conn.execute("SELECT dismissed_at FROM work_aliases WHERE work_id = ? AND norm = 'スキルのなければレベルを上げる'", (junk_id,)).fetchone()
+        assert r2["dismissed_at"] is not None
+
+        props = conn.execute("SELECT * FROM work_merge_proposals WHERE work_a = ? OR work_b = ?", (junk_id, junk_id)).fetchall()
+        assert len(props) == 0
+    finally:
+        conn.close()

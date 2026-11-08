@@ -26,7 +26,7 @@ from dataclasses import dataclass, field, replace
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
-from .naming import JUNK_NAMES, normalize_title, parse_number, parse_work_name, trailing_number
+from .naming import JUNK_NAMES, is_junk_name, normalize_title, parse_number, parse_work_name, trailing_number
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -192,13 +192,13 @@ class _State:
             if r["field"] == FIELD_TITLE:
                 w.title, w.title_manual, w.title_source = r["value"] or "", bool(r["manual"]), r["source"]
                 norm = normalize_title(w.title)
-                if norm and (w.title_manual or norm not in JUNK_NAMES):
+                if norm and (w.title_manual or not is_junk_name(norm)):
                     w.names[norm] = _Name(w.title, r["source"], r["confidence"] or CONF_OWN_NAME, True)
             elif r["field"] == FIELD_AUTHOR:
                 w.author, w.author_manual = r["value"] or None, bool(r["manual"])
         for r in c.execute("SELECT * FROM work_aliases WHERE dismissed_at IS NULL ORDER BY id"):
             w = self.works.get(r["work_id"])
-            if w is not None and r["norm"] not in w.names and (r["manual"] or r["norm"] not in JUNK_NAMES):
+            if w is not None and r["norm"] not in w.names and (r["manual"] or not is_junk_name(r["norm"])):
                 w.names[r["norm"]] = _Name(r["alias"], r["source"], r["confidence"] or CONF_CONTAINER_ALIAS, False)
         self.assign: dict[int, dict] = {}
         for r in c.execute("SELECT * FROM work_volumes"):
@@ -461,15 +461,21 @@ def _dismiss_junk_aliases(c: sqlite3.Connection) -> None:
     3. タイトルが JUNK_NAMES である非手動作品との確認待ち(open)の提案を削除する。
     """
     now = db.now()
-    placeholders = ",".join("?" * len(JUNK_NAMES))
-    c.execute(f"""UPDATE work_aliases SET dismissed_at = ? WHERE dismissed_at IS NULL AND manual = 0
-                  AND norm IN ({placeholders})""", (now, *JUNK_NAMES))
+    junk_alias_ids = [
+        r["id"] for r in c.execute(
+            "SELECT id, norm FROM work_aliases WHERE dismissed_at IS NULL AND manual = 0"
+        ).fetchall()
+        if is_junk_name(r["norm"])
+    ]
+    if junk_alias_ids:
+        c.executemany("UPDATE work_aliases SET dismissed_at = ? WHERE id = ?",
+                      [(now, aid) for aid in junk_alias_ids])
 
     junk_work_ids = [
         r["work_id"] for r in c.execute(
             "SELECT work_id, value FROM work_fields WHERE field = 'title' AND manual = 0"
         ).fetchall()
-        if normalize_title(r["value"] or "") in JUNK_NAMES
+        if is_junk_name(normalize_title(r["value"] or ""))
     ]
     if junk_work_ids:
         q_placeholders = ",".join("?" * len(junk_work_ids))
@@ -693,13 +699,13 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
     for norm, ids in holders.items():
         if len(ids) < 2:
             continue
-        if norm in JUNK_NAMES:
+        if is_junk_name(norm):
             continue
         for i, x in enumerate(sorted(ids)):
             for y in sorted(ids)[i + 1:]:
                 wx, wy = st.works[x], st.works[y]
-                if (not wx.title_manual and normalize_title(wx.title) in JUNK_NAMES) or \
-                   (not wy.title_manual and normalize_title(wy.title) in JUNK_NAMES):
+                if (not wx.title_manual and is_junk_name(normalize_title(wx.title))) or \
+                   (not wy.title_manual and is_junk_name(normalize_title(wy.title))):
                     continue
                 nx, ny = wx.names[norm], wy.names[norm]
                 if not (nx.is_title or ny.is_title) and SOURCE_CONTAINER in (nx.source, ny.source):
@@ -823,10 +829,10 @@ def _container_aliases(c, st: _State) -> None:
         work = st.works.get(next(iter(works)))
         if work is None:
             continue
-        if not work.title_manual and normalize_title(work.title) in JUNK_NAMES:
+        if not work.title_manual and is_junk_name(normalize_title(work.title)):
             continue
         wn = parse_work_name(_segments(rel)[-1])
-        if wn is None or wn.norm in JUNK_NAMES:
+        if wn is None or is_junk_name(wn.norm):
             continue
         evidence = {"source": rel, **wn.as_dict()}
         if wn.norm not in work.names:

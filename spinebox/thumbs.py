@@ -25,14 +25,50 @@ from .library import Library, VolumeNotFound, VolumeOffline, get_volume_row, get
 from .scanner import resolve_source_path, root_is_accessible
 
 # 作り方(大きさ・画質)を変えたら上げる(古いサムネイルを使わせない)
-THUMB_VERSION = 1
-# 一覧のカードの表紙(375px 幅で 72px 前後)を、高密度の画面でも粗く見えない大きさ
-THUMB_SIZE = (240, 360)
+THUMB_VERSION = 2
+# 作品カード(240px〜幅、Retina 2x で 480x720)の比率 2:3 に合わせた基準サイズ(#222)
+THUMB_TARGET_WIDTH = 480
+THUMB_TARGET_HEIGHT = 720
+# 横長表紙の最大幅(パノラマ等の過大サイズを防ぐ)
+THUMB_MAX_WIDTH = 1440
+# 既存コード・テストとの互換性のためのタプル
+THUMB_SIZE = (THUMB_TARGET_WIDTH, THUMB_TARGET_HEIGHT)
 JPEG_QUALITY = 80
 
 
 class ThumbnailUnavailable(Exception):
     """この巻からは表紙を作れない(小説・ページが無い・1 ページ目が画像として読めない)。"""
+
+
+def calc_thumbnail_size(width: int, height: int,
+                        target_w: int = THUMB_TARGET_WIDTH,
+                        target_h: int = THUMB_TARGET_HEIGHT,
+                        max_w: int = THUMB_MAX_WIDTH) -> tuple[int, int]:
+    """元画像の寸法からサムネイルの (width, height) を計算する(#222)。
+
+    作品カードは aspect-ratio: 2 / 3 (target_w / target_h) の縦長枠で表示される。
+    - 縦長画像 (w/h <= target_w / target_h): 幅を target_w に合わせる (高さは target_h 以上)
+    - 横長画像 (w/h > target_w / target_h): カード枠に cover (切り抜き) でフィットさせた際に
+      縦解像度が不足しないよう、高さを target_h に合わせる (幅は target_h * (w/h))。
+      ただし極端な横長で肥大化しないよう max_w を上限とする。
+    - 元画像が小さい場合は拡大せず、元の寸法を上限とする。
+    """
+    if width <= 0 or height <= 0:
+        return width, height
+
+    if width / height > target_w / target_h:
+        # 横長: 高さを target_h に合わせる (cover 時に縦解像度を維持)
+        new_h = min(height, target_h)
+        new_w = int(round(width * (new_h / height)))
+        if new_w > max_w:
+            new_w = max_w
+            new_h = int(round(height * (new_w / width)))
+    else:
+        # 縦長: 幅を target_w に合わせる
+        new_w = min(width, target_w)
+        new_h = int(round(height * (new_w / width)))
+
+    return max(1, new_w), max(1, new_h)
 
 
 def make_thumbnail(data: bytes) -> bytes | None:
@@ -41,10 +77,13 @@ def make_thumbnail(data: bytes) -> bytes | None:
         im = Image.open(io.BytesIO(data))
         if im.width * im.height > MAX_PIXELS:
             return None
+        target_size = calc_thumbnail_size(im.width, im.height)
         if im.format == "JPEG":
-            im.draft("RGB", (THUMB_SIZE[0] * 2, THUMB_SIZE[1] * 2))  # 縮小しながらデコードする(速い)
+            im.draft("RGB", (target_size[0] * 2, target_size[1] * 2))  # 縮小しながらデコードする(速い)
         im = im.convert("RGB")
-        im.thumbnail(THUMB_SIZE, Image.Resampling.LANCZOS)
+        target_size = calc_thumbnail_size(im.width, im.height)
+        if im.size != target_size:
+            im = im.resize(target_size, Image.Resampling.LANCZOS)
         out = io.BytesIO()
         im.save(out, "JPEG", quality=JPEG_QUALITY, optimize=True)
         return out.getvalue()
