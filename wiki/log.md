@@ -498,6 +498,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[backend]], [[frontend]]
 - 備考: `GET /api/works/proposals` に `q` を追加(サーバー側で絞る)。確認の件数は絞り込まない。
 
-## [2026-11-09] ingest | PR #PENDING (#36) 途中で落ちた整理を起動時に戻す
+## [2026-11-09] ingest | PR #238 (#36) 途中で落ちた整理を起動時に戻す
 - 更新: [[organize]], [[backend]], [[bookmarks]], [[inbox]], [[manga-reader]], [[cover-thumbnails]], [[data-jobs]], [[metadata-linking]], [[recurring-review-findings]], [[work-grouping]]
 - 備考: #36。実行・元に戻すの途中でプロセスが落ちると操作が running / undoing のまま残り、画面から何もできなかった。起動時の lifespan で `recover_interrupted`(spinebox/organize/organizer.py)が、ジャーナルの手順を逆順に戻す。実行中は failed、元に戻す途中は done へ戻す。pending の移動は移動元・移動先の有無で済んだかを判定し、両方あるか両方無いときは rollback_failed / undo_failed で残す。蔵書フォルダがオフラインなら何もせず次の起動で再試行する。テストは tests/test_organize_recovery.py(確定・退避・元に戻すの途中で落とした状態、オフライン、アプリの起動、範囲指定の CBZ 化)。
