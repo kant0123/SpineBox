@@ -40,7 +40,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/config.py:354 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/stats.py:25 collect()` | 管理の統計タブの数(#85)。数え方の決まりはファイル先頭の docstring |
-| `spinebox/jobs.py:138 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:88 DataJobs`([[data-jobs]]) |
+| `spinebox/jobs.py:149 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:88 DataJobs`([[data-jobs]]) |
 | `spinebox/thumbs.py:102 Thumbnails` | 表紙のサムネイル。一覧からは `Library.open(extract=False)` で開ける巻だけ作る([[cover-thumbnails]]) |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
