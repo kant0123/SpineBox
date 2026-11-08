@@ -120,6 +120,29 @@ def test_run_capture_nonzero_exit_is_an_error():
         sz._run_capture([sys.executable, "-c", code], 30)
 
 
+def test_failure_reason_is_one_error_line_without_the_archive_path(tmp_path, caplog):
+    # 7-Zip の実際の出力に近い標準エラー(BOM なし・CRLF・警告行・フルパスつきのエラー行)
+    archive = tmp_path / "壊れた巻.zip"
+    stderr = (f"\r\nWARNING: junk\r\nERROR: {archive} : {archive} Open ERROR: Cannot open the file as [zip] archive\r\n"
+              "\r\nERRORS:\r\nIs not archive\r\n")
+    script = f"import sys; sys.stderr.buffer.write({stderr.encode('utf-8')!r}); sys.exit(2)"
+    cmd = [sys.executable, "-c", script, "--", str(archive)]
+    with caplog.at_level("WARNING", logger="spinebox.archive.sevenzip"):
+        with pytest.raises(ArchiveError) as info:
+            sz._run_capture(cmd, 30)
+    msg = str(info.value)
+    assert msg == ("7-Zip が失敗した(終了コード 2): ERROR: <ファイル> : <ファイル> "
+                   "Open ERROR: Cannot open the file as [zip] archive")
+    assert "\n" not in msg and str(archive) not in msg and "WARNING" not in msg and "ERRORS" not in msg
+    assert "Is not archive" in caplog.text  # 全文はログ側に残る
+
+
+def test_error_line_reads_the_errors_section_when_there_is_no_error_line():
+    # `ERROR:` の行が無く `ERRORS:` の節だけ出る出力でも、理由が「出力なし」にならない
+    assert sz._error_line("ERRORS:\r\nHeaders Error\r\n", "x.7z") == "ERRORS: Headers Error"
+    assert sz._error_line("", "x.7z") == "(標準エラーの出力なし)"
+
+
 def test_run_capture_timeout_and_missing_executable(tmp_path):
     with pytest.raises(ArchiveError, match="終わらない"):
         sz._run_capture([sys.executable, "-c", "import time; time.sleep(30)"], 0.5)
