@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview]
 ---
 
@@ -443,3 +443,18 @@ push 前に確かめること:
 
 - PR #213 — `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(agy レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
 - PR #216 — `wiki/log.md` — スクリプトによる文字列の一括置換(`replace`)で、最新エントリだけでなく過去の PR (#159, #160, #164, #174, #172) の更新行まで同じ文字列として置換され、同一ページへの重複リンクが混入していた(agy レビューの WARNING。過去ログを元に戻し最新エントリのみ追記する形に修正)
+
+### 新しい画面・モックが、同じ種類の既存の画面とバックエンドの規約から外れる
+
+検索欄などを足すとき、同じ種類の既存の画面(作品一覧の検索)の書き方・設計方針(`wiki/components/frontend.md`)と、
+バックエンドの規則(正規化)を確かめずに書く。placeholder で説明する、境界色のトークンが違う、モック API だけ単純な部分一致になる、など。
+
+push 前に確かめること:
+
+- 同じ種類の入力・表示が既にあるなら、その実装(`Works.tsx` の検索欄など)と Wiki の方針(入力欄に placeholder を使わず、サポートテキストと `aria-describedby` で示す)に揃えているか
+- バックエンドが正規化して比べる項目を、モック API でも同じ関数(`normalizeSearch`)で比べているか。モックだけ通って実機で結果が違う状態になっていないか
+- テストが、足した対象(著者・別名など)のそれぞれに当たる入力を持っているか(名前だけで当てて通していないか)
+
+実例:
+
+- PR #230 — `frontend/src/works/WorkProposals.tsx` / `frontend/src/mock/mockWorks.ts` / `tests/test_linking.py` — 統合の提案の絞り込みで、placeholder での説明・モックの単純な `toLowerCase()` 比較・著者と別名が空のテストを、agy レビューで指摘された

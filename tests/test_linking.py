@@ -1060,7 +1060,8 @@ def test_proposals_can_be_filtered_by_title_author_and_alias(env_factory):
     env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
     ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
     put_link(env, ws["Kakukaku Shikajika"], "anilist",
-             {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []}, confidence=0.95, manual=True)
+             {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": ["別名の短編集"], "authors": ["山田太郎"]},
+             confidence=0.95, manual=True)
     env.client.post("/api/works/refresh")
 
     def ids(**params):
@@ -1073,5 +1074,7 @@ def test_proposals_can_be_filtered_by_title_author_and_alias(env_factory):
     assert ids(q=KAKU[:2]) == all_ids  # 反対側の作品名にだけ含まれる語でも当たる
     assert ids(q="kakukaku 存在しない語") == []  # AND: 1 語でも含まれなければ外れる
     assert ids(q="   ") == all_ids  # 空白だけは絞らない
+    assert ids(q="山田太郎") == all_ids  # 著者
+    assert ids(q="短編集") == all_ids  # 別名
     assert ids(q="zzz") == []
     assert ids(status="dismissed", q="kakukaku") == []  # status との併用

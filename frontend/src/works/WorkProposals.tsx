@@ -122,10 +122,18 @@ export function WorkProposals({ embedded = false, onChanged }: { embedded?: bool
         統合しても巻・読書位置は消えません(あとで巻を別の作品へ移して分けられます)。
       </p>
       <div className="dup-toolbar">
-        <label className="dup-search">
-          作品名・著者で探す
-          <input type="search" value={input} onChange={(e) => setInput(e.target.value)} placeholder="空白区切りで AND" />
-        </label>
+        <div className="dup-search">
+          <label htmlFor="proposal-search-input">作品名・著者で探す</label>
+          <span id="proposal-search-hint" className="muted dup-search-hint">空白で区切ると、すべてを含むものに絞ります</span>
+          <input
+            id="proposal-search-input"
+            type="search"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            aria-describedby="proposal-search-hint"
+            enterKeyHint="search"
+          />
+        </div>
         <label>
           <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />
           却下・分けたものを表示
