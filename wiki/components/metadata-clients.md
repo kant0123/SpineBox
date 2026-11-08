@@ -29,13 +29,13 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | --- | --- |
 | `spinebox/metadata/service.py:57 MetadataService` | 入口。`search(query, sources=None)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
 | `spinebox/metadata/model.py:29 SearchQuery` | 入力。`title` だけ必須。`author` `volume` `kind` は確からしさの手がかり、`isbn` は NDL で巻の書誌を直接引く |
-| `spinebox/metadata/model.py:43 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(AniList / MangaUpdates: 作品全体) |
+| `spinebox/metadata/model.py:44 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(AniList / MangaUpdates: 作品全体) |
 | `spinebox/metadata/model.py:82 Match` | 確からしさ。`score`(0〜1)、観点ごとの `components`、根拠 `reasons`(`title:exact` `author:match` `volume:mismatch` など) |
 | `spinebox/metadata/model.py:96 Candidate` | 項目 + `Match` + `response_key`(`metadata_responses.request_key`。生応答を引き直す鍵) |
 | `spinebox/metadata/model.py:123 SearchOutcome` | 取得元ごとの結果。`ok`・`candidates`(確からしさの高い順)・`failure`・`responses`(使った生応答の出所と `from_cache` / `stale`)・`notes` |
 | `spinebox/metadata/base.py:30 MetadataSource` | 取得元の共通基底。`search()` が例外を畳んで `SearchOutcome` にする。取得元は `_search()` だけ書く |
 | `spinebox/metadata/base.py:79 fetch` | 保存済みの応答つきの取得(下記) |
-| `spinebox/metadata/ndl.py:57 parse_opensearch` / `spinebox/metadata/anilist.py:57 parse_search` / `spinebox/metadata/mangaupdates.py:76 parse_search`・`spinebox/metadata/mangaupdates.py:89 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
+| `spinebox/metadata/ndl.py:58 parse_opensearch` / `spinebox/metadata/anilist.py:58 parse_search` / `spinebox/metadata/mangaupdates.py:75 parse_search`・`spinebox/metadata/mangaupdates.py:88 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
 | `spinebox/metadata/match.py:118 score_item` | 確からしさの計算 |
 | `spinebox/metadata/http.py:152 HttpFetcher` | タイムアウト・再試行・User-Agent・取得元ごとの関門(`spinebox/metadata/http.py:86 Gate`) |
 | `spinebox/metadata/store.py:32 ResponseStore` | 生応答の保存。`get_by_key(source, request_key)` で候補の `response_key` から引ける |

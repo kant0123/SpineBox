@@ -24,7 +24,7 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 **スキャン・閲覧・編集はネットワークに触らない**(CLAUDE.md「取得失敗でスキャンと閲覧を止めない」)。`apply_work` は連携の中身(保存済み)の純関数なので、
 スキャンで巻が増えれば `apply_all` が新しい巻へ書誌を入れ、連携を外せば公開 DB 由来の値だけが消える。
 
-## 連携の決め方(`spinebox/linking.py:163 decide()`)
+## 連携の決め方(`spinebox/linking.py:164 decide()`)
 
 - 取得元ごとに 1 作品 1 行(`work_links`: `status` = `linked` / `pending` / `none`)。`manual` は利用者が選んだ連携
 - **自動で連携するのは、最良候補の確からしさ ≥ 0.75 かつ 2 位との差 ≥ 0.15**(`AUTO_LINK_MIN` / `LINK_MARGIN`)。足りなければ `pending`(確認待ち)で、0.5 以上の候補を最大 5 件見せる。
@@ -42,7 +42,7 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 - 決め直す経路(手動の選択の解除 `reset_link()`、粘る近道)も同じ規則を通す: 手動の連携から入った種別を前提にせず(外してから判定する)、種別が未決なら保留、作品の種別と食い違う候補は粘らない
 - 自動連携は粘る(再取得で候補が残っていれば維持)。手動の連携は再取得で変えない(同じ候補が出たときに中身だけ更新)。手動の「どれでもない」は、その取得元へ問い合わせない
 
-## 項目の埋め方(`spinebox/linking.py:520 _apply_field()`)
+## 項目の埋め方(`spinebox/linking.py:516 _apply_field()`)
 
 | 規則 | 理由 |
 | --- | --- |
@@ -56,11 +56,11 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 ## 日本語での表示(#74)
 
 AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出版社はローマ字(`Overlap`)で来る。利用者の要望(#74)で、反映のときに日本語にする。
-入口は `spinebox/ja_terms.py:510 term_ja()` / `spinebox/ja_terms.py:520 publisher_ja()`(対応表)と `spinebox/linking.py:462 _desired_fields()`(反映で使う)。
+入口は `spinebox/ja_terms.py:510 term_ja()` / `spinebox/ja_terms.py:520 publisher_ja()`(対応表)と `spinebox/linking.py:458 _desired_fields()`(反映で使う)。
 
 | 規則 | 理由 |
 | --- | --- |
-| **訳すのは反映(`apply_work`)と、候補を画面へ出すとき(`spinebox/works.py:1484 _link_json()`)だけ。** `work_links.item` / `candidates` と生の応答は英語のまま | 対応表を足す・設定を変えると、取り直さずに次の反映(起動時・スキャン後)で全作品に効く。取得し直しは外部への要求とレート制限を食う |
+| **訳すのは反映(`apply_work`)と、候補を画面へ出すとき(`spinebox/works.py:1774 _link_json()`)だけ。** `work_links.item` / `candidates` と生の応答は英語のまま | 対応表を足す・設定を変えると、取り直さずに次の反映(起動時・スキャン後)で全作品に効く。取得し直しは外部への要求とレート制限を食う |
 | ジャンル・タグは対応表(AniList・MangaUpdates のジャンルは全語、タグは頻出のもの)で引く。表記の揺れ(`Teacher/s` と `Teacher`、ハイフン、全角、大文字小文字)は畳み、訳して同じになった語は 1 つにまとめる | MangaUpdates のタグ(categories)は利用者投稿で数千語あり全部は持てない。記録済みの応答に出る語はすべて引ける(`tests/test_ja_terms.py` が確かめる) |
 | **対応表に無い語は既定で入れない**(`[metadata] untranslated_terms = "hide"`。`keep` で英語のまま入れる) | 利用者が日本語で揃えたいと要望した。元の値は残っているので、`keep` にすれば次の起動で戻る。隠した語は絞り込みの候補にも出ない |
 | 出版社は NDL(日本語)が先。NDL の連携が無く MangaUpdates の原版元だけのときは、ローマ字名を対応表で日本語にする。**対応が無いローマ字名はそのまま出す** | 英語表記が入る経路はこれだけ(NDL が確認待ち・該当なしの作品)。出版社名は固有名なので、隠すより読める綴りで残す |
@@ -86,7 +86,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 
 ## 手動の編集と「自動に戻す」
 
-`spinebox/works.py:900 edit_fields()` は手動で保存し、直す前の値を `evidence.previous` に退避する。`spinebox/works.py:939 reset_field()` が復元し、無ければ空に戻す(その後 `apply_work` が公開 DB の値を入れ直す)。
+`spinebox/works.py:1190 edit_fields()` は手動で保存し、直す前の値を `evidence.previous` に退避する。`spinebox/works.py:1229 reset_field()` が復元し、無ければ空に戻す(その後 `apply_work` が公開 DB の値を入れ直す)。
 作品名は直す前の名前が残っていないと戻せない(409)。巻の書誌は `edit_volume_fields()` / `reset_volume_field()` で同じ。
 統合(`merge_works`)は手動の項目を優先して引き継ぎ、連携も `_merge_links()` で移す。整理(CBZ 化)で巻が作り直されても、`transfer_volume_fields()` が書誌を引き継ぐ。
 
@@ -103,7 +103,7 @@ AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出�
 
 | 何 | どこ |
 | --- | --- |
-| 作品の項目(`title` `author` `kind` `publisher` `genres` `tags` `total_volumes`。廃止した `synopsis` の行も残っている)と出所・手動・確信度 | `work_fields`(マイグレーション 6 の既存表。`genres` / `tags` は JSON 配列なので `json_each(value)` で展開。定数は `spinebox/works.py:32 FIELD_KIND` ほか) |
+| 作品の項目(`title` `author` `kind` `publisher` `genres` `tags` `total_volumes`。廃止した `synopsis` の行も残っている)と出所・手動・確信度 | `work_fields`(マイグレーション 6 の既存表。`genres` / `tags` は JSON 配列なので `json_each(value)` で展開。定数は `spinebox/works.py:38 FIELD_KIND` ほか) |
 | 作品の別名(公開 DB 由来を含む) | `work_aliases`(`source = 'public_db'`) |
 | 巻の書誌(`publisher` `label` `released` `isbn` `volume_label` `subtitle`) | `volume_fields`(マイグレーション 7) |
 | 連携・候補・失敗 | `work_links`(マイグレーション 7。`candidates` `item` は JSON) |

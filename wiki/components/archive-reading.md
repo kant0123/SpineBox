@@ -21,8 +21,8 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 | --- | --- |
 | `spinebox/archive/base.py:109 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
 | `spinebox/archive/base.py:224 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
-| `spinebox/archive/base.py:201 inner_reader_problem` | 内側アーカイブを取り出す前の判定。親のリーダーで先頭だけを読み(`read_head()`。zip だけが返す)、`open_archive` と同じ規則で読めるかを決める |
-| `spinebox/archive/sevenzip.py:289 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
+| `spinebox/archive/base.py:197 inner_reader_problem` | 内側アーカイブを取り出す前の判定。親のリーダーで先頭だけを読み(`read_head()`。zip だけが返す)、`open_archive` と同じ規則で読めるかを決める |
+| `spinebox/archive/sevenzip.py:292 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
 | `spinebox/pages.py:48 page_sort_key` | ページの並び(表紙 → 自然順) |
@@ -116,7 +116,7 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 
 - リーダーの `raw_entries()` を直接使わない。名前の検証と上限判定が `list_entries()` にしか無い
 - テストで cp932 名(フラグ無し)の zip を作るとき、`zipfile` の書き込みは版で挙動が違う(3.12 は非 ASCII を常に UTF-8 + フラグ、
-  3.13 はフラグ無しなら cp437 で符号化)。`tests/conftest.py:21 RawName` で生バイト列を直接書く
+  3.13 はフラグ無しなら cp437 で符号化)。`tests/conftest.py:25 RawName` で生バイト列を直接書く
 - 暗号化エントリ・未対応の圧縮方式は読み出し時に `ArchiveError` になる(巻としては 422)。暗号化 zip は目次が読めるので、スキャンでは巻として登録され、開いたときに 422
 - zip は同名のエントリを複数持てる。スキャンは同名の内側アーカイブを最初の 1 つだけ巻にして、残りを `scan_issues` に残す([[backend]])
 
