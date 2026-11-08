@@ -14,18 +14,19 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:486 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:492 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:211 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
-  `spinebox/naming.py:179 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
+- **名前の読み方。** `spinebox/naming.py:257 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+  `spinebox/naming.py:202 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
   簡体字の巻表示・話表示(`卷` `话`)は正規の字(`巻` `話`)と同じに読む(`spinebox/naming.py _fold_chars`)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品
-- **小数点の巻は番号なしの巻として作品に入れる。** `第04.5巻` は整数の `number_start`/`number_end` で持てないので番号にせず
-  (`parse_number()` は小数点の内側の `5巻` を拾わない)、作品名にも残さない(`parse_work_name()` が末尾の装飾
-  `(txt+jpg)` を落としてから `第N.M巻/話` を落とす)。欠け巻・重複枠の計算には入れず、番号の読めない巻として扱う。
+- **小数点の巻は番号なしの巻として作品に入れる。** `第04.5巻` や `Chapter 002.2`、`ch.02.5`、`第02.5話` などの小数点の巻・話・チャプターは整数の `number_start`/`number_end` で持てないので番号にせず
+  (`parse_number()` は小数点の内側の数字を拾わない)、作品名にも残さない(`parse_work_name()` が `_find_decimal()` で該当部分を落とす。#220)。
+  名前全体がチャプター表記単体(`Chapter 002.2`)なら作品名候補が `None` となり、外側の親フォルダ名が作品名として採用される。
+  欠け巻・重複枠の計算には入れず、番号の読めない巻として扱う。
   既存 DB の小数点の巻番号は、名寄せの `_apply_trailing_numbers()` が `parse_number()` で読めない番号として消す
   (スキャンし直さなくても直る。番号を持たない巻の行は触らないので冪等)
 - **数の数えた名前は作品名にしない。** 配布元の接頭辞(`DLRAW.AC_`)を落とすと残る `57 files` `4 cover` のような名前は、
@@ -34,7 +35,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   作品を読む(確信度 0.6)か、どこからも読めなければ「作品にならなかった巻」になる。
   この名前を読ませると、同じ公開 DB 項目に linked した 73 の作品どうしが別名で結ばれて 2000 組超の提案になり、
   末尾の番号の系列(#157)としては「files」1〜109 巻という作品にもなる
-- **EPUB の構造名や汎用名は作品名・別名にしない。** `oebps` `ops` `metainf` `meta-inf` `epub` `mimetype` `cover` `image` などは作品名として中身のない名前(`spinebox/naming.py JUNK_NAMES`)。スキャン・分解で非コンテンツディレクトリとして巻にしない(`spinebox/scanner.py _NON_CONTENT_DIRS`、`SCAN_VERSION=7`、`ANALYSIS_VERSION=3`)。名寄せでは `_container_aliases` での別名登録や `_alias_evidence` での統合提案の根拠にしない。さらに既存 DB に紛れ込んだ汚染を解消するため、`sync()` の冒頭でジャンク名自身の自動別名、およびタイトルがジャンク名である非手動作品に付いた自動別名を `dismissed_at` で外し、ジャンク作品との確認待ち提案を削除する(#215)。実データでは EPUB 内の `OEBPS` フォルダが作品になり、`_container_aliases` で各 EPUB の外側アーカイブ名(本来の作品名)が別名として次々登録され、大量の別作品と統合提案が結ばれるデータ汚染が起きていた。
+- **EPUB の構造名や汎用名、数字付きゴミ名は作品名・別名にしない。** `oebps` `ops` `metainf` `meta-inf` `epub` `mimetype` `cover` `image` `chapter` `episode` などは作品名として中身のない名前(`spinebox/naming.py JUNK_NAMES`)。また、`cover2` や `scans 01` のように単語の後ろに数字が付いた名前も作品名として中身のない名前(`spinebox/naming.py is_junk_name()`)。スキャン・分解で非コンテンツディレクトリとして巻にしない(`spinebox/scanner.py _NON_CONTENT_DIRS`、`SCAN_VERSION=7`、`ANALYSIS_VERSION=3`)。名寄せでは `_container_aliases` での別名登録や `_alias_evidence` での統合提案の根拠にしない。子フォルダが `cover2` のような名前でも作品名とならず親フォルダ名が採用される(#220)。さらに既存 DB に紛れ込んだ汚染を解消するため、`sync()` の冒頭で `is_junk_name()` に該当する自動別名、およびタイトルがジャンク名である非手動作品に付いた自動別名を `dismissed_at` で外し、ジャンク作品との確認待ち提案を削除する(#215, #220)。
 - **確信度の目安。** 自分の名前から 0.9、巻の名前に作品名が無く外側の名前から読んだものは 0.6(`CONF_*` 定数)。
   外側のアーカイブ・フォルダの名前は、**その全部の巻が 1 つの作品に入っているときだけ**別名・著者の候補(0.5)にする
   (複数作品の入れ物の名前を別名にすると、別作品を混ぜる根拠になるため)
@@ -101,8 +102,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1187 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1207 build_slots()` は
+`spinebox/works.py:1193 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1213 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
