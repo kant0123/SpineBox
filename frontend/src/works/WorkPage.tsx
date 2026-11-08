@@ -7,7 +7,7 @@ import { Credits } from "./Credits";
 import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, missingLabel, sourceText } from "./labels";
 import { VolumeMeta } from "./VolumeMeta";
 import { WorkLinks } from "./WorkLinks";
-import { ProposalCard } from "./WorkProposals";
+import { PROPOSAL_RULE, ProposalCard } from "./WorkProposals";
 import { WorkFollowPanel } from "../follows/Follows";
 
 const FIELD_NAMES: Record<WorkFieldName, string> = {
@@ -330,6 +330,7 @@ export function WorkPage({ id }: { id: string }) {
       {work.proposals.length > 0 && (
         <section className="work-section" aria-label="統合の提案">
           <h2>統合の提案</h2>
+          <p className="muted">{PROPOSAL_RULE}</p>
           <ul className="dup-list">
             {work.proposals.map((p) => (
               <ProposalCard key={p.id} p={p} onChanged={() => void load()} />

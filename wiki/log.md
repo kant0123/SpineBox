@@ -521,3 +521,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #240 (#70) 読めないアーカイブの理由を 7-Zip の 1 行に
 - 更新: [[archive-reading]], [[recurring-review-findings]]
 - 備考: #70。7-Zip の非ゼロ終了の理由を、標準エラーの先頭のエラーの塊 1 行にし、アーカイブのパスを `<ファイル>` に置き換えた。標準エラーの全文は logger `spinebox.archive.sevenzip` に残す。コードは `spinebox/archive/sevenzip.py` の `_failure()` / `_error_line()`。
+
+## [2026-11-09] ingest | (#243) 統合の提案のカードを読みやすくする
+- 更新: [[frontend]]
+- 備考: #243。巻のファイル名の羅列を巻番号の札に、別名の連結を 1 件+折りたたみに(作品名と空白しか違わない別名は落とす)、根拠の文で同じ名前を繰り返さず、作品名の違う部分を強調。確信度の基準の説明はカードから一覧の上へ。コードは `frontend/src/works/WorkProposals.tsx` と `frontend/src/works/proposalView.ts`。
