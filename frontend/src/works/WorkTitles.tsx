@@ -7,6 +7,7 @@ import {
   type OwnedTitleRow, type TitleStatus, type TitleRow,
 } from "./titleRows";
 import { WorkCover } from "./WorkCover";
+import { ReviewPendingNotice } from "./ReviewPending";
 
 /**
  * 作品のタイトル(巻)の一覧(#105 / #115)。ホームなどの作品カードから開く。
@@ -163,6 +164,7 @@ export function WorkTitles({ id }: { id: string }) {
           ‹ 作品の一覧へ
         </a>
       </p>
+      <ReviewPendingNotice work={work} />
       {error && (
         <div className="notice error" role="alert">
           {error}

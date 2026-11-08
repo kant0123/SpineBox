@@ -32,7 +32,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/review/Review.tsx:16 Review()` | 確認(`#/review/<tab>`。#207)。タブは公開DBの候補(`links`、`frontend/src/review/ReviewLinks.tsx:63 ReviewLinks()`)・統合の提案(`WorkProposals` の `embedded`)・重複の候補(`Duplicates` の `embedded`)。件数はサイドバーの「確認」のバッジと共通の `frontend/src/review/reviewCounts.tsx:14 ReviewCountsProvider()`(`GET /api/review/counts`) |
 | `frontend/src/duplicates/Duplicates.tsx:100 Duplicates()` | 重複候補の画面(確認の重複の候補タブ。旧 `#/duplicates` も同じタブを開く)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:79 WorkProposals()`(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
+| `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・オフライン・読書状態のバッジと、確認待ちの通知ドット `frontend/src/works/ReviewPending.tsx:30 NotifyDot()`(#210)。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:79 WorkProposals()`(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
 | `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
 | `frontend/src/data/DataJobs.tsx:149 DataJobs()` | スキャンと補完(処理の依頼。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。進み具合の文言は `frontend/src/data/DataJobs.tsx:78 stepText()` と `countText()`。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
@@ -103,7 +103,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   別名は作品ページで見る(利用者の要望)。API(`GET /api/works` の `aliases`)・作品ページの別名の編集・統合の提案の表示はそのまま。
 - **作品カードに種別・ジャンルと「重複」「統合済み」は出さない(#129)。** ホーム・漫画・小説のカードは作品名・著者・出版社に絞り、
   種別(漫画/小説)とジャンルはカードから外す(漫画・小説はナビで分かれ、ジャンルは作品ページで見る)。重複と統合済みは
-  一覧の判断には使わず、カードが情報過多になるためバッジから外す(統合の提案・候補の確認待ち・欠け・オフライン・読書状態は残す)。
+  一覧の判断には使わず、カードが情報過多になるためバッジから外す(欠け・オフライン・読書状態は残す。統合の提案・候補の確認待ちは #210 で通知ドットに替えた)。
   巻数は独立した行ではなく `.work-badges` の先頭のタグにし、文言を「既刊8巻(〜6巻)」(最高巻数が無ければ「既刊8巻」)にした(#185)。「既刊」は手持ち分(`GET /api/works` の `volume_count` = 見えている巻の数。`max_volume` は手持ちの最大巻番号)で、公開 DB の全巻数 `total_volumes` ではない(`WorkLinks.tsx` の候補の「全 N 巻」はそちら)。
 - **欠けの番号は多すぎるときだけ件数にする(#165)。** 作品カードのバッジと作品ページの「欠けている巻」は、欠けが
   5 個以下なら番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、
@@ -152,7 +152,12 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   公開 DB の候補は作品ページで 1 件ずつ、統合の提案は `#/works/proposals` と管理の「統合」タブの 2 か所、重複の候補は管理のタブの外(`#/duplicates`。開くと管理のタブが消え、戻り先がホーム)にあり、
   作業中に作品ページ ⇔ 一覧を行き来していた。旧 URL は `parseRoute()` で確認のタブへ振り替える(ブックマーク・一覧の印のリンクを壊さない)。
   サイドバーと各タブの件数は `GET /api/review/counts` で、画面に出るものだけを数える(開いても何も出ない件数を出さない。[[backend]])。画面が変わるたびと、確認の画面で何かを決めたときに取り直す。
-  ホームの帯は「統合の提案が N 件」から「確認待ちが N 件」(3 種の合計)へ。作品カードのバッジは #210 で扱うのでそのまま。作品ページの「公開データベース」には確認待ちがあるとき確認の画面への 1 行を出し、作品ページでの選択も残す
+  ホームの帯は「統合の提案が N 件」から「確認待ちが N 件」(3 種の合計)へ。作品ページでの公開 DB の候補の選択も残す
+- **作品ごとの確認待ちは、カードでは通知ドット 1 つ、作品ページ・タイトル一覧では確認の該当タブへのリンクにする(#210)。**
+  カードの「統合の提案」「候補の確認待ち」の文字のタグは、欠け・読書状態と並んで情報過多だったので、表紙の左上に `--warn`(オレンジ)のドットを 1 つ重ねる形にまとめた。
+  色と形だけに頼らないよう、ドットは `role="img"` で「確認待ちあり(統合の提案・公開DBの候補)」を読み上げ名とツールチップに持つ。表紙の画像の上でも見分けられるよう `--card` の縁を付ける(強制カラーでは `Mark`)。
+  カードはタイトル一覧へ開くので、案内 `frontend/src/works/ReviewPending.tsx:37 ReviewPendingNotice()` は作品ページとタイトル一覧の両方の上部に出し、種類ごとに `#/review/proposals` / `#/review` へリンクする。
+  #207 で作品ページの「公開データベース」節に置いた 1 行は、同じリンクが 2 つ並ぶので上部の案内へまとめて外した。重複の候補は巻単位で `GET /api/works` に作品ごとの数が無いので、ドットの対象にしていない
 - **公開DBの候補タブは、作品ページを開かずにその場で選ぶ(#207)。** 1 作品 1 枠で表紙・作品名・巻数と、確認待ちの取得元だけの `WorkLinks` を出す(連携済み・該当なしは作品ページで見る)。
   選び終えた作品は一覧から消さず「確認済み」に畳む(詰めると直後のタップが次の作品のボタンに当たる)。押したボタンが消えるので、次の確認待ちの見出し(最後ならその行の見出し)へフォーカスを移す。
   NDL を選ぶと保留だった取得元が保存済みの応答で決まるので、その間は「反映しています…」を出す
@@ -238,6 +243,7 @@ npm run build      # frontend/dist
   全体の同期を依頼 → 「実行中: ライブラリ全体を同期(段 2/5: 中の巻を調べる 1 / 3)」の 1 行、タスクセンターの履歴、`#/organize` が整理タブ(整理と履歴)を開くこと、横スクロール 0 を確認した。`npm test` 185 件・`npm run build` が通った
 - #207 で確認の画面(`#/review`)を足し、統合の提案・重複の候補を移した。モック API の 1280px(ライト・ダーク)と 375px で、公開DBの候補の「これを採用」→ 確認済みに畳まれる・サイドバーの件数が 3 → 2、
   旧 `#/admin/proposals`・`#/duplicates` の振り替え、375px の引き出しの件数、横スクロール 0 を確認した。375px のタブの横ずれ(上の `.sr-only`)はこの確認で見つけた。`npm test` 182 件・`npm run build` が通った
+- #210 で作品カードの確認待ちを通知ドットにし、作品ページ・タイトル一覧に確認のタブへの案内を足した。モック API の 1280px(ダーク)と 375px(ライト・ダーク)で、ドットの位置と読み上げ名、案内のリンクから `#/review/proposals` へ移ること、横スクロール 0 を確認した。`npm test` 190 件・`npm run build` が通った(Node 26 の手元では組み込みの `localStorage` が jsdom と衝突するので `NODE_OPTIONS=--no-experimental-webstorage` を付けた。CI は Node 22)
 - #161 で作品カードの高さを中身に合わせた。`.work-grid` の `grid-auto-rows: 1fr` は、グリッドの高さが
   不定のとき全行を一覧で一番高いカードの高さに揃えるため、バッジの少ない作品ほど内側の下に空白が残っていた
   (1280px で 29 / 59px、375px で 59px)。タイトルの位置を揃える目的(#132)は表紙の枠(表紙なしを含む)で

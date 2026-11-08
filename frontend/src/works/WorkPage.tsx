@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type SourceName, type WorkDetail, type WorkEditBody, type WorkFieldName, type WorkKind, type WorkSummary, type WorkVolume } from "../api";
 import { progressLabel } from "../library/Library";
-import { readHref, reviewHref, workHref, workOrganizeHref, workTitlesHref, worksHref } from "../route";
+import { readHref, workHref, workOrganizeHref, workTitlesHref, worksHref } from "../route";
 import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
 import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, missingLabel, sourceText } from "./labels";
@@ -9,6 +9,7 @@ import { VolumeMeta } from "./VolumeMeta";
 import { WorkLinks } from "./WorkLinks";
 import { ProposalCard } from "./WorkProposals";
 import { WorkFollowPanel } from "../follows/Follows";
+import { ReviewPendingNotice } from "./ReviewPending";
 
 const FIELD_NAMES: Record<WorkFieldName, string> = {
   title: "作品名", author: "著者", kind: "種別", publisher: "出版社", genres: "ジャンル", tags: "タグ",
@@ -193,6 +194,7 @@ export function WorkPage({ id }: { id: string }) {
       <div className="work-actions">
         <BookmarkButton key={work.id} target="work" id={work.id} initial={work.bookmarked ?? false} label={work.title} />
       </div>
+      <ReviewPendingNotice work={work} />
       {error && (
         <div className="notice error" role="alert">
           {error}
@@ -300,11 +302,6 @@ export function WorkPage({ id }: { id: string }) {
             {busy ? "取得中…" : "情報を取得"}
           </button>
         </div>
-        {work.link_pending > 0 && (
-          <p className="review-hint">
-            確認待ちの候補があります。ほかの作品の候補とまとめて選ぶなら <a href={reviewHref("links")}>確認 &gt; 公開DBの候補</a>
-          </p>
-        )}
         <WorkLinks work={work} busy={busy} run={run} onWork={apply} />
       </section>
 
