@@ -19,7 +19,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:211 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+- **名前の読み方。** `spinebox/naming.py:219 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
   `spinebox/naming.py:179 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
   簡体字の巻表示・話表示(`卷` `话`)は正規の字(`巻` `話`)と同じに読む(`spinebox/naming.py _fold_chars`)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品

@@ -134,7 +134,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **巻の切り出しでは、非コンテンツディレクトリ(`__MACOSX`・`META-INF`・`.DS_Store`)の中の画像・内側アーカイブを巻にしない。**
   表紙画像だけを含むフォルダ(すべての画像が表紙)も巻にしない。拡張子に関わらず `META-INF/container.xml` を含むアーカイブは
   EPUB 小説として扱う(`.zip` に包まれた EPUB)。いずれも `spinebox/scanner.py:146 archive_volume_specs()` /
-  `spinebox/scanner.py:456 _scan_archive()` / `spinebox/scanner.py:415 _scan_folder()` で行う
+  `spinebox/scanner.py:456 _scan_archive()` / `spinebox/scanner.py:422 _scan_folder()` で行う
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
