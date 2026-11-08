@@ -23,6 +23,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | パス | 役割 |
 | --- | --- |
 | `spinebox/app.py:231 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py recover_interrupted_organize()` | 起動時(lifespan の先頭)に、実行・元に戻すの途中で止まった整理を戻す(#36。[[organize]])。失敗しても起動は止めない |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
 | `spinebox/scanner.py:456 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
