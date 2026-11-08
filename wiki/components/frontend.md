@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:72 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
-| `frontend/src/admin/Admin.tsx:30 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。データ管理(#84 の整理 `OrganizeFilesSection` を載せ済み)・フォロー管理(#87 の `FollowManage` を載せ済み)・タスクセンター(#83 待ち)は `frontend/src/admin/panels.tsx:8 DataPanel()` ほか(組み込み口)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
+| `frontend/src/admin/Admin.tsx:31 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
@@ -34,7 +34,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:15 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・統合の提案・候補の確認待ち・読書状態のバッジ。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:48 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:131 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:79 WorkProposals()`(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
 | `frontend/src/works/WorkTitles.tsx:17 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
-| `frontend/src/data/DataJobs.tsx:136 DataJobs()` | データ管理(ジョブの依頼 + 整理。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。`view="data"` の上に「ジョブ / 整理」の節内リンクを置き、`focus="organize"`(`#/data/organize`)は整理の見出しへスクロールしてフォーカスする(#149)。モックは `frontend/src/mock/mockJobs.ts` |
+| `frontend/src/data/DataJobs.tsx:149 DataJobs()` | スキャンと補完(処理の依頼。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。進み具合の文言は `frontend/src/data/DataJobs.tsx:78 stepText()` と `countText()`。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:32 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:243 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
@@ -117,7 +117,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   タイトル一覧・ブックマークの表紙は今までどおり何も出さない。表紙の枠を全カードに出すので、同じ行の
   タイトルの開始位置はそろう。カードの高さは中身に合わせ、一覧全体で揃えない(#161。`grid-auto-rows: 1fr` は
   グリッドの高さが不定のとき全行を一覧で一番高いカードに揃えるため、バッジの少ない作品ほど内側の下に余白ができた。
-  `.work-grid` は `align-items: start`)。入れ子の巻の表紙は管理のデータ管理タブの「表紙のみ補完」(明示操作)で作る。
+  `.work-grid` は `align-items: start`)。入れ子の巻の表紙は管理のスキャンと補完タブの「表紙のみ補完」(明示操作)で作る。
   表紙の URL は `ETag` + `Cache-Control: private, no-cache` なので、画面を開き直すと取り直す(以前の「表紙を作る」の後に `?rev=` を変える仕組みは、作成を画面から起動しなくなったので廃止した)。
   巻の一覧のカードには出していない(要望は作品の一覧。同じ `api.thumbnailUrl()` で足せる)
 - **巻情報の読み込み待ちを見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
@@ -168,7 +168,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
 | ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
 | フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86)。どちらも単独の画面をそのままサイドバーの中に出す |
-| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統合を除く 5 タブ(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `follows` / `tasks`)。統合の提案は確認へ移した(#207) |
+| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統計・好み・スキャンと補完・整理・フォロー管理・タスクセンター(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `organize` / `follows` / `tasks`)。統合の提案は確認へ移し、整理はデータ管理から独立させた(#207) |
 | (無し) | 確認(`#/review/<tab>`。#207)。サイドバーの管理の上に件数のバッジつきで置く |
 | 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
 
@@ -188,14 +188,18 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
   画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため
 - **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)
-- **管理のタブへの組み込み(`frontend/src/admin/panels.tsx`)。** フォロー管理は `FollowManage`(`embedded` で見出しを外す)、データ管理・タスクセンターは `DataJobs`(下)と、データ管理の下の今ある画面(受け入れ・整理の履歴)への入口。
-  作品一覧のヘッダーにあった「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」も、データ管理のタブへ集約した(#102)。
+- **管理のタブへの組み込み(`frontend/src/admin/panels.tsx`)。** フォロー管理は `FollowManage`(`embedded` で見出しを外す)、スキャンと補完・タスクセンターは `DataJobs`(下)、整理は `OrganizeFilesSection` と `OrganizeHistory`(`embedded`)と受け入れへの入口。
+  #207 で「ほかの画面」の節を廃止した(重複の候補は確認へ、整理の履歴は整理タブへ。受け入れは利用が少なく扱いを決めていないので、整理タブの末尾に入口だけ置く)。
+  作品一覧のヘッダーにあった「情報を補完」「表紙を作る」「名寄せを取り直す」も、スキャンと補完のタブ(旧データ管理)へ集約した(#102)。
   タブの中に置いた既存の画面は、自前の余白・幅の上限を CSS(`.admin-panel .library` ほか)で外して二重に空かないようにする。
-  旧 `#/follows/manage`・`#/data` は管理のフォロー管理タブを開く(`followManageHref` は `#/admin/follows`)。単独の `#/data/organize` は管理のデータ管理タブの整理の節を開く
-- **データ管理(#83)とタスクセンターは同じジョブの画面を 2 つのタブに分けて出す。** `DataJobs` の `view="data"` はジョブを見出し(日常の同期 / ライブラリ全体 / 個別)ごとに説明と対象の件数つきで並べて依頼する画面と、
-  下の「整理」節(#84 の `OrganizeFilesSection`。ジョブではなく、1. 対象 → 2. 名前 → 3. プレビューして実行の 3 段。`#/data/organize` はそこへ移り、見出しへフォーカスする)。`view="tasks"` は実行中の進み具合・今の対象・「中止」、待ち行列の「取り下げ」、履歴(新しい順で失敗の理由つき)。
-  ジョブの一覧が長く整理の節が埋もれるため、`view="data"` の上に「このページ: ジョブ / 整理」のボタンを置き、整理の節は区切り線で分ける(#149)。
+  旧 `#/follows/manage` は管理のフォロー管理タブ、旧 `#/data` はスキャンと補完のタブ、旧 `#/data/organize`・`#/organize`(整理の履歴)は整理のタブを開く
+- **スキャンと補完(#83。旧データ管理)とタスクセンターは同じジョブの画面を 2 つのタブに分けて出す。** `DataJobs` の `view="data"` は処理を説明と対象の件数つきで並べて依頼する画面、`view="tasks"` は実行中の進み具合・今の対象・「中止」、待ち行列の「取り下げ」、履歴(新しい順で失敗の理由つき)。
+  #207 で、先頭の「いつもの更新」(新しいファイルを取り込む / 足りない作品情報を補う / ライブラリ全体を同期)だけを開いて見せ、残り 9 つは `<details>`「個別の処理」に畳んだ。
+  13 種が意味の重なる名前(「新しいファイルの検出のみ」と「ファイルのスキャンのみ」は同じ処理)で並び、どれを押せばよいか分からなかったため。
+  スキャンと補完では実行中を 1 行(`.job-now`)にし、中止と詳しい進み具合はタスクセンターに寄せる。整理(#84)は独立したタブにしたので、#149 の「このページ: ジョブ / 整理」の節内リンクと `focus="organize"` は無くした。
   実行中・待ちがある間だけ 1.5 秒ごとに状態を見に行き、全部終わったら対象の件数を取り直す。依頼済みの種類のボタンは「依頼済み」で押せない。
+- **進み具合は段と件数を分けて出す(#207)。** 全体の同期は段ごとに件数が 0 に戻り、スキャンの段は総数を先に数えない(`done` だけ)ので、バーが常に不定のまま何をしているか分からなかった。
+  複数の段のジョブは「段 2/5: 中の巻を調べる」、件数は総数があれば「45 / 120」、無ければ「45 件目」。バーは総数のある段だけ値を持ち、無い段は不定のまま `aria-valuetext` に文言を入れる([[data-jobs]])
   ジョブの依頼の失敗はサーバーの `detail`(ほかのジョブの実行中など)をそのまま出す。
   #83 では一覧の「作品 / 巻 / データ管理」のタブから辿っていたが、サイドバーが入ったので外した(巻の一覧のヘッダーの「ファイル名の整理」「整理の履歴」も、データ管理のタブに同じ入口があるので外した)。
 - **巻の一覧(`#/volumes`)は廃止。** 作品の一覧(ホーム)のみを表示する
@@ -230,6 +234,8 @@ npm run build      # frontend/dist
 
 ## 経緯
 
+- #207(PR2)で管理のタブを統計・好み・スキャンと補完・整理・フォロー管理・タスクセンターにした。モック API の 1280px・375px で、いつもの更新の 3 つと畳んだ個別の処理(9)、
+  全体の同期を依頼 → 「実行中: ライブラリ全体を同期(段 2/5: 中の巻を調べる 1 / 3)」の 1 行、タスクセンターの履歴、`#/organize` が整理タブ(整理と履歴)を開くこと、横スクロール 0 を確認した。`npm test` 185 件・`npm run build` が通った
 - #207 で確認の画面(`#/review`)を足し、統合の提案・重複の候補を移した。モック API の 1280px(ライト・ダーク)と 375px で、公開DBの候補の「これを採用」→ 確認済みに畳まれる・サイドバーの件数が 3 → 2、
   旧 `#/admin/proposals`・`#/duplicates` の振り替え、375px の引き出しの件数、横スクロール 0 を確認した。375px のタブの横ずれ(上の `.sr-only`)はこの確認で見つけた。`npm test` 182 件・`npm run build` が通った
 - #161 で作品カードの高さを中身に合わせた。`.work-grid` の `grid-auto-rows: 1fr` は、グリッドの高さが

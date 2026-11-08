@@ -1,14 +1,14 @@
 ---
 type: concept
 summary: データ管理とジョブ(#83)。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期を 1 本ずつ動かす待ち行列と履歴(jobs 表)。依頼は待ち行列、その場で結果を返す API は他が動いていれば 409、中止は区切りで止める。1 本ずつにした理由と却下した代替案
-updated: 2026-11-07
+updated: 2026-11-08
 related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize, follow]
 ---
 
 # データ管理とジョブ
 
 スキャン・公開 DB の補完・表紙・中の巻の解析・重複・名寄せ・受け入れフォルダの同期を「ジョブ」として 1 本ずつ動かし、
-何が動いているか・いつ何をしたかを 1 か所(画面は管理の「データ管理」「タスクセンター」タブ `#/admin/data`・`#/admin/tasks`、API `/api/jobs`)で見られるようにしている。
+何が動いているか・いつ何をしたかを 1 か所(画面は管理の「スキャンと補完」「タスクセンター」タブ `#/admin/data`・`#/admin/tasks`、API `/api/jobs`)で見られるようにしている。
 Peach(動画向けのローカルメディア管理アプリ)の「スキャンと収集」に相当する。
 
 ## 入口
@@ -19,29 +19,37 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | `spinebox/datajobs.py:88 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
 | `spinebox/app.py:302 run_job_now()` / `spinebox/app.py:531 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:204 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
-| `frontend/src/data/DataJobs.tsx:136 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
+| `frontend/src/data/DataJobs.tsx:149 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
+| `spinebox/jobs.py:111 plan()` | 複数の段のジョブの段の数。`step()` が段の番号を 1 つ進め、`step_index` / `step_count` で返す(#207) |
 
 ## ジョブの一覧と対応する処理
 
 | 種類(`kind`) | 画面の名前 | 中身 |
 | --- | --- | --- |
-| `daily_scan` / `scan` | 新しいファイルの検出のみ / ファイルのスキャンのみ | スキャン(変わっていないソースは開かない)+ 名寄せ。**今の SpineBox では同じ処理**(普段のスキャンがそのまま「新しいファイルの検出」になる)。Peach の項目に合わせて両方並べ、一覧の「スキャン」は `scan` として残る |
-| `daily_metadata` | 補完待ちの作品を補完 | `linking.works_needing_fetch()` の作品だけ取得 |
-| `maintenance` | ライブラリ全体のメンテナンス | `Scanner(recheck=True)`: サイズ・mtime が同じアーカイブ・EPUB の目次も読み直す。元ファイルが変わっていなければ中の巻の解析と開いて数えたページ数は残す(`_replace_volumes(keep_analysis=True)`)。見えないものは missing / offline の印だけ |
-| `full_sync` | ライブラリ全体を同期 | メンテナンス → 中の巻を調べる → 名寄せ → 補完待ちの取得(取得元が有効なら)→ 表紙 |
-| `metadata_thumbs` / `metadata` / `thumbnails` | 情報と表紙 / 作品情報のみ(`all` で全作品)/ 表紙のみ | 取得と `Thumbnails.build()` |
+| `daily_scan` / `scan` | 新しいファイルを取り込む / (一覧に出さない) | スキャン(変わっていないソースは開かない)+ 名寄せ。**今の SpineBox では同じ処理**(普段のスキャンがそのまま「新しいファイルの検出」になる)。#83 では Peach の項目に合わせて両方並べたが、#207 で違いを探して迷う元だったので `scan` は一覧から外した(`Kind.listed=False`。API の依頼・履歴の名前・一覧の「スキャン」は `scan` のまま) |
+| `daily_metadata` | 足りない作品情報を補う | `linking.works_needing_fetch()` の作品だけ取得 |
+| `maintenance` | 全ファイルを確かめ直す | `Scanner(recheck=True)`: サイズ・mtime が同じアーカイブ・EPUB の目次も読み直す。元ファイルが変わっていなければ中の巻の解析と開いて数えたページ数は残す(`_replace_volumes(keep_analysis=True)`)。見えないものは missing / offline の印だけ |
+| `full_sync` | ライブラリ全体を同期 | メンテナンス → 中の巻を調べる → 名寄せ → 補完待ちの取得(取得元が有効なら)→ 表紙。`plan(5)`(取得元が無効なら 4) |
+| `metadata_thumbs` / `metadata` / `thumbnails` | 情報と表紙 / 作品情報のみ(`all` で全作品)/ 表紙のみ | 取得と `Thumbnails.build()`。`metadata_thumbs` は `plan(2)` |
 | `analyze` | 中の巻を調べる | `Library.pending_analysis()` を一度だけ引いて全部 `analyze()`。読めない巻(7-Zip が無い・壊れた)は理由を記録して次へ |
 | `follow_check` | フォロー中の作品の続刊を調べる | `follows.check_many()`([[follow]])。NDL が無効なら動かせない(画面で押せない・API は 409)。`params.work_ids` で作品を絞れる(作品ごとの確認)。取得元の失敗は作品ごとに `follows.failure` へ残して続ける |
 | `duplicates` / `works_refresh` / `inbox_sync` | 重複 / 名寄せ / 受け入れフォルダの同期 | 既存の処理そのまま。受け入れは検出と整理案まで |
 | `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る |
 | `background_analysis` / `background_metadata` / `background_follow` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
 
-**整理処理(CBZ 化・改名・受け入れの承認)の計画(プレビュー)はジョブの自動スケジューリングに入れない**(画面には #84 の「整理」節としてデータ管理タブの下に置き、`#/data/organize` から入れる)。蔵書を動かすので、今どおりプレビューを見てから明示的に実行する(GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ただし、ユーザーが実行・元に戻す・承認ボタンを押した際は、各画面のボタンと同じく `JobRunner.run_now` (`origin = "button"`) を通じて即時実行され、進捗通知とともにタスクセンターの実行中・履歴(`organize_execute`, `organize_undo`, `inbox_approve`)に記録される(#155)。
+**整理処理(CBZ 化・改名・受け入れの承認)の計画(プレビュー)はジョブの自動スケジューリングに入れない**(画面は #84 の整理として管理の「整理」タブ `#/admin/organize` に置く。#207 まではデータ管理タブの下の節だった)。蔵書を動かすので、今どおりプレビューを見てから明示的に実行する(GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ただし、ユーザーが実行・元に戻す・承認ボタンを押した際は、各画面のボタンと同じく `JobRunner.run_now` (`origin = "button"`) を通じて即時実行され、進捗通知とともにタスクセンターの実行中・履歴(`organize_execute`, `organize_undo`, `inbox_approve`)に記録される(#155)。
 
 一覧の「スキャン」・重複の「重複を調べる」・作品ページの「情報を取得」・受け入れの「同期」など、各画面に残るボタンは同じジョブの上で動き、
 `origin = "button"` で同じ履歴に残る。作品一覧のヘッダーにあった「重複の候補」「情報を補完」「表紙を作る」「名寄せを取り直す」は #102 で外し、
-データ管理タブのジョブ(「作品情報のみ補完」「表紙のみ補完」「作品の名寄せを計算し直す」「重複を調べる」)と「ほかの画面」の「重複の候補」へ集約した。
+データ管理タブのジョブ(「作品情報のみ補完」「表紙のみ補完」「作品の名寄せを計算し直す」「重複を調べる」)と「ほかの画面」の「重複の候補」へ集約した(#207 で重複の候補は確認の画面へ移し、「ほかの画面」は廃止)。
+
+画面の並び(#207): 先頭の見出し「いつもの更新」(`daily_scan` / `daily_metadata` / `full_sync`)だけを開いて見せ、残りは「個別の処理」として畳む。見出しはサーバーの `Kind.group` で、画面は先頭の見出し以外を畳む。
 重複・表紙・公開 DB の状態の API(`GET /api/duplicates` の `scan` など)は、その種類の最新のジョブから作る(`legacy_state()`)。
+
+## 進み具合(#207)
+
+- 複数の段を順に行うジョブは、始めに `JobContext.plan(n)` で段の数を決め、`step()` のたびに段の番号を 1 つ進める(段の数で止める)。段の数を決めないジョブは `step_index` / `step_count` が null で、画面は段の番号を出さない
+- スキャンは総数を先に数えない(ソースを数えるために蔵書を 2 回歩かない)ので、`done` だけが増える。画面は「N 件目」と不定のバーにする
 
 ## 1 本ずつ・待ち行列の規則
 

@@ -208,6 +208,9 @@ export interface Job {
   current: string | null;
   /** 複数の処理を順に行うジョブの、今の段 */
   step: string | null;
+  /** 今の段の番号(1 始まり)と段の数(#207)。段の数を決めていないジョブは null(古いサーバーは無い) */
+  step_index?: number | null;
+  step_count?: number | null;
   /** 裏の定期処理で、続けて動いた回数(1 行にまとめる) */
   runs: number;
   summary: Record<string, unknown> | null;

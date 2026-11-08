@@ -67,6 +67,9 @@ class Job:
     total: int | None = None
     current: str | None = None
     step: str | None = None
+    # 複数の段を順に行うジョブの、今の段の番号(1 始まり)と段の数(#207)。段の数を決めていないジョブは None
+    step_index: int | None = None
+    step_count: int | None = None
     runs: int = 1
     summary: dict | None = None
     error: str | None = None
@@ -78,7 +81,8 @@ class Job:
             "id": self.id, "kind": self.kind, "label": self.label, "origin": self.origin, "params": self.params,
             "status": self.status, "queued_at": self.queued_at, "started_at": self.started_at,
             "finished_at": self.finished_at, "done": self.done, "total": self.total, "current": self.current,
-            "step": self.step, "runs": self.runs, "summary": self.summary, "error": self.error,
+            "step": self.step, "step_index": self.step_index, "step_count": self.step_count,
+            "runs": self.runs, "summary": self.summary, "error": self.error,
             "cancel_requested": self.cancel_requested,
             "cancellable": self.id is not None and self.origin != "background" and self.status in ACTIVE,
         }
@@ -104,9 +108,16 @@ class JobContext:
         if self.job.cancel_requested:
             raise JobCancelled()
 
+    def plan(self, steps: int) -> None:
+        """これから行う段の数。画面は「段 2/5」と出す(段ごとに進み具合が 0 に戻っても、全体のどこかが分かる)。"""
+        self.job.step_count = steps
+        self.job.step_index = 0
+
     def step(self, name: str) -> None:
         """複数の処理を順に行うジョブの、今の段。進み具合は段ごとに数え直す。"""
         self.check()
+        if self.job.step_count is not None:
+            self.job.step_index = min((self.job.step_index or 0) + 1, self.job.step_count)
         self.job.step = name
         self.job.done = self.job.total = None
         self.job.current = None

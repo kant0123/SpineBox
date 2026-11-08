@@ -55,7 +55,7 @@ describe("フォロー", () => {
     render(<App />);
     const entry = (await screen.findByText("サンプル漫画")).closest("li")!;
     expect(within(entry).getByText("手元に無い巻 2(未確認 2)")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "続刊を調べる" }));
+    fireEvent.click(screen.getByRole("button", { name: "すべての続刊を調べる" }));
     await screen.findByText("1 作品を調べました。");
     expect(backend.log.some((e) => e.method === "POST" && e.path === "/api/follows/check")).toBe(true);
     fireEvent.click(within(entry).getByRole("button", { name: "フォローを外す" }));

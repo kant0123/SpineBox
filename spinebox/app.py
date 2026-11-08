@@ -313,7 +313,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         try:
             return runner.run_now(kind, label or kind_label(kind), fn, origin="button", params=params)
         except Busy:
-            raise HTTPException(409, "ほかのジョブを実行中です(データ管理の画面で確かめ・中止できます)") from None
+            raise HTTPException(409, "ほかのジョブを実行中です(管理のタスクセンターで確かめ・中止できます)") from None
 
     def job_state(kind: str) -> dict:
         return legacy_state(runner.latest(kind))

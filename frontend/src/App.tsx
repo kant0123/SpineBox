@@ -13,7 +13,7 @@ import { Works } from "./works/Works";
 import { Inbox } from "./organize/Inbox";
 import { FollowReleases } from "./follows/Follows";
 import { Bookmarks } from "./bookmarks/Bookmarks";
-import { OrganizeHistory, OrganizePlan, WorkOrganize } from "./organize/Organize";
+import { OrganizePlan, WorkOrganize } from "./organize/Organize";
 
 /** サイドバーの中に出す画面 */
 function Page({ route }: { route: Route }) {
@@ -24,12 +24,8 @@ function Page({ route }: { route: Route }) {
       return <OrganizePlan key={`${route.id}/${route.naming}`} volumeId={route.id} naming={route.naming} />;
     case "work-organize":
       return <WorkOrganize key={route.id} workId={route.id} />;
-    case "organize-history":
-      return <OrganizeHistory />;
     case "inbox":
       return <Inbox />;
-    case "organize-files":
-      return <Admin tab="data" focus="organize" />;
     case "work":
       return <WorkPage key={route.id} id={route.id} />;
     case "work-titles":
