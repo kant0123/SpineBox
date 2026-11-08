@@ -155,10 +155,32 @@ _TRAILING_NOTE = re.compile(r"[\s(\[【]*(?:全\s*\d+\s*巻|完結(?:済み?)?)[
 # 作品名に残して別作品にしないよう、末尾の「第N.M巻/話」ごと落とす(_find_number で整数部に一致させない)
 _DECIMAL_VOLUME = re.compile(r"\s*(?:第\s*)?\d{1,4}\.\d{1,3}\s*[巻話]\s*$")
 
+# 小数点の巻・話・チャプターの規則(番号候補としては扱わないが、作品名から落とす)
+_DEC_NUM = r"(\d{1,4}\.\d{1,3})"
+_DECIMAL_RULES: list[tuple[str, re.Pattern]] = [
+    ("第N.M巻", re.compile(rf"第\s*{_DEC_NUM}\s*巻")),
+    ("第N.M話", re.compile(rf"第\s*{_DEC_NUM}\s*話")),
+    ("N.M巻", re.compile(rf"(?<![\d全第]){_DEC_NUM}\s*巻")),
+    ("N.M話", re.compile(rf"(?<![\d全第]){_DEC_NUM}\s*話")),
+    ("Vol.N.M", re.compile(rf"{_LB}vol(?:ume)?\.?\s*{_DEC_NUM}{_RB}", re.IGNORECASE)),
+    ("vN.M", re.compile(rf"{_LB}v\.?\s?{_DEC_NUM}(?=[A-Za-z]?(?![A-Za-z\d]))", re.IGNORECASE)),
+    ("ch.N.M", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?)\.?\s*{_DEC_NUM}{_RB}", re.IGNORECASE)),
+]
+
+
+def _find_decimal(text: str) -> tuple[str, tuple[int, int]] | None:
+    """小数点の巻・話・チャプター表記の文字列と位置(span)を返す。見つからなければ None。"""
+    for _, pattern in _DECIMAL_RULES:
+        m = pattern.search(text)
+        if m:
+            return m.group(0).strip(), m.span()
+    return None
+
 # 作品名として使えない、中身の無い名前
 _JUNK_RAW = (
     "cover", "covers", "image", "images", "img", "raw", "scan", "scans", "page", "pages", "jpg", "jpeg", "png",
     "oebps", "ops", "metainf", "meta-inf", "epub", "mimetype",
+    "chapter", "chapters", "episode", "episodes",
     "newfolder", "新しいフォルダ", "新しいフォルダー", "無題", "untitled", "download", "downloads", "comic", "comics",
     "manga", "漫画", "マンガ", "コミック",
 )
@@ -202,6 +224,25 @@ _COUNT_NOUNS = (
     "books?", "volumes?", "vols?", "items?", "folders?", "entries?", "sheets?", "frames?", "scans?",
 )
 _COUNT_NAME = re.compile(rf"^\d{{1,5}}(?:{'|'.join(_COUNT_NOUNS)})$")
+
+# 単語の後ろに数字が付いたゴミフォルダ名(`cover2`, `scans 01` など)
+_JUNK_SUFFIX_WORDS = (
+    *_COUNT_NOUNS,
+    "raws?", "scans?", "covers?", "images?", "imgs?", "pages?", "pics?", "photos?",
+    "chapters?", "episodes?", "eps?",
+)
+_JUNK_NUMBERED = re.compile(rf"^(?:{'|'.join(sorted(set(_JUNK_SUFFIX_WORDS)))})\d{{1,5}}$")
+
+
+def is_junk_name(norm: str) -> bool:
+    """作品名として使えない、中身の無い名前(正規化後)か。"""
+    return (
+        not norm
+        or norm.isdigit()
+        or norm in _JUNK_NAMES
+        or bool(_COUNT_NAME.match(norm))
+        or bool(_JUNK_NUMBERED.match(norm))
+    )
 
 
 def _bracket_content(m: re.Match) -> str:
@@ -252,7 +293,14 @@ def parse_work_name(name: str) -> WorkName | None:
         else:
             number_part = text[span[0]:span[1]]
     else:
-        title_raw, number_part = text, None
+        dec = _find_decimal(text)
+        if dec:
+            number_part, span = dec
+            title_raw = text[:span[0]]
+            if not _clean_title(title_raw):
+                title_raw = text[span[1]:]
+        else:
+            title_raw, number_part = text, None
 
     # 末尾のタグ括弧と「全N巻」「完結」を外す
     title = title_raw
@@ -272,7 +320,7 @@ def parse_work_name(name: str) -> WorkName | None:
     elif title:
         parts.append(("title", title))
     norm = normalize_title(title)
-    if not norm or norm.isdigit() or norm in _JUNK_NAMES or _COUNT_NAME.match(norm):
+    if is_junk_name(norm):
         return None
     if number_part is not None:
         parts.append(("number", number_part.strip()))
