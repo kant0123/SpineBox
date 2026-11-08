@@ -137,6 +137,12 @@ def test_failure_reason_is_one_error_line_without_the_archive_path(tmp_path, cap
     assert "Is not archive" in caplog.text  # 全文はログ側に残る
 
 
+def test_error_line_reads_the_errors_section_when_there_is_no_error_line():
+    # `ERROR:` の行が無く `ERRORS:` の節だけ出る出力でも、理由が「出力なし」にならない
+    assert sz._error_line("ERRORS:\r\nHeaders Error\r\n", "x.7z") == "ERRORS: Headers Error"
+    assert sz._error_line("", "x.7z") == "(標準エラーの出力なし)"
+
+
 def test_run_capture_timeout_and_missing_executable(tmp_path):
     with pytest.raises(ArchiveError, match="終わらない"):
         sz._run_capture([sys.executable, "-c", "import time; time.sleep(30)"], 0.5)

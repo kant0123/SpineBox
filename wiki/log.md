@@ -504,5 +504,5 @@ grep "^## \[" wiki/log.md | tail -5
 
 
 ## [2026-11-09] ingest | PR #240 (#70) 読めないアーカイブの理由を 7-Zip の 1 行に
-- 更新: [[archive-reading]]
+- 更新: [[archive-reading]], [[recurring-review-findings]]
 - 備考: #70。7-Zip の非ゼロ終了の理由を、標準エラーの先頭のエラーの塊 1 行にし、アーカイブのパスを `<ファイル>` に置き換えた。標準エラーの全文は logger `spinebox.archive.sevenzip` に残す。コードは `spinebox/archive/sevenzip.py` の `_failure()` / `_error_line()`。

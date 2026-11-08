@@ -67,6 +67,7 @@ push 前に確かめること:
 - PR #97 — `deploy/update_spinebox.ps1` 起動前のコミット取得 — `git` が失敗すると同じく例外で止まり、「途中で失敗しても起動し直す」に届かなかった(git リポジトリでない場所で再現)。比べる短縮 SHA もアプリ(7 文字固定)と git の既定(環境で長くなる)で長さがずれていた。さらに `/healthz` が `commit: null`(git が見えない環境)を返すと照合の前に null のメソッドを呼んで例外になり、正常起動でもタイムアウトしていた(偽の /healthz で再現・修正)
 - 導入先 MeltKelp PR #16 — `.claude/hooks/command_match.mjs` ヒアドキュメントの終端行 — CRLF の入力だと終端行が `EOF\r` になって区切り語と一致せず、後ろのマージのコマンドまで本文として読み飛ばして素通ししていた(agy レビューで発覚。`\r` を除いて再現・修正)
 - PR #128 — `scripts/worktree-cleanup.ps1` — `.gitignore` 外の未追跡ファイルがある worktree に対して `--force` 無しで `git worktree remove` を呼び、失敗して `.git` ファイルが残ったままの状態で先に `git worktree prune` を走らせてから作業ディレクトリだけ `Remove-Item` していたため、`.git/worktrees/<id>` が残って後続のブランチ削除が失敗した(agy レビューの WARNING。`-RemoveDirs` 指定時は `--force` を付け、残骸削除の後に `git worktree prune` を走らせる順序に修正。また PR マージ直後のローカル `main` はリモートのマージコミットを未取得で `git push origin --delete` により追跡ブランチも消えているため、後始末のローカルブランチ削除は `-d` ではなく `git branch -D` にした)
+- PR #240 — `spinebox/archive/sevenzip.py _error_line()` — 7-Zip の標準エラーの先頭行を `startswith("ERROR")` で探し、`ERRORS:` の節だけの出力で節の見出しを拾って理由が「出力なし」になった(agy レビューの WARNING。`ERROR:` の行、無ければ `ERRORS:` の節から読むように修正。前方一致は見出しの接頭辞まで含むので、区切りの `:` まで書く)
 
 ### 新しく足した分岐・関数にテストが無い
 

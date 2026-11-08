@@ -168,13 +168,16 @@ def _error_line(text: str, archive: str) -> str:
     7-Zip は `ERROR: <パス> : <パス>` のあとに `Open ERROR: 理由` を続けるので、塊で読むと理由が残る。
     改行・アーカイブのフルパスは出さない(`<ファイル>` に置き換える)。"""
     lines = [ln.strip() for ln in re.split(r"\r\n|\r|\n", text)]
-    start = next((i for i, ln in enumerate(lines) if ln.startswith("ERROR")), None)
+    # `ERROR:` の行が無ければ `ERRORS:` の節から読む(節だけ出る 7-Zip の出力がある)。どちらも無ければ先頭の 1 行
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("ERROR:")), None)
+    if start is None:
+        start = next((i for i, ln in enumerate(lines) if ln.startswith("ERRORS")), None)
     if start is None:
         block = [ln for ln in lines if ln][:1]
     else:
         block = []
         for ln in lines[start:]:
-            if not ln or ln.startswith("ERRORS"):
+            if not ln or (block and ln.startswith("ERRORS")):
                 break
             block.append(ln)
     if not block:
