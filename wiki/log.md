@@ -497,3 +497,8 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #230 feat: #208 統合の提案に作品名・著者の絞り込みを追加
 - 更新: [[backend]], [[frontend]]
 - 備考: `GET /api/works/proposals` に `q` を追加(サーバー側で絞る)。確認の件数は絞り込まない。
+
+## [2026-11-09] ingest | PR #231 (#212) 作品の表示タイトルは日本語を正とする不変条件を明文化
+- 更新: [[work-grouping]], [[recurring-review-findings]]
+- 備考: #212。CLAUDE.md の「蔵書を扱う不変条件」に、表示タイトル・名寄せの代表は利用可能な限り日本語を正とし、ローマ字はファイル名由来の候補・別名として残す、を追加。コードは変更なし(`works.choose_survivor()` と `linking._prefer_japanese_value()` が既に日本語を優先している。その規則を明文化した)。
+
