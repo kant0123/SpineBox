@@ -7,7 +7,7 @@ from spinebox.organize.cleanup import clean_name
 
 # --- 文字化けの検出と修復 -------------------------------------------------------------
 
-@pytest.mark.parametrize("original, wrong, right", [
+@pytest.mark.parametrize("original, true_encoding, wrong_encoding", [
     # 欧文 / DOS コードページで誤読された Shift_JIS (実例)
     ("週刊少年サンデー 2023年09号", "cp932", "cp437"),
     ("週覚少年サンデー 2023年09号", "cp932", "cp437"),
@@ -23,9 +23,13 @@ from spinebox.organize.cleanup import clean_name
     # Shift_JIS として誤読された UTF-8 (縺九￥...)
     ("かくかくしかじか 第2巻", "utf-8", "cp932"),
     ("こんにちは", "utf-8", "cp932"),
+    # Shift_JIS として誤読された EUC-JP (かなが半角記号・カナに化けたもの)
+    ("かくかくしかじか", "euc-jp", "cp932"),
+    # EUC-JP として誤読された UTF-8
+    ("両巻", "utf-8", "euc-jp"),
 ])
-def test_fix_mojibake_various_patterns(original, wrong, right):
-    broken = original.encode(wrong).decode(right)
+def test_fix_mojibake_various_patterns(original, true_encoding, wrong_encoding):
+    broken = original.encode(true_encoding).decode(wrong_encoding)
     fixed, note = fix_mojibake(broken)
     assert fixed == original
     assert note is not None
@@ -46,7 +50,7 @@ def test_fix_mojibake_specific_user_reported_cases():
     assert note2 is not None
 
 
-# --- 誤判定防止 (本物の欧文単語や正常な日本語を壊さない) ------------------------------
+# --- 誤判定防止 (本物の欧文単語や正常な日本語・半角カナを壊さない) -------------------
 
 @pytest.mark.parametrize("name", [
     # 欧文のアクセント文字付き単語
@@ -64,6 +68,13 @@ def test_fix_mojibake_specific_user_reported_cases():
     "São Paulo",
     "Zürich",
     "El Niño",
+    "élégant",
+    "téléphone",
+    "céréale",
+    "général",
+    "éléments",
+    "L'élégant : Tome 1",
+    "Un café élégant – Roman",
     # 正常な日本語
     "東京",
     "鬼滅の刃 23",
@@ -73,6 +84,10 @@ def test_fix_mojibake_specific_user_reported_cases():
     "Ｒｅ：ゼロ",
     "English Title Only",
     "12345",
+    # 半角カナの連続(EUC-JP の漢字として誤認されてはならない)
+    "ｱｲｳｴ",
+    "ｶﾞﾝﾀﾞﾑ",
+    "[ｺﾐｯｸ] タイトル",
 ])
 def test_fix_mojibake_does_not_break_legitimate_names(name):
     fixed, note = fix_mojibake(name)

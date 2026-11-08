@@ -14,11 +14,14 @@
    - 本来: utf-8, cp932
 
 安全設計:
-本物の日本語や、欧文の正規のアクセント文字付き単語(café, Amélie, naïve, São Paulo など)を
-誤変換しないため、以下を満たすときだけ修復する:
+本物の日本語や、欧文の正規のアクセント文字付き単語(café, Amélie, naïve, São Paulo, élégant など)、
+半角カナの連続(ｱｲｳｴ など)を誤変換しないため、以下を満たすときだけ修復する:
 - 制御文字や置換文字(U+FFFD)を含まない
-- 復元後に全角ひらがな・カタカナが含まれる、または日本語文字(漢字等)が 2 文字以上含まれる
-  (欧文単語に偶然 1 つの漢字や半角カナ 1 文字ができただけのケースを排除)
+- 欧文文字・記号のみで構成されるテキストの場合、全角かな(ひらがな・カタカナ)が復元された場合のみ修復する
+  (欧文単語 'élégant' 等のアクセント文字が偶然 Shift_JIS 第2水準漢字バイト列と一致する誤爆を排除)
+- 欧文単語でない場合、全角かなが含まれるか、または日本語文字(漢字等)が 2 文字以上含まれる
+- EUC-JP -> CP932 誤読は、元テキストに半角カナの連続を含み、かつ復元後に全角かなが含まれることを必須とする
+  (CP932 の半角カナ 2 文字が EUC-JP の漢字 1 文字として偶然デコードされる誤爆を排除)
 - 復元候補が複数ある場合は、文字数が短く(UTF-8 からの復元等)、カナが多い自然な候補を優先する
 """
 from __future__ import annotations
@@ -28,6 +31,10 @@ import re
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 _JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
 _ZEN_KANA = re.compile(r"[\u3041-\u3096\u30a1-\u30fa]")
+_HAN_KANA_SEQ = re.compile(r"[｡-ﾟ]{2,}")
+_WESTERN_TEXT = re.compile(
+    r"^[A-Za-z0-9\s_.,'\"!?()\[\]\-~#&+:;\\/=@%*<>{}^`|\u00a0-\u024f\u2000-\u206f\u20a0-\u20cf]+$"
+)
 
 # 欧文コードページの候補
 _WESTERN_ENCODINGS = ("cp437", "cp1252", "latin-1", "cp850")
@@ -57,7 +64,7 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
     if text.isascii():
         return text, None
 
-    # パターン A: 日本語文字(漢字等)を既に含むテキスト (Shift_JIS / EUC-JP として誤読されたもの)
+    # パターン A: 日本語文字(漢字・半角カナ等)を既に含むテキスト (Shift_JIS / EUC-JP として誤読されたもの)
     if _has_japanese(text):
         # 1. UTF-8 の名前を Shift_JIS として読んだもの (UTF-8 3バイト -> CP932 1.5文字で長くなっている)
         fixed = _redecode(text, "cp932", "utf-8")
@@ -70,14 +77,19 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
             return fixed, "文字化けを直しました(UTF-8 の名前を EUC-JP として読んだもの)"
 
         # 3. EUC-JP の名前を Shift_JIS として読んだもの
-        fixed = _redecode(text, "cp932", "euc-jp")
-        if fixed is not None and _has_japanese(fixed) and (_ZEN_KANA.search(fixed) or len(_JAPANESE.findall(fixed)) >= 2):
-            return fixed, "文字化けを直しました(EUC-JP の名前を Shift_JIS として読んだもの)"
+        # EUC-JP のかな(0xA4xx, 0xA5xx)が CP932 で半角カナに化けたものだけを安全に対象とする
+        # (半角カナや第2水準漢字の連続が偶然 EUC-JP の漢字としてデコードされる誤爆を防ぐため、
+        #  元テキストに半角カナの連続を含み、かつ復元結果に全角かなが含まれることを必須とする)
+        if _HAN_KANA_SEQ.search(text):
+            fixed = _redecode(text, "cp932", "euc-jp")
+            if fixed is not None and _has_japanese(fixed) and _ZEN_KANA.search(fixed):
+                return fixed, "文字化けを直しました(EUC-JP の名前を Shift_JIS として読んだもの)"
 
         return text, None
 
     # パターン B: 日本語文字を含まないテキスト (欧文・DOS コードページとして誤読されたもの)
     if any(ord(c) >= 0x80 for c in text):
+        is_western = _WESTERN_TEXT.fullmatch(text) is not None
         candidates: list[tuple[str, str, int, int]] = []
         for wrong in _WESTERN_ENCODINGS:
             for right, label in _JAPANESE_ENCODINGS:
@@ -88,9 +100,10 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
                 jp_chars = _JAPANESE.findall(fixed)
                 # 半角カナ単体を除いた日本語文字数
                 kanji_count = sum(1 for c in jp_chars if not (0xFF61 <= ord(c) <= 0xFF9F))
-                # 安全条件: 全角ひらがな・カタカナがあるか、漢字が2文字以上
-                # (欧文単語に偶然 1 つの漢字ができただけのケースや半角カナ 1 文字を排除)
-                if zen_kana or kanji_count >= 2:
+                # 安全条件: 全角ひらがな・カタカナがあるか、欧文単語でない場合に漢字が2文字以上
+                # (欧文単語 'élégant' 等のアクセント文字が偶然 CP932 の第2水準漢字になる誤爆を排除)
+                is_latin_to_sjis = wrong in ("latin-1", "cp1252") and right == "cp932"
+                if zen_kana or (kanji_count >= 2 and not is_western and not is_latin_to_sjis):
                     candidates.append((
                         fixed,
                         f"文字化けを直しました({label} の名前を欧文の文字コードとして読んだもの)",
