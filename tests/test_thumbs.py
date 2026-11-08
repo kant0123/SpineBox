@@ -12,7 +12,7 @@ from novels import epub_bytes
 from spinebox import works
 from spinebox.app import create_app
 from spinebox.cache import ExtractionCache, NotCached
-from spinebox.thumbs import THUMB_SIZE, make_thumbnail
+from spinebox.thumbs import THUMB_MAX_WIDTH, THUMB_SIZE, THUMB_TARGET_HEIGHT, calc_thumbnail_size, make_thumbnail
 
 
 def solid(color, size=(600, 900)) -> bytes:
@@ -78,7 +78,7 @@ def test_work_cover_is_first_page_of_volume_one(env):
     r = client.get(f"/api/volumes/{w['cover_volume_id']}/thumbnail")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
     im = Image.open(io.BytesIO(r.content))
-    assert im.width <= THUMB_SIZE[0] and im.height <= THUMB_SIZE[1]
+    assert im.width <= THUMB_MAX_WIDTH and im.height <= THUMB_TARGET_HEIGHT
     assert near(color_of(r.content), RED)  # 1 巻の cover.jpg(2 巻の青ではない)
     # 置き場はハッシュ名。展開キャッシュは使わない(zip の 1 エントリを読むだけ)
     (thumb,) = files(settings.thumbs_dir)
@@ -217,11 +217,33 @@ def test_cover_volume_choice():
     assert works.cover_volume_id([]) is None
 
 
+def test_calc_thumbnail_size():
+    # 縦長 (ar <= 2/3): 幅を 480 に合わせる
+    assert calc_thumbnail_size(1200, 1800) == (480, 720)
+    assert calc_thumbnail_size(600, 1200) == (480, 960)
+    # 横長 (ar > 2/3): 高さを 720 に合わせる (cover 時に十分な解像度を維持 #222)
+    assert calc_thumbnail_size(1800, 1200) == (1080, 720)
+    assert calc_thumbnail_size(1440, 720) == (1440, 720)
+    # パノラマ・超横長: max_w (1440) でクリップ
+    assert calc_thumbnail_size(3600, 1200) == (1440, 480)
+    # 小さい画像: 拡大しない
+    assert calc_thumbnail_size(240, 360) == (240, 360)
+    assert calc_thumbnail_size(300, 200) == (300, 200)
+    # 不正なサイズ
+    assert calc_thumbnail_size(0, 0) == (0, 0)
+
+
 def test_make_thumbnail_rejects_non_images_and_shrinks():
     assert make_thumbnail(b"not an image") is None
+    # 縦長画像
     out = make_thumbnail(solid(RED, (1200, 1800)))
     im = Image.open(io.BytesIO(out))
     assert im.format == "JPEG" and im.size == THUMB_SIZE
+
+    # 横長画像(#222: 見開きでも高さ 720 を維持してクロップ時の解像度低下を防ぐ)
+    out_h = make_thumbnail(solid(RED, (1800, 1200)))
+    im_h = Image.open(io.BytesIO(out_h))
+    assert im_h.format == "JPEG" and im_h.size == (1080, 720)
 
 
 def test_cache_use_existing_does_not_create(tmp_path):
