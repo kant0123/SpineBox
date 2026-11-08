@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、末尾の番号は同じ名前の組がそろっているときだけ巻番号として読む。別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
 

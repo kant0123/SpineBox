@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB や PDF も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs, manga-reader]
 ---
 
@@ -53,9 +53,9 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:1640 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
 | `spinebox/organize/organizer.py:1870 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
 | `spinebox/organize/template.py:273 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
-| `spinebox/organize/cleanup.py:51 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定・修復は `spinebox/mojibake.py fix_mojibake` |
+| `spinebox/organize/cleanup.py:47 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定・修復は `spinebox/mojibake.py fix_mojibake` |
 | `spinebox/mojibake.py:59 fix_mojibake` | 複数パターンの文字コード誤読(CP437/CP850/CP1252/Latin-1 欧文誤読、CP932/EUC-JP 誤読)の安全な検出と修復。命名解析やスキャン時のタイトルにも適用 |
-| `frontend/src/organize/OrganizeFiles.tsx:843 OrganizeFilesSection` | 整理画面の中身。管理のデータ管理タブ(`frontend/src/data/DataJobs.tsx`。[[data-jobs]])の下の「整理」節にこの部品を置く。1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行の 3 段、入力欄ごとの項目の差し込み、Esc・フォーカストラップ・フォーカス返却つきのフォルダー選択、結果の見出しへのフォーカス(#149)。結果は要約・競合の行選択・実行内容・整理しない内容のリスト(#151。`ClashGroups` / `RangeWork` / `RangeRest`)。単独の入口 `#/data/organize` は同じタブの「整理」節へ移す(巻の一覧のヘッダーの「ファイル名の整理」は、データ管理タブに同じ入口があるので外した) |
+| `frontend/src/organize/OrganizeFiles.tsx:843 OrganizeFilesSection` | 整理画面の中身。管理の整理タブ(`frontend/src/admin/panels.tsx:15 OrganizePanel()`。#207 まではデータ管理タブの下の節。[[data-jobs]])にこの部品と整理の履歴を置く。1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行の 3 段、入力欄ごとの項目の差し込み、Esc・フォーカストラップ・フォーカス返却つきのフォルダー選択、結果の見出しへのフォーカス(#149)。結果は要約・競合の行選択・実行内容・整理しない内容のリスト(#151。`ClashGroups` / `RangeWork` / `RangeRest`)。旧 `#/data/organize`・`#/organize` は整理タブを開く(巻の一覧のヘッダーの「ファイル名の整理」は外した) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
 | `spinebox/organize/organizer.py:2050 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークとしおり(#136。[[manga-reader]])は写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
@@ -152,8 +152,8 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 
 - **画面(#149)は「1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行」の 3 段。** フォルダー選択は Esc・フォーカストラップ・
   フォーカス返却つきのモーダル、項目の差し込みは入力欄ごと。テンプレートの誤りはプレビューを `disabled` で塞がず該当欄へフォーカスする。
-  プレビュー後は結果の見出しへフォーカスとスクロールを移し、要約・競合の選択・実行を 1 か所にまとめる。データ管理タブの上には「ジョブ / 整理」の
-  節内リンクを置き、`#/data/organize` は整理の見出しへフォーカスする。詳しい決定は [[frontend]]。
+  プレビュー後は結果の見出しへフォーカスとスクロールを移し、要約・競合の選択・実行を 1 か所にまとめる。#207 で整理を管理の独立したタブにし、
+  #149 のデータ管理タブの「ジョブ / 整理」の節内リンクは無くした。詳しい決定は [[frontend]]。
 
 - **結果は数が多くなる前提で 1 行 1 件のリストにする(#151)。** 順番は「要約 → 競合 → 実行ボタン → 実行する内容 → 整理しない内容」。
   競合は整理後の名前ごとに見出しを付け、候補をリストの行で並べる。行頭のチェックは既定でファイル数が多い方に入り、同数なら未選択。

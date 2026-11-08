@@ -1,7 +1,7 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-08
+updated: 2026-11-09
 related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -40,7 +40,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/config.py:354 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:46 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/stats.py:25 collect()` | 管理の統計タブの数(#85)。数え方の決まりはファイル先頭の docstring |
-| `spinebox/jobs.py:138 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:88 DataJobs`([[data-jobs]]) |
+| `spinebox/jobs.py:149 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:88 DataJobs`([[data-jobs]]) |
 | `spinebox/thumbs.py:102 Thumbnails` | 表紙のサムネイル。一覧からは `Library.open(extract=False)` で開ける巻だけ作る([[cover-thumbnails]]) |
 | `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
 
@@ -96,7 +96,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/organize/range/folders?root_id&path` | 範囲を選ぶためのフォルダの直下のフォルダ名 `{root_id, path, parent, folders}`(読むだけ。作業場・退避と「.」で始まるものは出さない)。蔵書フォルダがオフラインは 422 |
 | `GET /api/organize` | 実行を試みた操作の履歴(新しい順。計画だけのものは出さない)。各操作に `kind`(cbz / rename / range / intake)・`naming`・`template` |
 | `GET /api/inbox` / `POST /api/inbox/sync` / `POST /api/inbox/preview` / `POST /api/inbox/approve` | 受け入れ([[inbox]])。`{"inboxes": [{path, library, problems, synced_at}], "items": [...]}`(sync は `volumes`・`offline_roots` も)。preview・approve の body は `{"items": [{"source_id", "work_id"?, "new_title"?, "numbers"?, "skip_volume_ids"?, "expect_outputs"?}]}`。approve は `{"results": [{source_id, ok, item, op?, error?, warning?}]}`(HTTP 200 でも項目ごとに失敗がありうる)。sync・approve はスキャンと同じロックで、実行中は 409。approve は `JobRunner.run_now` (`origin="button"`) で走り、タスクセンターの履歴(`inbox_approve`)に記録される(#155)。preview と一覧は何も書かない |
-| `GET /api/jobs` / `GET /api/jobs/{id}` | データ管理([[data-jobs]])。`{"current": ジョブ \| null, "queue": [...], "history": [...]}`(履歴は新しい順・`limit` 既定 50)。ジョブは `{id, kind, label, origin (jobs / button / background), params, status (queued / running / succeeded / failed / cancelled), queued_at, started_at, finished_at, done, total, current, step, runs, summary, error, cancel_requested, cancellable}`。無い id は 404 |
+| `GET /api/jobs` / `GET /api/jobs/{id}` | データ管理([[data-jobs]])。`{"current": ジョブ \| null, "queue": [...], "history": [...]}`(履歴は新しい順・`limit` 既定 50)。ジョブは `{id, kind, label, origin (jobs / button / background), params, status (queued / running / succeeded / failed / cancelled), queued_at, started_at, finished_at, done, total, current, step, step_index, step_count, runs, summary, error, cancel_requested, cancellable}`(`step_index` / `step_count` は複数の段のジョブの今の段の番号と段の数。#207)。無い id は 404 |
 | `GET /api/jobs/catalog` | 画面に並べるジョブ `{"kinds": [{kind, group, label, description, count, count_text, available, unavailable_reason, options}]}`。件数を数えられなければ null |
 | `POST /api/jobs` / `POST /api/jobs/{id}/cancel` | body `{"kind", "params"?: {"all"?: bool}(`metadata`)/ {"work_ids"?: [int]}(`follow_check`)}` を待ち行列に入れて 202 + ジョブ(同じジョブが待ち・実行中ならそれ)。知らない種類・指定は 422、取得元が無効・受け入れフォルダが無いなど動かせない設定は 409。中止は待ちなら取り下げ、実行中は区切りで止める。終わったジョブ・裏の定期処理は 409 |
 

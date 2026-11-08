@@ -51,9 +51,7 @@ export function activeNav(route: Route): NavKey | null {
     case "review":
       return "review";
     case "admin":
-    case "organize-files":
     case "inbox":
-    case "organize-history":
     case "organize-plan":
       return "admin";
     default:

@@ -11,7 +11,7 @@ export type WorksScope =
   | { by: FacetField; value: string };
 
 /** 管理のタブ(#85。Peach の管理と同じ並び)。統合の提案は確認(#207)へ移した */
-export const ADMIN_TABS = ["stats", "preferences", "data", "follows", "tasks"] as const;
+export const ADMIN_TABS = ["stats", "preferences", "data", "organize", "follows", "tasks"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 /** 確認(#207)のタブ: 利用者の判断を待っているもの(公開 DB の候補・統合の提案・重複の候補)を 1 か所に集める */
@@ -21,14 +21,12 @@ export type ReviewTab = (typeof REVIEW_TABS)[number];
 export type Route =
   | { name: "works"; scope: WorksScope }
   | { name: "read"; id: string }
-  | { name: "organize-history" }
   | { name: "organize-plan"; id: string; naming: "title" | "template" }
   | { name: "work-organize"; id: string }
   | { name: "work"; id: string }
   /** 作品のタイトル(巻)の一覧。作品カードから開き、管理ページ(`#/works/<id>`)へはボタンで移る */
   | { name: "work-titles"; id: string }
   | { name: "inbox" }
-  | { name: "organize-files" }
   | { name: "facets"; field: FacetField }
   | { name: "follows" }
   | { name: "bookmarks" }
@@ -72,10 +70,11 @@ export function parseRoute(hash: string): Route {
       return { name: "facets", field }; // 壊れた % エスケープは項目の一覧へ戻す
     }
   }
-  if (/^\/organize\/?$/.test(h)) return { name: "organize-history" };
+  // 整理の履歴・範囲指定の整理は管理の「整理」タブ(#207)。旧 URL も同じタブを開く
+  if (/^\/organize\/?$/.test(h)) return { name: "admin", tab: "organize" };
   if (/^\/inbox\/?$/.test(h)) return { name: "inbox" };
   if (/^\/data\/?$/.test(h)) return { name: "admin", tab: "data" };
-  if (/^\/data\/organize\/?$/.test(h)) return { name: "organize-files" };
+  if (/^\/data\/organize\/?$/.test(h)) return { name: "admin", tab: "organize" };
   const w = h.match(/^\/works\/(\d+)(?:\/(organize|titles))?\/?$/);
   if (w) {
     if (w[2] === "organize") return { name: "work-organize", id: w[1] };
@@ -98,7 +97,8 @@ export const readHref = (id: string | number) => `#/read/${encodeURIComponent(St
 export const organizeHref = (volumeId: string | number) => `#/organize/${encodeURIComponent(String(volumeId))}`;
 /** テンプレートの名前で CBZ にする計画 */
 export const organizeTemplateHref = (volumeId: string | number) => `${organizeHref(volumeId)}/template`;
-export const organizeHistoryHref = "#/organize";
+/** 整理の履歴(管理の整理タブ。#207) */
+export const organizeHistoryHref = "#/admin/organize";
 /** ホーム(作品一覧)。リーダー・整理の画面の「一覧へ」もここへ戻る */
 export const libraryHref = "#/";
 export const homeHref = libraryHref;
@@ -110,7 +110,7 @@ export const duplicatesHref = reviewHref("duplicates");
 /** 受け入れ(受け入れフォルダ → 同期 → 整理案 → 承認で書庫へ) */
 export const inboxHref = "#/inbox";
 /** 範囲指定の整理(ファイル名・フォルダーのテンプレート、ファイル名の整理)。データ管理ページ(#83)の「整理」節の単独版 */
-export const organizeFilesHref = "#/data/organize";
+export const organizeFilesHref = "#/admin/organize";
 export const worksHref = "#/works";
 /** データ管理(スキャン・補完・表紙などのジョブと履歴。#83) */
 export const dataHref = "#/admin/data";

@@ -2,14 +2,15 @@
 // タブは #/admin/<tab> で直接開ける(統計は #/admin)。
 import { useEffect, useRef, type ComponentType } from "react";
 import { adminHref, type AdminTab } from "../route";
-import { DataPanel, FollowsPanel, TasksPanel } from "./panels";
+import { DataPanel, FollowsPanel, OrganizePanel, TasksPanel } from "./panels";
 import { Preferences } from "./Preferences";
 import { Stats } from "./Stats";
 
 export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   stats: "統計",
   preferences: "好み",
-  data: "データ管理",
+  data: "スキャンと補完",
+  organize: "整理",
   follows: "フォロー管理",
   tasks: "タスクセンター",
 };
@@ -18,16 +19,16 @@ export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
  * タブの中身。データ管理(#83・#84)・フォロー管理(#87)・タスクセンター(#83)はそれぞれの Issue の画面を
  * panels.tsx の各パネルに差し込む(組み込み口)。
  */
-const PANELS: Record<AdminTab, ComponentType<{ focus?: "organize" }>> = {
+const PANELS: Record<AdminTab, ComponentType> = {
   stats: Stats,
   preferences: Preferences,
   data: DataPanel,
+  organize: OrganizePanel,
   follows: FollowsPanel,
   tasks: TasksPanel,
 };
 
-/** focus="organize" は単独の入口 #/data/organize(データ管理の「整理」節へ移す) */
-export function Admin({ tab, focus }: { tab: AdminTab; focus?: "organize" }) {
+export function Admin({ tab }: { tab: AdminTab }) {
   const Panel = PANELS[tab];
   const tabs = useRef<HTMLElement>(null);
   // 375px ではタブの列が横に流れるので、開いたタブが隠れない位置まで送る
@@ -48,7 +49,7 @@ export function Admin({ tab, focus }: { tab: AdminTab; focus?: "organize" }) {
         ))}
       </nav>
       <section className="admin-panel" aria-label={ADMIN_TAB_LABELS[tab]}>
-        <Panel focus={focus} />
+        <Panel />
       </section>
     </div>
   );

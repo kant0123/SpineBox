@@ -35,33 +35,38 @@ class Kind:
     group: str
     label: str
     description: str
+    # 画面の一覧に出すか。出さない種類も API からは依頼でき、履歴には名前つきで残る
+    listed: bool = True
 
 
-# 画面に並べる順。group は画面の見出し
+# 画面に並べる順。group は画面の見出しで、先頭の「いつもの更新」だけを開いて見せ、残りは畳む(#207)
+GROUP_DAILY = "いつもの更新"
+GROUP_OTHER = "個別の処理"
 KINDS: list[Kind] = [
-    Kind("daily_scan", "日常の同期", "新しいファイルの検出のみ",
+    Kind("daily_scan", GROUP_DAILY, "新しいファイルを取り込む",
          "新しいファイルをスキャンして登録します。変わっていないファイルは読み直さず、作品の情報・手で直した値はそのままです。"),
-    Kind("daily_metadata", "日常の同期", "補完待ちの作品を補完",
+    Kind("daily_metadata", GROUP_DAILY, "足りない作品情報を補う",
          "公開データベースの情報がまだ無い(または取り直しの時期になった)作品だけを取得します。"),
-    Kind("maintenance", "ライブラリ全体", "ライブラリ全体のメンテナンス",
-         "全ファイルの目次を確かめ直します。中の巻の解析・表紙・指紋は使い回します。見えなくなったものは消さず、"
-         "見つからない・オフラインの印を付けるだけです。"),
-    Kind("full_sync", "ライブラリ全体", "ライブラリ全体を同期",
+    Kind("full_sync", GROUP_DAILY, "ライブラリ全体を同期",
          "全ファイルを確かめ、足りない情報(中の巻の解析・作品の名寄せ・公開データベース・表紙)を順に補います。"
          "入れ子のアーカイブを取り出すので時間がかかります。"),
-    Kind("scan", "個別", "ファイルのスキャンのみ",
-         "ファイルの検出とページ数の読み取り(巻の一覧の「スキャン」と同じ)。内側のアーカイブは取り出しません。"),
-    Kind("metadata_thumbs", "個別", "情報と表紙を補完", "公開データベースの情報(補完待ちの作品)と、まだ無い表紙を補います。"),
-    Kind("metadata", "個別", "作品情報のみ補完", "公開データベースの情報だけを補います。全作品の取り直しも選べます。"),
-    Kind("thumbnails", "個別", "表紙のみ補完",
+    Kind("maintenance", GROUP_OTHER, "全ファイルを確かめ直す",
+         "全ファイルの目次を確かめ直します。中の巻の解析・表紙・指紋は使い回します。見えなくなったものは消さず、"
+         "見つからない・オフラインの印を付けるだけです。"),
+    # 「新しいファイルを取り込む」と同じ処理。一覧に 2 つ並べると違いを探して迷うので出さない(#207)
+    Kind("scan", GROUP_OTHER, "ファイルのスキャンのみ",
+         "ファイルの検出とページ数の読み取り(巻の一覧の「スキャン」と同じ)。内側のアーカイブは取り出しません。", listed=False),
+    Kind("metadata_thumbs", GROUP_OTHER, "情報と表紙を補完", "公開データベースの情報(補完待ちの作品)と、まだ無い表紙を補います。"),
+    Kind("metadata", GROUP_OTHER, "作品情報のみ補完", "公開データベースの情報だけを補います。全作品の取り直しも選べます。"),
+    Kind("thumbnails", GROUP_OTHER, "表紙のみ補完",
          "作品の表紙をまだ無いものだけ作ります(入れ子のアーカイブの巻も取り出して作ります)。"),
-    Kind("analyze", "個別", "中の巻を調べる", "まだ調べていない内側のアーカイブを全部開いて、中の巻に分けます。"),
-    Kind("duplicates", "個別", "重複を調べる", "見た目の指紋を作り、別スキャンの重複の候補を出します。何も消しません。"),
-    Kind("follow_check", "個別", "フォロー中の作品の続刊を調べる",
+    Kind("analyze", GROUP_OTHER, "中の巻を調べる", "まだ調べていない内側のアーカイブを全部開いて、中の巻に分けます。"),
+    Kind("duplicates", GROUP_OTHER, "重複を調べる", "見た目の指紋を作り、別スキャンの重複の候補を出します。何も消しません。"),
+    Kind("follow_check", GROUP_OTHER, "フォロー中の作品の続刊を調べる",
          "フォローした作品の続刊・欠けを、国立国会図書館サーチで調べます(本の入手はしません)。結果はフォローの画面に出ます。"),
-    Kind("works_refresh", "個別", "作品の名寄せを計算し直す",
+    Kind("works_refresh", GROUP_OTHER, "作品の名寄せを計算し直す",
          "巻を作品にまとめ直し、統合の提案を取り直します。手で決めたことは変えません。"),
-    Kind("inbox_sync", "個別", "受け入れフォルダを同期",
+    Kind("inbox_sync", GROUP_OTHER, "受け入れフォルダを同期",
          "受け入れフォルダを走査して新しい本を検出し、整理案を作ります(承認は受け入れの画面で)。"),
 ]
 KIND_BY_NAME = {k.kind: k for k in KINDS}
@@ -251,9 +256,12 @@ class DataJobs:
         return self.scan_summary(result)
 
     def _metadata_and_thumbs(self, ctx: JobContext, c) -> dict:
+        ctx.plan(2)
         return {"metadata": self._metadata(ctx, c), "thumbnails": self._thumbnails(ctx, c)}
 
     def _full_sync(self, ctx: JobContext, c) -> dict:
+        # スキャン → 中の巻 → 名寄せ →(取得元が有効なら)公開データベース → 表紙
+        ctx.plan(5 if self.enabled_sources else 4)
         out = {"scan": self._scan_and_group(ctx, c, recheck=True), "analyze": self._analyze(ctx, c)}
         ctx.step("作品の名寄せ")
         out["works"] = asdict(works.sync(c))
@@ -344,6 +352,8 @@ class DataJobs:
         }
         out = []
         for k in KINDS:
+            if not k.listed:
+                continue
             try:
                 self.build(k.kind, {})
                 unavailable = None

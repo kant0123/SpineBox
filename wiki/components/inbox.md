@@ -37,7 +37,7 @@ related: [overview, backend, frontend, organize, work-grouping, data-jobs]
    状態は `ready`(そのまま承認できる)・`choose`(利用者の確認が要る)・`blocked`(取り込めない。理由つき)
 3. **承認**(`POST /api/inbox/approve`)。選んだ項目を 1 件ずつ実行する。失敗した項目は巻き戻し済みで、受け入れフォルダに残り、
    ほかの項目は止めない。承認しなかったものは次の同期でも出る
-4. 履歴(`#/organize`)から元に戻せる。元に戻すと本は受け入れフォルダに戻り、また受け入れ待ちに出る
+4. 履歴(管理の整理タブ `#/admin/organize`。旧 `#/organize` も同じ)から元に戻せる。元に戻すと本は受け入れフォルダに戻り、また受け入れ待ちに出る
 
 ## 取り込み方(`mode`)
 

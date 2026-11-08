@@ -289,7 +289,8 @@ export function WorkOrganize({ workId }: { workId: string }) {
   );
 }
 
-export function OrganizeHistory() {
+/** embedded: 管理の整理タブ(#207)の中に置く(戻るリンクと見出しはタブ側が持つ) */
+export function OrganizeHistory({ embedded = false }: { embedded?: boolean }) {
   const [ops, setOps] = useState<OrganizeOp[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -321,17 +322,21 @@ export function OrganizeHistory() {
 
   return (
     <div className="organize">
-      <p>
-        <a href={libraryHref}>← 一覧へ</a>
-      </p>
-      <h1>整理の履歴</h1>
+      {!embedded && (
+        <>
+          <p>
+            <a href={libraryHref}>← 一覧へ</a>
+          </p>
+          <h1>整理の履歴</h1>
+        </>
+      )}
       {error && (
         <div className="notice error" role="alert">
           {error}
         </div>
       )}
       {ops === null && !error && <p className="muted">読み込み中…</p>}
-      {ops?.length === 0 && <p className="muted">まだ整理していません。一覧の「CBZ に整理」、作品ページの「テンプレートどおりに整理」、「ファイル名・フォルダーの整理」から始めます。</p>}
+      {ops?.length === 0 && <p className="muted">まだ整理していません。一覧の「CBZ に整理」、作品ページの「テンプレートどおりに整理」、この上の「ファイル名・フォルダーの整理」から始めます。</p>}
       <ul className="organize-op-list">
         {ops?.map((op) => (
           <li key={op.op_id} className="organize-op">

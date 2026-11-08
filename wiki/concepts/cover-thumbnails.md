@@ -1,6 +1,6 @@
 ---
 type: concept
-summary: 作品カードの表紙(#75, #222)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。作品カード枠(2:3)を満たす高精細化と横長表紙の左寄せ表示、一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のデータ管理タブの「表紙のみ補完」)で作る理由と、却下した代替案
+summary: 作品カードの表紙(#75, #222)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。作品カード枠(2:3)を満たす高精細化と横長表紙の左寄せ表示、一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のスキャンと補完タブの「表紙のみ補完」)で作る理由と、却下した代替案
 updated: 2026-11-08
 related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection, data-jobs]
 ---
@@ -25,7 +25,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。小説・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の
-  「表紙のみ補完」(管理のデータ管理タブのジョブ `thumbnails`。表紙の巻のうちまだ無いものを 1 巻ずつ、取り出してでも作る。進み具合はタスクセンター。ほかのジョブの実行中は待ち行列に入る。旧 `POST /api/thumbnails/build` も同じジョブ)。#102 で作品一覧のヘッダーの「表紙を作る」は外した
+  「表紙のみ補完」(管理のスキャンと補完タブのジョブ `thumbnails`。表紙の巻のうちまだ無いものを 1 巻ずつ、取り出してでも作る。進み具合はタスクセンター。ほかのジョブの実行中は待ち行列に入る。旧 `POST /api/thumbnails/build` も同じジョブ)。#102 で作品一覧のヘッダーの「表紙を作る」は外した
 - **作品カードは「無ければ表紙なしの枠」。** `<img loading="lazy">` で、読み込めたら見せ、404 などのエラーなら
   `WorkCoverPlaceholder`(2:3、`aria-hidden`、中央に「表紙なし」)を出して枠を残す(#132)。表紙の有無でカードの高さが
   変わらないので、同じ行のタイトル位置がそろう。タイトル一覧・ブックマークの表紙は今までどおり何も出さない。
@@ -65,7 +65,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 
 ## 関連
 
-- [[frontend]] — 作品カードの表紙(作成は管理のデータ管理タブの「表紙のみ補完」)
+- [[frontend]] — 作品カードの表紙(作成は管理のスキャンと補完タブの「表紙のみ補完」)
 - [[backend]] — API 契約(`/api/volumes/{id}/thumbnail`・`/api/thumbnails`)
 - [[extraction-cache]] — 置き場の仕組みと、取り出し済みかを作らずに確かめる `ExtractionCache.use_existing()`
 - [[work-grouping]] — 表紙の巻を選ぶ作品の巻

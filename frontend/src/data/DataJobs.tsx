@@ -2,7 +2,6 @@
 // ジョブはどれも蔵書を読むだけ。整理(CBZ 化・改名)と受け入れの承認は、それぞれの画面でプレビューを見てから実行する。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type Job, type JobKind, type JobOrigin, type JobsSnapshot, type JobStatus } from "../api";
-import { OrganizeFilesSection } from "../organize/OrganizeFiles";
 import { dataHref, tasksHref } from "../route";
 
 /** 実行中・待ちがあるあいだ状態を見に行く間隔 */
@@ -17,7 +16,7 @@ export const STATUS_TEXT: Record<JobStatus, string> = {
 };
 
 const ORIGIN_TEXT: Record<JobOrigin, string> = {
-  jobs: "データ管理から",
+  jobs: "スキャンと補完から",
   button: "各画面のボタンから",
   background: "裏の定期処理",
 };
@@ -75,12 +74,21 @@ function durationText(job: Job): string {
   return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
 }
 
+/** 段の名前(複数の段のジョブは「段 2/5: 」を付ける。段ごとに件数が 0 に戻っても全体のどこかが分かる。#207) */
+export function stepText(job: Job): string {
+  if (!job.step) return "";
+  return job.step_count && job.step_count > 1 && job.step_index ? `段 ${job.step_index}/${job.step_count}: ${job.step}` : job.step;
+}
+
+/** 件数。総数が分かる段は「45 / 120」、分からない段(スキャンは先に数えない)は「45 件目」 */
+export function countText(job: Job): string {
+  if (job.total) return `${job.done ?? 0} / ${job.total}`;
+  if (job.done) return `${job.done} 件目`;
+  return "";
+}
+
 function progressText(job: Job): string {
-  const parts = [];
-  if (job.step) parts.push(job.step);
-  if (job.total) parts.push(`${job.done ?? 0} / ${job.total}`);
-  else if (job.done) parts.push(`${job.done} 件`);
-  return parts.join(" ");
+  return [stepText(job), countText(job)].filter(Boolean).join(" ");
 }
 
 function RunningJob({ job, onCancel }: { job: Job; onCancel: (job: Job) => void }) {
@@ -91,8 +99,13 @@ function RunningJob({ job, onCancel }: { job: Job; onCancel: (job: Job) => void 
         <strong>{job.label}</strong>
         <span className="muted">{ORIGIN_TEXT[job.origin]}</span>
       </div>
-      <div className="job-progress-text">{progressText(job) || "準備中…"}</div>
-      <div className="job-bar" role="progressbar" aria-label={`${job.label}の進み具合`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}>
+      <div className="job-progress-text">
+        <span>{stepText(job) || "準備中…"}</span>
+        {countText(job) && <span className="job-count-text">{countText(job)}</span>}
+      </div>
+      {/* 総数の分からない段は「動いている」ことだけを出す(値の無い progressbar は読み上げで不定になる) */}
+      <div className="job-bar" role="progressbar" aria-label={`${job.label}の進み具合`} aria-valuemin={0} aria-valuemax={100}
+        aria-valuenow={pct ?? undefined} aria-valuetext={pct === null ? progressText(job) || "準備中" : undefined}>
         <span className={pct === null ? "indeterminate" : undefined} style={pct === null ? undefined : { width: `${pct}%` }} />
       </div>
       {job.current && <div className="job-current muted">{job.current}</div>}
@@ -129,16 +142,11 @@ function errorText(e: unknown, fallback: string): string {
 }
 
 /**
- * 管理(#85)の「データ管理」と「タスクセンター」の中身。同じジョブの状態を、依頼する側(data)と
+ * 管理(#85)の「スキャンと補完」と「タスクセンター」の中身。同じジョブの状態を、依頼する側(data)と
  * 実行中・待ち・履歴を見る側(tasks)に分けて出す(all は両方。単体テストで流れを通すため)。
- * focus="organize" は単独の入口 #/data/organize。データ管理の「整理」節へ移す。
+ * 整理(#84)は #207 で管理の「整理」タブへ分けた。
  */
-export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: number; focus?: "organize"; view?: "all" | "data" | "tasks" }) {
-  const organizeRef = useRef<HTMLElement>(null);
-  const organizeHeadingRef = useRef<HTMLHeadingElement>(null);
-  const jobsRef = useRef<HTMLElement>(null);
-  const jobsHeadingRef = useRef<HTMLHeadingElement>(null);
-  const scrolled = useRef(false);
+export function DataJobs({ pollMs = POLL_MS, view = "all" }: { pollMs?: number; view?: "all" | "data" | "tasks" }) {
   const [snap, setSnap] = useState<JobsSnapshot | null>(null);
   const [kinds, setKinds] = useState<JobKind[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -197,50 +205,50 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
     }
   };
 
-  /** 節へ移る。見出しにもフォーカスを移し、キーボード・読み上げでも現在地が分かるようにする */
-  const jump = (section: HTMLElement | null, heading: HTMLElement | null) => {
-    section?.scrollIntoView?.({ block: "start" });
-    heading?.focus?.({ preventScroll: true });
-  };
-
-  // ジョブの一覧が並んで「整理」節の位置が決まってから、一度だけそこへ移す。
-  // 同じ画面の中で入口(#/data/organize)を行き来したときも、また移す
-  useEffect(() => {
-    scrolled.current = false;
-  }, [focus]);
-  const settled = kinds !== null && snap !== null;
-  useEffect(() => {
-    if (focus === "organize" && settled && !scrolled.current) {
-      scrolled.current = true;
-      jump(organizeRef.current, organizeHeadingRef.current);
-    }
-  }, [focus, settled]);
-
   const activeKinds = new Set([...(snap?.current ? [snap.current] : []), ...(snap?.queue ?? [])].map((j) => j.kind));
   const groups = [...new Set((kinds ?? []).map((k) => k.group))];
+
+  const kindList = (g: string) => (
+    <ul className="job-kinds">
+      {kinds!.filter((k) => k.group === g).map((k) => {
+        const busy = activeKinds.has(k.kind);
+        return (
+          <li key={k.kind} className="job-kind">
+            <div className="job-kind-text">
+              <strong>{k.label}</strong>
+              <span className="muted">{k.description}</span>
+              {k.count_text && <span className="job-count">{k.count_text}</span>}
+              {!k.available && k.unavailable_reason && <span className="muted">{k.unavailable_reason}</span>}
+              {k.options.map((o) => (
+                <label key={o.name} className="job-option">
+                  <input
+                    type="checkbox"
+                    checked={options[k.kind]?.[o.name] ?? false}
+                    onChange={(e) => setOptions((cur) => ({ ...cur, [k.kind]: { ...cur[k.kind], [o.name]: e.target.checked } }))}
+                  />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+            <button type="button" onClick={() => void start(k)} disabled={!k.available || busy} aria-label={`${k.label}を実行`}>
+              {busy ? "依頼済み" : "実行"}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 
   return (
     <div className="data-jobs">
       {view !== "tasks" ? (
-        <>
-          <p className="muted">
-            スキャンや情報の補完をジョブとして 1 本ずつ動かします。実行中に依頼したものは待ち行列に入り、順に動きます(進み具合・履歴は<a href={tasksHref}>タスクセンター</a>)。
-            ここのジョブは蔵書を読むだけで、ファイルを動かしたり消したりしません。
-          </p>
-          {/* ジョブの一覧が長いので、下の「整理」へ 1 クリックで移れるようにする */}
-          <nav className="data-jump" aria-label="データ管理の内容">
-            <span className="data-jump-label">このページ:</span>
-            <button type="button" className="small secondary" onClick={() => jump(jobsRef.current, jobsHeadingRef.current)}>
-              ジョブ
-            </button>
-            <button type="button" className="small secondary" onClick={() => jump(organizeRef.current, organizeHeadingRef.current)}>
-              整理
-            </button>
-          </nav>
-        </>
+        <p className="muted">
+          ふだんは「いつもの更新」の 3 つで足ります。実行中に依頼したものは待ち行列に入り、順に動きます(進み具合・履歴は<a href={tasksHref}>タスクセンター</a>)。
+          ここの処理は蔵書を読むだけで、ファイルを動かしたり消したりしません。
+        </p>
       ) : (
         <p className="muted">
-          ジョブの実行中・待ち行列・履歴です。ジョブは<a href={dataHref}>データ管理</a>から依頼します。
+          処理の実行中・待ち行列・履歴です。処理は<a href={dataHref}>スキャンと補完</a>から依頼します。
         </p>
       )}
       {error && (
@@ -249,61 +257,55 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
         </div>
       )}
 
-      <section className="job-section" ref={jobsRef} aria-labelledby="job-running-title">
-        <h2 id="job-running-title" ref={jobsHeadingRef} tabIndex={-1}>実行中</h2>
-        {snap?.current ? <RunningJob job={snap.current} onCancel={cancel} /> : <p className="muted">{snap ? "動いているジョブはありません。" : "読み込み中…"}</p>}
-        {snap && snap.queue.length > 0 && (
-          <>
-            <h3>待ち行列</h3>
-            <ol className="job-queue">
-              {snap.queue.map((j) => (
-                <li key={j.id}>
-                  <span>{j.label}</span>
-                  {j.cancellable && (
-                    <button type="button" className="secondary" onClick={() => void cancel(j)}>
-                      取り下げ
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
-      </section>
-
-      {view !== "tasks" && groups.map((g) => (
-        <section className="job-section" key={g} aria-label={g}>
-          <h2>{g}</h2>
-          <ul className="job-kinds">
-            {kinds!.filter((k) => k.group === g).map((k) => {
-              const busy = activeKinds.has(k.kind);
-              return (
-                <li key={k.kind} className="job-kind">
-                  <div className="job-kind-text">
-                    <strong>{k.label}</strong>
-                    <span className="muted">{k.description}</span>
-                    {k.count_text && <span className="job-count">{k.count_text}</span>}
-                    {!k.available && k.unavailable_reason && <span className="muted">{k.unavailable_reason}</span>}
-                    {k.options.map((o) => (
-                      <label key={o.name} className="job-option">
-                        <input
-                          type="checkbox"
-                          checked={options[k.kind]?.[o.name] ?? false}
-                          onChange={(e) => setOptions((cur) => ({ ...cur, [k.kind]: { ...cur[k.kind], [o.name]: e.target.checked } }))}
-                        />
-                        {o.label}
-                      </label>
-                    ))}
-                  </div>
-                  <button type="button" onClick={() => void start(k)} disabled={!k.available || busy} aria-label={`${k.label}を実行`}>
-                    {busy ? "依頼済み" : "実行"}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+      {view === "data" ? (
+        // 依頼する画面では、動いているものを 1 行だけ出す(詳しい進み具合・中止はタスクセンター)
+        active && (
+          <p className="job-now" role="status">
+            <strong>実行中:</strong> {snap!.current ? `${snap!.current.label}(${progressText(snap!.current) || "準備中…"})` : "待ち行列の処理を始めています"}
+            {snap!.queue.length > 0 && `・待ち ${snap!.queue.length} 件`}
+            {" "}<a href={tasksHref}>タスクセンターで見る</a>
+          </p>
+        )
+      ) : (
+        <section className="job-section" aria-labelledby="job-running-title">
+          <h2 id="job-running-title" tabIndex={-1}>実行中</h2>
+          {snap?.current ? <RunningJob job={snap.current} onCancel={cancel} /> : <p className="muted">{snap ? "動いているジョブはありません。" : "読み込み中…"}</p>}
+          {snap && snap.queue.length > 0 && (
+            <>
+              <h3>待ち行列</h3>
+              <ol className="job-queue">
+                {snap.queue.map((j) => (
+                  <li key={j.id}>
+                    <span>{j.label}</span>
+                    {j.cancellable && (
+                      <button type="button" className="secondary" onClick={() => void cancel(j)}>
+                        取り下げ
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
         </section>
-      ))}
+      )}
+
+      {/* 先頭の見出し(いつもの更新)だけ開いて見せ、ほかは畳む。全部並べるとどれを押せばよいか迷う(#207) */}
+      {view !== "tasks" && groups.map((g, i) =>
+        i === 0 ? (
+          <section className="job-section" key={g} aria-label={g}>
+            <h2>{g}</h2>
+            {kindList(g)}
+          </section>
+        ) : (
+          <details className="job-section job-more" key={g}>
+            <summary>
+              {g}({kinds!.filter((k) => k.group === g).length})
+            </summary>
+            {kindList(g)}
+          </details>
+        ),
+      )}
 
       {view !== "data" && (
       <section className="job-section" aria-labelledby="job-history-title">
@@ -312,13 +314,6 @@ export function DataJobs({ pollMs = POLL_MS, focus, view = "all" }: { pollMs?: n
         <ul className="job-history">
           {snap?.history.map((j) => <HistoryRow key={j.id} job={j} />)}
         </ul>
-      </section>
-      )}
-
-      {view !== "tasks" && (
-      <section className="job-section organize-section" id="data-organize" ref={organizeRef} aria-labelledby="job-organize-title">
-        <h2 id="job-organize-title" ref={organizeHeadingRef} tabIndex={-1}>整理</h2>
-        <OrganizeFilesSection />
       </section>
       )}
     </div>

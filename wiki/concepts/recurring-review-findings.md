@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-08
+updated: 2026-11-09
 related: [overview]
 ---
 

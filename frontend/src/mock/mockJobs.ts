@@ -2,19 +2,18 @@
 import type { Job, JobKind, JobsSnapshot } from "../api";
 
 const KINDS: JobKind[] = [
-  ["daily_scan", "日常の同期", "新しいファイルの検出のみ", "新しいファイルをスキャンして登録します。", 12, "登録済み 12 巻"],
-  ["daily_metadata", "日常の同期", "補完待ちの作品を補完", "公開データベースの情報がまだの作品だけを取得します。", 3, "登録済みの 3 作品が補完待ち"],
-  ["maintenance", "ライブラリ全体", "ライブラリ全体のメンテナンス", "全ファイルの目次を確かめ直します。", 12, "12 巻を確かめ直します"],
-  ["full_sync", "ライブラリ全体", "ライブラリ全体を同期", "足りない情報を順に補います。", null, null],
-  ["scan", "個別", "ファイルのスキャンのみ", "ファイルの検出とページ数の読み取り。", 12, "登録済み 12 巻"],
-  ["metadata_thumbs", "個別", "情報と表紙を補完", "公開データベースの情報と表紙を補います。", null, "補完待ち 3 作品・表紙なし 2 作品"],
-  ["metadata", "個別", "作品情報のみ補完", "公開データベースの情報だけを補います。", 3, "補完待ち 3 作品"],
-  ["thumbnails", "個別", "表紙のみ補完", "作品の表紙をまだ無いものだけ作ります。", 2, "表紙なし 2 作品"],
-  ["analyze", "個別", "中の巻を調べる", "まだ調べていない内側のアーカイブを全部開きます。", 1, "未解析 1 巻"],
-  ["duplicates", "個別", "重複を調べる", "見た目の指紋を作り、重複の候補を出します。", 4, "指紋が未作成 4 巻"],
-  ["follow_check", "個別", "フォロー中の作品の続刊を調べる", "フォローした作品の続刊・欠けを調べます。", 2, "フォロー中 2 作品"],
-  ["works_refresh", "個別", "作品の名寄せを計算し直す", "巻を作品にまとめ直します。", 5, "5 作品"],
-  ["inbox_sync", "個別", "受け入れフォルダを同期", "受け入れフォルダの新しい本を検出します。", 0, "受け入れ待ち 0 件"],
+  ["daily_scan", "いつもの更新", "新しいファイルを取り込む", "新しいファイルをスキャンして登録します。", 12, "登録済み 12 巻"],
+  ["daily_metadata", "いつもの更新", "足りない作品情報を補う", "公開データベースの情報がまだの作品だけを取得します。", 3, "登録済みの 3 作品が補完待ち"],
+  ["full_sync", "いつもの更新", "ライブラリ全体を同期", "足りない情報を順に補います。", null, null],
+  ["maintenance", "個別の処理", "全ファイルを確かめ直す", "全ファイルの目次を確かめ直します。", 12, "12 巻を確かめ直します"],
+  ["metadata_thumbs", "個別の処理", "情報と表紙を補完", "公開データベースの情報と表紙を補います。", null, "補完待ち 3 作品・表紙なし 2 作品"],
+  ["metadata", "個別の処理", "作品情報のみ補完", "公開データベースの情報だけを補います。", 3, "補完待ち 3 作品"],
+  ["thumbnails", "個別の処理", "表紙のみ補完", "作品の表紙をまだ無いものだけ作ります。", 2, "表紙なし 2 作品"],
+  ["analyze", "個別の処理", "中の巻を調べる", "まだ調べていない内側のアーカイブを全部開きます。", 1, "未解析 1 巻"],
+  ["duplicates", "個別の処理", "重複を調べる", "見た目の指紋を作り、重複の候補を出します。", 4, "指紋が未作成 4 巻"],
+  ["follow_check", "個別の処理", "フォロー中の作品の続刊を調べる", "フォローした作品の続刊・欠けを調べます。", 2, "フォロー中 2 作品"],
+  ["works_refresh", "個別の処理", "作品の名寄せを計算し直す", "巻を作品にまとめ直します。", 5, "5 作品"],
+  ["inbox_sync", "個別の処理", "受け入れフォルダを同期", "受け入れフォルダの新しい本を検出します。", 0, "受け入れ待ち 0 件"],
 ].map(([kind, group, label, description, count, count_text]) => ({
   kind: kind as string, group: group as string, label: label as string, description: description as string,
   count: count as number | null, count_text: count_text as string | null, available: true, unavailable_reason: null,
@@ -37,7 +36,7 @@ export function createMockJobs() {
     return {
       id, kind, label, origin, params: {}, status, queued_at: "2026-11-02T01:00:00+00:00",
       started_at: "2026-11-02T01:00:00+00:00", finished_at: ACTIVE.has(status) ? null : "2026-11-02T01:00:12+00:00",
-      done: null, total: null, current: null, step: null, runs: 1, summary, error: null, cancel_requested: false,
+      done: null, total: null, current: null, step: null, step_index: null, step_count: null, runs: 1, summary, error: null, cancel_requested: false,
       cancellable: ACTIVE.has(status) && origin !== "background",
     };
   }
@@ -59,6 +58,12 @@ export function createMockJobs() {
       current.total = 5;
       current.done = 0;
       polls = 0;
+      if (current.kind === "full_sync") {
+        // 段ごとに進む(#207)。スキャンの段は総数を出さない(実物と同じ)
+        current.step_count = 5;
+        current.step_index = 1;
+        current.total = null;
+      }
     } else if (current) {
       polls += 1;
       if (current.cancel_requested || polls >= 5) {
@@ -69,6 +74,13 @@ export function createMockJobs() {
       }
       current.done = polls;
       current.current = `作品 ${polls}/サンプル 第0${polls}巻.cbz`;
+      if (current.kind === "full_sync") {
+        const steps = ["ファイルのスキャン", "中の巻を調べる", "作品の名寄せ", "公開データベースの取得", "表紙の作成"];
+        current.step_index = polls + 1;
+        current.step = steps[polls];
+        current.done = 1;
+        current.total = 3;
+      }
     }
   }
 
@@ -83,7 +95,8 @@ export function createMockJobs() {
     }
     if (method === "GET" && path === "/api/jobs/catalog") return { status: 200, body: { kinds: KINDS } };
     if (method === "POST" && path === "/api/jobs") {
-      const kind = KINDS.find((k) => k.kind === parsed?.kind);
+      // 一覧に出さない scan(新しいファイルを取り込むと同じ処理)も依頼はできる
+      const kind = [...KINDS, { kind: "scan", label: "ファイルのスキャンのみ" }].find((k) => k.kind === parsed?.kind);
       if (!kind) return { status: 422, body: { detail: `知らないジョブです: ${parsed?.kind}` } };
       const same = [current, ...queue].find((j) => j && j.kind === kind.kind);
       if (same) return { status: 202, body: same };
