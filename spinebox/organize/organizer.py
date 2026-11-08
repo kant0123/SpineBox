@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -47,6 +48,8 @@ from ..novel import epub
 from . import cbz, fs
 from .cleanup import clean_stem, split_ext
 from .template import NameTemplate, NameValues, RangeTemplate, TemplateError, ValueMissing, check_path_length
+
+log = logging.getLogger(__name__)
 
 NAMINGS = ("title", "template")
 KIND_LABELS = {"manga": "漫画", "novel": "小説"}
@@ -859,6 +862,80 @@ class Organizer:
         if op is None:
             raise OperationNotFound(op_id)
         return op, json.loads(op["plan_json"])
+
+    # --- 起動時の復旧(#36) ---------------------------------------------------
+
+    def recover_interrupted(self) -> list[dict]:
+        """実行(running)・元に戻す(undoing)の途中でプロセスが落ちた操作を、ジャーナルとファイルの有無から戻す。
+
+        起動時に 1 回だけ呼ぶ(同じプロセスで走っている操作と重ならないように)。実行の途中なら元に戻す前(failed)、
+        元に戻す途中なら実行済み(done)へ戻す。戻せない手順が残れば rollback_failed / undo_failed にして、
+        ジャーナルと置いたファイルは消さずに残す。蔵書フォルダがオフラインなら何も動かさず、状態も変えない(次の起動で再試行)。
+        戻したものの一覧(op_id・state)を返す。
+        """
+        rows = self.conn.execute(
+            "SELECT id, state, plan_json FROM organize_ops WHERE state IN ('running', 'undoing') ORDER BY created_at, id"
+        ).fetchall()
+        recovered = []
+        for row in rows:
+            plan = json.loads(row["plan_json"])
+            roots = self._roots_in_plan(plan)
+            if not all(root_is_accessible(r) for r in roots):
+                log.warning("整理 %s は蔵書フォルダがオフラインのため、復旧を見送りました", row["id"])
+                continue
+            recovered.append(self._recover_one(row["id"], row["state"], plan))
+        return recovered
+
+    @staticmethod
+    def _roots_in_plan(plan: dict) -> list[Path]:
+        """計画が触るルート(元・出力先・範囲の起点・改名の各巻の所属)。"""
+        paths = [plan.get("root_path"), plan.get("out_root_path"), (plan.get("scope") or {}).get("root_path")]
+        paths += [it.get("root_path") for it in plan.get("items", [])]
+        return [Path(p) for p in dict.fromkeys(p for p in paths if p)]
+
+    def _recover_one(self, op_id: str, state: str, plan: dict) -> dict:
+        running = state == "running"
+        # 実行の途中なら実行の手順、元に戻す途中なら元に戻す手順だけが途中まで残っている(実行済みの手順は完了している)
+        rows = self.conn.execute(
+            """SELECT id, action, from_path, to_path FROM organize_steps WHERE op_id = ? AND phase = ?
+               AND state IN ('pending', 'done') ORDER BY id""",
+            (op_id, "execute" if running else "undo")).fetchall()
+        steps: list[_Step] = []
+        for r in rows:
+            if r["action"] == "delete_original":
+                continue  # 元の削除は確定の後にしか始まらず、消したものは戻せない(元に戻すもこの記録があれば断る)
+            if r["action"] in ("mkdir", "rmdir"):
+                steps.append(_Step(r["id"], r["action"], Path(r["to_path"]), Path(r["to_path"])))
+            else:
+                steps.append(_Step(r["id"], "move", Path(r["from_path"]), Path(r["to_path"])))
+        # 記録した順に逆から戻す。pending の手順は、移動が済んでいたかどうかをファイルの有無で判定する(_revert と同じ)
+        ok = self._revert(steps)
+        if running:
+            new_state = "failed" if ok else "rollback_failed"
+            error = ("実行の途中でプロセスが止まったため、途中まで行った手順を巻き戻しました。計画を作り直してください" if ok
+                     else "実行の途中でプロセスが止まり、巻き戻しに失敗した手順があります。ジャーナルを確認してください")
+        else:
+            new_state = "done" if ok else "undo_failed"
+            error = ("元に戻す途中でプロセスが止まったため、元に戻す前の状態に戻しました" if ok
+                     else "元に戻す途中でプロセスが止まり、戻せなかった手順があります。ジャーナルを確認してください")
+        self._set_state(op_id, new_state, error=error)
+        if running and ok:
+            # 作業場の CBZ は確定前の中間生成物。作業場はこの操作の ID の場所だけを片付ける
+            self._clear_work_dirs(op_id, plan)
+        log.warning("整理 %s を起動時に復旧しました: %s", op_id, new_state)
+        return {"op_id": op_id, "state": new_state, "error": error}
+
+    def _clear_work_dirs(self, op_id: str, plan: dict) -> None:
+        bases = [Path(b) for b in (plan.get("organize_base"), plan.get("out_base")) if b]
+        bases += [self.settings.organize_base(r) for r in self._roots_in_plan(plan)]
+        for base in dict.fromkeys(bases):
+            work = base / "work" / op_id
+            if not work.is_dir():
+                continue
+            for f in work.iterdir():
+                if f.is_file() and f.suffix == ".cbz":
+                    _unlink_quietly(f)
+            _rmdir_quietly(work)
 
     # --- 改名・移動だけの整理(作品単位) ------------------------------------------
 

@@ -1,6 +1,6 @@
 ---
 type: component
-summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB や PDF も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す。テンプレートの規則、安全設計の理由と却下した案
+summary: 整理処理(1 ソース → 巻ごとの CBZ、命名テンプレートどおりの作品単位の改名・移動、範囲指定のファイル名の整理とテンプレートでの振り分け。範囲指定では CBZ 化もまとめて行える。名前の競合は既定でファイル数の多い方を残し、プレビュー結果の行を選んで残す方を変えられる。CBZ 化する元は負けた巻だけを外して残りを CBZ にし、画像だけの EPUB や PDF も CBZ にできる)。蔵書に書き込む唯一の経路。作業場で作って全巻検証 → 改名で確定 → 元を退避(利用者が選んだときだけ削除) → 空になった元フォルダの削除、のジャーナルつき往復と元に戻す、途中で落ちた操作の起動時の復旧(#36)。テンプレートの規則、安全設計の理由と却下した案
 updated: 2026-11-09
 related: [overview, backend, frontend, volume-split, duplicate-detection, work-grouping, inbox, archive-reading, bookmarks, data-jobs, manga-reader]
 ---
@@ -40,6 +40,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/template.py:207 NameTemplate` | テンプレートの検証(設定の読み込み時)と 1 巻ぶんの展開・無害化。`check_path_length` が全体の長さを見る |
 | `spinebox/organize/organizer.py:456 execute` | 作成 → 全巻検証 → 確定 → 退避 → 空フォルダ削除 → DB。失敗時の巻き戻しもここ |
 | `spinebox/organize/organizer.py:626 undo` | 元に戻す。始める前の確認(元の場所が空いているか等)と、復元先フォルダ再作成、途中失敗時に「実行済み」へ戻す |
+| `spinebox/organize/organizer.py:868 recover_interrupted` | 起動時の復旧(#36)。実行・元に戻すの途中で落ちた操作を、ジャーナルの手順を逆順に戻して元の状態へ(実行中 → failed、元に戻す途中 → done)。呼ぶのは `spinebox/app.py recover_interrupted_organize()`(`create_app` の中の lifespan の先頭。ほかの操作はまだ動いていない) |
 | `spinebox/organize/organizer.py:871 plan_rename` | 作品単位の改名・移動の計画。各巻を move / unchanged / excluded / conflict / skipped に振り分ける。実行は `_execute_rename`、元に戻すは `_undo_rename`、DB の付け替えは `_relocate` |
 | `spinebox/organize/organizer.py:758 _move_step` | 移動 1 つを pending → done でジャーナルに記録。`_revert` が逆順に戻す。出力のために作ったフォルダは `_mkdir_steps` が mkdir として記録し、元に戻すの最後に `_rmdir_created` が空なら消す |
 | `spinebox/organize/organizer.py:786 _rmdir_empty_parents` | 移動・退避後に空になった親フォルダをルートの手前まで再帰的に削除し、`rmdir` としてジャーナルに記録(#155) |
@@ -78,6 +79,10 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
   済んだかどうかを判断して戻せる。DB 更新(新しい巻の登録・読書位置)で失敗しても、退避と確定を逆順に戻す
 - **元に戻すも消さない。** 作った CBZ は `trash/<操作ID>/created/` へ移すだけ。元の場所に別のファイル・フォルダが
   できていたら、何も動かさずに止める
+- **途中で落ちても、起動時に戻す(#36)。** 手順は移動の前に pending で書き、終わったら done にするので、落ちた後も
+  どこまで進んだかが分かる。pending の移動は「移動が済んだか」を移動元・移動先の有無で判定する(両方あるか両方無いときは
+  戻さず `rollback_failed` / `undo_failed` で残す)。戻すのは起動時だけ(同じプロセスの操作と重ねない)。
+  元の削除(`delete_original`)の記録は戻さない(消したものは戻せない)
 - **計画から実行までに元が変わっていたら止める。** `fingerprint()`(アーカイブはサイズ・mtime、フォルダは直下の各エントリ)で
   比べる。失敗した操作は再実行できず、計画から作り直す
 - **元の巻レコードは消さない。** `volumes.organized_op_id` を立てて一覧・閲覧から外し、元のソースは missing にする。
@@ -276,13 +281,19 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 - `same_drive` は存在する祖先で判定する。まだ無い作業場を作る前に調べられるようにするため。テストでは
   `Organizer(same_drive=...)` で差し替えて別ドライブ構成を作る(`move=` で途中失敗も作れる)
 - 実行と元に戻すはスキャンと同じロックで直列化する(`/api/scan` と同時に走ると半端な状態を走査する)。#83 からはデータ管理のジョブ全部と同じロックで、ジョブの実行中・待ち中は 409。整理そのものはジョブに入れない([[data-jobs]])
-- プロセスが実行中に落ちると、操作は `running` のまま残る。ジャーナルに各移動の from / to と状態があるので手で戻せるが、
-  起動時の自動復旧は無い(#36)
+- プロセスが実行中・元に戻す途中に落ちると、操作は `running` / `undoing` のまま残る。起動時に `recover_interrupted` が
+  ジャーナルを逆順に戻す(#36)。蔵書フォルダがオフラインの間は何も動かさず状態も変えないので、次の起動で再び試す。
+  戻せなかった手順が残ったときは `rollback_failed` / `undo_failed` にして、ジャーナルと置いたファイルを消さずに残す
 - 新しい CBZ の巻は、スキャナーが同じ CBZ から作るのと同じ形(直下の画像 = `entry_prefix ''`、`SCAN_VERSION` つき)で
   登録する。スキャナーの切り出し方を変えたら、ここも合わせないと次のスキャンで巻 id が変わる
 
 ## 経緯
 
+- #36 で、実行・元に戻すの途中でプロセスが落ちた操作を、起動時にジャーナルから戻すようにした(`recover_interrupted`)。
+  #31 の実装中に見つけた課題。以前は操作が `running` / `undoing` のまま残り、画面からは何もできなかった。
+  テストは `tests/test_organize_recovery.py`: 確定の途中・退避の途中(移動は済んだが記録前)・元に戻す途中で落とした状態を作り、
+  起動後に元の場所へ戻ること、オフラインなら何もせず次の起動で戻すこと、戻した後にもう一度元に戻せることを確かめる。
+  復旧は起動時だけにした。実行中の操作と重ならないよう、`GET /api/organize` のたびに戻す案は採らなかった
 - #218 で、自炊漫画 PDF を 1 巻 = 1 CBZ に整理する機能を追加した。基本は pypdf による埋め込み画像の無劣化抽出(ZIP_STORED)を行い、回転属性・CMYK の補正、白紙・複数画像ページの合成レンダリングを行うハイブリッド抽出方式(`spinebox/organize/pdf.py`)を採用。スキャナーで `volumes.format = 'pdf'` として検出し、範囲指定整理(`include_cbz=True`)および単巻整理で CBZ 化できるようにした。
 
 
