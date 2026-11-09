@@ -33,6 +33,10 @@ from spinebox.scanner import software_doc_reason
     ("廡姧彮擭僒儞僨乕 2021擭36-37崋", "週刊少年サンデー", None),  # Shift_JIS を GBK として読んだもの
     # 直せる語だけ直した文字化け(著者の括弧は直せない)
     ("DLRAW.NET-[é¦é+éGé¦é-éµé¦] ânâôâcü[ü~âgâëâbâVâà æµ10è¬", "ハンツー×トラッシュ", 10),
+    # ローマ字の作品名の後ろの配布の印
+    ("matoseiheino jp v02s", "matoseiheino", 2),
+    ("matoseiheino_color_v02", "matoseiheino", 2),
+    ("Sekaisaiksashinisekai jp", "Sekaisaiksashinisekai", None),
 ])
 def test_names_seen_in_the_production_library(name, title, number):
     wn = parse_work_name(name)

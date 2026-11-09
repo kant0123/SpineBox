@@ -364,6 +364,12 @@ _SAVED_PAGE_DIR = re.compile(r"[_\s]files$", re.IGNORECASE)
 _LEADING_MARKS = re.compile(r"^[\s★☆◆◇●○■□※♪♡♥◎]+")
 # 作品名の後ろに取り残された開き括弧(`ありふれた日常で世界最強【第37話】` の `【`)
 _OPEN_BRACKETS = "[(【〔「『<"
+# ローマ字の作品名の後ろに付く配布の印。作品名ではない(`works._ROMAJI_NOISE` の、語として紛れない分)
+_ROMAJI_TAIL_TAGS = frozenset({"raw", "raws", "jp", "jpn", "color", "colour", "mono", "digital", "hq"})
+
+
+def _has_kana_or_kanji(text: str) -> bool:
+    return any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text)
 
 
 def parse_work_name(name: str) -> WorkName | None:
@@ -436,6 +442,11 @@ def parse_work_name(name: str) -> WorkName | None:
     title = _TRAILING_NOTE.sub("", title)
     title = _DECIMAL_VOLUME.sub("", title)
     title = _clean_title(title).rstrip(_OPEN_BRACKETS).strip()
+    if title and not _has_kana_or_kanji(title):
+        words = title.split(" ")
+        while len(words) > 1 and words[-1].casefold() in _ROMAJI_TAIL_TAGS:
+            words.pop()  # ローマ字の作品名の後ろの配布の印(`matoseiheino jp` `matoseiheino color`)
+        title = " ".join(words)
 
     # 作品名が空で、先頭の括弧が著者として読まれていたなら、その括弧が作品名(`[作品名] 第1巻`)
     if not title and first_other is not None:
