@@ -3,7 +3,7 @@ import { api, type ReadingState, type SourceName, type WorkFilterName, type Work
 import { facetListHref, reviewHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
-import { KIND_TEXT, missingLabel, READING_STATE_TEXT } from "./labels";
+import { KIND_TEXT, READING_STATE_TEXT } from "./labels";
 import { ReadLaterButton } from "./ReadLaterButton";
 import { NotifyDot } from "./ReviewPending";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
@@ -69,7 +69,6 @@ interface WorkCardProps {
 
 export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
   const cardRef = useRef<HTMLLIElement>(null);
-  const missing = missingLabel(work);
 
   const startMarquee = () => {
     const card = cardRef.current;
@@ -109,6 +108,7 @@ export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
           )}
         </a>
         <NotifyDot work={work} />
+        {work.reading_state === "reading" && <span className="work-reading-badge">読書中</span>}
         <ReadLaterButton id={work.id} initial={work.read_later ?? false} label={work.title} onChange={onReadLaterChange} />
       </div>
       <a className="work-link work-text-link" href={workTitlesHref(work.id)}>
@@ -116,19 +116,8 @@ export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
           <span className="volume-title work-card-title" title={work.title}>
             <span className="work-card-title-inner">{work.title}</span>
           </span>
-          {work.author && <span className="volume-meta">{work.author}</span>}
-          {work.publisher && <span className="volume-meta">{work.publisher}</span>}
-          <span className="work-badges">
-            <span className="badge volume-count-badge">
-              既刊{work.volume_count}巻{work.max_volume ? `(〜${work.max_volume}巻)` : ""}
-            </span>
-            {missing.text && (
-              <span className="badge" title={missing.title}>
-                欠け {missing.text}
-              </span>
-            )}
-            {work.offline_count > 0 && <span className="badge">オフライン {work.offline_count}</span>}
-            {work.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[work.reading_state]}</span>}
+          <span className="volume-meta" title={[work.author, work.publisher].filter(Boolean).join(" ・ ") || undefined}>
+            {[work.author, work.publisher].filter(Boolean).join(" ・ ") || "\u00A0"}
           </span>
         </span>
       </a>

@@ -44,27 +44,30 @@ describe("ルートと文言", () => {
 });
 
 describe("作品の一覧", () => {
-  it("作品カードに巻数タグ・欠け・提案が出て、重複・統合済み・種別・ジャンルは出ない", async () => {
+  it("作品カードにタイトルと著者・読書中バッジが出て、巻数タグや欠けタグ・重複等は出ない(#270)", async () => {
     backend.handle("PATCH", "/api/works/1", JSON.stringify({ publisher: "集英社" }));
     window.location.hash = "#/works";
     render(<App />);
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    expect(within(card).getByText("既刊4巻(〜4巻)")).toBeTruthy();
-    expect(within(card).getByText("欠け 3 巻")).toBeTruthy();
+    // 読書中バッジは表紙の上に表示され、巻数や欠けなどのタグは下部に出ない(#270)
+    expect(within(card).getByText("読書中")).toBeTruthy();
+    expect(within(card).queryByText(/既刊/)).toBeNull();
+    expect(within(card).queryByText(/欠け/)).toBeNull();
     expect(within(card).queryByText(/重複/)).toBeNull();
     expect(within(card).queryByText("統合済み")).toBeNull();
-    // 種別・ジャンルはカードに出さない(出版社だけ残す)
-    expect(within(card).getByText("集英社")).toBeTruthy();
+    // 著者と出版社はメタ行に表示される
+    expect(within(card).getByText(/山田太郎/)).toBeTruthy();
+    expect(within(card).getByText(/集英社/)).toBeTruthy();
     expect(within(card).queryByText("漫画")).toBeNull();
     const other = (await screen.findByText("外付けの作品")).closest("li")!;
-    expect(within(other).getByText("既刊1巻")).toBeTruthy();
+    // 読書中ではない作品にはバッジが出ない
+    expect(within(other).queryByText("読書中")).toBeNull();
     expect(within(other).queryByText(/ファンタジー/)).toBeNull();
     expect(within((await screen.findByText("別の読み物")).closest("li")!).queryByText("小説")).toBeNull();
     // 別名は作品ページで見る(一覧のカードには出さない)
     expect(within(card).queryByText(/別名/)).toBeNull();
     expect(card.querySelector("a")!.getAttribute("href")).toBe("#/works/1/titles");
     expect((await screen.findByText(/確認待ちが \d+ 件/)).closest("a")!.getAttribute("href")).toBe("#/review");
-    // 巻の一覧は廃止した
   });
 
   it("ヘッダーに重複の候補・情報を補完・表紙を作る・名寄せを取り直すを置かない(管理のデータ管理タブに集約)", async () => {
@@ -242,16 +245,16 @@ describe("作品の検索と絞り込み(#56)", () => {
     window.location.hash = "#/works";
     render(<App />);
     await screen.findByText("サンプル漫画");
-    expect(cardTitles()).toHaveLength(3);
+    expect(cardTitles()).toHaveLength(4);
     fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "sample" } }); // 別名で当たる
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
-    expect(screen.getByText(/1 件 \/ 全 3 作品/)).toBeTruthy();
+    expect(screen.getByText(/1 件 \/ 全 4 作品/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "存在しない" } });
     expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();
     expect(screen.queryByText(/作品がありません。蔵書フォルダ/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
-    await waitFor(() => expect(cardTitles()).toHaveLength(3));
+    await waitFor(() => expect(cardTitles()).toHaveLength(4));
     expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
   });
 
@@ -262,7 +265,7 @@ describe("作品の検索と絞り込み(#56)", () => {
     expect(screen.queryByLabelText("読書状態")).toBeNull(); // スマホ幅で邪魔にならないよう、初めは閉じている
     fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
     fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "unread" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
 
     // 候補のある項目だけ出る(モックでは種別とジャンルと著者。タグは無い)
@@ -292,36 +295,36 @@ describe("作品の検索と絞り込み(#56)", () => {
       "発売日順が古い順",
       "ランダム",
     ]);
-    expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]);
+    expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]);
 
     fireEvent.change(select, { target: { value: "recent_read" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア", "別の読み物", "外付けの作品"]));
     expect(localStorage.getItem("spinebox.works.sort")).toBe("recent_read");
 
     fireEvent.change(select, { target: { value: "added_desc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect(localStorage.getItem("spinebox.works.sort")).toBe("added_desc");
 
     fireEvent.change(select, { target: { value: "added_asc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
 
     fireEvent.change(select, { target: { value: "released_desc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
 
     fireEvent.change(select, { target: { value: "released_asc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
 
     fireEvent.change(select, { target: { value: "random" } });
-    await waitFor(() => expect(cardTitles()).toHaveLength(3));
+    await waitFor(() => expect(cardTitles()).toHaveLength(4));
     expect(localStorage.getItem("spinebox.works.sort")).toBe("random");
 
     // 検索条件を消しても並び順は維持される
     fireEvent.change(select, { target: { value: "added_desc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "サンプル" } });
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
-    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect((screen.getByLabelText("並び順") as HTMLSelectElement).value).toBe("added_desc");
 
     // 再マウント時も localStorage から復元される
@@ -329,7 +332,7 @@ describe("作品の検索と絞り込み(#56)", () => {
     render(<App />);
     await screen.findByText("サンプル漫画");
     expect((screen.getByLabelText("並び順") as HTMLSelectElement).value).toBe("added_desc");
-    expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]);
+    expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]);
   });
 });
 
@@ -540,7 +543,7 @@ describe("欠けの表示", () => {
     expect(missingLabel({ missing_volumes: [], missing_episodes: [] })).toEqual({ text: "" });
   });
 
-  it("作品カードは多すぎるとき件数だけを出し、内訳をツールチップに入れる", async () => {
+  it("作品カードには欠けタグを出さず高さを揃える(#270)", async () => {
     const list = JSON.parse(backend.handle("GET", "/api/works").body);
     list.works.find((w: { title: string }) => w.title === "サンプル漫画").missing_volumes = [1, 2, 3, 4, 5, 6];
     const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
@@ -550,8 +553,8 @@ describe("欠けの表示", () => {
     });
     window.location.hash = "#/works";
     render(<App />);
-    const badge = await screen.findByText("欠け 6 巻");
-    expect(badge.getAttribute("title")).toBe("1・2・3・4・5・6 巻");
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    expect(within(card).queryByText(/欠け/)).toBeNull();
   });
 
   it("作品ページの「欠けている巻」も同じ規則にする", async () => {
@@ -654,12 +657,16 @@ describe("作品カードのタイトルスクロールとタグ高さ(#266)", (
     expect(card.classList.contains("is-marquee")).toBe(false);
   });
 
-  it("タグ(バッジ)領域が work-badges として出力される", async () => {
+  it("読書中の作品のみ表紙に work-reading-badge が表示され、カード下に余分なタグは出ない(#270)", async () => {
     window.location.hash = "#/works";
     render(<App />);
-    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
-    const badges = card.querySelector(".work-badges");
-    expect(badges).toBeTruthy();
-    expect(badges?.querySelectorAll(".badge").length).toBeGreaterThan(0);
+    const readingCard = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const badge = readingCard.querySelector(".work-reading-badge");
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent).toBe("読書中");
+    expect(readingCard.querySelector(".work-badges")).toBeNull();
+
+    const otherCard = (await screen.findByText("外付けの作品")).closest("li")!;
+    expect(otherCard.querySelector(".work-reading-badge")).toBeNull();
   });
 });

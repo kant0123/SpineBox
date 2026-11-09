@@ -91,6 +91,19 @@ export function createMockWorks(
     },
     { id: 2, title: "外付けの作品", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [4], merges: [], extra: { genres: { value: ["ファンタジー", "コメディ"], source: "public_db", manual: false, confidence: 0.9 } }, previous: {}, links: SOURCES.map(emptyLink) },
     { id: 3, title: "別の読み物", title_manual: false, author: null, author_manual: false, aliases: [], volumeIds: [5], merges: [], extra: { kind: { value: "novel", source: "public_db", manual: false, confidence: 0.9 } }, previous: {}, links: SOURCES.map(emptyLink) },
+    {
+      id: 4,
+      title: "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア",
+      title_manual: false,
+      author: "大森藤ノ",
+      author_manual: false,
+      aliases: [],
+      volumeIds: [7],
+      merges: [],
+      extra: {},
+      previous: {},
+      links: SOURCES.map(emptyLink),
+    },
   ];
   const proposals: (WorkProposal & { dismissed: boolean })[] = [{
     id: 1, rule: "duplicate", confidence: 0.6, status: "open", dismissed: false,
