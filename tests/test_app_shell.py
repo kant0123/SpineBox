@@ -270,10 +270,10 @@ def test_stats_match_the_db(env):
 def test_stats_no_cover_drops_after_the_cover_is_made(env):
     _, client, _, _ = env
     before = client.get("/api/stats").json()["works"]["no_cover"]
-    assert before == 2  # かくかくしかじか・お気楽領主(小説は表紙を作れないので数えない)
+    assert before == 3  # かくかくしかじか・お気楽領主・EPUB の作品(表紙の指定が無い EPUB は作れないが、表紙の巻には数える。#250)
     cover = work(client, KAKU)["cover_volume_id"]
     assert client.get(f"/api/volumes/{cover}/thumbnail").status_code == 200
-    assert client.get("/api/stats").json()["works"]["no_cover"] == 1
+    assert client.get("/api/stats").json()["works"]["no_cover"] == 2
 
 
 def test_stats_count_open_duplicates_and_scan_issues(env):
@@ -306,10 +306,10 @@ def test_stats_counts_a_vanished_cover_file_as_no_cover(env):
     _, client, a, _ = env
     cover = work(client, KAKU)["cover_volume_id"]
     assert client.get(f"/api/volumes/{cover}/thumbnail").status_code == 200
-    assert client.get("/api/stats").json()["works"]["no_cover"] == 1
+    assert client.get("/api/stats").json()["works"]["no_cover"] == 2
     (a / "[東村アキコ] かくかくしかじか 第01巻.cbz").unlink()
     r = client.get("/api/stats")
-    assert r.status_code == 200 and r.json()["works"]["no_cover"] == 2
+    assert r.status_code == 200 and r.json()["works"]["no_cover"] == 3
 
 
 def test_stats_does_not_query_a_volume_row_per_work(env):

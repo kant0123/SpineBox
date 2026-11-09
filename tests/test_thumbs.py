@@ -76,7 +76,8 @@ def test_work_cover_is_first_page_of_volume_one(env):
     w = work_by_title(client)["Hoshi no umi"]
     assert w["cover_volume_id"] == volume_id(client, "Hoshi no umi v01")
     r = client.get(f"/api/volumes/{w['cover_volume_id']}/thumbnail")
-    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "image/jpeg"
     im = Image.open(io.BytesIO(r.content))
     assert im.width <= THUMB_MAX_WIDTH and im.height <= THUMB_TARGET_HEIGHT
     assert near(color_of(r.content), RED)  # 1 巻の cover.jpg(2 巻の青ではない)
@@ -124,8 +125,8 @@ def test_explicit_build_extracts_and_makes_missing_covers(env, lib):
     assert r.status_code == 200
     state = r.json()
     assert state["running"] is False and state["error"] is None
-    # 作品 2 つ(小説は表紙の巻を持たない)。どちらも作った
-    assert state["summary"] == {"total": 2, "made": 2, "existing": 0, "skipped": 0}
+    # 作品 3 つ。画像の 2 作品は作り、表紙の指定が無い EPUB は作れない(#250)
+    assert state["summary"] == {"total": 3, "made": 2, "existing": 0, "skipped": 1}
     vid = work_by_title(client)["Kaze no tani"]["cover_volume_id"]
     r = client.get(f"/api/volumes/{vid}/thumbnail")
     assert r.status_code == 200 and near(color_of(r.content), GREEN)
@@ -212,7 +213,11 @@ def test_cover_volume_choice():
     assert works.cover_volume_id([v(1, 2), v(2, 1), v(3)]) == 2
     assert works.cover_volume_id([v(1), v(2, 3)]) == 2  # 番号の無い巻は後ろ
     assert works.cover_volume_id([v(1, 1, offline=True), v(2, 2)]) == 2
-    assert works.cover_volume_id([v(1, 1, fmt="epub"), v(2, 1, pages=0)]) is None
+    assert works.cover_volume_id([v(1, 1, fmt="text"), v(2, 1, pages=0)]) is None
+    # 同じ番号・番号の無い巻どうしでは EPUB を先にする(保存ページの zip の本文より本の表紙。#250)
+    assert works.cover_volume_id([v(1, fmt="images", title="a"), v(2, fmt="epub", title="b")]) == 2
+    assert works.cover_volume_id([v(1, 1, fmt="images", title="a"), v(2, 1, fmt="epub", title="b")]) == 2
+    assert works.cover_volume_id([v(1, 1, fmt="images"), v(2, fmt="epub")]) == 1  # 番号のある巻が先
     assert works.cover_volume_id([v(1, 1, title="b"), v(2, 1, title="a")]) == 2  # 重複は名前の自然順
     assert works.cover_volume_id([]) is None
 
@@ -264,4 +269,19 @@ def test_build_skips_unreadable_covers_and_continues(env, lib):
     write_zip(lib / "Fake v01.cbz", [("001.jpg", page_bytes("not an image"))])
     client.post("/api/scan")
     summary = client.post("/api/thumbnails/build?wait=true").json()["summary"]
-    assert summary == {"total": 3, "made": 2, "existing": 0, "skipped": 1}
+    assert summary == {"total": 4, "made": 2, "existing": 0, "skipped": 2}
+
+
+def test_epub_cover_comes_from_opf_and_beats_a_saved_page_zip(make_settings, tmp_path):
+    lib = tmp_path / "lib2"
+    write_zip(lib / "Book.zip", [("saved_files/images/001.jpg", jpeg(make_page(1)))])
+    (lib / "Book.epub").write_bytes(epub_bytes(
+        ["<p>本文</p>"], images={"images/cover.png": solid(RED)}, metadata_extra='<meta name="cover" content="img0"/>'))
+    client = TestClient(create_app(make_settings(lib), frontend_dist=None))
+    client.post("/api/scan")
+    w = next(iter(work_by_title(client).values()))
+    epub = next(v for v in client.get("/api/volumes").json() if v["format"] == "epub")
+    assert w["cover_volume_id"] == epub["id"]
+    r = client.get(f"/api/volumes/{w['cover_volume_id']}/thumbnail")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "image/jpeg"

@@ -188,6 +188,9 @@ class _State:
             "v.number_kind, v.number_start, v.number_end, v.number_evidence, "
             "s.id AS source_id, s.rel_path " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + " ORDER BY v.id").fetchall()
         self.listed = {r["id"] for r in self.vols}
+        # EPUB の OPF の dc:creator(巻の書誌 author。名前に著者が無いときの候補。#251)
+        self.creators: dict[int, str] = {r["volume_id"]: r["value"] for r in c.execute(
+            "SELECT volume_id, value FROM volume_fields WHERE field = 'author' AND source = 'epub' AND value <> ''")}
         self.works: dict[int, _Work] = {}
         for r in c.execute("SELECT id FROM works WHERE merged_into IS NULL"):
             self.works[r["id"]] = _Work(r["id"])
@@ -884,14 +887,14 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
         if work is not None and norm in work.names and not leaves:
             if cur["source"] == SOURCE_FILENAME:
                 _refresh_assignment(c, vid, cur, own)
-            _fill_author(c, work, own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
+            _fill_author(c, work, _authors_of(st, vid, own), SOURCE_FILENAME, own.confidence, own.evidence())
             _keep_own_alias(c, st, work.id, alias)
             continue
         target = st.find_work(norm)
         if want is not None and target is not None and _numbered_variant(st.works[target].title, norm):
             target = None  # 系列名を別名で持つだけの番号付きの作品には寄せない(新しい系列名の作品を作る)
         if target is None:
-            author = author_text(own.name.authors)
+            author = author_text(_authors_of(st, vid, own))
             target = _new_work(c, own.name.title, source=SOURCE_FILENAME, manual=False, confidence=own.confidence,
                                evidence=own.evidence(), author=author, author_source=SOURCE_FILENAME,
                                author_confidence=own.confidence, author_evidence=own.evidence())
@@ -901,7 +904,7 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             st._add_index(target, norm, w.names[norm])
             summary.works_created += 1
         else:
-            _fill_author(c, st.works[target], own.name.authors, SOURCE_FILENAME, own.confidence, own.evidence())
+            _fill_author(c, st.works[target], _authors_of(st, vid, own), SOURCE_FILENAME, own.confidence, own.evidence())
         if leaves:
             _merge_links(c, target, work.id)
         if cur is not None and cur["work_id"] != target and own.container:
@@ -919,6 +922,14 @@ def _refresh_assignment(c, vid: int, cur: dict, own: OwnName) -> None:
     if cur.get("evidence") != evidence or cur.get("confidence") != own.confidence:
         _put_assignment(c, vid, cur["work_id"], SOURCE_FILENAME, False, own.confidence, own.evidence())
         cur["evidence"], cur["confidence"] = evidence, own.confidence
+
+
+def _authors_of(st: _State, vid: int, own: OwnName) -> tuple[str, ...]:
+    """巻の名前から読んだ著者。無ければ、巻自身の名前で作品を決めた EPUB の dc:creator。"""
+    if own.name.authors:
+        return own.name.authors
+    creator = st.creators.get(vid) if own.level == 0 and not own.container else None
+    return (creator,) if creator else ()
 
 
 def _fill_author(c, work: _Work, authors, source: str, confidence: float, evidence: dict) -> None:
@@ -1631,15 +1642,17 @@ def _open_proposal_counts(c) -> dict[int, int]:
 
 
 def cover_volume_id(vols: list[dict]) -> int | None:
-    """作品の表紙にする巻: 画像の巻(小説・オフライン・0 ページを除く)のうち、番号が最小のもの。
+    """作品の表紙にする巻: 画像の巻と EPUB(小説・オフライン・0 ページを除く)のうち、番号が最小のもの。
 
-    番号の無い巻は番号のある巻の後ろ。同じ番号(重複)なら巻の名前の自然順。表紙はその巻の 1 ページ目(spinebox/thumbs.py)。
+    番号の無い巻は番号のある巻の後ろ。同じ番号(重複)・番号の無い巻どうしでは EPUB を先にする(#250。
+    「ページを保存」の zip の本文ページより、本が自分で持つ表紙画像の方が表紙らしい)。それでも並ぶなら巻の名前の自然順。
+    表紙は画像の巻ならその 1 ページ目、EPUB なら OPF の表紙画像(spinebox/thumbs.py)。
     """
-    candidates = [v for v in vols if v["format"] == "images" and not v["offline"] and v["page_count"] != 0]
+    candidates = [v for v in vols if v["format"] in ("images", "epub") and not v["offline"] and v["page_count"] != 0]
     if not candidates:
         return None
-    best = min(candidates, key=lambda v: (v["volume_number"] is None,
-                                          (v["volume_number"] or {}).get("start") or 0, natural_key(v["title"]), v["id"]))
+    best = min(candidates, key=lambda v: (v["volume_number"] is None, (v["volume_number"] or {}).get("start") or 0,
+                                          v["format"] != "epub", natural_key(v["title"]), v["id"]))
     return best["id"]
 
 

@@ -97,7 +97,8 @@ def resolve_href(base_dir: str, href: str) -> str | None:
     return joined
 
 
-def open_book(reader: ArchiveReader, limits: ExtractionLimits) -> EpubBook:
+def _load_package(reader: ArchiveReader, limits: ExtractionLimits) -> tuple[dict[str, ArchiveEntry], ET.Element, str]:
+    """(エントリ名 → エントリ, OPF の要素, OPF のあるフォルダ)。EPUB として読めなければ EpubError。"""
     listing = list_entries(reader, limits)
     problems = scan_problems(listing.entries, listing.skipped)
     if problems:
@@ -119,8 +120,49 @@ def open_book(reader: ArchiveReader, limits: ExtractionLimits) -> EpubBook:
     opf_name = resolve_href("", opf_path or "")
     if opf_name is None:
         raise EpubError("container.xml に OPF の場所が無い")
-    package = read_xml(opf_name)
-    opf_dir = posixpath.dirname(opf_name)
+    return by_name, read_xml(opf_name), posixpath.dirname(opf_name)
+
+
+@dataclass(frozen=True)
+class EpubMeta:
+    """OPF の書誌(dc:title / dc:creator / dc:publisher)と表紙画像。無い項目は None。"""
+    title: str | None
+    creator: str | None
+    publisher: str | None
+    cover: ArchiveEntry | None
+
+
+def _dc_text(package: ET.Element, name: str) -> str | None:
+    for el in package.iter():
+        if _local(el.tag) == name and el.text and el.text.strip():
+            return " ".join(el.text.split())
+    return None
+
+
+def read_meta(reader: ArchiveReader, limits: ExtractionLimits) -> EpubMeta:
+    """OPF から書誌と表紙画像(EPUB 3 の properties="cover-image"、無ければ EPUB 2 の <meta name="cover">)を読む。"""
+    by_name, package, opf_dir = _load_package(reader, limits)
+    items: dict[str, tuple[str, str, str]] = {}  # id → (エントリ名, media-type, properties)
+    for el in package.iter():
+        if _local(el.tag) != "item":
+            continue
+        name = resolve_href(opf_dir, el.get("href") or "")
+        if name is None or name not in by_name:
+            continue
+        items[el.get("id") or name] = (name, (el.get("media-type") or "").strip().lower(), el.get("properties") or "")
+    cover_name = next((n for n, m, p in items.values() if m in IMAGE_TYPES and "cover-image" in p.split()), None)
+    if cover_name is None:
+        cover_id = next((el.get("content") for el in package.iter()
+                         if _local(el.tag) == "meta" and el.get("name") == "cover" and el.get("content")), None)
+        item = items.get(cover_id or "")
+        if item is not None and item[1] in IMAGE_TYPES:
+            cover_name = item[0]
+    return EpubMeta(_dc_text(package, "title"), _dc_text(package, "creator"), _dc_text(package, "publisher"),
+                    by_name[cover_name] if cover_name else None)
+
+
+def open_book(reader: ArchiveReader, limits: ExtractionLimits) -> EpubBook:
+    by_name, package, opf_dir = _load_package(reader, limits)
 
     manifest: dict[str, tuple[str, str]] = {}  # id → (エントリ名, media-type)
     resources: list[Resource] = []

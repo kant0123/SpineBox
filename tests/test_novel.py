@@ -354,3 +354,44 @@ def test_xhtml_encoding_follows_bom_and_xml_declaration():
     assert decode_markup(b"\xef\xbb\xbf<p>\xe3\x81\x82</p>") == "<p>あ</p>"
     assert decode_markup("<p>あ</p>".encode("utf-16")) == "<p>あ</p>"
     assert decode_markup(b'<?xml version="1.0" encoding="x-unknown"?><p>\xe3\x81\x82</p>').endswith("<p>あ</p>")
+
+
+def _scan_works(make_settings, lib):
+    client = TestClient(create_app(make_settings(lib), frontend_dist=None))
+    assert client.post("/api/scan").status_code == 200
+    return client, {w["title"]: w for w in client.get("/api/works").json()["works"]}
+
+
+def test_epub_opf_title_replaces_romaji_filename(make_settings, tmp_path):
+    """ファイル名がローマ字で dc:title が日本語なら、作品名・著者・出版社の候補にする(#251)。"""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "Ki Hon Jou Hou - Tokyo Interactive.epub").write_bytes(epub_bytes(
+        ["<p>本文</p>"], title="基本情報技術者 科目A 一問一答問題集 2025年度版",
+        metadata_extra="<dc:creator>Tokyo Interactive</dc:creator><dc:publisher>Tokyo Interactive</dc:publisher>"))
+    client, by_title = _scan_works(make_settings, lib)
+    assert "基本情報技術者 科目A 一問一答問題集 2025年度版" in by_title
+    w = by_title["基本情報技術者 科目A 一問一答問題集 2025年度版"]
+    detail = client.get(f"/api/works/{w['id']}").json()
+    assert detail["author"] == "Tokyo Interactive"
+    vid = client.get("/api/volumes").json()[0]["id"]
+    conn = db.connect(make_settings(lib).db_path)
+    row = conn.execute("SELECT value, source FROM volume_fields WHERE volume_id = ? AND field = 'publisher'",
+                       (vid,)).fetchone()
+    assert (row["value"], row["source"]) == ("Tokyo Interactive", "epub")
+
+
+def test_epub_opf_title_does_not_replace_japanese_filename(make_settings, tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "吾輩は猫である.epub").write_bytes(epub_bytes(["<p>本文</p>"], title="別の題名"))
+    _, by_title = _scan_works(make_settings, lib)
+    assert "吾輩は猫である" in by_title and "別の題名" not in by_title
+
+
+def test_epub_opf_title_ignored_when_not_japanese(make_settings, tmp_path):
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "Kaze no tani.epub").write_bytes(epub_bytes(["<p>本文</p>"], title="Wind Valley"))
+    _, by_title = _scan_works(make_settings, lib)
+    assert "Kaze no tani" in by_title

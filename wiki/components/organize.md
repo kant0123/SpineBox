@@ -49,7 +49,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:1294 _supersede_smaller_outputs` | 同じ名前の巻のうちファイル数の少ない方を整理しないにする(#143)。改名・移動側は `_classify_renames`。選び方は `_smaller_than_top` |
 | `spinebox/organize/organizer.py:87 _mark_kept_peers` | 利用者が整理しないにした巻のうち、同じ名前で残る巻がある巻に `superseded_by` を付ける(競合で別の行を選んだ結果。#153) |
 | `spinebox/organize/organizer.py:1836 _delete_trashed_originals` | 「CBZ 化した元を削除する」を選んだ操作だけ、確定・DB の記録の後でその操作の退避フォルダの中を消す(#153) |
-| `spinebox/novel/epub.py:188 image_pages` | 画像だけの EPUB(漫画)の spine 順のページ。文字のある区切りが 1 つでもあれば None。計画は `_epub_image_pages`、実行は `_write_epub_cbz` |
+| `spinebox/novel/epub.py:230 image_pages` | 画像だけの EPUB(漫画)の spine 順のページ。文字のある区切りが 1 つでもあれば None。計画は `_epub_image_pages`、実行は `_write_epub_cbz` |
 | `spinebox/organize/pdf.py:191 write_pdf_cbz` | PDF からページ画像を抽出して CBZ を作成する。基本は無劣化抽出、回転・CMYK 補正、白紙・複数画像の合成レンダリングを行うハイブリッド方式。検査は `inspect_pdf` |
 | `spinebox/organize/organizer.py:1717 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
 | `spinebox/organize/organizer.py:1947 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
@@ -63,7 +63,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 
 置き場は `spinebox/config.py:134 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
-スキャンはこの置き場を走査しない(`spinebox/scanner.py:337 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
+スキャンはこの置き場を走査しない(`spinebox/scanner.py:344 _excluded_dirs`。既定の `.spinebox` と設定値の両方)。
 
 ## 安全設計(なぜこの順序か)
 
