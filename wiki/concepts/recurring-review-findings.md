@@ -88,6 +88,7 @@ push 前に確かめること:
 - PR #97 — `deploy/update_spinebox.ps1` — 「途中の手順が失敗しても起動し直す」「止められなければ何もしない」の分岐にテストが無かった(止める・起動するを `-TaskRunner` で差し替えられるようにしてテストを足した)
 - PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
 - PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えてコミットを持つ作業ブランチに対する `git branch -D` が通ることも assert していなかった(agy レビューの WARNING)
+- PR #262 — `spinebox/app.py get_page` — PDF のページを中身で `image/png` と見分ける分岐を足したのに、PNG を埋めた PDF で配信する経路のテストが無かった(agy レビューの WARNING。`make_png_pdf` で足した)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 
@@ -123,6 +124,7 @@ push 前に確かめること:
 - PR #219 — `spinebox/organize/intake.py:132 preview()` — `novel` 判定から PDF を除外して `mode="cbz"` に流れるようにしたのに、`mode == "cbz"` 内の検査で PDF の分岐を置かず 7-Zip 未対応として恒常的に blocked になり、`_volume_dict` に format を引き継がず execute 時に library.open に流れて VolumeUnreadable になっていた(agy レビューの WARNING。`_inspect_pdf` 呼び出しと `_volume_dict` への format 引き継ぎを足して修正)
 - PR #249 — `spinebox/works.py _belongs_to()` — 巻の名前が外側の名前より長い向きには「番号・…編・区切りの後ろの副題」の検査を足したのに、外側の方が長い向きは単なる前方一致のままで、`魔法使いの嫁` のフォルダが `魔法使い 第01巻` を取り込んだ。両向きを同じ `_extends()` で見るようにした(agy レビューの WARNING)
 - PR #249 — `spinebox/works.py _same_series()` — 外側の名前との突き合わせ(`_belongs_to`)を `_extends()` に揃えた後も、系列のまとめ(`_group_keys`)は単なる前方一致のままで、ローマ字のアーカイブの中の `ゾンビ` と `ゾンビだらけの世界` が 1 系列になり統合された。同じ `_extends()` で見るようにした(agy レビューの WARNING)
+- PR #262 — `spinebox/works.py _volume_json()` / `spinebox/bookmarks.py` — PDF を画像の巻として扱うよう `app.py _format()` だけ直し、同じ `format or "images"` を書いた作品・ブックマークの組み立てを直さず、`format: "pdf"` が API に漏れて作品の表紙候補(`cover_volume_id`)から外れた(agy レビューの CRITICAL。作品一覧で再現して両方を直し、テストを足した)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 

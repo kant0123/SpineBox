@@ -124,9 +124,7 @@ class Thumbnails:
         extract=False で取り出し・7-Zip が要る巻なら NeedsExtraction(何も展開しない)。
         """
         row = get_volume_row(conn, volume_id)
-        if row["format"] == "pdf":
-            raise ThumbnailUnavailable("PDF の巻の表紙は直接作成できません(先に「CBZ に整理」を実行してください)")
-        if row["format"] not in (None, FORMAT_EPUB):
+        if row["format"] not in (None, FORMAT_EPUB, "pdf"):
             raise ThumbnailUnavailable("この形式の巻には表紙のページがありません")
         key = self._key(row)
         data = self.store.read(key)
