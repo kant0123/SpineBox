@@ -53,7 +53,7 @@ export function scopeQuery(scope: WorksScope): WorkQuery {
 /** 一覧の見出し */
 export function scopeTitle(scope: WorksScope): string {
   if (scope.by === "all") return "ホーム";
-  if (scope.by === "kind") return scope.kind === "manga" ? "漫画" : "小説";
+  if (scope.by === "kind") return KIND_TEXT[scope.kind];
   return `${FILTER_LABELS[scope.by]}: ${scope.value}`;
 }
 

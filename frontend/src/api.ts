@@ -253,8 +253,8 @@ export interface WorkAlias {
   confidence: number | null;
 }
 
-/** 種別。漫画 / 小説(手で直せる。公開データベースから入ることもある) */
-export type WorkKind = "manga" | "novel";
+/** 種別。漫画 / 小説 / 同人誌(手で直せる。公開データベースから入ることもある) */
+export type WorkKind = "manga" | "novel" | "doujinshi";
 
 /** 項目ごとの値と出所。manual = 利用者が手で直した(再取得・再計算で変えない) */
 export interface FieldInfo<T> {
@@ -921,7 +921,7 @@ export interface CacheUsage {
 export interface LibraryStats {
   root_id: number | null;
   works: {
-    total: number; manga: number; novel: number; kind_unknown: number;
+    total: number; manga: number; novel: number; doujinshi: number; kind_unknown: number;
     finished: number; reading: number; unread: number;
     /** 公開 DB の候補が確認待ちの作品 */
     link_pending: number;

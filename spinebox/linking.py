@@ -191,7 +191,7 @@ def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
     ただし首位が 1.0 で拮抗していても、手元の巻番号(numbers)を全巻数が覆う候補が 1 件だけなら連携する
     (`_volume_tiebreak()`)。hold が真なら(漫画か小説かが未決)、自動で連携せず確認待ちにする。
     """
-    usable = [c for c in cands if not (known_kind and c["summary"]["kind"] and c["summary"]["kind"] != known_kind)]
+    usable = [c for c in cands if works.kind_compatible(known_kind, c["summary"]["kind"])]
     usable.sort(key=lambda c: c["summary"]["score"], reverse=True)
     shown = [c for c in usable if c["summary"]["score"] >= SHOW_MIN][:SHOW_LIMIT]
     if not shown:
@@ -316,7 +316,7 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
                           "AND source = ?", (now, now, work_id, source))
             return "linked"
         kept = by_id.get(row["source_id"]) if row is not None and row["status"] == "linked" else None
-        kind_ok = kept is not None and not (known_kind and kept["summary"]["kind"] and kept["summary"]["kind"] != known_kind)
+        kind_ok = kept is not None and works.kind_compatible(known_kind, kept["summary"]["kind"])
         if kept is not None and kind_ok and not hold:
             # 自動で連携した候補が今回も見つかった: 連携を保つ(順位が少し動いただけで外れて値が消えるのを避ける)。
             # ただし作品の種別と食い違う、または種別が未決になったものは保たない(通常の判定に戻す)

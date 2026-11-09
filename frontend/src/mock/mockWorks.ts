@@ -607,7 +607,7 @@ export function createMockWorks(
       }
       for (const name of ["kind", "publisher", "genres", "tags"]) {
         if (!(name in body)) continue;
-        if (name === "kind" && body.kind !== null && !["manga", "novel"].includes(body.kind)) return res(422, { detail: "種別は漫画か小説です" });
+        if (name === "kind" && body.kind !== null && !["manga", "novel", "doujinshi"].includes(body.kind)) return res(422, { detail: "種別は漫画・小説・同人誌のいずれかです" });
         if (!(name in w.previous)) w.previous[name] = w.extra[name]?.manual ? (w.previous[name] ?? null) : (w.extra[name] ?? null);
         const empty = body[name] === null || body[name] === "" || (Array.isArray(body[name]) && body[name].length === 0);
         w.extra[name] = { value: empty ? (Array.isArray(body[name]) ? [] : null) : body[name], source: "manual", manual: true, confidence: 1 };

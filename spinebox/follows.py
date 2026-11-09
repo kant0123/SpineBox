@@ -140,7 +140,7 @@ def check_work(conn: sqlite3.Connection, service: MetadataService, work_id: int)
             return _finish(conn, CheckResult(work_id, status, failure=failure), c)
         item = json.loads(link["item"])
         ctx = linking._context(c, work_id)
-        if ctx.kind and item.get("kind") and item["kind"] != ctx.kind:
+        if not works.kind_compatible(ctx.kind, item.get("kind")):
             # 漫画と小説が同名で並ぶ作品。作品の種別と違う組の巻は数えない(#50 の判定と同じ)
             return _finish(conn, CheckResult(work_id, STATUS_KIND_MISMATCH, failure=failure), c)
         owned = set(ctx.numbers)

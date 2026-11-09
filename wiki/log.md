@@ -579,6 +579,14 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[work-grouping]]
 - 備考: 題名の書式 `(イベント) [サークル (作者)] 題名 (原作)` で照合する(`spinebox/metadata/doujin.py`)。どちらも既定では無効。nHentai は `/api/v2/openapi.json` を読む(Swagger ページは JS 描画)、E-Hentai は検索 API が無いので検索ページのリンク + `gdata`。実蔵書 882 件の名前で書式の読み取り率を確かめた。名前解析は先頭のイベント括弧を著者にしないよう修正。
 
+## [2026-11-10] ingest | PR #281 (#280) 種別に同人誌を追加し左メニューに同人誌を追加
+- 更新: [[work-search]], [[frontend]]
+- 備考: 種別 `doujinshi`。公開 DB は同人誌を漫画で返すため `kind_compatible()` で漫画の候補と両立させた(連携・フォロー)。
+
+## [2026-11-10] ingest | PR #282 (#279) 作品一覧に戻ると表紙が出ない不具合の修正
+- 更新: [[frontend]]
+- 備考: #279。`WorkCover()` が `useEffect` で読み込み状態を戻していたため、キャッシュ済みの表紙は onLoad の後に `loading` へ戻り `opacity: 0` のままだった。描画中のリセットに変更し、回帰テスト `WorkCover.test.tsx` を追加。
+
 ## [2026-11-10] ingest | PR #285 (#278) メタデータ取得元を AniList/MangaUpdates からメディア芸術データベース・Bangumi に置き換える
 - 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[follow]], [[overview]]
 - 備考: #278。AniList はレート制限が障害対応で 30 回/分に下がっており、保存の永続化も利用条件で禁じていた。MangaUpdates はレート制限が文書化されていなかった。置き換え先はどちらもキー不要。メディア芸術データベースは旧ドメイン(`mediaarts-db.bunka.go.jp`)の証明書が切れていたため新ドメイン(`mediaarts-db.artmuseums.go.jp`)を使い、Neptune の全文検索(`SERVICE neptune-fts:search`)で `rdfs:label` を絞ると 1 クエリ 0.2〜0.3 秒(全件 `CONTAINS` は 3.6 秒)。シリーズの実体(`class:MangaBookSeries`)が無い作品は巻(`class:MangaBook`)の `volumeNumber` の最大値を全巻数とする。読み(カタカナ)を `MetadataItem.reading` に入れ、NDL と同じ経路でローマ字ファイル名の蔵書にも一致させる(ローマ字ファイル名から日本語名へ置き換わる既存のテストが、AniList の `title.romaji` の代わりにこの経路に依存する形になった)。Bangumi は巻ごとに別項目で返るため巻次の接尾辞で作品名にまとめる。タグ(簡体字中国語)は `spinebox.ja_terms.is_japanese()` が仮名の無い中国語を日本語と誤認するため読み取らず、構造化されたジャンル・タグの語彙(少年向け等)を持つ取得元が無くなった(ehentai / nhentai を有効にしたときだけ埋まる)。中国語の誤認は #284 に切り出した。

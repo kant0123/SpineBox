@@ -30,7 +30,7 @@ FILTER_FIELDS = {"author": "author", "kind": "kind", "genre": "genres", "tag": "
 # 索引に入れない項目(検索語に当たってほしくない数値と、廃止した項目。spinebox/works.py の RETIRED_FIELDS)
 UNINDEXED_FIELDS = ("total_volumes", "synopsis")
 # 種別(work_fields.kind の値)の日本語表記。検索語にも絞り込みの値にも使える
-KIND_LABELS = {"manga": "漫画", "novel": "小説"}
+KIND_LABELS = {"manga": "漫画", "novel": "小説", "doujinshi": "同人誌"}
 _VALUE_SEPARATORS = re.compile(r"[、,，;；]")
 
 READING_STATES = ("unread", "reading", "finished")

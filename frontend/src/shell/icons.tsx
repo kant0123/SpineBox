@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 
 export type IconName =
-  | "home" | "follow" | "manga" | "novel" | "author" | "tag" | "publisher" | "bookmark" | "review" | "admin" | "clock"
+  | "home" | "follow" | "manga" | "novel" | "doujinshi" | "author" | "tag" | "publisher" | "bookmark" | "review" | "admin" | "clock"
   | "menu" | "collapse" | "expand" | "sun" | "moon" | "settings" | "library";
 
 const PATHS: Record<IconName, ReactNode> = {
@@ -10,6 +10,7 @@ const PATHS: Record<IconName, ReactNode> = {
   follow: <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4" />,
   manga: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M4 12h16M12 3v9" /></>,
   novel: <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h7M8 11h7" />,
+  doujinshi: <path d="M5 3h13a1 1 0 0 1 1 1v17H6a1 1 0 0 1-1-1zM9 3v18M12 8h4M12 12h4" />,
   author: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-7 8-7s8 3 8 7" /></>,
   tag: <><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" /><circle cx="8" cy="8" r="1.5" /></>,
   publisher: <path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6M3 21h18" />,

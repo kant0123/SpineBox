@@ -63,7 +63,8 @@ trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Pyth
 - 著者・種別・ジャンル・タグ・出版社は `work_fields` の項目 `author` / `kind` / `genres` / `tags` / `publisher` で、API のクエリ名は `author` / `kind` / `genre` / `tag` / `publisher`
   (`spinebox/search.py:29 FILTER_FIELDS` が対応表)。値は 1 つずつに分けて、正規化して一致で比べる。ジャンル・タグは公開 DB の結線(#50)が
   JSON の文字列配列で持つので、`split_values()` が配列を読む(`、` `,` `;` でつないだ文字列も読む)。複数の値を持つ項目は**どれか 1 つが一致**すればよい
-- 種別は `manga` / `novel` で持つ(#50)。絞り込みは `manga` でも `漫画` でも同じで(`_comparable()`)、`漫画` `小説` の語は検索の索引にも入れる。
+- 種別は `manga` / `novel` / `doujinshi` で持つ(#50, #280)。絞り込みは `manga` でも `漫画` でも同じで(`_comparable()`)、`漫画` `小説` `同人誌` の語は検索の索引にも入れる。
+  左メニューの「同人誌」(`#/doujinshi`)は種別 `doujinshi` の絞り込み。公開 DB は同人誌を漫画として返すので、同人誌の作品は漫画の候補とも種別が食い違わないものとして扱う(`spinebox/works.py kind_compatible()`。連携の候補の絞り・フォローの種別違いの判定が使う)。
   候補(`facets.kind`)は保存された値(`manga`)のまま返し、画面で日本語に直す
 - 読書状態は作品単位: 見えている巻を全部読み終えたら `finished`(既読)、1 巻も開いていなければ `unread`(未読)、それ以外は `reading`(読書中)。
   `reading_state` として一覧の各作品に付ける
