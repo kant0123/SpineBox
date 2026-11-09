@@ -36,7 +36,7 @@ from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 log = logging.getLogger(__name__)
 
 # 検索の順。国立国会図書館サーチで種別・著者を決めてから、作品単位の取得元の候補を絞る
-SEARCH_ORDER = ("ndl", "anilist", "mangaupdates")
+SEARCH_ORDER = ("ndl", "anilist", "mangaupdates", "nhentai", "ehentai")
 
 AUTO_LINK_MIN = 0.75      # 自動で連携する最小の確からしさ
 LINK_MARGIN = 0.15        # 2 位との差がこれ以上あるときだけ自動で連携する(拮抗は確認待ち)
@@ -50,15 +50,15 @@ GENRES_LIMIT = 15
 TAGS_LIMIT = 30
 
 PRIORITY = {
-    works.FIELD_TITLE: ("ndl", "mangaupdates", "anilist"),
-    works.FIELD_AUTHOR: ("ndl", "anilist", "mangaupdates"),
-    works.FIELD_KIND: ("ndl", "mangaupdates", "anilist"),
-    works.FIELD_PUBLISHER: ("ndl", "mangaupdates"),
+    works.FIELD_TITLE: ("ndl", "mangaupdates", "anilist", "ehentai", "nhentai"),
+    works.FIELD_AUTHOR: ("ndl", "anilist", "mangaupdates", "ehentai", "nhentai"),
+    works.FIELD_KIND: ("ndl", "mangaupdates", "anilist", "ehentai", "nhentai"),
+    works.FIELD_PUBLISHER: ("ndl", "mangaupdates", "ehentai", "nhentai"),
     works.FIELD_TOTAL_VOLUMES: ("anilist", "mangaupdates"),
 }
 UNION_PRIORITY = {
-    works.FIELD_GENRES: ("mangaupdates", "anilist"),
-    works.FIELD_TAGS: ("mangaupdates", "anilist"),
+    works.FIELD_GENRES: ("mangaupdates", "anilist", "ehentai", "nhentai"),
+    works.FIELD_TAGS: ("mangaupdates", "anilist", "ehentai", "nhentai"),
 }
 UNION_LIMIT = {works.FIELD_GENRES: GENRES_LIMIT, works.FIELD_TAGS: TAGS_LIMIT}
 MANAGED_FIELDS = (*PRIORITY, *UNION_PRIORITY)

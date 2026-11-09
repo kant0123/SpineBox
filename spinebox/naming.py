@@ -395,7 +395,10 @@ def parse_work_name(name: str) -> WorkName | None:
         if not m:
             break
         content = _bracket_content(m)
-        if not content or _TAG.fullmatch(content) or looks_garbled(content):
+        # 同人誌の先頭の `(C71)` `(例大祭12)` は開催イベント。直後に `[サークル (作者)]` が続く丸括弧は著者にしない
+        is_event = (m.group(3) is not None and not authors and first_other is None
+                    and text[m.end():].startswith(("[", "【")))
+        if not content or _TAG.fullmatch(content) or looks_garbled(content) or is_event:
             parts.append(("tag", content))  # 直せなかった文字化けは著者にしない
         elif not authors and first_other is None:
             authors = [a.strip() for a in _AUTHOR_SEP.split(content) if a.strip()]

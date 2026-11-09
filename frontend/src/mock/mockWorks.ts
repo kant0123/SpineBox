@@ -26,7 +26,9 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v 
 const splitValues = (v: string | null | undefined) => (v ?? "").split(/[、,，;；]/).map((x) => x.trim()).filter(Boolean);
 
 const SOURCES: SourceName[] = ["ndl", "anilist", "mangaupdates"];
-const LABELS: Record<SourceName, string> = { ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates" };
+const LABELS: Record<SourceName, string> = {
+  ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates", nhentai: "nHentai", ehentai: "E-Hentai",
+};
 
 const cand = (source_id: string, over: Partial<LinkCandidate>): LinkCandidate => ({
   source_id, title: "サンプル漫画", subtitle: null, romaji: null, authors: ["山田太郎"], kind: "manga", publisher: "集英社",

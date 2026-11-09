@@ -574,3 +574,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]]
 - 備考: #270。作品カード下部の巻数タグや状態タグを全廃し、メタ情報(著者・出版社)を1行にまとめ空でも高さを確保(min-height: calc(22 / 16 * 1rem))。読書中の作品のみ表紙(work-cover-wrap)の右上に「読書中」バッジをオーバーレイ表示(position: absolute)することで、タグの有無や長短に一切左右されず全作品カードの高さが完全に均一になるようにした。
 
+
+## [2026-11-10] ingest | #275 同人誌の取得元 nHentai・E-Hentai を追加
+- 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[work-grouping]]
+- 備考: 題名の書式 `(イベント) [サークル (作者)] 題名 (原作)` で照合する(`spinebox/metadata/doujin.py`)。どちらも既定では無効。nHentai は `/api/v2/openapi.json` を読む(Swagger ページは JS 描画)、E-Hentai は検索 API が無いので検索ページのリンク + `gdata`。実蔵書 882 件の名前で書式の読み取り率を確かめた。名前解析は先頭のイベント括弧を著者にしないよう修正。
