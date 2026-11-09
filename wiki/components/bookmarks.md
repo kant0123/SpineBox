@@ -1,7 +1,7 @@
 ---
 type: component
 summary: ブックマーク(#86)。作品・巻に付ける印と一覧(付けた順・作品名順)。整理で巻が置き換わると印を移し(写さない)元に戻すと戻す、作品の統合では吸収先へ移す、オフライン・分解済みの親の印も一覧から落とさない理由
-updated: 2026-11-09
+updated: 2026-11-10
 related: [backend, frontend, organize, work-grouping, volume-split, overview, manga-reader]
 ---
 
