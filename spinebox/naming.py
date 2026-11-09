@@ -29,7 +29,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from .mojibake import fix_mojibake
+from .mojibake import fix_mojibake, looks_garbled
 
 # 名前の末尾から外す拡張子(`Vol.1` の `.1` を拡張子として落とさないため、知っているものだけ)
 _KNOWN_EXTS = frozenset({
@@ -59,8 +59,31 @@ _RULES: list[tuple[str, str, re.Pattern]] = [
                                 re.IGNORECASE)),
     ("episode", "ch.N", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?|(?-i:c)(?=\d))\.?\s*{_NUM}(?:{_SEP}{_NUM})?{_RB}",
                                    re.IGNORECASE)),  # `c06-08` は章 6〜8。大文字の `C100` はコミックマーケットの回なので読まない
+    ("episode", "語Chapter N", re.compile(rf"(?<=[a-z])Chapter\s*{_NUM}(?:{_SEP}{_NUM})?{_RB}")),
     ("volume", "N-M", re.compile(rf"(?<![\d.\-]){_NUM}{_SEP}{_NUM}(?![\d.\-])")),
+    # 末尾の版の印の付いた番号(`Hiroinwaetsshimashit_04w` `劇光仮面1s` `Sudachi no Maoujou 05s`)。
+    # `_`・日本語・`!` の直後か、空白の後なら 0 始まりのときだけ(`the 80s` は読まない)
+    ("volume", "Ns", re.compile(r"(?:(?<=_)|(?<=[\u3040-\u30ff\u4e00-\u9fff!?])|(?<=\s)(?=0))"
+                                r"(\d{1,3})(?:-(\d{1,3}))?[sw]$")),
+    # 番号の後ろに `&` で区切った著者列が続く(`作品名 1 十乃壱 天 & 菱川 さかく & だぶ竜`)
+    ("volume", "N 著者", re.compile(r"(?<=\s)(\d{1,3})(?:-(\d{1,3}))?(?=(?:\s*【[^】]*】)?\s+\S[^&]*\s&\s)")),
 ]
+
+# ローマ数字の巻(`現実主義勇者の王国再建記IV 上田悟司 & …`)。日本語の直後で、後ろに著者列が続くときだけ
+_ROMAN = re.compile(r"(?<=[\u3040-\u30ff\u4e00-\u9fff])(X{0,1}(?:IX|IV|V?I{0,3}))(?=\s+\S[^&]*\s&\s)")
+_ROMAN_VALUES = {"I": 1, "V": 5, "X": 10}
+
+# 雑誌の号(`週刊少年サンデー 2021年36-37号`)。年と号は巻の番号ではない(号を `N-M` の巻と読まない)
+_ISSUE = re.compile(r"\d{4}\s*年\s*\d{1,2}(?:\s*[-・~\s]\s*\d{1,2})*\s*月?\s*(?:合併?)?号")
+
+
+def _roman(text: str) -> int | None:
+    total, prev = 0, 0
+    for ch in reversed(text):
+        v = _ROMAN_VALUES[ch]
+        total += -v if v < prev else v
+        prev = max(prev, v)
+    return total or None
 
 # 印の無い範囲の上限。これより広い・逆順の範囲は年号や型番とみなして捨てる
 _MAX_SPAN = 200
@@ -107,6 +130,8 @@ def _in_decimal(text: str, m: re.Match) -> bool:
 
 def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
     """NFKC 済みの text から巻・話の番号の候補と、名前の中の位置(span)を返す。"""
+    if _ISSUE.search(text):
+        return None  # 雑誌の号。号は巻の番号として扱わない
     for kind, rule, pattern in _RULES:
         for m in pattern.finditer(text):
             if _in_decimal(text, m):
@@ -118,6 +143,10 @@ def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
             if rule == "N-M" and (start == 0 or len(m.group(1)) > 3 or len(m.group(2)) > 3):
                 continue
             return NumberCandidate(kind, start, end, m.group(0).strip(), rule), m.span()
+    for m in _ROMAN.finditer(text):
+        n = _roman(m.group(1)) if m.group(1) else None
+        if n is not None:
+            return NumberCandidate("volume", n, n, m.group(0), "ローマ数字"), m.span()
     return None
 
 
@@ -168,6 +197,7 @@ _TRAILING_BRACKET = re.compile(r"\s*(?:\[([^\]]*)\]|【([^】]*)】|\(([^)]*)\))
 _TAG = re.compile(
     r"(?:一般|成年|成人|一般向け|成人向け)?(?:コミック|漫画|マンガ|小説|ラノベ|ライトノベル|雑誌|画集|写真集|同人誌|商業誌|アンソロジー)"
     r"|dl版|digital|高画質|高解像度|完結(?:済み?)?|完|全\d+巻|無修正|zip|rar|7z|cbz|cbr|pdf|epub|scan(?:ned)?|hd"
+    r"|.{0,12}(?:特典|描き下ろし|描きおろし|書き下ろし).{0,12}|(?:特装|限定|通常|初回限定|電子)版"
     r"|[a-z0-9-]*raw(?:\.[a-z]{2,3})?|\d{4}(?:[-./]?\d{1,2}){0,2}|v\d+.*",
     re.IGNORECASE)
 
@@ -190,7 +220,7 @@ _DECIMAL_RULES: list[tuple[str, re.Pattern]] = [
     ("N.M話", re.compile(rf"(?<![\d全第]){_DEC_NUM}\s*話")),
     ("Vol.N.M", re.compile(rf"{_LB}vol(?:ume)?\.?\s*{_DEC_NUM}{_RB}", re.IGNORECASE)),
     ("vN.M", re.compile(rf"{_LB}v\.?\s?{_DEC_NUM}(?=[A-Za-z]?(?![A-Za-z\d]))", re.IGNORECASE)),
-    ("ch.N.M", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?)\.?\s*{_DEC_NUM}{_RB}", re.IGNORECASE)),
+    ("ch.N.M", re.compile(rf"{_LB}(?:ch(?:apter)?|ep(?:isode)?|(?-i:c)(?=\d))\.?\s*{_DEC_NUM}{_RB}", re.IGNORECASE)),
 ]
 
 
@@ -210,6 +240,9 @@ _JUNK_RAW = (
     "newfolder", "新しいフォルダ", "新しいフォルダー", "無題", "untitled", "download", "downloads", "comic", "comics",
     "manga", "漫画", "マンガ", "コミック",
     "chap", "src", "source", "sources", "pc",
+    # カラーページの束(`A Channel` のアーカイブの中の `color`)。作品名ではない
+    "color", "colour", "colors", "カラー", "カラーページ", "mono", "monochrome", "モノクロ",
+    "単ページ", "見開き", "見開きページ", "spread", "spreads", "singlepage", "singlepages",
 )
 
 
@@ -325,6 +358,16 @@ def _clean_title(text: str) -> str:
 
 
 _SAVED_PAGE_DIR = re.compile(r"[_\s]files$", re.IGNORECASE)
+# 名前の先頭に付けた整理用の印(`★漫画` `★さわらないで小手指くん`)。作品名の中の `聖☆おにいさん` は残す
+_LEADING_MARKS = re.compile(r"^[\s★☆◆◇●○■□※♪♡♥◎]+")
+# 作品名の後ろに取り残された開き括弧(`ありふれた日常で世界最強【第37話】` の `【`)
+_OPEN_BRACKETS = "[(【〔「『<"
+# ローマ字の作品名の後ろに付く配布の印。作品名ではない(`works._ROMAJI_NOISE` の、語として紛れない分)
+_ROMAJI_TAIL_TAGS = frozenset({"raw", "raws", "jp", "jpn", "color", "colour", "mono", "digital", "hq"})
+
+
+def _has_kana_or_kanji(text: str) -> bool:
+    return any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text)
 
 
 def parse_work_name(name: str) -> WorkName | None:
@@ -334,11 +377,16 @@ def parse_work_name(name: str) -> WorkName | None:
     if _SAVED_PAGE_DIR.search(text):
         return None  # ブラウザの「ページを保存」で付くフォルダ(`16_files` `bbjjf1_y_files`)。作品名ではない
     parts: list[tuple[str, str]] = []
+    text = _LEADING_MARKS.sub("", text)
 
-    m = _DISTRIBUTOR.match(text)
-    if m and (m.group("date") or m.group("site")) and m.end() > 0:
-        parts.append(("distributor", text[:m.end()].strip(" _-")))
-        text = text[m.end():]
+    def drop_distributor(text: str) -> str:
+        m = _DISTRIBUTOR.match(text)
+        if m and (m.group("date") or m.group("site")) and m.end() > 0:
+            parts.append(("distributor", text[:m.end()].strip(" _-")))
+            text = text[m.end():]
+        return text
+
+    text = drop_distributor(text)
 
     authors: list[str] = []
     first_other: str | None = None
@@ -347,8 +395,8 @@ def parse_work_name(name: str) -> WorkName | None:
         if not m:
             break
         content = _bracket_content(m)
-        if not content or _TAG.fullmatch(content):
-            parts.append(("tag", content))
+        if not content or _TAG.fullmatch(content) or looks_garbled(content):
+            parts.append(("tag", content))  # 直せなかった文字化けは著者にしない
         elif not authors and first_other is None:
             authors = [a.strip() for a in _AUTHOR_SEP.split(content) if a.strip()]
             first_other = content
@@ -356,6 +404,7 @@ def parse_work_name(name: str) -> WorkName | None:
         else:
             parts.append(("tag", content))
         text = text[m.end():]
+    text = drop_distributor(text)  # 著者の括弧の後ろの配布元(`[著者] DLRAW.AC_ 作品名 第01巻`)
 
     text, dropped = _strip_trailing_decor(text)  # 数字でない末尾の括弧・著者列を番号の読みから外す
     found = _find_number(text)
@@ -377,6 +426,9 @@ def parse_work_name(name: str) -> WorkName | None:
                 title_raw = text[span[1]:]
         else:
             title_raw, number_part = text, None
+            issue = _ISSUE.search(text)
+            if issue and _clean_title(text[:issue.start()]):
+                title_raw, number_part = text[:issue.start()], issue.group(0)  # 雑誌は号を落とした誌名が作品名
 
     # 末尾のタグ括弧と「全N巻」「完結」を外す
     title = title_raw
@@ -387,7 +439,12 @@ def parse_work_name(name: str) -> WorkName | None:
         title = title[:m.start()]
     title = _TRAILING_NOTE.sub("", title)
     title = _DECIMAL_VOLUME.sub("", title)
-    title = _clean_title(title).rstrip("[(").strip()
+    title = _clean_title(title).rstrip(_OPEN_BRACKETS).strip()
+    if title and not _has_kana_or_kanji(title):
+        words = title.split(" ")
+        while len(words) > 1 and words[-1].casefold() in _ROMAJI_TAIL_TAGS:
+            words.pop()  # ローマ字の作品名の後ろの配布の印(`matoseiheino jp` `matoseiheino color`)
+        title = " ".join(words)
 
     # 作品名が空で、先頭の括弧が著者として読まれていたなら、その括弧が作品名(`[作品名] 第1巻`)
     if not title and first_other is not None:
@@ -396,8 +453,8 @@ def parse_work_name(name: str) -> WorkName | None:
     elif title:
         parts.append(("title", title))
     norm = normalize_title(title)
-    if is_junk_name(norm):
-        return None
+    if is_junk_name(norm) or looks_garbled(title):
+        return None  # 直せなかった文字化けは作品名にしない(外側の名前に任せる)
     if number_part is not None:
         parts.append(("number", number_part.strip()))
     return WorkName(title, norm, tuple(authors), number, tuple(parts))
@@ -411,9 +468,10 @@ def parse_work_name(name: str) -> WorkName | None:
 
 _N3 = r"\d{1,3}"
 _TRAILING_NUMBER = re.compile(
-    rf"^(?P<base>.*?)(?P<tail>[\s_\-－:]+(?P<sep>{_N3})|\s*[\(（]\s*(?P<paren>{_N3})\s*[\)）])\s*$")
+    rf"^(?P<base>.*?)(?P<tail>[\s_\-－:~〜]+(?P<sep>{_N3})|\s*[\(（]\s*(?P<paren>{_N3})\s*[\)）])\s*$")
 # 番号の直前がこの語なら末尾の番号と読まない(印の付いた番号は `_RULES` が先に拾う)
-_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol\.?|v|ch\.?|ep\.?|巻|卷|話|话|全)$", re.IGNORECASE)
+_TRAILING_MARK = re.compile(r"(?:第|no\.?|vol(?:ume)?\.?|v|ch(?:apter)?\.?|ep(?:isode)?\.?|巻|卷|話|话|全)$",
+                            re.IGNORECASE)
 
 # 末尾の番号の後ろの装飾。数字でない末尾の括弧(`[レーベル]` `(レーベル)` `[AVIF]` など)を落としてから読む。
 # 数字の括弧(`(3)`)は番号として残し、装飾の括弧だけを落とす

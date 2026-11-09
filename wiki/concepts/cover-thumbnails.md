@@ -8,8 +8,8 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 # 表紙のサムネイル
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
-入口は `spinebox/thumbs.py:102 Thumbnails`、API は `spinebox/app.py:998 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:1019 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:30 WorkCover()`。
+入口は `spinebox/thumbs.py:105 Thumbnails`、API は `spinebox/app.py:999 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
+`spinebox/app.py:1020 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:30 WorkCover()`。
 
 ## 内容
 
@@ -19,12 +19,12 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   EPUB の表紙は OPF が示す画像(EPUB 3 の `properties="cover-image"`、無ければ EPUB 2 の `<meta name="cover">`。`spinebox/novel/epub.py read_meta()`)で、
   `spinebox/thumbs.py Thumbnails._epub_cover()` が縮小する。表紙の指定が無い EPUB は 404(`pending: false`)で表紙なしの枠になる(ほかの巻の 1 ページ目で代用しない)。`GET /api/works` の各作品に `cover_volume_id` で載る
 - **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。作品カード枠(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小した JPEG
-  (`spinebox/thumbs.py:74 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`。横長画像の最大幅は 1440。#222 で低解像度化を防ぐため縦横比に応じた計算に改善し、版を 2 に上げた)
+  (`spinebox/thumbs.py:77 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`。横長画像の最大幅は 1440。#222 で低解像度化を防ぐため縦横比に応じた計算に改善し、版を 2 に上げた)
 - **置き場は `data_dir/thumbs/`。** 展開キャッシュと同じ `ExtractionCache`(キーの sha256 の名前・LRU)を別のディレクトリと上限
   (`thumb_cache_limit_bytes`、既定 256 MiB)で使う。キーは作り方の版・大きさ・元ファイルのパス・サイズ・mtime・巻の位置
   (`container_path` / `inner_path` / `entry_prefix`)。元が変われば別のキーになり、古いものは LRU で消える。消えてもよいもの
 - **一覧から呼ばれる `GET /api/volumes/{id}/thumbnail` は、取り出し・7-Zip の起動が要らない巻だけその場で作る。**
-  `Library.open(extract=False)`(`spinebox/library.py:142 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
+  `Library.open(extract=False)`(`spinebox/library.py:143 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。テキスト小説・表紙の指定が無い EPUB・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の
