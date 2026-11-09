@@ -39,6 +39,7 @@ export default defineConfig(({ mode }) => ({
   build: { outDir: "dist", emptyOutDir: true },
   test: {
     environment: "jsdom",
+    setupFiles: ["src/test/setup.ts"],
     fileParallelism: false,
     include: ["src/**/*.test.{ts,tsx}"],
   },
