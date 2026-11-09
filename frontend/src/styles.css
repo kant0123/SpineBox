@@ -676,6 +676,15 @@ button.small::after {
 .work-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
 .work-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; font-weight: 700; color: var(--fg); min-width: 0; }
 .work-filters select { min-width: 0; }
+/* 作品の並び順(#273)。絞り込みの外に常に出し、1 タップで切り替えられるようにする */
+.work-sort-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.work-sort { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font-size: 0.875rem; font-weight: 700; color: var(--fg); }
+.work-sort-label { flex: none; }
+.work-sort select { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 767px) {
+  .work-sort { width: 100%; }
+  .work-sort select { width: 100%; }
+}
 .work-count { margin: 8px 0 0; }
 .link-button {
   background: transparent;
