@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery } from "../api";
+import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery, type WorkSummary } from "../api";
 import { facetListHref, reviewHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
@@ -33,6 +33,80 @@ export function scopeTitle(scope: WorksScope): string {
  * scope はサイドバーの漫画・小説・著者・タグ・出版社から開いたときの固定の条件(その項目の選択は出さない)、
  * 蔵書の切り替え(#85)はサイドバーで選んだ蔵書ルート。
  */
+interface WorkCardProps {
+  work: WorkSummary;
+  onReadLaterChange?: (on: boolean) => void;
+}
+
+export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
+  const cardRef = useRef<HTMLLIElement>(null);
+  const missing = missingLabel(work);
+
+  const startMarquee = () => {
+    const card = cardRef.current;
+    if (!card) return;
+    const titleEl = card.querySelector<HTMLElement>(".work-card-title");
+    const inner = card.querySelector<HTMLElement>(".work-card-title-inner");
+    if (titleEl && inner) {
+      const diff = inner.scrollWidth - titleEl.clientWidth;
+      if (diff > 0) {
+        card.style.setProperty("--marquee-distance", `${diff}`);
+        card.classList.add("is-marquee");
+      }
+    }
+  };
+
+  const stopMarquee = () => {
+    const card = cardRef.current;
+    if (!card) return;
+    card.classList.remove("is-marquee");
+  };
+
+  return (
+    <li
+      ref={cardRef}
+      className="work-card"
+      onMouseEnter={startMarquee}
+      onMouseLeave={stopMarquee}
+      onFocusCapture={startMarquee}
+      onBlurCapture={stopMarquee}
+    >
+      <div className="work-cover-wrap">
+        <a className="work-link work-cover-link" href={workTitlesHref(work.id)} aria-label={work.title}>
+          {work.cover_volume_id !== null ? (
+            <WorkCover volumeId={work.cover_volume_id} placeholder />
+          ) : (
+            <WorkCoverPlaceholder />
+          )}
+        </a>
+        <NotifyDot work={work} />
+        <ReadLaterButton id={work.id} initial={work.read_later ?? false} label={work.title} onChange={onReadLaterChange} />
+      </div>
+      <a className="work-link work-text-link" href={workTitlesHref(work.id)}>
+        <span className="work-text">
+          <span className="volume-title work-card-title" title={work.title}>
+            <span className="work-card-title-inner">{work.title}</span>
+          </span>
+          {work.author && <span className="volume-meta">{work.author}</span>}
+          {work.publisher && <span className="volume-meta">{work.publisher}</span>}
+          <span className="work-badges">
+            <span className="badge volume-count-badge">
+              既刊{work.volume_count}巻{work.max_volume ? `(〜${work.max_volume}巻)` : ""}
+            </span>
+            {missing.text && (
+              <span className="badge" title={missing.title}>
+                欠け {missing.text}
+              </span>
+            )}
+            {work.offline_count > 0 && <span className="badge">オフライン {work.offline_count}</span>}
+            {work.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[work.reading_state]}</span>}
+          </span>
+        </span>
+      </a>
+    </li>
+  );
+}
+
 export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const { root } = useLibraryScope();
   const fixed = scopeQuery(scope);
@@ -185,43 +259,9 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       )}
       {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります。</p>}
       <ul className="work-grid">
-        {data?.works.map((w) => {
-          const missing = missingLabel(w);
-          return (
-            <li key={w.id} className="work-card">
-              <div className="work-cover-wrap">
-                <a className="work-link work-cover-link" href={workTitlesHref(w.id)} aria-label={w.title}>
-                  {w.cover_volume_id !== null ? (
-                    <WorkCover volumeId={w.cover_volume_id} placeholder />
-                  ) : (
-                    <WorkCoverPlaceholder />
-                  )}
-                </a>
-                <NotifyDot work={w} />
-                <ReadLaterButton id={w.id} initial={w.read_later ?? false} label={w.title} onChange={onReadLaterChange} />
-              </div>
-              <a className="work-link work-text-link" href={workTitlesHref(w.id)}>
-                <span className="work-text">
-                  <span className="volume-title">{w.title}</span>
-                  {w.author && <span className="volume-meta">{w.author}</span>}
-                  {w.publisher && <span className="volume-meta">{w.publisher}</span>}
-                  <span className="work-badges">
-                    <span className="badge volume-count-badge">
-                      既刊{w.volume_count}巻{w.max_volume ? `(〜${w.max_volume}巻)` : ""}
-                    </span>
-                    {missing.text && (
-                      <span className="badge" title={missing.title}>
-                        欠け {missing.text}
-                      </span>
-                    )}
-                    {w.offline_count > 0 && <span className="badge">オフライン {w.offline_count}</span>}
-                    {w.reading_state !== "unread" && <span className="badge">{READING_STATE_TEXT[w.reading_state]}</span>}
-                  </span>
-                </span>
-              </a>
-            </li>
-          );
-        })}
+        {data?.works.map((w) => (
+          <WorkCard key={w.id} work={w} onReadLaterChange={onReadLaterChange} />
+        ))}
       </ul>
       <Credits sources={sources} />
     </div>
