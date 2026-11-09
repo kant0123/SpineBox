@@ -31,6 +31,7 @@ from spinebox.scanner import software_doc_reason
     ("週刊少年サンデー 2021年36-37号", "週刊少年サンデー", None),
     ("週刊少年サンデー 2023年4・5合併号", "週刊少年サンデー", None),
     ("月刊アフタヌーン 2023年12月号", "月刊アフタヌーン", None),
+    ("週刊少年サンデー 2022年02_03号", "週刊少年サンデー", None),  # `_` 区切りの合併号(#268)
     ("月刊アフタヌーン 2024年 5 月号", "月刊アフタヌーン", None),
     ("廡姧彮擭僒儞僨乕 2021擭36-37崋", "週刊少年サンデー", None),  # Shift_JIS を GBK として読んだもの
     # 直せる語だけ直した文字化け(著者の括弧は直せない)
@@ -219,3 +220,27 @@ def test_space_separated_variants_are_proposed_not_merged(env):
     assert len(titles(client)) == 2
     (p,) = client.get("/api/works/proposals").json()
     assert (p["status"], p["confidence"]) == ("open", 0.8)
+
+
+def test_works_whose_derived_titles_became_equal_are_merged(env):
+    """前の読み方で別々に作った作品の作品名が、読み直して同じになったら自動統合する(#268)。
+
+    本番: 1 巻だけの作品 `DLRAW.AC あつまれ!ふしぎ研究部` が読み直しで `あつまれ!ふしぎ研究部` に改名され、
+    同じ作品名の 328 巻の作品(外側の名前で決めた確信度 0.8)と確認待ち 0.8 で残った。"""
+    from spinebox import works
+    lib, scan = env
+    cbz(lib, "a/[著者] 作品甲 第01巻.cbz")
+    cbz(lib, "b/[著者] DLRAW.AC_ 作品甲 第02巻.cbz")
+    settings, client = scan()
+    conn = db.connect(settings.db_path)
+    try:  # 前の読み方の状態を作る: 2 巻目だけが旧い作品名の作品に入り、1 巻目の作品名は確信度 0.8
+        vid = conn.execute("SELECT id FROM volumes WHERE title LIKE '%第02巻'").fetchone()[0]
+        with db.transaction(conn) as c:
+            old = works._new_work(c, "DLRAW.AC 作品甲", source="filename", manual=False, confidence=0.9, evidence=None)
+            c.execute("UPDATE work_volumes SET work_id = ? WHERE volume_id = ?", (old, vid))
+            c.execute("UPDATE work_fields SET confidence = 0.8 WHERE field = 'title' AND value = '作品甲'")
+    finally:
+        conn.close()
+    client.post("/api/works/refresh")
+    assert titles(client) == [("作品甲", 2)]
+    assert client.get("/api/works/proposals").json() == []
