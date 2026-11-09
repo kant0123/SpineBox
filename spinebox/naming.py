@@ -128,6 +128,27 @@ def parse_number(name: str) -> NumberCandidate | None:
     return found[0] if found else None
 
 
+def parse_number_in(name: str, ancestors: tuple[str, ...] = ()) -> NumberCandidate | None:
+    """`parse_number` に、アーカイブ内の外側のフォルダ名(ancestors)を加えて読む。
+
+    外側のフォルダ名が**1 冊の巻**(`…v06s` → 6 巻)を表すなら、その中のフォルダの印の無い範囲
+    (`DLRAW.AC_110-113`)や話・章(`… Raw Chapter 171`)は巻の中の章の番号であって、巻番号ではない。
+    読まずに番号なしにする(読むと欠け巻の計算が章の数だけ膨らむ。#248)。
+    外側が範囲(`第01-20巻`)なら、中のフォルダは巻のことがあるので従来どおり読む。
+    巻の印の付いた名前(`v07`)は、外側に巻があっても巻として読む。
+    """
+    cand = parse_number(name)
+    if cand is None or not ancestors:
+        return cand
+    if cand.rule != "N-M" and cand.kind != "episode":
+        return cand
+    for outer in ancestors:
+        o = parse_number(outer)
+        if o is not None and o.kind == "volume" and o.start == o.end and o.rule != "N-M":
+            return None
+    return cand
+
+
 # --- 作品名・著者の候補(#43) ----------------------------------------------------------------------
 #
 # `[著者] 作品名 第NN巻`、`[作画×原作] 作品名 v01s`、`20260112RAW.TO_Title_v01` のような名前から、

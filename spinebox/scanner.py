@@ -33,7 +33,7 @@ from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archiv
                       open_archive)
 from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
-from .naming import is_fragment_name, parse_number
+from .naming import is_fragment_name, parse_number_in
 from .novel import FORMAT_EPUB, novel_format
 from .mojibake import fix_mojibake
 from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
@@ -51,7 +51,7 @@ log = logging.getLogger(__name__)
 # 6: 表紙画像だけを含むフォルダを巻にしない(#180)
 # 7: EPUB の構造名(OEBPS 等)を非コンテンツディレクトリにして巻にしない(#215)
 # 8: タイトル生成および巻番号抽出に文字化け修復(fix_mojibake)を適用(#223)
-SCAN_VERSION = 9
+SCAN_VERSION = 10
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -90,6 +90,7 @@ class VolumeSpec:
     name_encoding: str
     page_count: int | None
     format: str | None = None  # 小説なら 'epub' / 'text'
+    ancestors: tuple[str, ...] = ()  # アーカイブ内の外側のフォルダ名。巻番号を読むときだけ使う(#248)
 
 
 def _fs_name_bytes(name: str) -> bytes:
@@ -185,7 +186,8 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
         else:
             title = fix_mojibake(PurePosixPath(archive_name).stem)[0]
             raw, enc = _fs_name_bytes(archive_name), "filesystem"
-        specs.append(VolumeSpec(None, prefix, title, raw, enc, len(pages)))
+        specs.append(VolumeSpec(None, prefix, title, raw, enc, len(pages),
+                                ancestors=PurePosixPath(prefix.rstrip("/")).parts[:-1] if prefix else ()))
     for e in listing.entries:
         if not is_archive_name(e.name):
             continue
@@ -201,7 +203,8 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
             continue
         seen_inner.add(e.name)
         inner_title = fix_mojibake(PurePosixPath(e.name).stem)[0]
-        specs.append(VolumeSpec(e.name, "", inner_title, e.raw_name, e.encoding, None))
+        specs.append(VolumeSpec(e.name, "", inner_title, e.raw_name, e.encoding, None,
+                                ancestors=PurePosixPath(e.name).parts[:-1]))
     # 目次・表紙だけの小さな束は本の断片なので巻にしない(ほかに巻 ― 内側アーカイブも含む ― があるときだけ。
     # 理由は記録する)。内側アーカイブを足した後で判定する
     reasons = {id(sp): fragment_reason(sp.title, sp.page_count)
@@ -622,7 +625,7 @@ class Scanner:
         for s in specs:
             key = (s.container_path, s.entry_prefix)
             seen.add(key)
-            num = parse_number(s.title)
+            num = parse_number_in(s.title, s.ancestors)
             numbers = (num.kind, num.start, num.end, num.evidence) if num else (None, None, None, None)
             if key in existing:
                 # 読み直しただけ(keep)なら、開いて数えたページ数(目次からは分からない内側アーカイブの巻)も残す

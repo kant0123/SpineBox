@@ -21,6 +21,11 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
   印の無い範囲 `01-03` は最も弱い規則として最後に試す
+- **巻のフォルダの中の章は巻番号にしない(#248)。** アーカイブ内の外側のフォルダ・内側アーカイブの名前が 1 冊の巻
+  (`…v06s`)を表すとき、その中のフォルダの印の無い範囲(`DLRAW.AC_110-113`)と話・章(`… Raw Chapter 171`)は
+  章の番号なので読まず、番号なしにする(`spinebox/naming.py parse_number_in()`。呼ぶのはスキャンの `archive_volume_specs` と
+  分解の `Unit.ancestors`)。外側が範囲(`第01-20巻`)なら中は巻のことがあるので従来どおり読み、
+  巻の印の付いた名前(`v07`)も外側に巻があって読む。読ませると実データ(あつまれ！ふしぎ研究部)で欠け巻が 35 から膨らんだ
 - `作品名 01` `作品名(3)` の形も `parse_number()` では拾わない(`Kitchen 2` が作品名のこともある)。
   `spinebox/naming.py trailing_number()` が候補を返し、**同じ名前で末尾の番号だけが違う巻が 2 つ以上**のときだけ
   [[work-grouping]] が巻番号として `volumes.number_*` に入れる(スキャンでは書かない)

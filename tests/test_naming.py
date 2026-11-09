@@ -1,6 +1,6 @@
 import pytest
 
-from spinebox.naming import normalize_title, parse_number, parse_work_name, trailing_number
+from spinebox.naming import normalize_title, parse_number, parse_number_in, parse_work_name, trailing_number
 
 
 @pytest.mark.parametrize("name, kind, start, end", [
@@ -282,3 +282,22 @@ def test_comiket_numbers_are_not_episodes(name):
 def test_a_one_kanji_name_is_not_a_fragment():
     from spinebox.naming import is_fragment_name
     assert not is_fragment_name("岳") and is_fragment_name("c") and is_fragment_name("❺")
+
+
+@pytest.mark.parametrize("name, ancestors, expected", [
+    # 巻のフォルダ(v06s)の中の、印の無い範囲・章は巻番号ではない(#248)
+    ("DLRAW.AC_110-113", ("DLRAW.AC_Atumare Fushigi Kenkyubu v06s",), None),
+    ("DLRAW.AC_Atsumare! Fushigi Kenkyu-bu - Raw Chapter 171", ("DLRAW.AC_Atsumare Fushigi Kenkyubu v10s",), None),
+    ("第12話", ("作品 第03巻",), None),
+    # 外側が範囲の巻なら、中のフォルダは巻のことがあるので従来どおり読む
+    ("01-04", ("作品 第01-20巻",), ("volume", 1, 4)),
+    # 外側に巻の無い名前・外側の無いときは従来どおり
+    ("110-113", ("作品",), ("volume", 110, 113)),
+    ("110-113", (), ("volume", 110, 113)),
+    ("ch.5", ("110-113",), ("episode", 5, 5)),  # 印の無い範囲は外側の巻とみなさない
+    # 巻の印の付いた名前は、外側に巻があっても巻として読む
+    ("v07", ("作品 v06s",), ("volume", 7, 7)),
+])
+def test_parse_number_in_ignores_chapters_inside_a_volume_folder(name, ancestors, expected):
+    cand = parse_number_in(name, ancestors)
+    assert (cand and (cand.kind, cand.start, cand.end)) == expected

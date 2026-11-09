@@ -17,10 +17,11 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from . import db
-from .naming import NumberCandidate, parse_number
+from .naming import NumberCandidate, parse_number, parse_number_in
 
 # 巻の単位の見分け方・登録の仕方を変えたら上げる(解析済みの巻を開いたときに解析し直させる)
-ANALYSIS_VERSION = 4  # 4: 目次・表紙の断片を子の巻にしない(#247)
+ANALYSIS_VERSION = 5  # 5: 巻のフォルダの中の章の番号を巻番号にしない(#248)
+# 4: 目次・表紙の断片を子の巻にしない(#247)
 
 # (内側アーカイブから単位のあるアーカイブまでの入れ子の名前, アーカイブ内のフォルダ(末尾 `/`。直下なら空))
 UnitKey = tuple[tuple[str, ...], str]
@@ -41,6 +42,12 @@ class Unit:
     def is_container_root(self) -> bool:
         """親の内側アーカイブ直下の画像。名前は親と同じなので、巻番号を名前から読まない。"""
         return not self.chain and not self.prefix
+
+    @property
+    def ancestors(self) -> tuple[str, ...]:
+        """この単位の外側の名前(内側アーカイブ・フォルダ)。名前の巻番号を読むときの文脈(#248)。"""
+        outer = [part for c in (self.chain[:-1] if not self.prefix else self.chain) for part in PurePosixPath(c).parts]
+        return (*outer, *(PurePosixPath(self.prefix.rstrip("/")).parts[:-1] if self.prefix else ()))
 
 
 def analysis_version(source_version: str, max_depth: int) -> str:
@@ -68,7 +75,7 @@ def register_units(conn: sqlite3.Connection, parent, units: list[Unit],
         if len(units) >= 2:
             for u in units:
                 inner_path = json.dumps(list(u.chain), ensure_ascii=False)
-                numbers = _number_columns(None if u.is_container_root else parse_number(u.title))
+                numbers = _number_columns(None if u.is_container_root else parse_number_in(u.title, u.ancestors))
                 vid = existing.get((inner_path, u.prefix))
                 if vid is not None:
                     c.execute("""UPDATE volumes SET title = ?, page_count = ?, number_kind = ?, number_start = ?,

@@ -533,3 +533,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #249 (#247) 1 作品だけを収めたフォルダ・アーカイブの名前で作品を決め、断片を巻にしない
 - 更新: [[work-grouping]], [[recurring-review-findings]](ほかに、行番号がずれたコード参照を 18 ページで今のコードに合わせた)
 - 備考: #247。テスト用蔵書の全体同期で 292 作品に割れていた。外側の名前のうち中に 1 作品しか入っていないものを巻の作品名にし(`works._container_claims()`)、割り当て後に分かれた作品・空になった作品を統合し作品名を日本語に揃える(`_settle_claims()`)。章の見出し・`第N部分`・`c06-08`・保存ページのフォルダを naming で読み分け、目次・表紙の断片をスキャンと内側アーカイブの分解で巻にしない(`scanner.fragment_reason()`、SCAN_VERSION=9・ANALYSIS_VERSION=4)。22 作品・確認待ち 0 になり、同期を繰り返しても変化しない。
+
+## [2026-11-09] ingest | #248 巻のフォルダの中の章の範囲・Raw Chapter N を巻番号にしない
+- 更新: [[volume-split]], [[work-grouping]]
+- 備考: `naming.parse_number_in()` を足し、外側のフォルダが 1 冊の巻を表すとき中の印の無い範囲・話を番号なしにした(SCAN_VERSION 10・ANALYSIS_VERSION 5)。`works.number_summary()` は巻の番号を持つ作品の話の欠けを数えない。

@@ -396,3 +396,15 @@ def test_analyze_excludes_non_content_and_cover_only_folders_in_inner_archive(ma
     assert r.status_code == 200
     titles = [ch["title"] for ch in r.json()["children"]]
     assert titles == ["Vol1", "Vol2"]
+
+
+def test_unit_ancestors_keep_chapter_folders_in_a_volume_from_getting_volume_numbers():
+    """内側アーカイブの巻の中の `110-113` は、外側の v06s の章であって巻番号ではない(#248)。"""
+    from spinebox.analysis import Unit
+    from spinebox.naming import parse_number_in
+    u = Unit(("v06s.rar",), "作品 v06s/110-113/", "110-113", ["001.jpg"])
+    assert u.ancestors == ("v06s.rar", "作品 v06s")
+    assert parse_number_in(u.title, u.ancestors) is None
+    root = Unit(("set.zip", "v06s.rar"), "", "v06s", ["001.jpg"])  # 内側アーカイブそのもの
+    assert root.ancestors == ("set.zip",)
+    assert parse_number_in(root.title, root.ancestors).start == 6
