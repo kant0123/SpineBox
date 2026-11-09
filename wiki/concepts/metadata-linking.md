@@ -24,11 +24,14 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 **スキャン・閲覧・編集はネットワークに触らない**(CLAUDE.md「取得失敗でスキャンと閲覧を止めない」)。`apply_work` は連携の中身(保存済み)の純関数なので、
 スキャンで巻が増えれば `apply_all` が新しい巻へ書誌を入れ、連携を外せば公開 DB 由来の値だけが消える。
 
-## 連携の決め方(`spinebox/linking.py:164 decide()`)
+## 連携の決め方(`spinebox/linking.py:182 decide()`)
 
 - 取得元ごとに 1 作品 1 行(`work_links`: `status` = `linked` / `pending` / `none`)。`manual` は利用者が選んだ連携
 - **自動で連携するのは、最良候補の確からしさ ≥ 0.75 かつ 2 位との差 ≥ 0.15**(`AUTO_LINK_MIN` / `LINK_MARGIN`)。足りなければ `pending`(確認待ち)で、0.5 以上の候補を最大 5 件見せる。
   数値の根拠は実データ(`_参考/サンプル本` の 2 作品)で、かくかくしかじかは 1.0 対 0.71、お気楽領主は漫画 1.0 対小説 1.0 の同点。閾値の調整は `tests/test_linking.py` の同点・僅差のケースを見てから
+- **首位が 1.0 で拮抗しても、手元の最大巻番号(2 以上)を全巻数が覆う候補が 1 件だけなら自動で連携する**(`spinebox/linking.py:164 _volume_tiebreak()`、#254)。
+  実データの人形の国で、AniList に同名・同作者の 2 件(巻数なしの前身と全 9 巻の本編)が 1.0 で並び、確認待ちに残った。
+  選ぶのは 1.0 どうしの同点からだけ(1.0 未満の次点は全巻数が合っても選ばない)。全巻数が空の候補は「覆う」に数えない(連載中は空)。拮抗する候補の種別が割れている・不明なときと、保留(`kind_unresolved`)中は従来どおり確認待ち
 - 作品の種別(`kind`)が分かっていれば、種別の違う候補は除く
 - **名前の部分一致は、短い方の名前が長い方の先頭にあるときだけ強めに見る**(`spinebox/metadata/match.py:62 title_score()`)。
   副題・巻数が後ろに付く形(`作品名` と `作品名 生産系魔術で…`)は同じ作品の別表記とみなすが、末尾・途中にしか無い一致は
@@ -42,7 +45,7 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 - 決め直す経路(手動の選択の解除 `reset_link()`、粘る近道)も同じ規則を通す: 手動の連携から入った種別を前提にせず(外してから判定する)、種別が未決なら保留、作品の種別と食い違う候補は粘らない
 - 自動連携は粘る(再取得で候補が残っていれば維持)。手動の連携は再取得で変えない(同じ候補が出たときに中身だけ更新)。手動の「どれでもない」は、その取得元へ問い合わせない
 
-## 項目の埋め方(`spinebox/linking.py:516 _apply_field()`)
+## 項目の埋め方(`spinebox/linking.py:540 _apply_field()`)
 
 | 規則 | 理由 |
 | --- | --- |
@@ -56,7 +59,7 @@ apply_work(作品)          ← DB だけで完結・冪等。fetch・choose・r
 ## 日本語での表示(#74)
 
 AniList / MangaUpdates のジャンル・タグは英語、MangaUpdates の出版社はローマ字(`Overlap`)で来る。利用者の要望(#74)で、反映のときに日本語にする。
-入口は `spinebox/ja_terms.py:510 term_ja()` / `spinebox/ja_terms.py:520 publisher_ja()`(対応表)と `spinebox/linking.py:458 _desired_fields()`(反映で使う)。
+入口は `spinebox/ja_terms.py:510 term_ja()` / `spinebox/ja_terms.py:520 publisher_ja()`(対応表)と `spinebox/linking.py:482 _desired_fields()`(反映で使う)。
 
 | 規則 | 理由 |
 | --- | --- |

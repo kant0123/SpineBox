@@ -161,13 +161,33 @@ def candidates_for(source: str, outcome: SearchOutcome, ctx: "_Context") -> list
     return [_work_candidate(c) for c in outcome.candidates]
 
 
-def decide(cands: list[dict], known_kind: str | None, hold: bool = False) -> tuple[str, dict | None, list[dict], float | None]:
+def _volume_tiebreak(contenders: list[dict], numbers: list[int]) -> dict | None:
+    """首位が拮抗する候補から、全巻数で 1 件に絞れればそれを返す(#254)。
+
+    実データ(人形の国)で AniList に同名・同作者の 2 件(巻数なしの前身と全 9 巻の本編)が 1.0 で並んだ。
+    手元の最大巻番号(2 以上)を全巻数が覆う候補が 1 件だけなら、それを選ぶ。全巻数が空の候補は「覆う」に
+    数えない(連載中は空なので、空の候補は落とさずに覆う候補が 1 件だけのときにしか選ばない)。
+    種別が割れている組(同名の漫画と小説)は選ばない。
+    """
+    top = max(numbers, default=0)
+    if top < 2:
+        return None
+    kinds = {c["summary"].get("kind") for c in contenders}
+    if len(kinds) != 1 or None in kinds:
+        return None
+    covering = [c for c in contenders if (c["summary"].get("total_volumes") or 0) >= top]
+    return covering[0] if len(covering) == 1 else None
+
+
+def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
+           numbers: list[int] | None = None) -> tuple[str, dict | None, list[dict], float | None]:
     """候補から連携を決める。(状態, 連携する候補, 見せる候補, 2 位との差)。
 
     状態: linked(自動で連携)/ pending(確認待ち)/ none(見せられる候補が無い)。
     種別が分かっている作品では、種別の違う候補を除く(種別の分からない候補は残す)。自動で連携するのは、
     確からしさが AUTO_LINK_MIN 以上で、2 位との差が LINK_MARGIN 以上あるときだけ。
-    hold が真なら(漫画か小説かが未決)、自動で連携せず確認待ちにする。
+    ただし首位が 1.0 で拮抗していても、手元の巻番号(numbers)を全巻数が覆う候補が 1 件だけなら連携する
+    (`_volume_tiebreak()`)。hold が真なら(漫画か小説かが未決)、自動で連携せず確認待ちにする。
     """
     usable = [c for c in cands if not (known_kind and c["summary"]["kind"] and c["summary"]["kind"] != known_kind)]
     usable.sort(key=lambda c: c["summary"]["score"], reverse=True)
@@ -179,6 +199,11 @@ def decide(cands: list[dict], known_kind: str | None, hold: bool = False) -> tup
     margin = round(top - second, 4)
     if top >= AUTO_LINK_MIN and margin >= LINK_MARGIN and not hold:
         return "linked", shown[0], shown, margin
+    if top >= 1.0 and not hold and numbers:
+        # 選ぶのは 1.0 どうしの同点からだけ(1.0 未満の次点を巻数だけで 1.0 の候補より上に置かない)
+        contenders = [c for c in shown if c["summary"]["score"] >= 1.0]
+        if len(contenders) >= 2 and (picked := _volume_tiebreak(contenders, numbers)) is not None:
+            return "linked", picked, [picked, *[c for c in shown if c is not picked]], margin
     return "pending", None, shown, margin
 
 
@@ -268,7 +293,7 @@ def _record_failure(conn, work_id: int, source: str, failure_json: str) -> None:
 
 
 def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[dict], known_kind: str | None,
-           hold: bool = False) -> str:
+           hold: bool = False, numbers: list[int] | None = None) -> str:
     """成功した検索の結果を work_links に書く。利用者が選んだ連携は変えない(中身の更新だけ)。"""
     now = db.now()
     responses = _responses(outcome)
@@ -299,7 +324,7 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
                 shown = [chosen, *shown[:SHOW_LIMIT - 1]]
             margin = None
         else:
-            status, chosen, shown, margin = decide(cands, known_kind, hold)
+            status, chosen, shown, margin = decide(cands, known_kind, hold, numbers)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin, "responses": responses,
               "hold": "kind_unresolved" if hold and status == "pending" else None}
@@ -345,7 +370,7 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
                 result.sources[name] = "failed"
                 continue
             result.sources[name] = _store(conn, work_id, name, outcome, candidates_for(name, outcome, ctx), ctx.kind,
-                                          hold=name != "ndl" and kind_unresolved(conn, work_id))
+                                          hold=name != "ndl" and kind_unresolved(conn, work_id), numbers=ctx.numbers)
             apply_work(conn, work_id)
         except Exception as e:  # noqa: BLE001 (取得の不具合でスキャン・閲覧・ほかの取得元を止めない)
             log.exception("公開 DB の取得に失敗しました: source=%s", name)
@@ -413,7 +438,7 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
         hold = source != "ndl" and kind_unresolved(c, work_id)
         # 種別が決まっていなければ絞らない(ほかの候補が消えるのを避ける)。決まっていれば違う種別の候補は除く
         _rctx = _context(c, work_id)
-        status, chosen, shown, margin = decide(cands, _rctx.kind, hold)
+        status, chosen, shown, margin = decide(cands, _rctx.kind, hold, _rctx.numbers)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin,
               "responses": prev.get("responses", []),

@@ -1078,3 +1078,56 @@ def test_proposals_can_be_filtered_by_title_author_and_alias(env_factory):
     assert ids(q="短編集") == all_ids  # 別名
     assert ids(q="zzz") == []
     assert ids(status="dismissed", q="kakukaku") == []  # status との併用
+
+
+def _cand(source_id, score, kind="manga", total=None):
+    return {"summary": {"source_id": source_id, "score": score, "title": "人形の国", "kind": kind,
+                        "total_volumes": total}}
+
+
+def test_decide_breaks_exact_tie_by_total_volumes():
+    """#254: AniList の同名・同作者 2 件(巻数なしの前身と全 9 巻の本編)が 1.0 で並ぶ。手元の 9 巻を覆う方を選ぶ"""
+    from spinebox.linking import decide
+    cands = [_cand("87205", 1.0), _cand("98354", 1.0, total=9)]
+    status, chosen, shown, _ = decide(cands, None, numbers=list(range(1, 10)))
+    assert status == "linked" and chosen["summary"]["source_id"] == "98354"
+    assert shown[0] is chosen and len(shown) == 2
+
+
+@pytest.mark.parametrize("cands, numbers, hold", [
+    ([_cand("a", 1.0), _cand("b", 1.0, total=9)], [], False),                       # 手元の巻番号が無い
+    ([_cand("a", 1.0), _cand("b", 1.0, total=9)], [1], False),                      # 1 巻だけでは根拠にしない
+    ([_cand("a", 1.0, total=9), _cand("b", 1.0, total=12)], [1, 9], False),          # 両方が覆う
+    ([_cand("a", 1.0), _cand("b", 1.0, total=5)], [1, 9], False),                   # どちらも覆わない
+    ([_cand("a", 1.0, kind="novel"), _cand("b", 1.0, total=9)], [1, 9], False),     # 漫画と小説が割れている
+    ([_cand("a", 1.0), _cand("b", 1.0, total=9)], [1, 9], True),                    # 種別が未決で保留中
+    ([_cand("a", 0.95), _cand("b", 0.95, total=9)], [1, 9], False),                 # 首位が 1.0 でない
+    ([_cand("a", 1.0), _cand("b", 0.9, total=9)], [1, 9], False),                  # 覆うのが 1.0 未満の次点だけ
+])
+def test_decide_keeps_ambiguous_ties_pending(cands, numbers, hold):
+    from spinebox.linking import decide
+    status, chosen, _, _ = decide(cands, None, hold=hold, numbers=numbers)
+    assert status == "pending" and chosen is None
+
+
+def test_reset_link_also_breaks_the_tie_by_the_owned_volumes(env_factory):
+    """#254: 手動の選択を解除して決め直す経路も、手元の巻番号を decide() に渡す"""
+    env = env_factory("kaku", [f"作品名X 第0{n}巻.cbz" for n in (1, 2, 3)])
+    wid = env.work_id()
+    cands = []
+    for sid, total in (("a", None), ("b", 3)):
+        c = _cand(sid, 1.0, total=total)
+        c["item"] = {**ANILIST_ITEM, "source_id": sid, "total_volumes": total}
+        cands.append(c)
+    conn = db.connect(env.settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("DELETE FROM work_links WHERE work_id = ? AND source = 'anilist'", (wid,))
+            c.execute("""INSERT INTO work_links (work_id, source, status, source_id, manual, confidence, item, candidates)
+                         VALUES (?, 'anilist', 'linked', 'a', 1, 1.0, ?, ?)""",
+                      (wid, json.dumps(cands[0]["item"]), json.dumps(cands)))
+        linking.reset_link(conn, wid, "anilist")
+    finally:
+        conn.close()
+    row = env.rows("SELECT status, source_id, manual FROM work_links WHERE work_id = ? AND source = 'anilist'", wid)[0]
+    assert (row["status"], row["source_id"], row["manual"]) == ("linked", "b", 0)
