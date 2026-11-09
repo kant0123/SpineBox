@@ -541,3 +541,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #253 (#250, #251) EPUB の書誌を作品名・著者・出版社の候補にし、EPUB の表紙を作品カードに使う
 - 更新: [[work-grouping]], [[cover-thumbnails]], [[novel-reader]]
 - 備考: #251。ファイル名が日本語でなく OPF の `dc:title` が日本語の EPUB は `dc:title` を巻の名前にし(`scanner._with_epub_meta()`、SCAN_VERSION=11)、`dc:creator` / `dc:publisher` は巻の書誌の候補(`volume_fields`、出所 `epub`)にする。#250。表紙の巻は EPUB を同順位の画像の巻より先にし(`works.cover_volume_id()`)、EPUB の表紙は OPF が示す画像から作る(`thumbs.Thumbnails._epub_cover()`)。保存ページの zip を登録不要にするかは決めていない(両方残す)。
+
+## [2026-11-09] ingest | #254 公開DBの候補: 100% の同点を巻数で決める・続けて選んでも巻き戻らない・行全体を押せる採用と漫画/小説のタグ
+- 更新: [[metadata-linking]], [[frontend]]
+- 備考: `linking._volume_tiebreak()` を足し、首位 1.0 の拮抗を手元の巻数を覆う全巻数で 1 件に絞れるときだけ自動連携する。確認の画面は選択を順番待ちの列で 1 件ずつ流し、最新の一覧へ反映して次の作品へスクロールする。NDL の組がレーベル違いで割れる件は #255 に分けた。

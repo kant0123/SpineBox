@@ -100,3 +100,59 @@ describe("確認", () => {
     expect(screen.queryByRole("link", { name: "一覧へ戻る" })).toBeNull();
   });
 });
+
+describe("公開DBの候補を続けて選ぶ(#254)", () => {
+  it("反映は 1 件ずつ順に流れ、先に終わった作品の結果を巻き戻さない。次の作品へスクロールする", async () => {
+    const { ReviewLinks } = await import("./ReviewLinks");
+    const listed = JSON.parse(backend.handle("GET", "/api/review/links").body as string).works;
+    const first = listed[0];
+    const second = { ...structuredClone(first), id: 9001, title: "別の漫画" };
+    const doneOf = (w: typeof first) => ({ ...w, link_pending: 0, links: [] });
+    const waiting: { url: string; resolve: () => void }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/review/links")) {
+        return new Response(JSON.stringify({ works: [first, second] }), { headers: { "Content-Type": "application/json" } });
+      }
+      const m = url.match(/\/api\/works\/(\d+)\/links\/\w+\/choose$/);
+      if (m) {
+        const w = Number(m[1]) === second.id ? second : first;
+        await new Promise<void>((resolve) => waiting.push({ url, resolve }));
+        return new Response(JSON.stringify(doneOf(w)), { headers: { "Content-Type": "application/json" } });
+      }
+      const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
+      return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
+    });
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this); };
+
+    render(<ReviewLinks onChanged={() => {}} />);
+    const itemOf = async (title: string) => (await screen.findByRole("heading", { level: 2, name: title })).closest("li")!;
+    const one = await itemOf(first.title);
+    const two = await itemOf("別の漫画");
+    fireEvent.click(within(one).getAllByRole("button", { name: /を採用/ })[0]);
+    fireEvent.click(within(two).getAllByRole("button", { name: /を採用/ })[0]);
+    expect(await within(two).findByText(/順番待ち/)).toBeTruthy();
+    await waitFor(() => expect(waiting.length).toBe(1)); // 2 件目は 1 件目が終わるまで送らない
+    expect(waiting[0].url).toContain(`/api/works/${first.id}/`);
+
+    await act(async () => waiting[0].resolve());
+    await waitFor(() => expect(within(one).getByText("確認済み")).toBeTruthy());
+    await waitFor(() => expect(scrolled).toContain(two)); // 次の確認待ちの作品へスクロール
+    await waitFor(() => expect(waiting.length).toBe(2));
+    await act(async () => waiting[1].resolve());
+    await waitFor(() => expect(within(two).getByText("確認済み")).toBeTruthy());
+    // 後の反映で先の作品が確認待ちに戻らない
+    expect(within(one).getByText("確認済み")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("すべて確認しました。");
+  });
+
+  it("候補には漫画・小説のタグが付き、採用のボタンは大きい", async () => {
+    window.location.hash = "#/review";
+    render(<App />);
+    const item = (await screen.findByRole("heading", { level: 2, name: "サンプル漫画" })).closest("li")!;
+    const ndl = within(item).getByRole("listitem", { name: /国立国会図書館/ });
+    expect(within(ndl).getAllByText("漫画", { selector: ".kind-tag" }).length).toBeGreaterThan(0);
+    expect(within(ndl).getAllByText("小説", { selector: ".kind-tag" }).length).toBeGreaterThan(0);
+    expect(within(ndl).getAllByRole("button", { name: /を採用/ })[0].className).toContain("link-choose");
+  });
+});

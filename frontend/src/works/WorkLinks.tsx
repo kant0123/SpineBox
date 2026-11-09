@@ -7,7 +7,6 @@ type Run = (fn: () => Promise<unknown>) => Promise<void>;
 function candidateMeta(c: LinkCandidate): string {
   const parts: string[] = [];
   if (c.authors.length) parts.push(c.authors.join("、"));
-  if (c.kind) parts.push(KIND_TEXT[c.kind]);
   if (c.publisher) parts.push(c.publisher);
   if (c.label) parts.push(c.label);
   if (c.released) parts.push(c.released);
@@ -19,10 +18,17 @@ function candidateMeta(c: LinkCandidate): string {
   return parts.join(" / ");
 }
 
-function Candidate({ c, action }: { c: LinkCandidate; action?: ReactNode }) {
+/** 漫画・小説は取り違えやすいので、候補の先頭にタグで出す(#254) */
+function KindTag({ kind }: { kind: LinkCandidate["kind"] }) {
+  return <span className={`badge kind-tag kind-${kind ?? "unknown"}`}>{kind ? KIND_TEXT[kind] : "種別不明"}</span>;
+}
+
+/** selectable: 候補の行全体を「これを採用」のボタンの押せる範囲にする(#254。ボタンの ::after を行に広げる) */
+function Candidate({ c, action, selectable }: { c: LinkCandidate; action?: ReactNode; selectable?: boolean }) {
   return (
-    <div className="link-candidate">
+    <div className={`link-candidate${selectable ? " selectable" : ""}`}>
       <div className="link-candidate-body">
+        <KindTag kind={c.kind} />
         <span className="volume-title">
           {c.title}
           {c.subtitle ? ` ${c.subtitle}` : ""}
@@ -34,7 +40,7 @@ function Candidate({ c, action }: { c: LinkCandidate; action?: ReactNode }) {
           {c.url && (
             <>
               {" / "}
-              <a href={c.url} target="_blank" rel="noreferrer noopener">
+              <a className="link-source" href={c.url} target="_blank" rel="noreferrer noopener">
                 出典を開く
               </a>
             </>
@@ -102,8 +108,9 @@ function LinkCard({ l, busy, run, workId, onWork }: { l: WorkLink; busy: boolean
               <Candidate
                 key={c.source_id}
                 c={c}
+                selectable
                 action={
-                  <button type="button" className="small" disabled={busy} onClick={() => void choose(c.source_id)} aria-label={`${c.title}(${[c.kind ? KIND_TEXT[c.kind] : "", c.publisher ?? ""].filter(Boolean).join("・")}) を採用`}>
+                  <button type="button" className="link-choose" disabled={busy} onClick={() => void choose(c.source_id)} aria-label={`${c.title}(${[c.kind ? KIND_TEXT[c.kind] : "", c.publisher ?? ""].filter(Boolean).join("・")}) を採用`}>
                     これを採用
                   </button>
                 }

@@ -922,6 +922,21 @@ a.dup-choice:hover { border-color: var(--accent); }
 .link-candidate { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 8px; }
 .link-candidate-body { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; overflow-wrap: anywhere; }
 .link-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 候補の行全体を押せる範囲にする(#254)。ボタンの ::after を行いっぱいに広げ、出典のリンクだけ上に出す。
+   ボタン自体は DADS の通常サイズ(48px)でフォーカスリングもボタンに付く */
+.link-candidate.selectable { position: relative; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; align-items: center; }
+.link-candidate.selectable:hover { background: var(--accent-subtle); border-color: var(--accent); }
+.link-candidate.selectable .link-source { position: relative; z-index: 1; display: inline-block; min-height: 24px; }
+button.link-choose { min-height: 48px; padding: 8px 16px; flex: none; }
+button.link-choose::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }
+@media (max-width: 767px) {
+  button.link-choose { width: 100%; }
+}
+/* 漫画・小説のタグ。文字色は面の上で 4.5:1 以上 */
+.link-candidate-body .kind-tag { margin-bottom: 4px; }
+.badge.kind-tag.kind-manga { background: var(--accent-subtle); color: var(--accent); border-color: var(--accent); }
+.badge.kind-tag.kind-novel { background: #e7f0e3; color: #1f471b; border-color: #4f7a49; }
+.badge.kind-tag.kind-unknown { border-color: var(--border); color: var(--muted); }
 .link-card summary { cursor: pointer; font-size: 0.875rem; color: var(--muted); margin-top: 4px; min-height: 24px; }
 .volume-bib { margin-top: 4px; font-size: 0.875rem; }
 .volume-bib summary { cursor: pointer; color: var(--muted); overflow-wrap: anywhere; min-height: 24px; }

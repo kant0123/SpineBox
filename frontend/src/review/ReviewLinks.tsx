@@ -11,25 +11,32 @@ interface Item {
   work: WorkDetail;
 }
 
-function ReviewWork({ item, onWork, headingRef }: {
+/** 反映を 1 件ずつ順に流す列。続けて押した作品は前の反映が終わるまで待つ(#254) */
+type Enqueue = (task: () => Promise<void>) => Promise<void>;
+
+function ReviewWork({ item, onWork, headingRef, enqueue }: {
   item: Item;
   onWork: (w: WorkDetail) => void;
   headingRef: (el: HTMLHeadingElement | null) => void;
+  enqueue: Enqueue;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<"queued" | "running" | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const { work } = item;
   const done = work.link_pending === 0;
+  const busy = phase !== null;
   const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
+    setPhase("queued");
     setFailed(null);
-    try {
-      await fn();
-    } catch (e) {
-      setFailed(e instanceof ApiError && e.detail ? e.detail : "選べませんでした。もう一度お試しください。");
-    } finally {
-      setBusy(false);
-    }
+    await enqueue(async () => {
+      setPhase("running");
+      try {
+        await fn();
+      } catch (e) {
+        setFailed(e instanceof ApiError && e.detail ? e.detail : "選べませんでした。もう一度お試しください。");
+      }
+    });
+    setPhase(null);
   };
   const headingId = `review-work-${item.key}`;
   return (
@@ -46,7 +53,8 @@ function ReviewWork({ item, onWork, headingRef }: {
         </div>
         {done && <span className="badge quiet">確認済み</span>}
       </div>
-      {busy && <p className="muted">反映しています…</p>}
+      {phase === "queued" && <p className="muted">順番待ち…(前に選んだ作品の反映が終わると反映します)</p>}
+      {phase === "running" && <p className="muted">反映しています…</p>}
       {failed && (
         <div className="notice error" role="alert">
           {failed}
@@ -64,11 +72,21 @@ export function ReviewLinks({ onChanged }: { onChanged: () => void }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const headings = useRef(new Map<number, HTMLHeadingElement>());
+  // 反映の結果は押した時点ではなく最新の一覧へ入れる(閉じ込めた古い一覧で先の反映を巻き戻さない。#254)
+  const itemsRef = useRef<Item[] | null>(null);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+
+  const enqueue: Enqueue = useCallback((task) => {
+    const p = queue.current.then(task);
+    queue.current = p.catch(() => {});
+    return p;
+  }, []);
 
   const load = useCallback(async () => {
     try {
       const r = await api.reviewLinks();
-      setItems(r.works.map((w) => ({ key: w.id, work: w })));
+      itemsRef.current = r.works.map((w) => ({ key: w.id, work: w }));
+      setItems(itemsRef.current);
       setError(null);
     } catch {
       setError("確認待ちの作品を読み込めませんでした。サーバーが動いているか確認してください。");
@@ -79,17 +97,25 @@ export function ReviewLinks({ onChanged }: { onChanged: () => void }) {
     void load();
   }, [load]);
 
-  /** 選んだ結果を行に入れる。確認待ちが無くなった行は「確認済み」に畳み(一覧は詰めない)、次の確認待ちへフォーカスを移す */
+  /** 選んだ結果を行に入れる。確認待ちが無くなった行は「確認済み」に畳み(一覧は詰めない)、次の確認待ちへ移る */
   const update = (key: number, w: WorkDetail) => {
-    if (!items) return;
-    const next = items.map((it) => (it.key === key ? { ...it, work: w } : it));
+    const cur = itemsRef.current;
+    if (!cur) return;
+    const next = cur.map((it) => (it.key === key ? { ...it, work: w } : it));
+    itemsRef.current = next;
     setItems(next);
     onChanged();
     if (w.link_pending > 0) return;
     const at = next.findIndex((it) => it.key === key);
     const following = [...next.slice(at + 1), ...next.slice(0, at)].find((it) => it.work.link_pending > 0);
-    // 押したボタンが消えるので、次の確認待ちの見出しへ(最後なら畳んだこの行の見出しへ)フォーカスを移す
-    window.setTimeout(() => headings.current.get(following ? following.key : key)?.focus(), 0);
+    // 押したボタンが消えるので、次の確認待ちの作品へスクロールして見出しへフォーカスを移す(最後なら畳んだこの行の見出しへ)
+    window.setTimeout(() => {
+      const el = headings.current.get(following ? following.key : key);
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      el.closest("li")?.scrollIntoView?.({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }, 0);
   };
 
   const remaining = items?.filter((it) => it.work.link_pending > 0).length ?? 0;
@@ -117,6 +143,7 @@ export function ReviewLinks({ onChanged }: { onChanged: () => void }) {
             key={it.key}
             item={it}
             onWork={(w) => update(it.key, w)}
+            enqueue={enqueue}
             headingRef={(el) => {
               if (el) headings.current.set(it.key, el);
               else headings.current.delete(it.key);
