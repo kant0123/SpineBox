@@ -200,8 +200,9 @@ def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
     if top >= AUTO_LINK_MIN and margin >= LINK_MARGIN and not hold:
         return "linked", shown[0], shown, margin
     if top >= 1.0 and not hold and numbers:
-        contenders = [c for c in shown if top - c["summary"]["score"] < LINK_MARGIN]
-        if (picked := _volume_tiebreak(contenders, numbers)) is not None:
+        # 選ぶのは 1.0 どうしの同点からだけ(1.0 未満の次点を巻数だけで 1.0 の候補より上に置かない)
+        contenders = [c for c in shown if c["summary"]["score"] >= 1.0]
+        if len(contenders) >= 2 and (picked := _volume_tiebreak(contenders, numbers)) is not None:
             return "linked", picked, [picked, *[c for c in shown if c is not picked]], margin
     return "pending", None, shown, margin
 

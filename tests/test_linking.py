@@ -1102,6 +1102,7 @@ def test_decide_breaks_exact_tie_by_total_volumes():
     ([_cand("a", 1.0, kind="novel"), _cand("b", 1.0, total=9)], [1, 9], False),     # 漫画と小説が割れている
     ([_cand("a", 1.0), _cand("b", 1.0, total=9)], [1, 9], True),                    # 種別が未決で保留中
     ([_cand("a", 0.95), _cand("b", 0.95, total=9)], [1, 9], False),                 # 首位が 1.0 でない
+    ([_cand("a", 1.0), _cand("b", 0.9, total=9)], [1, 9], False),                  # 覆うのが 1.0 未満の次点だけ
 ])
 def test_decide_keeps_ambiguous_ties_pending(cands, numbers, hold):
     from spinebox.linking import decide
