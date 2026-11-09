@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../api";
 
 /** 表紙の無い作品カードの枠。表紙付きカードと高さを揃え、タイトルの位置をそろえる(#132)。 */
@@ -30,10 +30,14 @@ export function landscapeClass(ar: number): string {
 export function WorkCover({ volumeId, placeholder = false }: { volumeId: number; placeholder?: boolean }) {
   const [state, setState] = useState<"loading" | "ok" | "none">("loading");
   const [extraClass, setExtraClass] = useState("");
-  useEffect(() => {
+  const [prevId, setPrevId] = useState(volumeId);
+  // 巻が変わったときの状態のリセットは描画中に行う。useEffect で戻すと、キャッシュ済みの画像は
+  // onLoad が effect より先に発火して ok になった後で loading に戻され、表紙が出ないまま残る。
+  if (prevId !== volumeId) {
+    setPrevId(volumeId);
     setState("loading");
     setExtraClass("");
-  }, [volumeId]);
+  }
   if (state === "none") return placeholder ? <WorkCoverPlaceholder /> : null;
   return (
     <img
