@@ -47,7 +47,7 @@ def test_ok_response_and_user_agent():
 def test_min_interval_between_requests_per_source():
     net = FakeNetwork()
     net.route("GET", URL, b"x")
-    f, clock = make(net, min_interval_seconds={"ndl": 1.0, "anilist": 2.0})
+    f, clock = make(net, min_interval_seconds={"ndl": 1.0, "mediaarts": 2.0})
     f.fetch(req("ndl"))
     assert clock.sleeps == []                  # 最初の要求は待たない
     f.fetch(req("ndl"))
@@ -59,9 +59,9 @@ def test_min_interval_between_requests_per_source():
     n = len(clock.sleeps)
     f.fetch(req("ndl"))
     assert len(clock.sleeps) == n              # 間隔が空いていれば待たない
-    f.fetch(req("anilist"))                    # 取得元ごとに別の関門
+    f.fetch(req("mediaarts"))                    # 取得元ごとに別の関門
     assert len(clock.sleeps) == n
-    f.fetch(req("anilist"))
+    f.fetch(req("mediaarts"))
     assert clock.sleeps[-1] == 2.0
 
 
@@ -137,18 +137,18 @@ def test_429_blocks_the_source_and_following_requests_are_not_sent():
     net = FakeNetwork()
     net.route("GET", URL, httpx.Response(429, headers={"Retry-After": "30"}))
     f, clock = make(net, max_retries=2)
-    failure = failure_of(f, req("anilist"))
+    failure = failure_of(f, req("mediaarts"))
     assert failure.kind == FAIL_RATE_LIMITED and failure.status == 429 and failure.retry_after == 30
     assert len(net.requests) == 1                      # 429 は再試行しない
 
     clock.advance(1)
-    failure = failure_of(f, req("anilist"))            # 止められている間は要求を出さない
+    failure = failure_of(f, req("mediaarts"))            # 止められている間は要求を出さない
     assert failure.kind == FAIL_RATE_LIMITED and 28 <= failure.retry_after <= 30
     assert len(net.requests) == 1
 
     net.route("GET", URL, b"fine")
     clock.advance(25)                                  # 残りが短ければ待って送る
-    assert f.fetch(req("anilist")).body == b"fine"
+    assert f.fetch(req("mediaarts")).body == b"fine"
     assert len(net.requests) == 2 and clock.sleeps[-1] == pytest.approx(4, abs=1.5)
 
     # 別の取得元は影響されない

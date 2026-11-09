@@ -2,7 +2,7 @@
 import pytest
 
 from metadata_fakes import fixture
-from spinebox.metadata import anilist, mangaupdates, ndl
+from spinebox.metadata import bangumi, mediaarts, ndl
 from spinebox.metadata.base import ParseError
 from spinebox.metadata.model import KIND_MANGA, KIND_NOVEL, SCOPE_VOLUME, SCOPE_WORK
 
@@ -88,104 +88,130 @@ def test_ndl_empty_result_is_not_an_error():
     assert ndl.parse_opensearch(xml) == []
 
 
-# --- AniList ---
+# --- メディア芸術データベース ---
 
-def test_anilist_kaku():
-    item = anilist.parse_search(fixture("anilist/kaku-search.json"))[0]
-    assert item.source == "anilist" and item.scope == SCOPE_WORK
+def test_mediaarts_kaku_uses_series_entity():
+    item = mediaarts.parse_search(fixture("mediaarts/kaku-search.json"))[0]
+    assert item.source == "mediaarts" and item.scope == SCOPE_WORK
+    assert item.source_id == "C333239"
     assert item.title == "かくかくしかじか"
-    assert item.romaji == "Kakukaku Shikajika"
-    assert any(a.startswith("Blank Canvas") for a in item.aliases)
     assert item.authors == ("東村アキコ",)
-    assert item.total_volumes == 5
-    assert item.released == "2011-09-28"
+    assert item.publisher == "集英社"
+    assert item.total_volumes == 5  # シリーズの実体(schema:numberOfItems)から
     assert item.kind == KIND_MANGA
-    assert "Drama" in item.genres
-    assert "Autobiographical" in item.tags and "Drawing" in item.tags
-    assert not hasattr(item, "synopsis")  # あらすじは読み取らない(#82 で廃止)
-    assert item.source_url == "https://anilist.co/manga/74307"
 
 
-def test_anilist_okiraku_manga_and_novel_are_separate_candidates():
-    items = anilist.parse_search(fixture("anilist/okiraku-search.json"))
-    assert {i.kind for i in items} == {KIND_MANGA, KIND_NOVEL}
-    assert all(i.romaji.startswith("Okiraku Ryoushu no Tanoshii") for i in items)
-    assert all(i.title.startswith("お気楽領主の楽しい領地防衛") for i in items)
+def test_mediaarts_okiraku_falls_back_to_volume_max_when_series_entity_is_missing():
+    # 「お気楽領主の楽しい領地防衛」はシリーズの実体(class:MangaBookSeries)が無く、巻(MangaBook)だけ
+    # 登録されている(実通信で確認)。巻の schema:volumeNumber の最大値を全巻数として使う
+    items = mediaarts.parse_search(fixture("mediaarts/okiraku-search.json"))
+    main = next(i for i in items if i.title == "お気楽領主の楽しい領地防衛")
+    assert main.total_volumes == 8
+    assert main.authors == ("赤池宗",)
+    assert main.publisher == "オーバーラップ"
 
 
-def test_anilist_no_hit_is_empty_success():
-    assert anilist.parse_search(fixture("anilist/romaji-search.json")) == []
+def test_mediaarts_no_hit_is_empty_success():
+    assert mediaarts.parse_search(fixture("mediaarts/romaji-search.json")) == []
 
 
-@pytest.mark.parametrize("body", [
-    b"", b"not json", b"[]", b'{"data": null}', b'{"data": {"Page": {"media": "x"}}}',
-    b'{"errors": [{"message": "Too Many Requests.", "status": 429}], "data": null}',
+@pytest.mark.parametrize("body", [b"", b"not json", b"[]", b'{"results": null}', b'{"results": {"bindings": "x"}}'])
+def test_mediaarts_invalid_response_is_parse_error(body):
+    with pytest.raises(ParseError):
+        mediaarts.parse_search(body)
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("[著]東村アキコ", ("東村アキコ",)),
+    ("[著]青色まろ∥[著]赤池宗", ("青色まろ", "赤池宗")),
+    (None, ()),
 ])
-def test_anilist_invalid_response_is_parse_error(body):
-    with pytest.raises(ParseError):
-        anilist.parse_search(body)
+def test_mediaarts_split_agents(value, expected):
+    assert mediaarts._split_agents(value) == expected
 
 
-def test_anilist_tags_drop_spoilers_and_low_rank():
-    body = (b'{"data":{"Page":{"media":[{"id":1,"title":{"native":"x"},"tags":['
-            b'{"name":"A","rank":90},{"name":"Spoiler","rank":95,"isMediaSpoiler":true},'
-            b'{"name":"Low","rank":5},{"name":"B","rank":60}]}]}}}')
-    (item,) = anilist.parse_search(body)
-    assert item.tags == ("A", "B")
+@pytest.mark.parametrize("value, expected", [
+    ("集英社　∥　シュウエイシャ", "集英社"),
+    ("オーバーラップ", "オーバーラップ"),
+    (None, None),
+])
+def test_mediaarts_primary_reading(value, expected):
+    assert mediaarts._primary_reading(value) == expected
 
 
-# --- MangaUpdates ---
+# --- Bangumi ---
 
-def test_mangaupdates_search_hits():
-    hits = mangaupdates.parse_search(fixture("mangaupdates/okiraku-search.json"))
-    assert len(hits) == 10
-    assert hits[0].record["series_id"] == 41097037681
-    assert hits[0].hit_title == "お気楽領主の楽しい領地防衛"  # 検索が当たった別名
+def test_bangumi_search_aggregates_volumes_by_base_name():
+    hits = bangumi.parse_search(fixture("bangumi/kaku-search.json"))
+    items = bangumi._aggregate(hits)
+    kaku = next(i for i in items if i.title == "かくかくしかじか")
+    assert kaku.source == "bangumi" and kaku.scope == SCOPE_WORK
+    assert kaku.total_volumes == 5           # (1)〜(5) の最大
+    assert "写写画画" in kaku.aliases
+    # 別の作品(映画ノベライズ)は前置きが付くので別の候補のまま混ざらない
+    assert any(i.title == "映画ノベライズ かくかくしかじか" and i.total_volumes is None for i in items)
 
 
-def test_mangaupdates_detail_prefers_japanese_title_and_keeps_romaji():
-    item = mangaupdates.parse_detail(fixture("mangaupdates/okiraku-detail-41097037681.json"))
-    assert item.source == "mangaupdates" and item.scope == SCOPE_WORK
-    assert item.source_id == "41097037681"
-    assert item.title == "お気楽領主の楽しい領地防衛"
-    assert item.romaji.startswith("Okiraku Ryoushu no Tanoshii Ryouchi Bouei")
-    assert "Fun Territory Defense by the Optimistic Lord" in item.aliases
-    assert item.title not in item.aliases and item.romaji not in item.aliases
-    assert item.authors == ("AKAIKE Sou", "AOIRO Maro")
-    assert item.publisher == "Overlap"          # 原版元(type = Original)
-    assert item.total_volumes == 8
-    assert item.released == "2021"
+def test_bangumi_search_strips_recurring_subtitle():
+    hits = bangumi.parse_search(fixture("bangumi/okiraku-search.json"))
+    items = bangumi._aggregate(hits)
+    main = next(i for i in items if i.title == "お気楽領主の楽しい領地防衛")
+    assert main.total_volumes == 11
+    assert "安逸领主的愉快领地防卫" in main.aliases
+
+
+def test_bangumi_detail_adds_author_publisher_and_kind():
+    from spinebox.metadata.model import MetadataItem
+    base = MetadataItem(source="bangumi", source_id="74283", scope=SCOPE_WORK,
+                         title="かくかくしかじか", total_volumes=5)
+    item = bangumi.parse_detail(fixture("bangumi/kaku-detail-74283.json"), base)
+    assert item.authors == ("東村アキコ",)
+    assert item.publisher == "集英社"
     assert item.kind == KIND_MANGA
-    assert "Shounen" in item.genres
-    assert "Magic" in item.tags
+    assert item.tags == ()  # タグ(簡体字中国語)は読み取らない(#278)
+    assert item.total_volumes == 5  # base の値を保つ(詳細には全巻数が無い)
 
 
-def test_mangaupdates_detail_novel_and_kaku():
-    novel = mangaupdates.parse_detail(fixture("mangaupdates/okiraku-detail-64061546373.json"))
-    assert novel.kind == KIND_NOVEL and novel.total_volumes == 10
-    kaku = mangaupdates.parse_detail(fixture("mangaupdates/kaku-detail-59267573840.json"))
-    assert kaku.title == "かくかくしかじか" and kaku.romaji == "Kakukaku Shikajika"
-    assert kaku.publisher == "Shueisha" and kaku.total_volumes == 5
-    assert len(kaku.tags) == mangaupdates.CATEGORY_LIMIT  # 得票順に上限まで
+def test_bangumi_detail_combines_art_and_story_roles():
+    # 作画・原作が分かれる作品(「お気楽領主の楽しい領地防衛」)は infobox の「作者」ではなく
+    # 「作画」「原作」に分かれて入る(実データで確認)
+    from spinebox.metadata.model import MetadataItem
+    base = MetadataItem(source="bangumi", source_id="395984", scope=SCOPE_WORK,
+                         title="お気楽領主の楽しい領地防衛", total_volumes=11)
+    item = bangumi.parse_detail(fixture("bangumi/okiraku-detail-395984.json"), base)
+    assert item.authors == ("青色まろ", "赤池宗")
+    assert item.publisher == "オーバーラップ"
+    assert item.kind == KIND_MANGA
 
 
-def test_mangaupdates_detail_without_japanese_name_keeps_primary_title():
-    item = mangaupdates.parse_detail(b'{"series_id": 1, "title": "Some Title", "associated": [{"title": "Other"}]}')
-    assert item.title == "Some Title" and item.romaji is None and item.aliases == ("Other",)
+def test_bangumi_no_hit_is_empty_success():
+    assert bangumi.parse_search(fixture("bangumi/romaji-search.json")) == []
 
 
-def test_mangaupdates_zero_volumes_is_unknown():
-    item = mangaupdates.parse_detail(b'{"series_id": 1, "title": "T", "status": "0 Volumes (Ongoing)"}')
-    assert item.total_volumes is None
+def test_bangumi_legacy_404_is_empty_success_not_a_parse_error():
+    # 旧 API は 0 件のとき HTTP 200 のまま {"code": 404, "error": "Not Found"} を返す(実通信で確認)
+    assert bangumi.parse_search(b'{"request": "x", "code": 404, "error": "Not Found"}') == []
 
 
-@pytest.mark.parametrize("body", [b"", b"nope", b"[]", b'{"status": "exception", "reason": "Request must be an object"}'])
-def test_mangaupdates_invalid_search_is_parse_error(body):
+@pytest.mark.parametrize("body", [b"", b"not json", b"[]", b'{"list": "x"}'])
+def test_bangumi_invalid_response_is_parse_error(body):
     with pytest.raises(ParseError):
-        mangaupdates.parse_search(body)
+        bangumi.parse_search(body)
 
 
-@pytest.mark.parametrize("body", [b"", b"nope", b"[]", b"{}", b'{"series_id": 1}'])
-def test_mangaupdates_invalid_detail_is_parse_error(body):
+@pytest.mark.parametrize("body", [b"", b"not json", b"[]", b"{}", b'{"id": "not-an-int"}'])
+def test_bangumi_invalid_detail_is_parse_error(body):
+    from spinebox.metadata.model import MetadataItem
+    base = MetadataItem(source="bangumi", source_id="1", scope=SCOPE_WORK, title="t")
     with pytest.raises(ParseError):
-        mangaupdates.parse_detail(body)
+        bangumi.parse_detail(body, base)
+
+
+@pytest.mark.parametrize("name, expected", [
+    ("かくかくしかじか (1)", "かくかくしかじか"),
+    ("お気楽領主の楽しい領地防衛 (7) ~生産系魔術で名もなき村を最強の城塞都市に~", "お気楽領主の楽しい領地防衛"),
+    ("お気楽領主の楽しい領地防衛 ~生産系魔術で名もなき村を最強の城塞都市に~", "お気楽領主の楽しい領地防衛"),
+    ("映画ノベライズ かくかくしかじか", "映画ノベライズ かくかくしかじか"),
+])
+def test_bangumi_base_name(name, expected):
+    assert bangumi._base_name(name) == expected

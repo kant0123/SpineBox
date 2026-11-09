@@ -135,7 +135,7 @@ def test_an_emptied_work_never_absorbs_a_work_with_a_manual_decision(env):
     try:
         with db.transaction(conn) as c:  # 利用者が選んだ公開 DB の連携(手動の決定。作品名は名前由来のまま)
             c.execute("INSERT INTO work_links (work_id, source, status, source_id, manual) "
-                      "VALUES (?, 'mangaupdates', 'linked', 'x', 1)", (wid,))
+                      "VALUES (?, 'bangumi', 'linked', 'x', 1)", (wid,))
     finally:
         conn.close()
     # 前の同期で巻を持っていた、公開 DB の日本語の作品名の作品(今は空)

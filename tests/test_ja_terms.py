@@ -5,9 +5,7 @@ import json
 
 import pytest
 
-from metadata_fakes import FIXTURES
 from spinebox import ja_terms
-from spinebox.metadata import anilist, mangaupdates
 
 
 @pytest.mark.parametrize("term, expected", [
@@ -55,33 +53,11 @@ def test_is_japanese(text, expected):
     assert ja_terms.is_japanese(text) is expected
 
 
-def test_every_term_in_the_recorded_responses_has_a_translation():
-    """記録済みの応答(`tests/fixtures/metadata/`)に出るジャンル・タグ・原版元は、すべて対応表で引ける。"""
-    terms: set[str] = set()
-    publishers: set[str] = set()
-    for path in sorted((FIXTURES / "mangaupdates").glob("*-detail-*.json")):
-        item = mangaupdates.parse_detail(path.read_bytes())
-        terms |= {*item.genres, *item.tags}
-        if item.publisher:
-            publishers.add(item.publisher)
-    for path in sorted((FIXTURES / "anilist").glob("*-search.json")):
-        for item in anilist.parse_search(path.read_bytes()):
-            terms |= {*item.genres, *item.tags}
-    assert terms and publishers
-    assert sorted(t for t in terms if ja_terms.term_ja(t) is None) == []
-    assert sorted(p for p in publishers if ja_terms.publisher_ja(p) == p) == []
-
-
-def test_recorded_english_descriptions_are_not_taken_as_japanese():
-    """記録済みの AniList・MangaUpdates の英語の説明文(日本語の題名が括弧で混ざるものを含む)は日本語と判定しない。
-    あらすじは廃止した(#82)が、日本語かどうかの判定(ジャンル・タグ・出版社に使う)の、英語の文に対する回帰として残す。"""
-    synopses = [json.loads(p.read_bytes()).get("description")
-                for p in (FIXTURES / "mangaupdates").glob("*-detail-*.json")]
-    synopses += [m.get("description") for p in (FIXTURES / "anilist").glob("*-search.json")
-                 for m in json.loads(p.read_bytes())["data"]["Page"]["media"]]
-    synopses = [s for s in synopses if isinstance(s, str) and s.strip()]
-    assert len(synopses) >= 10
-    assert [s[:40] for s in synopses if ja_terms.is_japanese(s)] == []
+# AniList・MangaUpdates(この対応表を 1:1 で作った元)を置き換えてからは、記録済みの応答(tests/fixtures/metadata/)
+# にこの対応表の語彙を**網羅する**ソースが無い(メディア芸術データベースは英語のジャンル・タグを持たず、
+# Bangumi のタグは簡体字中国語、ehentai / nhentai のタグは対応表が想定しない成人向け語彙を含む)。
+# 「記録した実データが全部訳せるか」という回帰テストはここでは成立しないため削除した(#278)。
+# 対応表そのものの正しさは上の `test_term_ja` 系のテストで見る。
 
 
 def test_localize_summary_does_not_touch_the_original():

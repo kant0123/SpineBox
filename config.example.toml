@@ -71,19 +71,19 @@ max_depth = 3
 [organize]
 name_template = "<作品名>/<作品名> 第NN巻.cbz"
 
-# 外部メタデータ(国立国会図書館サーチ・AniList・MangaUpdates)の取得。ベストエフォート:
+# 外部メタデータ(国立国会図書館サーチ・メディア芸術データベース・Bangumi)の取得。ベストエフォート:
 # 失敗・タイムアウト・レート制限があってもスキャンと閲覧は止まらない。生の応答は DB に保存して使い回す。
 [metadata]
 # 有効にする取得元。空 [] にすると外部へ一切取りに行かない。
 # 同人誌を扱うなら "nhentai" と "ehentai" を足す(既定では無効。成人向けのサイトへ作品名を送るので、明示的に有効にする)。
 # 題名の書式 `(C70) [サークル (作者)] 題名 (原作)` で照合する(wiki/concepts/metadata-sources.md)
-sources = ["ndl", "anilist", "mangaupdates"]
+sources = ["ndl", "mediaarts", "bangumi"]
 # 保存済みの応答を使い回す日数。過ぎると取り直す(取得に失敗したときは古い応答を代わりに使う)
 cache_ttl_days = 30
 timeout_seconds = 10
 # 5xx・タイムアウト・接続不可の再試行の上限(429 は再試行しない)
 max_retries = 2
-# 1 回の検索で取る候補の上限 / MangaUpdates・nHentai で詳細を引き直す候補の数
+# 1 回の検索で取る候補の上限 / Bangumi・nHentai で詳細を引き直す候補の数
 candidate_limit = 20
 detail_limit = 3
 # User-Agent に付ける連絡先(任意。取得元の運営者が連絡できるように)。メールアドレスなどを書くなら、
@@ -96,16 +96,17 @@ background_interval_seconds = 120
 # 取得済みの作品を取り直す間隔(日)/ 取得に失敗した作品を取り直すまでの間隔(時間)
 recheck_days = 30
 retry_hours = 6
-# 日本語での表示。AniList / MangaUpdates の英語のジャンル・タグは対応表で日本語にして入れる(機械翻訳はしない)。
-# 対応表に無い語を hide(入れない)か keep(英語のまま入れる)か。取得した元の値は消えないので、いつでも切り替えられる
+# 日本語での表示。ehentai / nhentai の英語のジャンル・タグは対応表で日本語にして入れる(機械翻訳はしない)。
+# Bangumi のタグは簡体字中国語で対応表に無く、この設定は効かない(既定で非表示)。
+# 対応表に無い語を hide(入れない)か keep(そのまま入れる)か。取得した元の値は消えないので、いつでも切り替えられる
 untranslated_terms = "hide"
 
 # 取得元ごとの最小間隔(秒)。直前の要求が終わってから空ける。既定は各取得元の公開されている制限から決めた値
-# (wiki/concepts/metadata-sources.md)。AniList は通常 90 回/分・障害時 30 回/分
+# (wiki/concepts/metadata-sources.md)。メディア芸術データベース・Bangumi は公式の制限値が見当たらず未検証
 [metadata.min_interval_seconds]
 ndl = 1.0
-anilist = 2.0
-mangaupdates = 1.0
+mediaarts = 1.0
+bangumi = 1.0
 # 同人誌用。nHentai の匿名の制限は検索 10 回/分(= 6 秒に 1 回)・詳細 20 回/分。API キーがあれば 20 回/分・45 回/分なので 3.0 まで下げられる。
 # E-Hentai は公式に「4〜5 回連続したら 5 秒ほど待つ」程度の記述しかなく、守らないと IP が一時的に遮断される
 nhentai = 6.5

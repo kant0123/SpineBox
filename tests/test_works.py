@@ -76,7 +76,7 @@ def set_alias_confidence(settings, alias, confidence):
         conn.close()
 
 
-def add_manual_link(settings, work_id, source="mangaupdates", source_id="test"):
+def add_manual_link(settings, work_id, source="bangumi", source_id="test"):
     """利用者が選んだ公開 DB の連携(手動の決定)。"""
     conn = db.connect(settings.db_path)
     try:
@@ -87,7 +87,7 @@ def add_manual_link(settings, work_id, source="mangaupdates", source_id="test"):
         conn.close()
 
 
-def add_linked_item(settings, work_id, source="mangaupdates", source_id="same-id", confidence=0.8):
+def add_linked_item(settings, work_id, source="bangumi", source_id="same-id", confidence=0.8):
     """公開 DB の自動連携(手動でない)。source と source_id で同じ提示先を表す。"""
     conn = db.connect(settings.db_path)
     try:
@@ -899,12 +899,12 @@ def test_a_later_numbered_remnant_moves_its_link_to_the_existing_series_work(mak
     finally:
         conn.close()
     add_alias(settings, wid, "作品名", confidence=0.8)
-    add_linked_item(settings, wid, "mangaupdates", "12345", confidence=0.8)
+    add_linked_item(settings, wid, "bangumi", "12345", confidence=0.8)
     client.post("/api/works/refresh")
     (w,) = client.get("/api/works").json()["works"]
     assert (w["title"], w["volume_count"]) == ("作品名", 2)
     links = client.get(f"/api/works/{w['id']}").json()["links"]
-    assert any(l["source"] == "mangaupdates" and l["source_id"] == "12345" and l["status"] == "linked"
+    assert any(l["source"] == "bangumi" and l["source_id"] == "12345" and l["status"] == "linked"
                for l in links)
 
 

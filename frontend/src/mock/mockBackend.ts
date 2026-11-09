@@ -423,7 +423,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     }
     if (method === "GET" && path === "/api/settings") {
       return json(200, { untranslated_terms: "hide", cache_limit_bytes: 2 * 1024 ** 3, memory_cache_limit_bytes: 256 * 1024 ** 2,
-        metadata_sources: ["ndl", "anilist", "mangaupdates"], metadata_background: false });
+        metadata_sources: ["ndl", "mediaarts", "bangumi"], metadata_background: false });
     }
     if (method === "GET" && path === "/api/stats") {
       if (options.statsFailure) return json(500, { detail: "失敗" });

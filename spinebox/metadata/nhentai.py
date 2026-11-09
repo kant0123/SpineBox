@@ -4,7 +4,7 @@
 検索 10 回/分・詳細 20 回/分(IP ごと)。API キーがあれば `[metadata.keys] nhentai_api_key` に置くと
 `Authorization: Key …` で送る(制限が緩む。間隔は `[metadata.min_interval_seconds] nhentai` で下げる)。
 検索の結果は一覧用の軽い項目(題名・ページ数・タグ ID)で、タグ名・分類は詳細にだけある。そのため
-同じ本の翻訳版をまとめたあと、確からしさの高い上位の候補だけ詳細を引き直す(MangaUpdates と同じ形)。
+同じ本の翻訳版をまとめたあと、確からしさの高い上位の候補だけ詳細を引き直す(Bangumi と同じ形)。
 題名は同人誌の書式 `(イベント) [サークル (作者)] 題名 (原作)` で、`doujin.py` で分けて使う。
 """
 from __future__ import annotations

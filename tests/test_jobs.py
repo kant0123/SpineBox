@@ -584,7 +584,7 @@ def test_follow_check_can_be_cancelled_between_works(follow_env, monkeypatch):
 
 def test_follow_check_is_unavailable_when_ndl_is_disabled(make_settings, tmp_path):
     from test_follows import Env, kaku_files
-    env = Env(make_settings, tmp_path, "kaku", kaku_files(1), sources=("anilist",))
+    env = Env(make_settings, tmp_path, "kaku", kaku_files(1), sources=("mediaarts",))
     kinds = {k["kind"]: k for k in env.client.get("/api/jobs/catalog").json()["kinds"]}
     assert kinds["follow_check"]["available"] is False and "国立国会図書館サーチ" in kinds["follow_check"]["unavailable_reason"]
     r = env.client.post("/api/jobs", json={"kind": "follow_check"})

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from metadata_fakes import ANILIST, MU_DETAIL, MU_SEARCH, NDL, FakeClock, FakeNetwork, fixture, json_body, \
+from metadata_fakes import BANGUMI_DETAIL, BANGUMI_SEARCH, MEDIAARTS, NDL, FakeClock, FakeNetwork, fixture, \
     recorded_network
 from spinebox.config import MetadataSettings
 from spinebox.db import open_db
@@ -54,7 +54,7 @@ def env(tmp_path):
 
 def test_search_returns_normalized_candidates_from_every_source(env):
     out = env.search(volume=1, kind=KIND_MANGA)
-    assert set(out) == {"ndl", "anilist", "mangaupdates"}
+    assert set(out) == {"ndl", "mediaarts", "bangumi"}
     assert all(o.ok and o.candidates for o in out.values())
 
     best = out["ndl"].candidates[0]
@@ -65,46 +65,44 @@ def test_search_returns_normalized_candidates_from_every_source(env):
     # 巻違いは順位が下がる(同じ作品名でも巻の根拠が違う)
     assert out["ndl"].candidates[-1].match.score < best.match.score
 
-    anilist = out["anilist"].candidates[0].item
-    assert anilist.romaji.startswith("Okiraku Ryoushu") and anilist.scope == "work"
+    mediaarts = out["mediaarts"].candidates[0].item
+    assert mediaarts.publisher == "オーバーラップ" and mediaarts.scope == "work"
 
-    mu = out["mangaupdates"].candidates[0]
-    assert mu.item.title == OKIRAKU and mu.match.score == 1.0 and mu.item.total_volumes == 8
-    assert "volume:not_applicable" in mu.match.reasons
+    bg = out["bangumi"].candidates[0]
+    assert bg.item.title == OKIRAKU and bg.match.score == 1.0 and bg.item.total_volumes == 11
+    assert "volume:not_applicable" in bg.match.reasons
 
 
 def test_request_shapes(env):
     env.search(volume=1)
-    ndl, anilist, mu_search = env.net.requests[0], None, None
+    ndl = env.net.requests[0]
     assert str(ndl.url).startswith(NDL) and ndl.url.params["title"] == OKIRAKU
     assert ndl.url.params["mediatype"] == "books" and ndl.url.params["cnt"] == "20"
     assert "creator" not in ndl.url.params
-    anilist = next(r for r in env.net.requests if str(r.url).startswith(ANILIST))
-    body = json_body(anilist)
-    assert body["variables"] == {"search": OKIRAKU, "perPage": 20} and "MANGA" in body["query"]
-    mu_search = next(r for r in env.net.requests if str(r.url) == MU_SEARCH)
-    assert json_body(mu_search) == {"search": OKIRAKU, "perpage": 20}
+    mediaarts = next(r for r in env.net.requests if str(r.url).startswith(MEDIAARTS))
+    assert OKIRAKU in mediaarts.url.params["query"] and mediaarts.url.params["format"] == "json"
+    bangumi_search = next(r for r in env.net.requests if str(r.url).startswith(BANGUMI_SEARCH))
+    assert bangumi_search.url.params["type"] == "1"
 
 
-def test_mangaupdates_detail_requests_are_limited(env):
-    env.search(sources=["mangaupdates"])
-    details = [r for r in env.net.requests if str(r.url).startswith(MU_DETAIL) and r.method == "GET"]
-    assert len(details) == env.settings.detail_limit == 3
-    # 詳細を引いた候補は別名・原版元を持ち、引かなかった候補は検索結果の項目だけ
-    out = env.search(sources=["mangaupdates"])["mangaupdates"]
-    assert out.candidates[0].item.publisher == "Overlap"
-    assert any(c.item.publisher is None and c.item.authors == () for c in out.candidates)
+def test_bangumi_detail_requests_are_limited(env):
+    env.search(sources=["bangumi"])
+    details = [r for r in env.net.requests if str(r.url).startswith(BANGUMI_DETAIL) and r.method == "GET"]
+    assert len(details) == 2  # okiraku の候補は 2 件(detail_limit の既定 3 より少ない)
+    # 詳細を引いた候補は著者・タグを持つ
+    out = env.search(sources=["bangumi"])["bangumi"]
+    assert out.candidates[0].item.publisher == "オーバーラップ"
 
 
 def test_candidate_response_key_leads_back_to_the_raw_response(env):
-    out = env.search(sources=["ndl", "mangaupdates"])
+    out = env.search(sources=["ndl", "bangumi"])
     c = out["ndl"].candidates[0]
     stored = env.store.get_by_key("ndl", c.response_key)
     assert stored is not None and stored.body == fixture("ndl/okiraku-search.xml")
-    mu = out["mangaupdates"].candidates[0]
-    detail = env.store.get_by_key("mangaupdates", mu.response_key)
-    assert detail.body == fixture("mangaupdates/okiraku-detail-41097037681.json")
-    assert {r.label for r in out["mangaupdates"].responses} == {"search", "detail"}
+    bg = out["bangumi"].candidates[0]
+    detail = env.store.get_by_key("bangumi", bg.response_key)
+    assert detail.body == fixture("bangumi/okiraku-detail-395984.json")
+    assert {r.label for r in out["bangumi"].responses} == {"search", "detail"}
 
 
 def test_author_filter_uses_creator_and_falls_back_when_empty(tmp_path):
@@ -139,12 +137,13 @@ def test_isbn_search_uses_isbn_only(tmp_path):
         c.item.isbn == "9784087824575" and "isbn:match" in c.match.reasons for c in out.candidates)
 
 
-def test_romaji_query_finds_ndl_and_mangaupdates_but_anilist_has_no_hit(tmp_path):
+def test_romaji_query_finds_only_ndl_via_reading(tmp_path):
     e = Env(tmp_path, recorded_network("romaji"))
     out = e.search("Okiraku ryoshu no tanoshi ryochi")
-    assert out["anilist"].ok and out["anilist"].candidates == ()    # 見つからない = 成功した 0 件
+    # メディア芸術データベース・Bangumi はローマ字の綴りに厳密で当たらない(見つからない = 成功した 0 件)
+    assert out["mediaarts"].ok and out["mediaarts"].candidates == ()
+    assert out["bangumi"].ok and out["bangumi"].candidates == ()
     assert out["ndl"].candidates[0].match.score > 0.8               # 読み(カタカナ)から比べる
-    assert out["mangaupdates"].candidates[0].item.title == OKIRAKU
 
 
 # --- 保存済みの応答 ---
@@ -152,7 +151,8 @@ def test_romaji_query_finds_ndl_and_mangaupdates_but_anilist_has_no_hit(tmp_path
 def test_same_request_uses_saved_response_without_network(env):
     first = env.search()
     n = len(env.net.requests)
-    assert n == 1 + 1 + 4 and env.stored_rows() == 6 and not any(o.from_cache for o in first.values())
+    # ndl=1, mediaarts=1, bangumi=検索 1 + 詳細 2(okiraku の候補は 2 件)
+    assert n == 1 + 1 + 3 and env.stored_rows() == 5 and not any(o.from_cache for o in first.values())
 
     second = env.search()
     assert len(env.net.requests) == n                                # ネットワークに出ない
@@ -160,7 +160,7 @@ def test_same_request_uses_saved_response_without_network(env):
     assert all(r.from_cache and not r.stale for o in second.values() for r in o.responses)
     for name in first:
         assert [c.item for c in second[name].candidates] == [c.item for c in first[name].candidates]
-    assert env.settings.sources == ("ndl", "anilist", "mangaupdates")
+    assert env.settings.sources == ("ndl", "mediaarts", "bangumi")
 
 
 def test_different_query_is_a_different_request(env):
@@ -215,10 +215,10 @@ def test_unparsable_saved_response_is_dropped_and_refetched(env):
 
 def test_empty_result_is_saved_too(tmp_path):
     net = FakeNetwork()
-    net.route("POST", ANILIST, fixture("anilist/romaji-search.json"))
+    net.route("GET", MEDIAARTS, fixture("mediaarts/romaji-search.json"))
     e = Env(tmp_path, net)
-    e.search(sources=["anilist"])
-    out = e.search(sources=["anilist"])["anilist"]
+    e.search(sources=["mediaarts"])
+    out = e.search(sources=["mediaarts"])["mediaarts"]
     assert out.ok and out.from_cache and len(net.requests) == 1
 
 
@@ -234,11 +234,11 @@ def test_empty_result_is_saved_too(tmp_path):
 ])
 def test_transport_failures_become_failure_outcomes(tmp_path, response, kind):
     net = FakeNetwork()
-    for method, url in (("GET", NDL), ("POST", ANILIST), ("POST", MU_SEARCH)):
+    for method, url in (("GET", NDL), ("GET", MEDIAARTS), ("GET", BANGUMI_SEARCH)):
         net.route(method, url, response)
     e = Env(tmp_path, net, max_retries=1)
     out = e.search()
-    assert set(out) == {"ndl", "anilist", "mangaupdates"}
+    assert set(out) == {"ndl", "mediaarts", "bangumi"}
     for o in out.values():
         assert not o.ok and o.candidates == () and o.failure.kind == kind
     assert e.stored_rows() == 0                                     # 失敗は保存しない
@@ -249,10 +249,10 @@ def test_transport_failures_become_failure_outcomes(tmp_path, response, kind):
 @pytest.mark.parametrize("source, method, url, body", [
     ("ndl", "GET", NDL, b"<html>maintenance</html>"),
     ("ndl", "GET", NDL, b"\xff\xfe broken"),
-    ("anilist", "POST", ANILIST, b"<html>bad gateway</html>"),
-    ("anilist", "POST", ANILIST, b'{"errors":[{"message":"boom"}],"data":null}'),
-    ("mangaupdates", "POST", MU_SEARCH, b"not json"),
-    ("mangaupdates", "POST", MU_SEARCH, b'{"status":"exception","reason":"x"}'),
+    ("mediaarts", "GET", MEDIAARTS, b"<html>bad gateway</html>"),
+    ("mediaarts", "GET", MEDIAARTS, b'{"results": null}'),
+    ("bangumi", "GET", BANGUMI_SEARCH, b"not json"),
+    ("bangumi", "GET", BANGUMI_SEARCH, b'{"list": "x"}'),
 ])
 def test_invalid_response_becomes_failure_and_is_not_saved(tmp_path, source, method, url, body):
     net = FakeNetwork()
@@ -273,16 +273,15 @@ def test_everything_down_does_not_raise_and_does_not_poison_later_searches(tmp_p
     assert all(o.ok and o.candidates for o in e.service.search(SearchQuery(OKIRAKU)))
 
 
-def test_mangaupdates_detail_failure_keeps_search_results_with_a_note(tmp_path):
+def test_bangumi_detail_failure_keeps_search_results_with_a_note(tmp_path):
     net = recorded_network("okiraku")
-    net.route("GET", MU_DETAIL + "41097037681", httpx.Response(500))
+    net.route("GET", BANGUMI_DETAIL + "395984", httpx.Response(500))
     e = Env(tmp_path, net, max_retries=0)
-    out = e.search(sources=["mangaupdates"])["mangaupdates"]
-    assert out.ok and len(out.notes) == 1 and "41097037681" in out.notes[0]
+    out = e.search(sources=["bangumi"])["bangumi"]
+    assert out.ok and len(out.notes) == 1 and "395984" in out.notes[0]
     top = out.candidates[0]
-    assert top.item.title == OKIRAKU                                # 検索が当たった別名(日本語名)で返る
+    assert top.item.title == OKIRAKU                                # 検索結果でまとめた項目で返る
     assert top.item.publisher is None and top.item.authors == ()    # 詳細にしか無い項目は空
-    assert top.item.aliases == () or top.item.romaji is not None
 
 
 def test_storage_failure_does_not_fail_the_search(env, monkeypatch):
@@ -307,7 +306,7 @@ def test_sources_can_be_enabled_and_disabled_by_settings(tmp_path):
     assert list(e.service.sources) == ["ndl"] and e.service.unknown == ["futuristic"]
     out = e.service.search(SearchQuery(OKIRAKU))
     assert [o.source for o in out] == ["ndl"]                       # 有効なものだけ検索する
-    disabled = e.service.search(SearchQuery(OKIRAKU), ["anilist"])[0]
+    disabled = e.service.search(SearchQuery(OKIRAKU), ["mediaarts"])[0]
     assert not disabled.ok and disabled.failure.kind == FAIL_DISABLED
     assert len(e.net.requests) == 1
 
@@ -326,40 +325,39 @@ def test_empty_title_is_rejected_by_the_query_type():
 
 def test_requests_to_the_same_source_are_spaced_by_the_configured_interval(tmp_path):
     e = Env(tmp_path, recorded_network("okiraku"),
-            min_interval_seconds={"ndl": 1.0, "anilist": 2.0, "mangaupdates": 1.0})
-    e.search(sources=["mangaupdates"])                              # 検索 1 + 詳細 3 = 4 要求
-    assert e.clock.sleeps == [1.0, 1.0, 1.0]                        # 3 回の間隔だけ待つ
+            min_interval_seconds={"ndl": 1.0, "mediaarts": 2.0, "bangumi": 1.0})
+    e.search(sources=["bangumi"])                                   # 検索 1 + 詳細 2(okiraku は 2 件)= 3 要求
+    assert e.clock.sleeps == [1.0, 1.0]
     e.clock.sleeps.clear()
     e.search("別の作品", sources=["ndl"])
     e.search("さらに別の作品", sources=["ndl"])
     assert e.clock.sleeps == [1.0]
-    e.search("A", sources=["anilist"])
-    e.search("B", sources=["anilist"])
-    assert e.clock.sleeps[-1] == 2.0                                # AniList の既定は 30 回/分
+    e.search("A", sources=["mediaarts"])
+    e.search("B", sources=["mediaarts"])
+    assert e.clock.sleeps[-1] == 2.0
 
 
 def test_defaults_respect_documented_limits():
     s = MetadataSettings()
-    assert s.interval("anilist") >= 2.0       # 障害時の上限 30 回/分(通常 90 回/分)
-    assert s.interval("ndl") >= 1.0 and s.interval("mangaupdates") >= 1.0
+    assert s.interval("ndl") >= 1.0 and s.interval("mediaarts") >= 1.0 and s.interval("bangumi") >= 1.0
     assert s.interval("unknown") == 1.0
 
 
-def test_anilist_429_stops_further_anilist_requests_until_retry_after(tmp_path):
+def test_mediaarts_429_stops_further_mediaarts_requests_until_retry_after(tmp_path):
     net = recorded_network("okiraku")
-    net.route("POST", ANILIST, httpx.Response(429, headers={"Retry-After": "60"}))
+    net.route("GET", MEDIAARTS, httpx.Response(429, headers={"Retry-After": "60"}))
     e = Env(tmp_path, net, max_retries=2)
-    first = e.search(sources=["anilist"])["anilist"]
-    assert first.failure.kind == FAIL_RATE_LIMITED and net.count(ANILIST) == 1
+    first = e.search(sources=["mediaarts"])["mediaarts"]
+    assert first.failure.kind == FAIL_RATE_LIMITED and net.count(MEDIAARTS) == 1
     e.clock.advance(5)
-    again = e.search("別の作品", sources=["anilist"])["anilist"]
-    assert again.failure.kind == FAIL_RATE_LIMITED and net.count(ANILIST) == 1   # 要求を出さない
+    again = e.search("別の作品", sources=["mediaarts"])["mediaarts"]
+    assert again.failure.kind == FAIL_RATE_LIMITED and net.count(MEDIAARTS) == 1   # 要求を出さない
     # ほかの取得元は使える
     assert e.search(sources=["ndl"])["ndl"].ok
     # 待てば再開する
-    net.route("POST", ANILIST, fixture("anilist/okiraku-search.json"))
+    net.route("GET", MEDIAARTS, fixture("mediaarts/okiraku-search.json"))
     e.clock.advance(60)
-    assert e.search("別の作品", sources=["anilist"])["anilist"].ok
+    assert e.search("別の作品", sources=["mediaarts"])["mediaarts"].ok
 
 
 # --- fetcher の所有権(レート制限の状態をリクエストをまたいで共有する) ---
