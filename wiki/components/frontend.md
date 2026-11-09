@@ -123,6 +123,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   `.work-grid` は `align-items: start`)。入れ子の巻の表紙は管理のスキャンと補完タブの「表紙のみ補完」(明示操作)で作る。
   表紙の URL は `ETag` + `Cache-Control: private, no-cache` なので、画面を開き直すと取り直す(以前の「表紙を作る」の後に `?rev=` を変える仕組みは、作成を画面から起動しなくなったので廃止した)。
   巻の一覧のカードには出していない(要望は作品の一覧。同じ `api.thumbnailUrl()` で足せる)
+  **表紙の読み込み状態を `useEffect` でリセットしない(#279)。** 画面を往復するとキャッシュ済みの画像は `onLoad` が effect より先に発火して `loaded` が付き、その後 effect が `loading` に戻して `opacity: 0` のまま表紙が出なくなった。巻が変わったときのリセットは描画中に行う(`WorkCover()`)。
 - **巻情報の読み込み待ちを見せる(#26)。** 入れ子のアーカイブ(7z の中の rar)を初めて開くと、`GET /api/volumes/{id}` が内側を
   取り出す間(実測 3〜8 秒)何も出ず、黒い画面のままで読み込み中と分からなかった。巻情報の取得中はリーダーの黒い枠の中央に
   スピナーと「一覧へ戻る」を出し、1.5 秒(`SLOW_HINT_MS`)を超えたら「初めて開く巻は展開に数秒かかる」と補足する。

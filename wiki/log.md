@@ -582,3 +582,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-10] ingest | PR #281 (#280) 種別に同人誌を追加し左メニューに同人誌を追加
 - 更新: [[work-search]], [[frontend]]
 - 備考: 種別 `doujinshi`。公開 DB は同人誌を漫画で返すため `kind_compatible()` で漫画の候補と両立させた(連携・フォロー)。
+
+## [2026-11-10] ingest | PR #282 (#279) 作品一覧に戻ると表紙が出ない不具合の修正
+- 更新: [[frontend]]
+- 備考: #279。`WorkCover()` が `useEffect` で読み込み状態を戻していたため、キャッシュ済みの表紙は onLoad の後に `loading` へ戻り `opacity: 0` のままだった。描画中のリセットに変更し、回帰テスト `WorkCover.test.tsx` を追加。
