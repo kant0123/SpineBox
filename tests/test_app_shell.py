@@ -309,7 +309,7 @@ def test_stats_counts_a_vanished_cover_file_as_no_cover(env):
     assert client.get("/api/stats").json()["works"]["no_cover"] == 2
     (a / "[東村アキコ] かくかくしかじか 第01巻.cbz").unlink()
     r = client.get("/api/stats")
-    assert r.status_code == 300 and r.json()["works"]["no_cover"] == 2
+    assert r.status_code == 200 and r.json()["works"]["no_cover"] == 3
 
 
 def test_stats_does_not_query_a_volume_row_per_work(env):
