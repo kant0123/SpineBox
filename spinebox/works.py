@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 import sqlite3
 import unicodedata
@@ -76,6 +77,9 @@ MAX_MISSING_SPAN = 500       # 巻番号の最大がこれを超えたら欠け�
 SAMPLE_VOLUMES = 6           # 提案の画面に出す、作品ごとの巻の例
 
 AUTHOR_SEPARATOR = "、"
+
+# 作品一覧の並び順(#273)
+WORK_SORTS = ("title", "recent_read", "added_desc", "added_asc", "released_desc", "released_asc", "random")
 
 
 class WorkNotFound(LookupError):
@@ -1815,15 +1819,96 @@ def _summary(w: dict, vols: list[dict], open_count: int, link_pending: int = 0) 
     }
 
 
+def _desc_text(text: str) -> tuple[int, ...]:
+    return tuple(-ord(ch) for ch in text)
+
+
+def _pad_released(text: str | None) -> str:
+    """発売日(`YYYY` / `YYYY-MM` / `YYYY-MM-DD`)を `YYYY-MM-DD` に揃える。
+    足りない月・日は `00` にし、同じ年の中では月・日が分かるものを先(新しい方)にする(follows._desc と同じ規則)。"""
+    if not text:
+        return ""
+    parts = [p.zfill(2) for p in text.strip().split("-")[:3]]
+    parts += ["00"] * (3 - len(parts))
+    return "-".join(parts)
+
+
+def _sort_dates(c: sqlite3.Connection, root_id: int | None) -> tuple[dict[int, str], dict[int, str], dict[int, str]]:
+    """作品 id → (最新の読書日時, 最新の追加日時, 最新の発売日(pad 済み))。
+    見えている巻(root_id 指定時はその蔵書ルートの巻だけ)から集計し、発売日は公開 DB 連携(work_links.item.released)も見る。"""
+    where, params = _root_condition(root_id)
+    read_at: dict[int, str] = {}
+    added_at: dict[int, str] = {}
+    for r in c.execute(
+        "SELECT wv.work_id, MAX(p.updated_at) AS last_read, MAX(v.created_at) AS last_added "
+        + _VOLUME_FROM + LISTED_VOLUMES_WHERE + where + " GROUP BY wv.work_id", params
+    ):
+        wid = r["work_id"]
+        if r["last_read"]:
+            read_at[wid] = r["last_read"]
+        if r["last_added"]:
+            added_at[wid] = r["last_added"]
+    released_at: dict[int, str] = {}
+    for r in c.execute(
+        "SELECT wv.work_id, vf.value " + LISTED_VOLUMES_JOIN
+        + " JOIN work_volumes wv ON wv.volume_id = v.id"
+        + " JOIN volume_fields vf ON vf.volume_id = v.id AND vf.field = 'released' "
+        + LISTED_VOLUMES_WHERE + where + " AND vf.value IS NOT NULL AND vf.value <> ''", params
+    ):
+        wid = r["work_id"]
+        padded = _pad_released(r["value"])
+        if padded and padded > released_at.get(wid, ""):
+            released_at[wid] = padded
+    for r in c.execute("SELECT work_id, item FROM work_links WHERE status = 'linked' AND item IS NOT NULL"):
+        wid = r["work_id"]
+        try:
+            rel = json.loads(r["item"]).get("released")
+        except ValueError:
+            rel = None
+        padded = _pad_released(str(rel) if rel else None)
+        if padded and padded > released_at.get(wid, ""):
+            released_at[wid] = padded
+    return read_at, added_at, released_at
+
+
+def _sort_works(items: list[dict], sort: str, c: sqlite3.Connection, root_id: int | None) -> None:
+    if sort == "title":
+        items.sort(key=lambda s: (natural_key(s["title"]), s["id"]))
+        return
+    if sort == "random":
+        random.shuffle(items)
+        return
+    read_at, added_at, released_at = _sort_dates(c, root_id)
+    if sort == "recent_read":
+        items.sort(key=lambda s: (s["id"] not in read_at, _desc_text(read_at.get(s["id"], "")),
+                                  natural_key(s["title"]), s["id"]))
+    elif sort == "added_desc":
+        items.sort(key=lambda s: (s["id"] not in added_at, _desc_text(added_at.get(s["id"], "")),
+                                  natural_key(s["title"]), s["id"]))
+    elif sort == "added_asc":
+        items.sort(key=lambda s: (s["id"] not in added_at, added_at.get(s["id"], ""),
+                                  natural_key(s["title"]), s["id"]))
+    elif sort == "released_desc":
+        items.sort(key=lambda s: (s["id"] not in released_at, _desc_text(released_at.get(s["id"], "")),
+                                  natural_key(s["title"]), s["id"]))
+    elif sort == "released_asc":
+        items.sort(key=lambda s: (s["id"] not in released_at, released_at.get(s["id"], ""),
+                                  natural_key(s["title"]), s["id"]))
+
+
 def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None,
-               root_id: int | None = None, read_later_only: bool = False) -> dict:
+               root_id: int | None = None, read_later_only: bool = False, sort: str | None = None) -> dict:
     """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
 
     q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / publisher / status(読書状態)の絞り込み。
     read_later_only は後で読む(#173)を付けた作品だけにする。
+    sort は並び順(#273。WORK_SORTS。省略・空は title)。
     root_id は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・読書状態などもそのルートの巻で数える。
     total は絞る前の作品数(蔵書の切り替えの後)、facets は絞り込みの候補(同じく絞る前の作品から作る)。
     """
+    sort_key = (sort or "").strip() or "title"
+    if sort_key not in WORK_SORTS:
+        raise InvalidValue(f"未対応の並び順: {sort_key}")
     wanted = search.check_filters(filters or {})
     try:
         search.prepare(conn)
@@ -1854,7 +1939,7 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
         s["merged"] = wid in merged_roots
         s["read_later"] = wid in later_ids
         out.append(s)
-    out.sort(key=lambda s: natural_key(s["title"]))
+    _sort_works(out, sort_key, conn, root_id)
     where, params = _root_condition(root_id)
     total = conn.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + where, params).fetchone()[0]
     assigned = sum(len(v) for v in vols.values())

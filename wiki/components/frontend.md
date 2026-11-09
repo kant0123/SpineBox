@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-09
+updated: 2026-11-10
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -32,14 +32,14 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/review/Review.tsx:16 Review()` | 確認(`#/review/<tab>`。#207)。タブは公開DBの候補(`links`、`frontend/src/review/ReviewLinks.tsx:71 ReviewLinks()`)・統合の提案(`WorkProposals` の `embedded`)・重複の候補(`Duplicates` の `embedded`)。件数はサイドバーの「確認」のバッジと共通の `frontend/src/review/reviewCounts.tsx:14 ReviewCountsProvider()`(`GET /api/review/counts`) |
 | `frontend/src/duplicates/Duplicates.tsx:100 Duplicates()` | 重複候補の画面(確認の重複の候補タブ。旧 `#/duplicates` も同じタブを開く)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
-| `frontend/src/works/Works.tsx:110 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・オフライン・読書状態のバッジと、確認待ちの通知ドット `frontend/src/works/ReviewPending.tsx:29 NotifyDot()`(#210)。上に検索欄と「絞り込み」([[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:18 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:52 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:138 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:140 WorkProposals()`(カード 1 件は `ProposalCard()`、表示の整形は `frontend/src/works/proposalView.ts`)(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
+| `frontend/src/works/Works.tsx:139 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者・出版社と、巻数・欠け・オフライン・読書状態のバッジと、確認待ちの通知ドット `frontend/src/works/ReviewPending.tsx:29 NotifyDot()`(#210)。上に検索欄・「絞り込み」・常時表示の「並び順」選択(#273。[[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:18 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:52 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:138 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:140 WorkProposals()`(カード 1 件は `ProposalCard()`、表示の整形は `frontend/src/works/proposalView.ts`)(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
 | `frontend/src/works/WorkTitles.tsx:18 WorkTitles()` | 作品のタイトル(巻)一覧(`#/works/<id>/titles`)。作品カードから開く。行は 表紙 → 名前 → 進み具合 の順で、名前は「作品名 第N巻」にそろえる。色は読書状態(未読 / 読書中 / 読了)で変え、凡例を出す。同じ巻番号の重複は 1 行にまとめ、押すと `frontend/src/works/WorkTitles.tsx:211 DuplicatePicker()` のモーダルから読む巻を選ぶ。欠け・最新巻はフォローの「続刊を調べる」(#87)の結果を点線の行で出し、持っていないのでリンクしない。ヘッダーに作品全体の進捗(ページの割合・読了巻数)と「作品を管理」(#105 の `#/works/<id>` へ)。行の組み立てと判定は `frontend/src/works/titleRows.ts:78 buildTitleRows()`・`frontend/src/works/titleRows.ts:22 percentText()`・`frontend/src/works/titleRows.ts:138 workProgress()`(#115) |
 | `frontend/src/data/DataJobs.tsx:149 DataJobs()` | スキャンと補完(処理の依頼。`view="data"`)とタスクセンター(実行中・待ち・履歴。`view="tasks"`)の中身。管理のタブ `#/admin/data`・`#/admin/tasks`(旧 `#/data` も同じ)に載せる([[data-jobs]])。進み具合の文言は `frontend/src/data/DataJobs.tsx:78 stepText()` と `countText()`。モックは `frontend/src/mock/mockJobs.ts` |
 | `frontend/src/follows/Follows.tsx:94 FollowReleases()` | フォロー([[follow]])。`#/follows` は続刊・欠けのある作品と「確認済みにする」、`FollowManage()` は管理の「フォロー管理」タブ(`#/admin/follows`。旧 `#/follows/manage` も同じ)でフォロー中の一覧・解除・「続刊を調べる」(実行中は 2 秒ごとに状態を見る)、作品ページのフォローは `WorkFollowPanel()`。入口はサイドバーの「フォロー」 |
 | `frontend/src/works/WorkCover.tsx:30 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:244 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
-| `frontend/src/api.ts:957 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:963 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:83 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:170 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -110,7 +110,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   カーソルを合わせるとツールチップで出る。欠けの多い作品でカードが数行になり、一覧が読みにくくなるのを避ける。
   DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う(件数は常に見えるので、
   内訳は補助)。組み立ては frontend/src/works/labels.ts:40 missingLabel()。
-- **作品カードのタイトルは 1 行で省略表示し、ホバー・フォーカス時に横スクロール(マーキー)する(#266)。** 長いタイトルでも改行でカードが縦に伸びたり改行が重なって読みにくくなるのを防ぎ、Peach と同様にカードへカーソルを合わせたとき末尾まで自動スクロールさせる。`prefers-reduced-motion: reduce` ではアニメーションを停止する。コードは `frontend/src/works/Works.tsx:41 WorkCard()`。
+- **作品カードのタイトルは 1 行で省略表示し、ホバー・フォーカス時に横スクロール(マーキー)する(#266)。** 長いタイトルでも改行でカードが縦に伸びたり改行が重なって読みにくくなるのを防ぎ、Peach と同様にカードへカーソルを合わせたとき末尾まで自動スクロールさせる。`prefers-reduced-motion: reduce` ではアニメーションを停止する。コードは `frontend/src/works/Works.tsx:70 WorkCard()`。
 - **作品カードのタグ(バッジ)は 1 行に収めて高さを揃える(#266)。** 欠け情報や複数バッジが複数行にまたがってカードの高さが不揃いになるのを防ぐため、`.work-badges` を 1 行(`flex-wrap: nowrap`)・最小高さ 26px に固定し、各 `.badge` に `white-space: nowrap` と省略記号(`text-overflow: ellipsis`)を適用した。
 - **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** カードの横幅いっぱい(`.work-card .work-cover` で幅 100%・2:3 の縦横比・上角丸)に置き、
   文字は表紙の下へ続ける(#129)。`cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
@@ -144,6 +144,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   巻の付け替えは巻のチェックボックスで選んで「新しい作品に分ける」/「この作品へ移す」(手動の決定になり再計算で戻らない)
 - **ジャンル・タグ・出版社・候補はサーバーが日本語にして返すので、画面では訳さない**(#74)。あらすじは #82 で廃止し、作品ページに表示・編集の欄を置かない([[metadata-linking]] の「あらすじの廃止」)
 - **作品一覧の検索と絞り込みは、スマホ幅で 1 行に収める。** 検索欄と「絞り込み」ボタンの 1 行だけを常に出し、読書状態・著者・種別・ジャンル・タグの選択はボタンで開いたときだけ出す(開いていなくても選んだ数をボタンに出す)。候補の無い項目(公開 DB の情報がまだ無い作品だけのときの種別・ジャンル・タグ)は選択欄ごと出さない。種別の候補は `manga` / `novel` で届くので `KIND_TEXT` で漫画・小説と表示する。検索語は打鍵ごとに引かず 250ms 待ってから引き(`SEARCH_DELAY_MS`)、後から出した要求の結果を古い応答で上書きしない。絞っているときは「N 件 / 全 M 作品」と「条件を消す」、0 件なら「条件に合う作品がありません」(蔵書が空のときの文言と分ける)。モック API の検索は `frontend/src/util/normalize.ts:2 normalizeSearch()` でバックエンドと同じ正規化を真似ている
+- **作品一覧の並び順(`sort`)は絞り込みパネルの外に常時表示し、1 つの `<select>` に向き込みで並べる(#273)。** 昇順/降順トグルを別に分けると「最近読んだ順」「ランダム」などで逆向きの意味が不自然になり操作も 2 アクションになるため、1 つの `<select>`(ラベル「並び順」)に 7 項目(`作品名順`・`最近読んだ順`・`追加が新しい順`・`追加が古い順`・`発売日順が新しい順`・`発売日順が古い順`・`ランダム`)を並べた。選んだ並び順は端末ごとに `localStorage` の `spinebox.works.sort` に保存し、「条件を消す」を押しても並び順はリセットしない(`frontend/src/works/Works.tsx:28 loadWorkSort()` / `saveWorkSort()`)
 - **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
   取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
 - **ホーム(`#/`)は作品の一覧。** 巻の一覧(`#/volumes`)は廃止し、ホームへ戻る。#85 までは `#/` が巻の一覧だったので、リーダー・整理の画面の「一覧へ」(`libraryHref`)はホームへ戻る。`#/works` もホームと同じ画面

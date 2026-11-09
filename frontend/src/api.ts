@@ -305,6 +305,9 @@ export interface WorkSummary {
 
 export type ReadingState = "unread" | "reading" | "finished";
 
+/** 作品一覧の並び順(#273)。既定は title(作品名順) */
+export type WorkSort = "title" | "recent_read" | "added_desc" | "added_asc" | "released_desc" | "released_asc" | "random";
+
 /** 作品一覧の絞り込み(#56)。kind / genre / tag / publisher は公開 DB の項目(#50)があるときだけ候補が出る */
 export type WorkFilterName = "author" | "kind" | "genre" | "tag" | "publisher";
 
@@ -319,6 +322,8 @@ export interface WorkQuery {
   status?: ReadingState;
   /** 後で読む(#173)を付けた作品だけ */
   read_later?: boolean;
+  /** 並び順(#273。省略・title は作品名順) */
+  sort?: WorkSort;
   /** 蔵書の切り替え(#85。LibraryRoot の id)。その蔵書ルートの巻だけで一覧を作る */
   root?: string;
 }
@@ -334,10 +339,11 @@ export interface WorkList {
   unassigned: number;
 }
 
-/** 検索語・絞り込みをクエリ文字列にする(空の値は付けない) */
+/** 検索語・絞り込み・並び順をクエリ文字列にする(空の値・既定の sort=title は付けない) */
 export function workQueryString(query: WorkQuery = {}): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
+    if (k === "sort" && v === "title") continue;
     if (typeof v === "string" && v.trim()) params.set(k, v.trim());
     else if (k === "read_later" && v === true) params.set(k, "1");
   }

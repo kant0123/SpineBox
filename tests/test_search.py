@@ -419,3 +419,63 @@ def test_locked_database_falls_back_to_the_existing_index(env, monkeypatch):
             works.list_works(conn, "お気楽")  # 索引も無ければ隠さない
     finally:
         conn.close()
+
+
+# --- 並び順(#273) ----------------------------------------------------------------------------
+
+def ordered_titles(client, **params):
+    r = client.get("/api/works", params=params)
+    assert r.status_code == 200, r.text
+    return [w["title"] for w in r.json()["works"]]
+
+
+def test_work_sort_orders_and_invalid_sort_is_422(env):
+    settings, client = env
+    assert client.get("/api/works", params={"sort": "unknown"}).status_code == 422
+
+    # 既定(省略・title)は作品名の自然順
+    default_order = ordered_titles(client)
+    assert default_order == [ROMAJI, "Other story", JA, KAKU]
+    assert ordered_titles(client, sort="title") == default_order
+
+    v_ja1 = vid(client, "[青色まろ×赤池宗] お気楽領主の楽しい領地防衛 第01巻")
+    v_ja2 = vid(client, "[青色まろ×赤池宗] お気楽領主の楽しい領地防衛 第02巻")
+    v_k1 = vid(client, "[東村アキコ] かくかくしかじか 第01巻")
+    v_k2 = vid(client, "[東村アキコ] かくかくしかじか 第02巻")
+    v_rom = vid(client, "Okiraku ryoshu no tanoshi ryochi v01")
+    v_oth = vid(client, "Other story v01")
+    wid_rom = work_id(client, ROMAJI)
+
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            # 追加日時: Other(2026-01) < JA(第2巻が 2026-02) < ROMAJI(2026-03) < KAKU(第2巻が 2026-04)
+            for v, ts in ((v_oth, "2026-01-10T00:00:00+00:00"),
+                          (v_ja1, "2026-01-01T00:00:00+00:00"), (v_ja2, "2026-02-01T00:00:00+00:00"),
+                          (v_rom, "2026-03-01T00:00:00+00:00"),
+                          (v_k1, "2026-01-05T00:00:00+00:00"), (v_k2, "2026-04-01T00:00:00+00:00")):
+                c.execute("UPDATE volumes SET created_at = ? WHERE id = ?", (ts, v))
+            # 読書日時: KAKU(2026-05-02) > JA(2026-05-01)。ROMAJI・Other は未読(末尾で作品名順)
+            c.execute("INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, 1, 0, ?)",
+                      (v_ja1, "2026-05-01T10:00:00+00:00"))
+            c.execute("INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, 1, 0, ?)",
+                      (v_k1, "2026-05-02T10:00:00+00:00"))
+            # 発売日: JA は巻の書誌で 2022-08、KAKU は 2015-03-25、ROMAJI は公開 DB 連携(work_links.item)で 2020。Other は発売日なし(末尾)
+            c.execute("INSERT INTO volume_fields (volume_id, field, value, source, manual, updated_at) "
+                      "VALUES (?, 'released', '2022-08', 'public_db', 0, 't')", (v_ja2,))
+            c.execute("INSERT INTO volume_fields (volume_id, field, value, source, manual, updated_at) "
+                      "VALUES (?, 'released', '2015-03-25', 'public_db', 0, 't')", (v_k1,))
+            c.execute("INSERT INTO work_links (work_id, source, status, manual, source_id, item) "
+                      "VALUES (?, 'anilist', 'linked', 0, 'a:1', '{\"released\": \"2020\"}')", (wid_rom,))
+    finally:
+        conn.close()
+
+    assert ordered_titles(client, sort="recent_read") == [KAKU, JA, ROMAJI, "Other story"]
+    assert ordered_titles(client, sort="added_desc") == [KAKU, ROMAJI, JA, "Other story"]
+    assert ordered_titles(client, sort="added_asc") == ["Other story", JA, ROMAJI, KAKU]
+    assert ordered_titles(client, sort="released_desc") == [JA, ROMAJI, KAKU, "Other story"]
+    assert ordered_titles(client, sort="released_asc") == [KAKU, ROMAJI, JA, "Other story"]
+
+    rand_order = ordered_titles(client, sort="random")
+    assert sorted(rand_order) == sorted(default_order)
+
