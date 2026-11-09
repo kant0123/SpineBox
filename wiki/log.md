@@ -578,3 +578,8 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-10] ingest | PR #276 #275 同人誌の取得元 nHentai・E-Hentai を追加
 - 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[work-grouping]]
 - 備考: 題名の書式 `(イベント) [サークル (作者)] 題名 (原作)` で照合する(`spinebox/metadata/doujin.py`)。どちらも既定では無効。nHentai は `/api/v2/openapi.json` を読む(Swagger ページは JS 描画)、E-Hentai は検索 API が無いので検索ページのリンク + `gdata`。実蔵書 882 件の名前で書式の読み取り率を確かめた。名前解析は先頭のイベント括弧を著者にしないよう修正。
+
+## [2026-11-10] ingest | PR #283 (#130) Node 26 で frontend のテストが localStorage 未定義で失敗する問題を修正
+- 更新: [[frontend]]
+- 備考: Node 26 のグローバル localStorage が --localstorage-file 未指定で undefined を返し、jsdom の window.localStorage のアクセサを覆い隠すため、Vitest の test.setupFiles に frontend/src/test/setup.ts を追加し、jsdom が window._localStorage に用意した実装を globalThis.localStorage と window.localStorage の両方へ割り当てた。Node 22 (CI) と Node 26 (開発機) の両方で npm test (201 passed, 11 skipped) と npm run build が通ることを確認した。
+
