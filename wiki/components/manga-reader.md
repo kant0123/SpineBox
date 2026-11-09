@@ -25,7 +25,7 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 | `frontend/src/reader/Reader.tsx:35 Reader()` | 巻情報の取得・読み込み待ち・取得失敗・小説への切り替え。漫画なら `MangaReader` へ |
 | `frontend/src/reader/MangaReader.tsx:44 MangaReader()` | manga-viewer の生成と破棄、オプション(ヘッダーのボタン・しおりの API・再開位置)、読書位置の保存の結線 |
 | `spinebox/page_marks.py:41 list_marks()` | しおりの読み書き。`add()` / `remove()`、整理での移動 `transfer_volume()` |
-| `spinebox/app.py:943 list_page_marks()` | `/api/page-marks`(GET / POST / DELETE)。ライブラリの `bookmarkApi` の形に合わせた口 |
+| `spinebox/app.py:944 list_page_marks()` | `/api/page-marks`(GET / POST / DELETE)。ライブラリの `bookmarkApi` の形に合わせた口 |
 | `spinebox/analysis.py:130 _carry_page_marks()` | 巻への分解で親のしおりを子の巻・ページへ写す |
 | `frontend/src/reader/realViewer.test.ts` | 本物のライブラリを jsdom で組み、再開の確認が出て保存位置が上書きされないことを確かめる |
 

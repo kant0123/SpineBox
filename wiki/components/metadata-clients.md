@@ -28,7 +28,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/metadata/service.py:57 MetadataService` | 入口。`search(query, sources=None)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
+| `spinebox/metadata/service.py:61 MetadataService` | 入口。`search(query, sources=None)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
 | `spinebox/metadata/model.py:29 SearchQuery` | 入力。`title` だけ必須。`author` `volume` `kind` は確からしさの手がかり、`isbn` は NDL で巻の書誌を直接引く |
 | `spinebox/metadata/model.py:44 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(AniList / MangaUpdates: 作品全体) |
 | `spinebox/metadata/model.py:82 Match` | 確からしさ。`score`(0〜1)、観点ごとの `components`、根拠 `reasons`(`title:exact` `author:match` `volume:mismatch` など) |
@@ -65,7 +65,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - **DB テーブルにしてファイルにしなかった理由**: GOAL.md が「生レスポンスと、どの項目をどのソースから埋めたかを DB に残す」としており、後続の結線(出所の記録)と同じ DB で引ける。
   ファイル案は、ハッシュ名の管理と掃除を別に作る必要があり、蔵書の DB と別にバックアップ・移行する手間も増える。作品・巻には結び付けない(外部キー無し)ので、結線の仕組みが決まる前でも入れられた
 - 接続はリクエストごとに開く前提(アプリの `get_conn`)。`ResponseStore` の内部ロックは同じインスタンスの中だけ
-- **`HttpFetcher`(関門・接続)はプロセスで 1 つを共有する**(`spinebox/metadata/service.py:37 shared_fetcher`)。`MetadataService` をリクエストごとに作っても最小間隔と 429 の停止が持ち越される。
+- **`HttpFetcher`(関門・接続)はプロセスで 1 つを共有する**(`spinebox/metadata/service.py:41 shared_fetcher`)。`MetadataService` をリクエストごとに作っても最小間隔と 429 の停止が持ち越される。
   `fetcher` を渡さなければ共有のものを使い、`close()` は閉じない。`transport` を渡した(テストの)ときだけ専用に作って `close()` で閉じる。渡された `fetcher` も閉じない(#44 の agy レビューで指摘された誤り)
 
 ## レート制限(`HttpFetcher` / `Gate`)
