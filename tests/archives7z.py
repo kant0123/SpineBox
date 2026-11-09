@@ -59,3 +59,44 @@ def make_7z(sevenzip: str, dest: Path, files: dict[str, bytes]) -> Path:
         items = [p.name for p in sorted(src.iterdir())]
         subprocess.run([sevenzip, "a", "-bso0", "-bsp0", "-y", str(dest), "--", *items], cwd=src, check=True)
     return dest
+
+
+def _rar4_unicode(name: str) -> bytes:
+    """RAR4 の Unicode 名の圧縮形式(全部 16 ビットそのまま = 種類 2)で name を符号化する。"""
+    out = bytearray([0])  # high byte(種類 2 では使わない)
+    codes = [ord(c) for c in name]
+    for i in range(0, len(codes), 4):
+        group = codes[i:i + 4]
+        flags = 0
+        for j in range(4):
+            flags = (flags << 2) | (2 if j < len(group) else 0)
+        out.append(flags)
+        for code in group:
+            out += struct.pack("<H", code)
+    return bytes(out)
+
+
+def _rar4_block(kind: int, flags: int, body: bytes) -> bytes:
+    head = struct.pack("<BHH", kind, flags, 7 + len(body)) + body
+    return struct.pack("<H", zlib.crc32(head) & 0xFFFF) + head
+
+
+def rar4_bytes(entries) -> bytes:
+    """無圧縮(stored)の RAR4 を手で組む。
+
+    entries: [(oem_name: bytes, unicode_name: str | None, data: bytes | None)]。区切りはバックスラッシュ。
+    unicode_name を渡すと Unicode 名フラグ(0x200)付きで OEM 名の後ろに付ける(化けた Unicode 名を再現できる)。
+    data が None ならフォルダ。
+    """
+    out = bytearray(b"Rar!\x1a\x07\x00")
+    out += _rar4_block(0x73, 0, b"\x00" * 6)
+    for oem, uni, data in entries:
+        name = oem if uni is None else oem + b"\x00" + _rar4_unicode(uni)
+        flags = 0x8000 | (0x200 if uni is not None else 0) | (0xE0 if data is None else 0)
+        payload = data or b""
+        attr = 0x10 if data is None else 0x20
+        body = struct.pack("<IIBIIBBHI", len(payload), len(payload), 2, zlib.crc32(payload) & 0xFFFFFFFF,
+                           0x3EC10000, 20, 0x30, len(name), attr) + name
+        out += _rar4_block(0x74, flags, body) + payload
+    out += _rar4_block(0x7B, 0x4000, b"")
+    return bytes(out)

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from ..config import ExtractionLimits
+from . import rar4
 from .base import ArchiveEntry, ArchiveError, ArchiveReader, LimitExceeded, UnsupportedArchive
 from .safety import entry_limit_problem
 
@@ -126,7 +127,10 @@ def entries_from_records(records: list[dict[str, str]]) -> tuple[list[ArchiveEnt
     return entries, raw_paths
 
 
-def _entries_from_records(records):
+def _entries_from_records(records, recovered: dict[str, str] | None = None):
+    """recovered: 7z が出した名前 → 本来の名前(RAR4 の化けた Unicode 名を OEM 名で直したもの。`rar4.py`)。
+    直した名前は目次の名前にだけ使い、取り出しの指定は 7z が出した名前のまま。"""
+    recovered = recovered or {}
     entries: list[ArchiveEntry] = []
     raw_paths: dict[int, str] = {}
     crcs: dict[int, int] = {}
@@ -148,8 +152,14 @@ def _entries_from_records(records):
         if crc is not None:
             crcs[index] = crc
         # 7z はフォルダ名の末尾に区切りを付けない。zip と同じく末尾 `/` でフォルダと分かる名前にそろえる
-        name = path + "/" if is_dir and not path.endswith(("/", "\\")) else path
-        entries.append(ArchiveEntry(index, name, path.encode("utf-8", "surrogatepass"), "utf-8 (7z)", size, is_dir))
+        fixed = recovered.get(rar4.lookup_key(path)) if recovered else None
+        shown = fixed if fixed is not None else path
+        name = shown + "/" if is_dir and not shown.endswith(("/", "\\")) else shown
+        if fixed is not None:
+            raw, encoding = fixed.encode("cp932"), "cp932 (rar4)"
+        else:
+            raw, encoding = path.encode("utf-8", "surrogatepass"), "utf-8 (7z)"
+        entries.append(ArchiveEntry(index, name, raw, encoding, size, is_dir))
     return entries, raw_paths, crcs
 
 
@@ -307,7 +317,7 @@ class SevenZipReader(ArchiveReader):
             records = parse_listing(output)
             if not records:
                 raise ArchiveError("7-Zip の目次を解釈できない")
-            self._entries, self._raw_paths, self._crcs = _entries_from_records(records)
+            self._entries, self._raw_paths, self._crcs = _entries_from_records(records, rar4.recovered_names(self._path))
         return self._entries
 
     # 目次の持ち越し(RAM 層)。同じ版のファイルを開き直すたびに `7z l` を起動しないため

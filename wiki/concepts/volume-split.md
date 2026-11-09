@@ -34,7 +34,8 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 ### 分解(巻の単位と子の巻)
 
 - **巻の単位** = 画像を直接含むフォルダ(アーカイブの直下に画像があれば、そのアーカイブ自体)。入れ子の全段(`max_depth` まで)を見る。
-  集めるのは `spinebox/library.py:457 _units()`。各ページがどの単位かは、内側アーカイブを開く `_expand()` が入れ子の名前の並びとして持つ
+  集めるのは `spinebox/library.py:457 _units()`。各ページがどの単位かは、内側アーカイブを開く `_expand()` が入れ子の名前の並びとして持つ。
+  単位の名前(フォルダ名・アーカイブ名)はスキャンの切り出しと同じく `fix_mojibake()` で文字化けを直す(#257。前は直さず、化けた名前が子の巻・作品名になっていた)
 - **単位が 2 つ以上のときだけ分解する。** 1 つなら親がそのまま 1 巻(子は作らない。前に作った子は missing にする)
 - 子の巻の場所は (親と同じ `source_id`・`container_path`) + `inner_path`(親の内側アーカイブから単位のあるアーカイブまでの名前の JSON 配列)+
   `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:319 _open_unit()`
