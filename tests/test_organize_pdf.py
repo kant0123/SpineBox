@@ -448,3 +448,24 @@ def test_read_encrypted_pdf_is_unreadable(env):
     with pytest.raises(VolumeUnreadable):
         with env.library.open(env.conn, vid):
             pass
+
+
+def test_pdf_volume_png_content_type_and_work_cover(env):
+    """PNG を埋めた PDF のページは image/png で返り、作品の表紙候補・format も画像の巻として扱う(#261)。"""
+    from fastapi.testclient import TestClient
+    from spinebox.app import create_app
+
+    make_png_pdf(env.root / "漫画" / "ぴーえぬじー" / "ぴーえぬじー 第1巻.pdf")
+    make_png_pdf(env.root / "漫画" / "ぴーえぬじー" / "ぴーえぬじー 第2巻.pdf")
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    vid = vid_of(env, "漫画/ぴーえぬじー/ぴーえぬじー 第1巻.pdf")
+
+    client = TestClient(create_app(env.settings))
+    page = client.get(f"/api/volumes/{vid}/pages/0")
+    assert page.status_code == 200 and page.headers["content-type"] == "image/png"
+
+    listing = client.get("/api/works").json()
+    text = str(listing)
+    assert "'pdf'" not in text
+    assert [w["cover_volume_id"] for w in listing["works"]] == [vid]

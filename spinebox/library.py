@@ -173,7 +173,7 @@ class Library:
 
                 opened = OpenVolume(volume_id, names, version, read)
             elif row["format"] == "pdf":
-                opened = self._open_pdf(volume_id, path, version)
+                opened = self._open_pdf(stack, volume_id, path, version)
             else:
                 if not extract and detect_format(path) != "zip":
                     raise NeedsExtraction(volume_id)
@@ -183,13 +183,14 @@ class Library:
                     c.execute("UPDATE volumes SET page_count = ? WHERE id = ?", (len(opened.page_names), volume_id))
             yield opened
 
-    def _open_pdf(self, volume_id: int, path: Path, version: str) -> OpenVolume:
+    def _open_pdf(self, stack: ExitStack, volume_id: int, path: Path, version: str) -> OpenVolume:
         """未整理の PDF の巻。整理の抽出(organize/pdf.py)をページ単位で流用し、元の PDF は読むだけ。
         ページ名は連番の .jpg(実際の形式は抽出まで分からない。配信側が中身で見分ける)。"""
         from .organize.pdf import PdfError, extract_pdf_page_image
         import pypdf
         try:
-            reader = pypdf.PdfReader(str(path))
+            # ファイルは自分で開いて stack に閉じさせる(パスを渡すと pypdf が全体をメモリに読み、閉じ忘れも気づけない)
+            reader = pypdf.PdfReader(stack.enter_context(open(path, "rb")))
             if reader.is_encrypted:
                 raise VolumeUnreadable("暗号化された PDF は開けません")
             count = len(reader.pages)
