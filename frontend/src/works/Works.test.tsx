@@ -568,3 +568,41 @@ describe("作品ごとの確認待ち(#210)", () => {
     expect(container.innerHTML).toBe("");
   });
 });
+
+describe("作品カードのタイトルスクロールとタグ高さ(#266)", () => {
+  it("長いタイトルは inner span を持ち、ホバー・フォーカスで is-marquee が付く", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const titleEl = card.querySelector(".work-card-title") as HTMLElement;
+    const innerEl = card.querySelector(".work-card-title-inner") as HTMLElement;
+    expect(titleEl).toBeTruthy();
+    expect(innerEl).toBeTruthy();
+    expect(titleEl.getAttribute("title")).toBe("サンプル漫画");
+
+    Object.defineProperty(titleEl, "clientWidth", { value: 100, configurable: true });
+    Object.defineProperty(innerEl, "scrollWidth", { value: 200, configurable: true });
+
+    fireEvent.mouseEnter(card);
+    expect(card.classList.contains("is-marquee")).toBe(true);
+    expect(card.style.getPropertyValue("--marquee-distance")).toBe("100");
+
+    fireEvent.mouseLeave(card);
+    expect(card.classList.contains("is-marquee")).toBe(false);
+
+    fireEvent.focus(card);
+    expect(card.classList.contains("is-marquee")).toBe(true);
+
+    fireEvent.blur(card);
+    expect(card.classList.contains("is-marquee")).toBe(false);
+  });
+
+  it("タグ(バッジ)領域が work-badges として出力される", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    const card = (await screen.findByText("サンプル漫画")).closest("li")!;
+    const badges = card.querySelector(".work-badges");
+    expect(badges).toBeTruthy();
+    expect(badges?.querySelectorAll(".badge").length).toBeGreaterThan(0);
+  });
+});
