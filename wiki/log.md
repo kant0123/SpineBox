@@ -554,7 +554,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[organize]]
 - 備考: 整理の PDF 抽出(`extract_pdf_page_image`)をページ単位で流用し、`Library._open_pdf()` で閲覧・表紙を可能にした。それまでの 422 / ThumbnailUnavailable は廃止。ページ名は `.jpg` 固定で、配信側が PNG を中身で見分ける。
 
-## [2026-11-09] ingest | PR #(未) (#263) 本番の蔵書の初回同期で割れた作品の名前の形を読み分ける
+## [2026-11-09] ingest | PR #264 (#263) 本番の蔵書の初回同期で割れた作品の名前の形を読み分ける
 - 更新: [[work-grouping]], [[organize]]
 - 備考: #263。本番(5,202 巻)の初回同期で 496 作品。公開 DB なしで写した DB で測り 454 → 299 作品・確認待ち 0、同期を繰り返しても変化なし。直せない文字化けを作品名にしない(`mojibake.looks_garbled()`)、`単ページ` `color` を作品名にしない、巻 1 冊の入れ物の名前の末尾の番号を落とす、ローマ字の綴りの揺れ(`works._romaji_variant()`)、入れ物の中のローマ字の名前を別名に残す、副題違いの統合(`_subtitle_evidence()`)、版の印・著者列・ローマ数字・雑誌の号の読み、ソフトウェアの説明書きを巻にしない(`scanner.software_doc_reason()`、SCAN_VERSION=13・ANALYSIS_VERSION=7)。
 
