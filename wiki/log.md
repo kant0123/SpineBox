@@ -533,3 +533,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #249 (#247) 1 作品だけを収めたフォルダ・アーカイブの名前で作品を決め、断片を巻にしない
 - 更新: [[work-grouping]], [[recurring-review-findings]](ほかに、行番号がずれたコード参照を 18 ページで今のコードに合わせた)
 - 備考: #247。テスト用蔵書の全体同期で 292 作品に割れていた。外側の名前のうち中に 1 作品しか入っていないものを巻の作品名にし(`works._container_claims()`)、割り当て後に分かれた作品・空になった作品を統合し作品名を日本語に揃える(`_settle_claims()`)。章の見出し・`第N部分`・`c06-08`・保存ページのフォルダを naming で読み分け、目次・表紙の断片をスキャンと内側アーカイブの分解で巻にしない(`scanner.fragment_reason()`、SCAN_VERSION=9・ANALYSIS_VERSION=4)。22 作品・確認待ち 0 になり、同期を繰り返しても変化しない。
+
+## [2026-11-09] ingest | #250 #251 EPUB の書誌を作品名・著者・出版社の候補にし、EPUB の表紙を作品カードに使う
+- 更新: [[work-grouping]], [[cover-thumbnails]], [[novel-reader]]
+- 備考: #251。ファイル名が日本語でなく OPF の `dc:title` が日本語の EPUB は `dc:title` を巻の名前にし(`scanner._with_epub_meta()`、SCAN_VERSION=10)、`dc:creator` / `dc:publisher` は巻の書誌の候補(`volume_fields`、出所 `epub`)にする。#250。表紙の巻は EPUB を同順位の画像の巻より先にし(`works.cover_volume_id()`)、EPUB の表紙は OPF が示す画像から作る(`thumbs.Thumbnails._epub_cover()`)。保存ページの zip を登録不要にするかは決めていない(両方残す)。

@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import re
@@ -36,7 +37,7 @@ from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import is_fragment_name, parse_number
 from .novel import FORMAT_EPUB, novel_format
 from .mojibake import fix_mojibake
-from .novel.epub import CONTAINER as EPUB_CONTAINER, scan_problems as epub_scan_problems
+from .novel.epub import CONTAINER as EPUB_CONTAINER, read_meta as epub_read_meta, scan_problems as epub_scan_problems
 from .pages import is_cover, is_image
 
 FORMAT_PDF = "pdf"
@@ -51,7 +52,8 @@ log = logging.getLogger(__name__)
 # 6: 表紙画像だけを含むフォルダを巻にしない(#180)
 # 7: EPUB の構造名(OEBPS 等)を非コンテンツディレクトリにして巻にしない(#215)
 # 8: タイトル生成および巻番号抽出に文字化け修復(fix_mojibake)を適用(#223)
-SCAN_VERSION = 9
+# 10: EPUB の OPF の書誌(dc:title / creator / publisher)を読む。ファイル名が日本語でなければ dc:title を巻の名前にする(#251)
+SCAN_VERSION = 10
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -90,6 +92,11 @@ class VolumeSpec:
     name_encoding: str
     page_count: int | None
     format: str | None = None  # 小説なら 'epub' / 'text'
+    meta: dict | None = None  # EPUB の OPF から読んだ書誌 {'author': ..., 'publisher': ...}(volume_fields に入れる)
+
+
+def _has_japanese(text: str) -> bool:
+    return any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text)
 
 
 def _fs_name_bytes(name: str) -> bytes:
@@ -565,7 +572,9 @@ class Scanner:
             try:
                 with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
                     listing = list_entries(reader, self.settings.limits)
-                issues = epub_scan_problems(listing.entries, listing.skipped)
+                    issues = epub_scan_problems(listing.entries, listing.skipped)
+                    if not issues:
+                        spec = self._with_epub_meta(spec, path, reader)
                 specs = [] if issues else [spec]  # 危険な名前を含む・container.xml の無い EPUB は巻にしない
             except LimitExceeded as e:
                 issues.append(Skip(None, safe_text(f"展開上限によりスキップ: {e}")))
@@ -579,6 +588,23 @@ class Scanner:
                 self._replace_volumes(c, src["id"], specs)
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+
+    def _with_epub_meta(self, spec: VolumeSpec, path: Path, reader) -> VolumeSpec:
+        """OPF の書誌を巻に足す(#251)。読めなければ(ベストエフォート)ファイル名のまま。
+
+        dc:title は、ファイル名が日本語を含まず dc:title が日本語を含むときだけ巻の名前にする
+        (ファイル名のローマ字読みより、本が自分で名乗る日本語の題の方が強い根拠。日本語のファイル名は動かさない)。
+        著者・出版社は名前より弱いので巻の書誌(volume_fields)の候補に留める。
+        """
+        try:
+            meta = epub_read_meta(reader, self.settings.limits)
+        except ArchiveError:
+            return spec
+        info = {k: v for k, v in (("author", meta.creator), ("publisher", meta.publisher)) if v}
+        title = spec.title
+        if meta.title and _has_japanese(meta.title) and not _has_japanese(path.stem):
+            title = safe_text(meta.title)
+        return dataclasses.replace(spec, title=title, meta=info or None)
 
     def _scan_pdf(self, root_id: int, rel: str, path: Path) -> None:
         """PDF ファイルを 1 巻として登録する。ページ数と暗号化の有無を調べる。"""
@@ -644,6 +670,26 @@ class Scanner:
         for key, vid in existing.items():
             if key not in seen:
                 c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))
+        for s in specs:
+            if s.meta:
+                row = c.execute("SELECT id FROM volumes WHERE source_id = ? AND parent_id IS NULL AND container_path IS ? "
+                                "AND entry_prefix = ?", (source_id, s.container_path, s.entry_prefix)).fetchone()
+                if row is not None:
+                    self._store_epub_meta(c, row["id"], s.meta)
+
+    @staticmethod
+    def _store_epub_meta(c, volume_id: int, meta: dict) -> None:
+        """OPF の書誌を volume_fields に入れる。手動・公開 DB の値は上書きしない(空欄か、前回の EPUB 由来だけ更新)。"""
+        now = db.now()
+        for field, value in meta.items():
+            cur = c.execute("SELECT source, manual FROM volume_fields WHERE volume_id = ? AND field = ?",
+                            (volume_id, field)).fetchone()
+            if cur is not None and (cur["manual"] or cur["source"] != "epub"):
+                continue
+            c.execute("""INSERT INTO volume_fields (volume_id, field, value, source, manual, confidence, evidence, updated_at)
+                         VALUES (?, ?, ?, 'epub', 0, 0.9, '{"source": "opf"}', ?)
+                         ON CONFLICT (volume_id, field) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+                      (volume_id, field, value, now))
 
 
 def _under_any(path: str, prefixes: tuple[str, ...]) -> bool:

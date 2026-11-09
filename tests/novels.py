@@ -28,7 +28,7 @@ def xhtml(body: str, *, vertical: bool = False, head: str = "") -> str:
 
 def epub_bytes(chapters: list[str], *, vertical: bool = False, images: dict[str, bytes] | None = None,
                extra: list[tuple] | None = None, opf_extra_items: str = "", container: bytes | None = CONTAINER_XML,
-               linear_no: tuple[int, ...] = ()) -> bytes:
+               linear_no: tuple[int, ...] = (), title: str = "t", metadata_extra: str = "") -> bytes:
     """chapters: 各章の body の中身(XHTML の断片)。images: OEBPS/ からの名前 → バイト列。"""
     images = images or {}
     items, refs = [], []
@@ -43,7 +43,7 @@ def epub_bytes(chapters: list[str], *, vertical: bool = False, images: dict[str,
     ppd = ' page-progression-direction="rtl"' if vertical else ""
     opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>t</dc:title><dc:language>ja</dc:language></metadata>
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{title}</dc:title><dc:language>ja</dc:language>{metadata_extra}</metadata>
   <manifest>{''.join(items)}{opf_extra_items}</manifest>
   <spine{ppd}>{''.join(refs)}</spine>
 </package>"""

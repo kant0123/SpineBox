@@ -13,8 +13,11 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 
 ## 内容
 
-- **表紙にする巻は `spinebox/works.py:1629 cover_volume_id()`。** 作品の見えている巻のうち、画像の巻(小説・オフライン・0 ページを除く)で
-  巻番号が最小のもの。番号の無い巻は後ろ、同じ番号(重複)は巻の名前の自然順。`GET /api/works` の各作品に `cover_volume_id` で載る
+- **表紙にする巻は `spinebox/works.py cover_volume_id()`。** 作品の見えている巻のうち、画像の巻と EPUB(オフライン・0 ページを除く)で
+  巻番号が最小のもの。番号の無い巻は後ろ。同じ番号(重複)・番号の無い巻どうしは EPUB が先、それでも並べば巻の名前の自然順(#250)。
+  EPUB を先にするのは、番号の無い巻が並ぶ作品(同じ本の EPUB と「ページを保存」の zip)で zip の本文ページが表紙になっていたため。
+  EPUB の表紙は OPF が示す画像(EPUB 3 の `properties="cover-image"`、無ければ EPUB 2 の `<meta name="cover">`。`spinebox/novel/epub.py read_meta()`)で、
+  `spinebox/thumbs.py Thumbnails._epub_cover()` が縮小する。表紙の指定が無い EPUB は 404(`pending: false`)で表紙なしの枠になる(ほかの巻の 1 ページ目で代用しない)。`GET /api/works` の各作品に `cover_volume_id` で載る
 - **表紙は巻の 1 ページ目。** ページの並びの規則(`cover.*` を先頭。`spinebox/pages.py`)をそのまま使う。作品カード枠(2:3、Retina 2x で 480x720)を満たすよう、縦長は幅 480、横長は高さを 720 に合わせて縮小した JPEG
   (`spinebox/thumbs.py:74 make_thumbnail()`。読めない・巨大な画像は作らない。画素数の上限は指紋と同じ `MAX_PIXELS`。横長画像の最大幅は 1440。#222 で低解像度化を防ぐため縦横比に応じた計算に改善し、版を 2 に上げた)
 - **置き場は `data_dir/thumbs/`。** 展開キャッシュと同じ `ExtractionCache`(キーの sha256 の名前・LRU)を別のディレクトリと上限
@@ -23,7 +26,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 - **一覧から呼ばれる `GET /api/volumes/{id}/thumbnail` は、取り出し・7-Zip の起動が要らない巻だけその場で作る。**
   `Library.open(extract=False)`(`spinebox/library.py:142 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
-  `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。小説・1 ページ目が画像でない巻は 404 `{"pending": false}`
+  `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。テキスト小説・表紙の指定が無い EPUB・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の
   「表紙のみ補完」(管理のスキャンと補完タブのジョブ `thumbnails`。表紙の巻のうちまだ無いものを 1 巻ずつ、取り出してでも作る。進み具合はタスクセンター。ほかのジョブの実行中は待ち行列に入る。旧 `POST /api/thumbnails/build` も同じジョブ)。#102 で作品一覧のヘッダーの「表紙を作る」は外した
 - **作品カードは「無ければ表紙なしの枠」。** `<img loading="lazy">` で、読み込めたら見せ、404 などのエラーなら

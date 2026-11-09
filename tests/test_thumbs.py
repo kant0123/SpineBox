@@ -8,7 +8,7 @@ from PIL import Image
 
 from conftest import page_bytes, snapshot, write_zip, zip_bytes
 from images import jpeg, make_page
-from novels import epub_bytes
+from novels import PNG, epub_bytes
 from spinebox import works
 from spinebox.app import create_app
 from spinebox.cache import ExtractionCache, NotCached
@@ -212,7 +212,11 @@ def test_cover_volume_choice():
     assert works.cover_volume_id([v(1, 2), v(2, 1), v(3)]) == 2
     assert works.cover_volume_id([v(1), v(2, 3)]) == 2  # 番号の無い巻は後ろ
     assert works.cover_volume_id([v(1, 1, offline=True), v(2, 2)]) == 2
-    assert works.cover_volume_id([v(1, 1, fmt="epub"), v(2, 1, pages=0)]) is None
+    assert works.cover_volume_id([v(1, 1, fmt="text"), v(2, 1, pages=0)]) is None
+    # 同じ番号・番号の無い巻どうしでは EPUB を先にする(保存ページの zip の本文より本の表紙。#250)
+    assert works.cover_volume_id([v(1, fmt="images", title="a"), v(2, fmt="epub", title="b")]) == 2
+    assert works.cover_volume_id([v(1, 1, fmt="images", title="a"), v(2, 1, fmt="epub", title="b")]) == 2
+    assert works.cover_volume_id([v(1, 1, fmt="images"), v(2, fmt="epub")]) == 1  # 番号のある巻が先
     assert works.cover_volume_id([v(1, 1, title="b"), v(2, 1, title="a")]) == 2  # 重複は名前の自然順
     assert works.cover_volume_id([]) is None
 
@@ -265,3 +269,16 @@ def test_build_skips_unreadable_covers_and_continues(env, lib):
     client.post("/api/scan")
     summary = client.post("/api/thumbnails/build?wait=true").json()["summary"]
     assert summary == {"total": 3, "made": 2, "existing": 0, "skipped": 1}
+
+
+def test_epub_cover_comes_from_opf_and_beats_a_saved_page_zip(make_settings, tmp_path):
+    lib = tmp_path / "lib2"
+    write_zip(lib / "Book.zip", [("saved_files/images/001.jpg", jpeg(make_page(1)))])
+    (lib / "Book.epub").write_bytes(epub_bytes(
+        ["<p>本文</p>"], images={"images/cover.png": PNG}, metadata_extra='<meta name="cover" content="img0"/>'))
+    client = TestClient(create_app(make_settings(lib), frontend_dist=None))
+    client.post("/api/scan")
+    w = next(iter(work_by_title(client).values()))
+    assert w["cover_volume_id"] == volume_id(client, "Book")  # EPUB の巻(zip の巻は "Book" ではなく別名の可能性)
+    r = client.get(f"/api/volumes/{w['cover_volume_id']}/thumbnail")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"

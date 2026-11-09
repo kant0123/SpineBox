@@ -19,9 +19,12 @@ from typing import Callable
 
 from PIL import Image
 
+from .archive import ArchiveError, open_archive
 from .cache import ExtractionCache, cache_key
 from .fingerprint import MAX_PIXELS
 from .library import Library, VolumeNotFound, VolumeOffline, get_volume_row, get_volume_rows, is_offline
+from .novel import FORMAT_EPUB
+from .novel.epub import read_meta
 from .scanner import resolve_source_path, root_is_accessible
 
 # 作り方(大きさ・画質)を変えたら上げる(古いサムネイルを使わせない)
@@ -123,12 +126,17 @@ class Thumbnails:
         row = get_volume_row(conn, volume_id)
         if row["format"] == "pdf":
             raise ThumbnailUnavailable("PDF の巻の表紙は直接作成できません(先に「CBZ に整理」を実行してください)")
-        if row["format"] is not None:
-            raise ThumbnailUnavailable("小説の巻には表紙のページがありません")
+        if row["format"] not in (None, FORMAT_EPUB):
+            raise ThumbnailUnavailable("この形式の巻には表紙のページがありません")
         key = self._key(row)
         data = self.store.read(key)
         if data is not None:
             return key, data
+        if row["format"] == FORMAT_EPUB:
+            thumb = self._epub_cover(row)
+            with self.store.use(key, lambda f: f.write(thumb)):
+                pass
+            return key, thumb
         with self.library.open(conn, volume_id, extract=extract) as vol:
             if not vol.page_names:
                 raise ThumbnailUnavailable("ページがありません")
@@ -139,6 +147,23 @@ class Thumbnails:
         with self.store.use(key, lambda f: f.write(thumb)):
             pass
         return key, thumb
+
+    def _epub_cover(self, row) -> bytes:
+        """EPUB の OPF が示す表紙画像の縮小 JPEG(#250)。表紙が示されていない・読めないなら ThumbnailUnavailable。"""
+        settings = self.library.settings
+        path = resolve_source_path(Path(row["root_path"]), row["rel_path"])
+        try:
+            with open_archive(path, sevenzip_path=settings.sevenzip_path) as reader:
+                cover = read_meta(reader, settings.limits).cover
+                if cover is None:
+                    raise ThumbnailUnavailable("EPUB に表紙画像の指定がありません")
+                data = reader.read_entry(cover, settings.limits)
+        except ArchiveError as e:
+            raise ThumbnailUnavailable(f"EPUB の表紙を読めません: {e}") from e
+        thumb = make_thumbnail(data)
+        if thumb is None:
+            raise ThumbnailUnavailable("EPUB の表紙を画像として読めません")
+        return thumb
 
     def has(self, conn: sqlite3.Connection, volume_id: int) -> bool:
         """作成済みか(元が変わっていれば作成済みではない)。"""
