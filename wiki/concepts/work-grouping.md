@@ -19,8 +19,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:309 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
-  `spinebox/naming.py:208 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
+- **名前の読み方。** `spinebox/naming.py:330 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+  `spinebox/naming.py:229 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
   簡体字の巻表示・話表示(`卷` `话`)は正規の字(`巻` `話`)と同じに読む(`spinebox/naming.py _fold_chars`)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品
 - **小数点の巻は番号なしの巻として作品に入れる。** `第04.5巻` や `Chapter 002.2`、`ch.02.5`、`第02.5話` などの小数点の巻・話・チャプターは整数の `number_start`/`number_end` で持てないので番号にせず
@@ -67,7 +67,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 ## EPUB の書誌(OPF)を名前より強い根拠にする(#251)
 
 ファイル名がローマ字(読みを機械的に書き下したもの)の EPUB は、公開 DB でも当たらない。EPUB は自分の題を OPF に持つので、
-スキャン(`spinebox/scanner.py _with_epub_meta()`、`SCAN_VERSION=10`)で `dc:title` / `dc:creator` / `dc:publisher` を読む。
+スキャン(`spinebox/scanner.py _with_epub_meta()`、`SCAN_VERSION=11`)で `dc:title` / `dc:creator` / `dc:publisher` を読む。
 
 - **`dc:title` を巻の名前にするのは、ファイル名が日本語を含まず `dc:title` が日本語を含むときだけ。** 日本語のファイル名は動かさず、
   日本語でない `dc:title`(`Unknown` など)も使わない。巻の名前になるので、作品名の確信度は巻自身の名前と同じ 0.9 で、
@@ -154,7 +154,8 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 ## 欠け巻と重複
 
 `spinebox/works.py:1503 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
-最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。`spinebox/works.py:1523 build_slots()` は
+最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。**巻の番号を持つ巻が 1 つでもある作品では、話の欠けを数えない**(話・章は巻の中身で、別の系列ではない。
+章のフォルダを話として読んだ作品で 1..最大 の欠けが何百件も出たため。#248)。`spinebox/works.py:1527 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果

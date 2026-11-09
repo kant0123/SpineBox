@@ -1510,6 +1510,10 @@ def number_summary(vols: list[dict]) -> dict:
             out[kind] = {"max": None, "missing": [], "limited": False}
             continue
         top = max(e for _, e in ranges)
+        if kind == "episode" and out["volume"]["max"] is not None:
+            # 巻の番号を持つ作品の話・章は、巻の中身であって別の系列ではない。1..最大 の欠けを数えない(#248)
+            out[kind] = {"max": top, "missing": [], "limited": False}
+            continue
         if top > MAX_MISSING_SPAN:
             out[kind] = {"max": top, "missing": [], "limited": True}
             continue
