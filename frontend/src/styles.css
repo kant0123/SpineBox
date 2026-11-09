@@ -737,6 +737,27 @@ button.small::after {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-height: calc(20 / 16 * 1rem);
+  line-height: calc(20 / 16 * 1rem);
+}
+
+/* 作品カードの表紙に重ねる読書中バッジ: カードの高さに影響を与えない(#270) */
+.work-reading-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--reading-bg, rgba(23, 23, 26, 0.85));
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  z-index: 2;
 }
 /* 後で読む(#173)の重ね表示: 表紙の右下に被せる。アイコンのみ 32px 円で小さく見せ、::after で 44px の押し込み領域を持たせる */
 .work-cover-wrap { position: relative; }
