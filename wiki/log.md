@@ -546,6 +546,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[metadata-linking]], [[frontend]]
 - 備考: `linking._volume_tiebreak()` を足し、首位 1.0 の拮抗を手元の巻数を覆う全巻数で 1 件に絞れるときだけ自動連携する。確認の画面は選択を順番待ちの列で 1 件ずつ流し、最新の一覧へ反映して次の作品へスクロールする。NDL の組がレーベル違いで割れる件は #255 に分けた。agy の指摘で同点の範囲を 1.0 どうしに絞り、[[recurring-review-findings]] に種類を足した。
 
-## [2026-11-09] ingest | PR #(未定) (#257) RAR4 の化けた Unicode 名を OEM 名で直し、0x5C で割れた偽のフォルダの巻をなくす
+## [2026-11-09] ingest | PR #259 (#257) RAR4 の化けた Unicode 名を OEM 名で直し、0x5C で割れた偽のフォルダの巻をなくす
 - 更新: [[archive-reading]], [[volume-split]]
 - 備考: 本番の作品 552(`13 #ò`)。入れ子の RAR4 の OEM 名は正しい cp932 で、Unicode 名だけが cp437 で化けていた。`spinebox/archive/rar4.py` でヘッダを読み、7-Zip の目次の名前を差し替える(取り出しは 7-Zip の名前のまま)。分解の単位の名前にも `fix_mojibake()` を掛けた。SCAN_VERSION=12・ANALYSIS_VERSION=6。OEM 名まで近似変換で情報が落ちた 5 巻(`君みい５町`)は戻せないので名寄せ側を #258 に分けた。
