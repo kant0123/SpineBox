@@ -218,6 +218,8 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 
 ## PDF の CBZ 化(#218)
 
+> 未整理の PDF の閲覧(#261): 整理しなくても読める。`spinebox/library.py Library._open_pdf()` が `extract_pdf_page_image()` を 1 ページずつ流用し(元の PDF は読むだけ)、ページ名は連番の `.jpg` 固定。形式は抽出まで分からないので `app.py get_page` が先頭のマジックバイトで PNG を見分ける。API では画像の巻(`images`)として返し、表紙(`thumbs.py`)・続きから読むも画像の巻と同じ。pypdf のリーダーは並行で使えないのでページ抽出はロックで直列にし、抽出済みページは RAM 層に置く。暗号化・破損・ページ 0 は `VolumeUnreadable`。重複検出・統計は従来どおり PDF を対象にしない。
+
 自炊漫画などの PDF ファイルを、範囲指定の CBZ 化(`include_cbz=True`)および単巻整理(`plan` / `execute`)で 1 巻 = 1 CBZ にする。
 
 - **ハイブリッド抽出方式:** 基本は `pypdf` による埋め込み画像の無劣化抽出(バイト列をそのまま ZIP_STORED で書き込み)。ページ回転(`/Rotate`)がある場合は Pillow で正立回転、CMYK JPEG は RGB 変換して保存。白紙ページは白画像を補完し、複数画像ページはレンダリング/合成を行う。

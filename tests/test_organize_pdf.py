@@ -376,36 +376,24 @@ def test_write_pdf_cbz_preserves_png_and_handles_raw_tiff(tmp_path):
 
 
 def test_pdf_volume_api_and_thumbs(env):
-    """未整理の PDF の巻は直接開けず、表紙も作れず、API は 422 を返すこと。"""
-    from fastapi import HTTPException
+    """未整理の PDF の巻は API からページ・表紙とも読めること(#261)。"""
     from fastapi.testclient import TestClient
     from spinebox.app import create_app
-    from spinebox.library import VolumeUnreadable
-    from spinebox.thumbs import ThumbnailUnavailable, Thumbnails
 
-    root = env.root
-    pdf_path = root / "漫画" / "未整理 第1巻.pdf"
+    pdf_path = env.root / "漫画" / "未整理 第1巻.pdf"
     make_simple_pdf(pdf_path, num_pages=2)
-
     Scanner(env.conn, env.settings).scan()
     works.sync(env.conn)
     vid = vid_of(env, "漫画/未整理 第1巻.pdf")
 
-    # 1. library.open は VolumeUnreadable
-    with pytest.raises(VolumeUnreadable, match="PDF の巻は直接開けません"):
-        with env.library.open(env.conn, vid):
-            pass
-
-    # 2. thumbs.get は ThumbnailUnavailable
-    thumbs = Thumbnails(env.settings, env.library)
-    with pytest.raises(ThumbnailUnavailable, match="PDF の巻の表紙は直接作成できません"):
-        thumbs.get(env.conn, vid)
-
-    # 3. GET /api/volumes/{id} は 422
     client = TestClient(create_app(env.settings))
     res = client.get(f"/api/volumes/{vid}")
-    assert res.status_code == 422
-    assert "PDF の巻は直接閲覧できません" in res.json()["detail"]
+    assert res.status_code == 200
+    body = res.json()
+    assert body["format"] == "images" and body["page_count"] == 2
+    page = client.get(f"/api/volumes/{vid}/pages/1")
+    assert page.status_code == 200 and page.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/api/volumes/{vid}/thumbnail").status_code == 200
 
 
 def test_plan_range_cbz_preserves_unanalyzed_problems_with_pdf(env):
@@ -427,3 +415,36 @@ def test_plan_range_cbz_preserves_unanalyzed_problems_with_pdf(env):
     plan = o.plan_range(env.root_id, "混在", include_cbz=True)
     # 未解析アーカイブがあるため needs_analysis に入っていること
     assert len(plan["needs_analysis"]) > 0
+
+
+def test_read_unorganized_pdf_directly(env):
+    """整理前の PDF の巻を、元を書き換えずにページ画像として読める(#261)。"""
+    from spinebox.thumbs import Thumbnails
+    pdf_path = env.root / "漫画" / "直読み 第1巻.pdf"
+    make_simple_pdf(pdf_path, num_pages=3)
+    before = pdf_path.read_bytes()
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    vid = vid_of(env, "漫画/直読み 第1巻.pdf")
+    with env.library.open(env.conn, vid) as vol:
+        assert vol.page_names == ["0001.jpg", "0002.jpg", "0003.jpg"]
+        sizes = [Image.open(io.BytesIO(vol.read_page(i))).size for i in range(3)]
+    assert sizes == [(100, 150), (110, 160), (120, 170)]
+    key, thumb = Thumbnails(env.library, env.library.cache).get(env.conn, vid)
+    assert thumb.startswith(b"\xff\xd8")
+    assert pdf_path.read_bytes() == before
+
+
+def test_read_encrypted_pdf_is_unreadable(env):
+    from spinebox.library import VolumeUnreadable
+    pdf_path = make_simple_pdf(env.root / "漫画" / "暗号 第1巻.pdf", num_pages=2)
+    Scanner(env.conn, env.settings).scan()
+    works.sync(env.conn)
+    vid = vid_of(env, "漫画/暗号 第1巻.pdf")
+    w = pypdf.PdfWriter(clone_from=str(pdf_path))
+    w.encrypt("pw")
+    with open(pdf_path, "wb") as f:
+        w.write(f)
+    with pytest.raises(VolumeUnreadable):
+        with env.library.open(env.conn, vid):
+            pass

@@ -192,7 +192,7 @@ def _progress(row) -> dict | None:
 
 def _format(row) -> str:
     """巻の形式。images = ページ画像の巻(漫画など)、epub / text = 小説。"""
-    return row["format"] or "images"
+    return "images" if row["format"] in (None, "pdf") else row["format"]  # PDF も画像の巻として読む
 
 
 def _number(row) -> dict | None:
@@ -498,9 +498,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/volumes/{volume_id}")
     def get_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         row = get_volume_row(conn, volume_id)
-        if row["format"] == "pdf":
-            raise HTTPException(422, "PDF の巻は直接閲覧できません(先に「CBZ に整理」を実行してください)")
-        if row["format"] is not None:
+        if row["format"] is not None and row["format"] != "pdf":
             return _get_novel(conn, volume_id)
         with library.open(conn, volume_id) as vol:
             # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)
@@ -990,7 +988,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             if request.headers.get("if-none-match") == etag:
                 return Response(status_code=304, headers=headers)
             data = vol.read_page(index)
-        return Response(data, media_type=media_type(name), headers=headers)
+        mt = media_type(name)
+        if data.startswith(b"\x89PNG"):  # PDF の巻は名前が .jpg 固定なので中身で見分ける
+            mt = "image/png"
+        return Response(data, media_type=mt, headers=headers)
 
     # --- 表紙のサムネイル(#75) ------------------------------------------------------
 
@@ -1048,7 +1049,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         if row["page_count"] is not None and body.page >= max(row["page_count"], 1):
             raise HTTPException(422, f"page は 0〜{max(row['page_count'] - 1, 0)} で指定してください")
         # 割合は小説だけが持つ(画像の巻はページで位置が決まるので捨てる)
-        position = body.position if row["format"] is not None else None
+        position = body.position if row["format"] not in (None, "pdf") else None
         with db.transaction(conn) as c:
             c.execute("""INSERT INTO reading_progress (volume_id, page, finished, position, updated_at)
                          VALUES (?, ?, ?, ?, ?)
