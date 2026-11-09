@@ -295,36 +295,36 @@ describe("作品の検索と絞り込み(#56)", () => {
       "発売日順が古い順",
       "ランダム",
     ]);
-    expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]);
+    expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]);
 
     fireEvent.change(select, { target: { value: "recent_read" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア", "別の読み物", "外付けの作品"]));
     expect(localStorage.getItem("spinebox.works.sort")).toBe("recent_read");
 
     fireEvent.change(select, { target: { value: "added_desc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect(localStorage.getItem("spinebox.works.sort")).toBe("added_desc");
 
     fireEvent.change(select, { target: { value: "added_asc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
 
     fireEvent.change(select, { target: { value: "released_desc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
 
     fireEvent.change(select, { target: { value: "released_asc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
 
     fireEvent.change(select, { target: { value: "random" } });
-    await waitFor(() => expect(cardTitles()).toHaveLength(3));
+    await waitFor(() => expect(cardTitles()).toHaveLength(4));
     expect(localStorage.getItem("spinebox.works.sort")).toBe("random");
 
     // 検索条件を消しても並び順は維持される
     fireEvent.change(select, { target: { value: "added_desc" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "サンプル" } });
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
-    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect((screen.getByLabelText("並び順") as HTMLSelectElement).value).toBe("added_desc");
 
     // 再マウント時も localStorage から復元される
@@ -332,7 +332,7 @@ describe("作品の検索と絞り込み(#56)", () => {
     render(<App />);
     await screen.findByText("サンプル漫画");
     expect((screen.getByLabelText("並び順") as HTMLSelectElement).value).toBe("added_desc");
-    expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]);
+    expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]);
   });
 });
 
