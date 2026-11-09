@@ -112,7 +112,8 @@ RAR4 のファイル名は「OEM 名のバイト列」と、フラグ 0x200 の�
 - 入口: `spinebox/archive/rar4.py recovered_names()` を `spinebox/archive/sevenzip.py SevenZipReader.raw_entries()` が呼び、
   `_entries_from_records()` が目次の名前だけを差し替える(`encoding` は `cp932 (rar4)`、`raw_name` は OEM 名)。
   **取り出しの指定は 7-Zip が出した名前のまま**(7-Zip は Unicode 名でしかエントリを引けない)
-- 直す条件(`recovered_name()`): Unicode 名に日本語が無い非 ASCII で、OEM 名が cp932 として**厳密に**読めて日本語が 2 文字以上。
+- 直す条件(`recovered_name()`): Unicode 名に日本語が無い非 ASCII で、**Unicode 名が OEM 名を DOS のコードページ(cp437 / cp850)で読んだものそのもの**、OEM 名が cp932 として**厳密に**読めて日本語が 2 文字以上、直した名前で英字と漢字・かなが隣り合わない。
+  西欧の Windows で作った rar は OEM 名が cp1252 で、`élégant` が cp932 だと `駘馮ant` と読めてしまう(agy レビューで発覚。[[recurring-review-findings]] の文字化けの誤爆)。
   正しい Unicode 名・欧文の名前(`café` の OEM 名は cp932 として読めない)・作成ツールが 0x5C で割って作ったフォルダ
   (末尾が 1 バイト目で切れる)は変えない
 - ヘッダが読めない・想定外(RAR4 でない、ヘッダの暗号化、分割書庫、途中で切れている)なら何も直さず 7-Zip の名前を使う。

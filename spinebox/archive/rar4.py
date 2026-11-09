@@ -28,6 +28,10 @@ _LONG_BLOCK = 0x8000
 _MAX_HEADERS = 1_000_000
 
 _JAPANESE = re.compile(r"[ぁ-ゖァ-ヺ㐀-䶿一-鿿]")
+_JP_CLASS = r"ぁ-ゖァ-ヺ㐀-䶿一-鿿"
+_LATIN_JAPANESE = re.compile(rf"[A-Za-z][{_JP_CLASS}]|[{_JP_CLASS}][A-Za-z]")
+# 化けた Unicode 名の作られ方(cp932 のバイト列を欧文の DOS のコードページとして読んだ)
+_DOS_CODEPAGES = ("cp437", "cp850")
 
 
 def decode_unicode_name(oem: bytes, enc: bytes) -> str | None:
@@ -131,10 +135,17 @@ def read_names(path: Path) -> list[tuple[str, bytes]]:
 def recovered_name(unicode_name: str, oem: bytes) -> str | None:
     """Unicode 名が化けていて OEM 名が cp932 として読めるとき、cp932 の名前(区切りは Unicode 名と同じ `\\`)。
 
-    直さないもの: Unicode 名に日本語がある(正しく作られた名前)、OEM 名が cp932 として読めない・日本語が
-    2 文字未満(欧文の名前 `café` の OEM 名など)。
+    直すのは、Unicode 名が「OEM 名を DOS のコードページ(cp437 / cp850)で読んだもの」そのもののときだけ
+    (実データの化け方。cp932 の名前を欧文の DOS として読んで Unicode 名を作った)。
+
+    直さないもの: Unicode 名に日本語がある(正しく作られた名前)、Unicode 名が OEM 名の DOS 読みでない
+    (西欧の Windows で作った rar の OEM 名は cp1252 で、`élégant` が cp932 だと `駘馮ant` と読めてしまう)、
+    OEM 名が cp932 として読めない・日本語が 2 文字未満、直した名前で英字と漢字・かなが隣り合う
+    (cp850 の `derrière` → `derri較e` のように、欧文の単語の途中が偶然 cp932 として読めたもの)。
     """
     if not oem or unicode_name.isascii() or _JAPANESE.search(unicode_name):
+        return None
+    if unicode_name not in {oem.decode(cp, errors="replace") for cp in _DOS_CODEPAGES}:
         return None
     try:
         name = oem.decode("cp932")
@@ -142,7 +153,7 @@ def recovered_name(unicode_name: str, oem: bytes) -> str | None:
         return None
     if name == unicode_name or len(_JAPANESE.findall(name)) < 2:
         return None
-    if any(ord(c) < 0x20 for c in name):
+    if any(ord(c) < 0x20 for c in name) or _LATIN_JAPANESE.search(name):
         return None
     return name
 

@@ -69,6 +69,23 @@ def test_recovered_name_only_for_broken_unicode_names():
     assert rar4.recovered_name("Ä", b"\x8e") is None  # 読めても日本語が 2 文字未満
 
 
+@pytest.mark.parametrize("word", ["élégant.jpg", "téléphone.jpg", "général.jpg", "éléments.jpg", "céréale.jpg",
+                                  "derrière derrière.jpg"])
+@pytest.mark.parametrize("codepage", ["cp1252", "cp850", "cp437"])
+def test_recovered_name_leaves_western_names(word, codepage):
+    """欧文の名前の OEM 名(cp1252 の `élégant` は cp932 だと `駘馮ant`、cp850 の `derrière` は `derri較e` と読める)を直さない。"""
+    oem = word.encode(codepage)
+    assert rar4.recovered_name(word, oem) is None
+
+
+def test_recovered_name_needs_unicode_name_to_be_the_dos_reading_of_oem():
+    oem = "表紙ほか.jpg".encode("cp932")
+    assert rar4.recovered_name(oem.decode("cp437"), oem) == "表紙ほか.jpg"
+    assert rar4.recovered_name(oem.decode("cp850"), oem) == "表紙ほか.jpg"
+    assert rar4.recovered_name(oem.decode("cp1252", errors="replace"), oem) is None  # 化け方が違う
+    assert rar4.recovered_name("other.jpgé", oem) is None  # OEM 名と関係の無い Unicode 名
+
+
 def test_recovered_names_reads_headers(tmp_path):
     names = rar4.recovered_names(sample(tmp_path))
     assert names == {rar4.lookup_key(COVER[1]): p("v13", "13_#カバー.jpg"),
