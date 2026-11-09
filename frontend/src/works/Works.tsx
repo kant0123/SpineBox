@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery, type WorkSummary } from "../api";
+import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery, type WorkSort, type WorkSummary } from "../api";
 import { facetListHref, reviewHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
@@ -13,6 +13,35 @@ const SEARCH_DELAY_MS = 250;
 
 const FILTER_LABELS: Record<WorkFilterName, string> = { author: "著者", kind: "種別", genre: "ジャンル", tag: "タグ", publisher: "出版社" };
 const FILTER_NAMES: WorkFilterName[] = ["author", "kind", "genre", "tag", "publisher"];
+
+const SORT_STORAGE_KEY = "spinebox.works.sort";
+export const WORK_SORTS: { value: WorkSort; label: string }[] = [
+  { value: "title", label: "作品名順" },
+  { value: "recent_read", label: "最近読んだ順" },
+  { value: "added_desc", label: "追加が新しい順" },
+  { value: "added_asc", label: "追加が古い順" },
+  { value: "released_desc", label: "発売日順が新しい順" },
+  { value: "released_asc", label: "発売日順が古い順" },
+  { value: "random", label: "ランダム" },
+];
+
+export function loadWorkSort(): WorkSort {
+  try {
+    const v = localStorage.getItem(SORT_STORAGE_KEY);
+    return WORK_SORTS.some((s) => s.value === v) ? (v as WorkSort) : "title";
+  } catch {
+    return "title";
+  }
+}
+
+export function saveWorkSort(sort: WorkSort): void {
+  try {
+    if (sort === "title") localStorage.removeItem(SORT_STORAGE_KEY);
+    else localStorage.setItem(SORT_STORAGE_KEY, sort);
+  } catch {
+    // 保存できなくても今の画面では効かせる
+  }
+}
 
 /** サイドバーから開いた一覧に固定で掛ける絞り込み(#85。漫画・小説・著者・タグ・出版社) */
 export function scopeQuery(scope: WorksScope): WorkQuery {
@@ -104,15 +133,16 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const [pending, setPending] = useState(0);
   const [text, setText] = useState("");
   const [query, setQuery] = useState<WorkQuery>({});
+  const [sort, setSort] = useState<WorkSort>(loadWorkSort);
   const [showFilters, setShowFilters] = useState(false);
   const [sources, setSources] = useState<SourceName[]>([]);
   const seq = useRef(0);
 
   const fixedKey = JSON.stringify(fixed);
-  const load = useCallback(async (q: WorkQuery) => {
+  const load = useCallback(async (q: WorkQuery, s: WorkSort) => {
     const mine = ++seq.current;
     try {
-      const list = await api.listWorks({ ...q, ...JSON.parse(fixedKey), ...(root ? { root } : {}) });
+      const list = await api.listWorks({ ...q, sort: s, ...JSON.parse(fixedKey), ...(root ? { root } : {}) });
       if (mine !== seq.current) return; // 後から出した検索の結果を古い結果で上書きしない
       setData(list);
       setError(null);
@@ -123,9 +153,9 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
 
   const onReadLaterChange = useCallback((on: boolean) => {
     // 後で読むだけ表示のときに外した作品は一覧から消えるよう取り直す
-    if (on === false && query.read_later) void load(query);
+    if (on === false && query.read_later) void load(query, sort);
     // それ以外はカード上のボタンの表示だけで足りる(一覧の取り直しはしない)
-  }, [load, query]);
+  }, [load, query, sort]);
 
   const loadProposals = useCallback(async () => {
     try {
@@ -136,8 +166,8 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   }, []);
 
   useEffect(() => {
-    void load(query);
-  }, [load, query]);
+    void load(query, sort);
+  }, [load, query, sort]);
 
   useEffect(() => {
     void loadProposals();
@@ -153,6 +183,10 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
 
   const setFilter = (name: keyof WorkQuery, value: string) => setQuery((cur) => ({ ...cur, [name]: value || undefined }));
   const setReadLaterOnly = (on: boolean) => setQuery((cur) => (on ? { ...cur, read_later: true } : { ...cur, read_later: undefined }));
+  const changeSort = (next: WorkSort) => {
+    saveWorkSort(next);
+    setSort(next);
+  };
   const clearAll = () => {
     setText("");
     setQuery({});
@@ -229,6 +263,16 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
             </label>
           </div>
         )}
+        <div className="work-sort-row">
+          <label className="work-sort">
+            <span className="work-sort-label">並び順</span>
+            <select value={sort} onChange={(e) => changeSort(e.target.value as WorkSort)}>
+              {WORK_SORTS.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </form>
       {data && filtering && (
         <p className="muted work-count" role="status">

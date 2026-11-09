@@ -1,6 +1,6 @@
 // 作品(#43)のモック API。mockBackend.ts から使う。アプリ本体からは import しない。
 
-import type { FieldInfo, FollowRelease, FollowStatus, WorkFollow, LinkCandidate, ReadingState, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkLink, WorkProposal, WorkSlot, WorkSummary, WorkVolume } from "../api";
+import type { FieldInfo, FollowRelease, FollowStatus, WorkFollow, LinkCandidate, ReadingState, SourceName, VolumeMetaField, VolumeNumber, VolumeSummary, WorkBrief, WorkDetail, WorkFilterName, WorkLink, WorkProposal, WorkSlot, WorkSort, WorkSummary, WorkVolume } from "../api";
 import { normalizeSearch } from "../util/normalize";
 
 export { normalizeSearch };
@@ -252,11 +252,43 @@ export function createMockWorks(
     return res(200, { name, values: [...counts.values()].sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0)) });
   }
 
+  // 並び順(#273)用のモック日付: 作品 1(サンプル漫画)・作品 2(外付けの作品)・作品 3(別の読み物)で順序が分かれるように持つ
+  const workAddedAt: Record<number, string> = { 1: "2026-11-01T00:00:00+00:00", 2: "2026-11-02T00:00:00+00:00", 3: "2026-11-03T00:00:00+00:00" };
+  const workReleased: Record<number, string> = { 1: "2013-05-00", 2: "2021-10-00", 3: "2018-04-00" };
+  const padReleased = (s: string | null | undefined) => {
+    if (!s) return "";
+    const parts = s.trim().split("-").slice(0, 3).map((p) => p.padStart(2, "0"));
+    while (parts.length < 3) parts.push("00");
+    return parts.join("-");
+  };
+  const releasedOf = (w: MockWork, root: string | null) => {
+    let best = workReleased[w.id] ?? "";
+    for (const v of volumesOf(w, root)) {
+      const p = padReleased(volMeta[v.id]?.released?.value);
+      if (p > best) best = p;
+    }
+    for (const l of w.links) {
+      if (l.status === "linked" && l.linked?.released) {
+        const p = padReleased(l.linked.released);
+        if (p > best) best = p;
+      }
+    }
+    return best;
+  };
+  const readAtOf = (w: MockWork, root: string | null) => {
+    const vols = volumesOf(w, root);
+    if (!vols.some((v) => v.progress)) return "";
+    return `2026-11-05T00:00:0${w.id}+00:00`;
+  };
+  const VALID_SORTS: WorkSort[] = ["title", "recent_read", "added_desc", "added_asc", "released_desc", "released_asc", "random"];
+
   /** GET /api/works の検索・絞り込み(バックエンドと同じ規則の簡易版: 語は AND、項目は値の一致) */
   function listWorks(query: string): Res {
     const params = new URLSearchParams(query);
     const root = params.get("root");
     const laterOnly = params.get("read_later") === "1";
+    const sort = (params.get("sort")?.trim() || "title") as WorkSort;
+    if (!VALID_SORTS.includes(sort)) return res(422, { detail: `未対応の並び順: ${sort}` });
     const all = listed(root);
     const facets: Record<WorkFilterName, string[]> = { author: [], kind: [], genre: [], tag: [], publisher: [] };
     for (const w of all) {
@@ -278,6 +310,30 @@ export function createMockWorks(
       }
       return !status || readingState(volumesOf(w, root)) === status;
     });
+    const byTitle = (a: MockWork, b: MockWork) => (a.title < b.title ? -1 : a.title > b.title ? 1 : a.id - b.id);
+    if (sort === "recent_read") {
+      shown.sort((a, b) => {
+        const ra = readAtOf(a, root), rb = readAtOf(b, root);
+        if (!!ra !== !!rb) return ra ? -1 : 1;
+        return rb.localeCompare(ra) || byTitle(a, b);
+      });
+    } else if (sort === "added_desc" || sort === "added_asc") {
+      shown.sort((a, b) => {
+        const aa = workAddedAt[a.id] ?? "", ab = workAddedAt[b.id] ?? "";
+        if (!!aa !== !!ab) return aa ? -1 : 1;
+        const cmp = sort === "added_desc" ? ab.localeCompare(aa) : aa.localeCompare(ab);
+        return cmp || byTitle(a, b);
+      });
+    } else if (sort === "released_desc" || sort === "released_asc") {
+      shown.sort((a, b) => {
+        const ra = releasedOf(a, root), rb = releasedOf(b, root);
+        if (!!ra !== !!rb) return ra ? -1 : 1;
+        const cmp = sort === "released_desc" ? rb.localeCompare(ra) : ra.localeCompare(rb);
+        return cmp || byTitle(a, b);
+      });
+    } else if (sort === "random") {
+      shown.reverse();
+    }
     return res(200, { works: shown.map((w) => summary(w, root)), total: all.length, facets, unassigned: 0 });
   }
 

@@ -236,6 +236,8 @@ describe("作品の検索と絞り込み(#56)", () => {
     expect(workQueryString({})).toBe("");
     expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
     expect(workQueryString({ read_later: true })).toBe("?read_later=1");
+    expect(workQueryString({ sort: "title" })).toBe("");
+    expect(workQueryString({ sort: "recent_read" })).toBe("?sort=recent_read");
     expect(normalizeSearch("ＯＫＩ カクｶｸ・x")).toBe("okiかくかくx");
   });
 
@@ -276,6 +278,61 @@ describe("作品の検索と絞り込み(#56)", () => {
     fireEvent.change(screen.getByLabelText("種別"), { target: { value: "" } });
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
     expect(within(document.querySelector(".work-card")!).getByText("読書中")).toBeTruthy();
+  });
+
+  it("並び順を切り替えられ、選択が保存されて条件を消しても保たれる(#273)", async () => {
+    window.location.hash = "#/works";
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    const select = screen.getByLabelText("並び順") as HTMLSelectElement;
+    expect(select.value).toBe("title");
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "作品名順",
+      "最近読んだ順",
+      "追加が新しい順",
+      "追加が古い順",
+      "発売日順が新しい順",
+      "発売日順が古い順",
+      "ランダム",
+    ]);
+    expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]);
+
+    fireEvent.change(select, { target: { value: "recent_read" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品"]));
+    expect(localStorage.getItem("spinebox.works.sort")).toBe("recent_read");
+
+    fireEvent.change(select, { target: { value: "added_desc" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    expect(localStorage.getItem("spinebox.works.sort")).toBe("added_desc");
+
+    fireEvent.change(select, { target: { value: "added_asc" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]));
+
+    fireEvent.change(select, { target: { value: "released_desc" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "サンプル漫画"]));
+
+    fireEvent.change(select, { target: { value: "released_asc" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画", "別の読み物", "外付けの作品"]));
+
+    fireEvent.change(select, { target: { value: "random" } });
+    await waitFor(() => expect(cardTitles()).toHaveLength(3));
+    expect(localStorage.getItem("spinebox.works.sort")).toBe("random");
+
+    // 検索条件を消しても並び順は維持される
+    fireEvent.change(select, { target: { value: "added_desc" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "サンプル" } });
+    await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
+    fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
+    await waitFor(() => expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]));
+    expect((screen.getByLabelText("並び順") as HTMLSelectElement).value).toBe("added_desc");
+
+    // 再マウント時も localStorage から復元される
+    cleanup();
+    render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect((screen.getByLabelText("並び順") as HTMLSelectElement).value).toBe("added_desc");
+    expect(cardTitles()).toEqual(["別の読み物", "外付けの作品", "サンプル漫画"]);
   });
 });
 
