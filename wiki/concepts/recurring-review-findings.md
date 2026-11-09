@@ -413,7 +413,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/naming.py:133 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(agy レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
+- PR #172 — `spinebox/naming.py:131 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(agy レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
 - PR #249 — `spinebox/naming.py _CHAPTER_LABEL` — `extra` の単語境界が `_` を単語の文字として扱うので `extra_01` に当たらなかった(さらに書き込み時のエスケープ誤りで `` が後退文字になっていた)。`(?![a-z])` にし、`extra_01` `Extra-02` `Extraordinary` のテストを足した(agy レビューの WARNING)
 - PR #249 — `spinebox/naming.py is_fragment_name()` / `_RULES` の ch.N — 1 文字の名前を一律に断片とし漢字 1 文字の作品名(`岳`)を落とした。`c(?=\d)` を IGNORECASE の中に置き `C100`(コミックマーケットの回)を話 100 と読んだ。漢字・かなを除き、`(?-i:c)` にした(agy レビューの WARNING)
 
@@ -428,7 +428,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:922 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
+- PR #172 — `spinebox/works.py:931 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
 
 ### 解析規則を変えたのに、既存データを読み直す版を上げていない
 
@@ -457,7 +457,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:902 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+- PR #172 — `spinebox/works.py:911 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
 
 ### 前提条件の内側に置いた処理が、前提を満たさない自然な状態で実行されない
 

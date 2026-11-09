@@ -37,7 +37,7 @@ related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, 
 
 ## 正規化
 
-検索語も索引も `spinebox/naming.py:264 normalize_title()` を通す。作品の名寄せの突き合わせと**同じ関数**にしている。
+検索語も索引も `spinebox/naming.py:262 normalize_title()` を通す。作品の名寄せの突き合わせと**同じ関数**にしている。
 
 - NFKC(全角英数・半角カタカナを揃える)→ 大小文字を畳む(casefold)→ カタカナをひらがなへ → 英数字・かな・漢字以外(空白・記号・`_`)を落とす
 - なので「ＯＫＩＲＡＫＵ」「okiraku」、「カクカク」「ｶｸｶｸ」「かくかく」、「ryoshu_no」「ryoshu no」はそれぞれ同じ語になる
