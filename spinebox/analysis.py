@@ -20,7 +20,7 @@ from . import db
 from .naming import NumberCandidate, parse_number, parse_number_in
 
 # 巻の単位の見分け方・登録の仕方を変えたら上げる(解析済みの巻を開いたときに解析し直させる)
-ANALYSIS_VERSION = 6  # 6: RAR4 の化けた Unicode 名を OEM 名(cp932)で直す・単位の名前の文字化けを直す(#257)
+ANALYSIS_VERSION = 7  # 7: 版の印・著者列・ローマ数字・雑誌の号の番号の読み(#263)
 # 5: 巻のフォルダの中の章の番号を巻番号にしない(#248)
 # 4: 目次・表紙の断片を子の巻にしない(#247)
 

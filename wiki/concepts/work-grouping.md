@@ -141,7 +141,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   小数点の章 `c43.5`。雑誌の号(`週刊少年サンデー 2021年36-37号`)は誌名を作品名にし、号を巻と読まない。
   先頭の整理用の印(`★`)・特典の括弧(`【電子限定特典付き】`)・著者の括弧の後ろの配布元(`[著者] DLRAW.AC_ 作品名`)を落とす
 - **ソフトウェアの説明書きは巻にしない**(`scanner.software_doc_reason()`)。`README.txt` `CHANGELOG.txt` など決まった名前と、
-  実行ファイル(`.exe` `.dll` `.jar` …)のあるフォルダの `.txt`。`登録不要: …` の理由を scan_issues に残す。`SCAN_VERSION=13`
+  実行ファイル(`.exe` `.dll` `.jar` …)のあるフォルダの `.txt`。`登録不要: …` の理由を scan_issues に残す。`SCAN_VERSION=13`・`ANALYSIS_VERSION=7`
 
 ## 統合の規則
 
