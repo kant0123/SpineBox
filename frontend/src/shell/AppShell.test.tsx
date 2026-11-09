@@ -72,7 +72,7 @@ describe("サイドバー", () => {
     expect(await screen.findByRole("heading", { name: "ホーム" })).toBeTruthy();
     await waitFor(() => expect(workTitles()).toContain("サンプル漫画"));
     const links = within(nav()).getAllByRole("link").map((a) => a.querySelector(".sidebar-label")!.textContent);
-    expect(links).toEqual(["ホーム", "フォロー", "漫画", "小説", "著者", "タグ", "出版社", "ブックマーク", "確認", "管理"]);
+    expect(links).toEqual(["ホーム", "フォロー", "漫画", "小説", "同人誌", "著者", "タグ", "出版社", "ブックマーク", "確認", "管理"]);
     expect(within(nav()).getByRole("link", { name: "ホーム" }).getAttribute("aria-current")).toBe("page");
     // 既存の画面は近いナビの下に収まる
     await navigate("#/duplicates");
@@ -132,6 +132,16 @@ describe("サイドバー", () => {
     await navigate("#/manga");
     expect(await screen.findByRole("heading", { name: "漫画" })).toBeTruthy();
     expect(await screen.findByText("この条件の作品はありません。")).toBeTruthy(); // モックに種別が漫画の作品は無い
+  });
+
+  it("左メニューの同人誌は種別が同人誌の作品一覧", async () => {
+    window.location.hash = "#/doujinshi";
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "同人誌" })).toBeTruthy();
+    expect(await screen.findByText("この条件の作品はありません。")).toBeTruthy(); // モックに種別が同人誌の作品は無い
+    const link = screen.getByRole("link", { name: "同人誌" });
+    expect(link.getAttribute("href")).toBe("#/doujinshi");
+    expect(link.getAttribute("aria-current")).toBe("page");
   });
 });
 

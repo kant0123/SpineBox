@@ -62,7 +62,7 @@ export function Stats() {
       <p className="muted stats-scope">対象: {scopeName}</p>
       <h2>蔵書</h2>
       <ul className="stat-grid">
-        <Tile label="作品" value={w.total} note={`漫画 ${formatCount(w.manga)} / 小説 ${formatCount(w.novel)} / 種別未定 ${formatCount(w.kind_unknown)}`} />
+        <Tile label="作品" value={w.total} note={`漫画 ${formatCount(w.manga)} / 小説 ${formatCount(w.novel)} / 同人誌 ${formatCount(w.doujinshi)} / 種別未定 ${formatCount(w.kind_unknown)}`} />
         <Tile label="巻" value={v.total} note={`画像 ${formatCount(v.images)} / 小説 ${formatCount(v.novels)}`} />
         <Tile label="ページ" value={pages.total} note={pages.unknown_volumes ? `ページ数未確定の巻 ${formatCount(pages.unknown_volumes)}` : "画像の巻の合計"} />
         <Tile label="オフラインの巻" value={v.offline} />

@@ -1,7 +1,7 @@
 // 常に表示するサイドバー(#85。Peach の画面構成)。上に蔵書の切り替えと開閉、ナビ、下にライト/ダークと設定。
 // 横長では常に表示し、開閉ボタンでアイコンだけの細い帯にできる。スマホ幅(CSS の 768px 未満)ではハンバーガーで開く引き出し。
 import {
-  adminHref, bookmarksHref, facetListHref, followsHref, homeHref, mangaHref, novelsHref, reviewHref,
+  adminHref, bookmarksHref, doujinshiHref, facetListHref, followsHref, homeHref, mangaHref, novelsHref, reviewHref,
   type Route,
 } from "../route";
 import { useReviewCounts } from "../review/reviewCounts";
@@ -9,7 +9,7 @@ import { Icon, type IconName } from "./icons";
 import { useLibraryScope } from "./libraryScope";
 import type { Theme } from "./theme";
 
-export type NavKey = "home" | "follow" | "manga" | "novel" | "author" | "tag" | "publisher" | "bookmark" | "review" | "admin";
+export type NavKey = "home" | "follow" | "manga" | "novel" | "doujinshi" | "author" | "tag" | "publisher" | "bookmark" | "review" | "admin";
 
 interface NavItem {
   key: NavKey;
@@ -23,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "follow", label: "フォロー", href: followsHref, icon: "follow" },
   { key: "manga", label: "漫画", href: mangaHref, icon: "manga" },
   { key: "novel", label: "小説", href: novelsHref, icon: "novel" },
+  { key: "doujinshi", label: "同人誌", href: doujinshiHref, icon: "doujinshi" },
   { key: "author", label: "著者", href: facetListHref("author"), icon: "author" },
   { key: "tag", label: "タグ", href: facetListHref("tag"), icon: "tag" },
   { key: "publisher", label: "出版社", href: facetListHref("publisher"), icon: "publisher" },
@@ -36,7 +37,7 @@ export function activeNav(route: Route): NavKey | null {
   switch (route.name) {
     case "works":
       if (route.scope.by === "all") return "home";
-      if (route.scope.by === "kind") return route.scope.kind === "manga" ? "manga" : "novel";
+      if (route.scope.by === "kind") return route.scope.kind;
       return route.scope.by;
     case "facets":
       return route.field;

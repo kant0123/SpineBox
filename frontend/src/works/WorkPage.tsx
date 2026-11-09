@@ -226,6 +226,7 @@ export function WorkPage({ id }: { id: string }) {
               <option value="">未設定</option>
               <option value="manga">{KIND_TEXT.manga}</option>
               <option value="novel">{KIND_TEXT.novel}</option>
+              <option value="doujinshi">{KIND_TEXT.doujinshi}</option>
             </select>
           </label>
           {note("kind")}

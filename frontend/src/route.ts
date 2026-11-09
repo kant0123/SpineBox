@@ -7,7 +7,7 @@ export type FacetField = "author" | "tag" | "publisher";
 /** 作品一覧に固定で掛ける条件(サイドバーの漫画・小説、著者・タグ・出版社の一覧から開いた先) */
 export type WorksScope =
   | { by: "all" }
-  | { by: "kind"; kind: "manga" | "novel" }
+  | { by: "kind"; kind: "manga" | "novel" | "doujinshi" }
   | { by: FacetField; value: string };
 
 /** 管理のタブ(#85。Peach の管理と同じ並び)。統合の提案は確認(#207)へ移した */
@@ -44,6 +44,7 @@ export function parseRoute(hash: string): Route {
   if (/^\/volumes\/?$/.test(h)) return HOME;
   if (/^\/manga\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "manga" } };
   if (/^\/novels\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "novel" } };
+  if (/^\/doujinshi\/?$/.test(h)) return { name: "works", scope: { by: "kind", kind: "doujinshi" } };
   if (/^\/follows\/?$/.test(h)) return { name: "follows" };
   if (/^\/follows\/manage\/?$/.test(h)) return { name: "admin", tab: "follows" };
   if (/^\/bookmarks\/?$/.test(h)) return { name: "bookmarks" };
@@ -131,6 +132,7 @@ export const workTitlesHref = (id: string | number) => `${workHref(id)}/titles`;
 export const workOrganizeHref = (id: string | number) => `${workHref(id)}/organize`;
 export const mangaHref = "#/manga";
 export const novelsHref = "#/novels";
+export const doujinshiHref = "#/doujinshi";
 export const facetListHref = (field: FacetField) => `#/${FACET_PATH_OF[field]}`;
 export const facetWorksHref = (field: FacetField, value: string) => `${facetListHref(field)}/${encodeURIComponent(value)}`;
 export const adminHref = (tab: AdminTab = "stats") => (tab === "stats" ? "#/admin" : `#/admin/${tab}`);
