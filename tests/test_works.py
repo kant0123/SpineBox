@@ -328,6 +328,15 @@ def test_ranges_cover_numbers_and_episodes_are_counted_separately(make_env):
     assert ws["B"]["missing_episodes"] == [3] and ws["B"]["missing_volumes"] == []
 
 
+def test_episodes_of_a_work_with_volumes_are_not_counted_missing(make_env):
+    # 巻の番号を持つ作品の話・章は巻の中身で、1..最大 の欠けにしない(#248)
+    _, _, client = make_env(["A 第01巻.cbz", "A 第02巻.cbz", "A 第171話.cbz", "A 第194話.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    assert w["missing_volumes"] == [] and w["missing_episodes"] == []
+    d = client.get(f"/api/works/{w['id']}").json()
+    assert d["numbers"]["episode"] == {"max": 194, "missing": [], "limited": False}
+
+
 def test_absurd_max_volume_is_not_expanded(make_env):
     _, _, client = make_env(["A 第01巻.cbz", "A 第9000巻.cbz"])
     (w,) = client.get("/api/works").json()["works"]

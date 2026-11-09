@@ -244,3 +244,20 @@ def test_cover_only_filesystem_folder_is_skipped(conn, tmp_path, make_settings):
     vols = volumes(conn)
     assert ("CoverOnlyFolder", None, "") not in vols
     assert ("MixedFolder", None, "") in vols
+
+
+def test_chapter_folders_inside_a_volume_folder_do_not_get_volume_numbers(conn, tmp_path, make_settings):
+    """巻のフォルダ(v06s)の中の `110-113`・`Raw Chapter 171` は章の番号であって巻番号ではない(#248)。"""
+    lib = tmp_path / "lib"
+    write_zip(lib / "作品 第01-20巻.zip", [
+        ("DLRAW.AC_Sakuhin v06s/DLRAW.AC_110-113/001.jpg", page_bytes("a")),
+        ("DLRAW.AC_Sakuhin v06s/Raw Chapter 171/001.jpg", page_bytes("b")),
+        ("DLRAW.AC_Sakuhin v07s/001.jpg", page_bytes("c")),
+        ("01-04/001.jpg", page_bytes("d")),
+    ])
+    scan(conn, make_settings(lib))
+    numbers = {k[2]: (v["number_kind"], v["number_start"], v["number_end"]) for k, v in volumes(conn).items()}
+    assert numbers["DLRAW.AC_Sakuhin v06s/DLRAW.AC_110-113/"] == (None, None, None)
+    assert numbers["DLRAW.AC_Sakuhin v06s/Raw Chapter 171/"] == (None, None, None)
+    assert numbers["DLRAW.AC_Sakuhin v07s/"] == ("volume", 7, 7)
+    assert numbers["01-04/"] == ("volume", 1, 4)  # 外側が無ければ従来どおり
