@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 FIELD_TITLE = "title"
 FIELD_AUTHOR = "author"
-FIELD_KIND = "kind"                # manga / novel
+FIELD_KIND = "kind"                # manga / novel / doujinshi
 FIELD_PUBLISHER = "publisher"
 FIELD_GENRES = "genres"            # JSON の文字列配列
 FIELD_TAGS = "tags"                # JSON の文字列配列
@@ -46,7 +46,7 @@ EDITABLE_FIELDS = (FIELD_TITLE, FIELD_AUTHOR, FIELD_KIND, FIELD_PUBLISHER, FIELD
 # 廃止した項目(あらすじ。#82)。既にある行は消さずに残すが、API・検索・編集・統合・「手動が絡むか」の判定には使わない
 RETIRED_FIELDS = ("synopsis",)
 LIST_FIELDS = (FIELD_GENRES, FIELD_TAGS)
-KINDS = ("manga", "novel")
+KINDS = ("manga", "novel", "doujinshi")
 
 # 巻単位の書誌(`volume_fields`)。手で直せるのは publisher / label / released / isbn
 VOLUME_EDITABLE_FIELDS = ("publisher", "label", "released", "isbn")
@@ -1341,7 +1341,7 @@ def _clean_field(field: str, raw) -> str | None:
         raise InvalidValue("値は文字列で指定してください")
     text = (raw or "").strip()
     if field == FIELD_KIND and text and text not in KINDS:
-        raise InvalidValue("種別は manga(漫画)か novel(小説)です")
+        raise InvalidValue("種別は manga(漫画)・novel(小説)・doujinshi(同人誌)のいずれかです")
     return text or None
 
 
@@ -2090,3 +2090,13 @@ def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = 
 def assignments(conn: sqlite3.Connection) -> dict[int, int]:
     """巻 id → 作品 id(一覧の巻に作品へのリンクを付けるため)。"""
     return {r["volume_id"]: r["work_id"] for r in conn.execute("SELECT volume_id, work_id FROM work_volumes")}
+
+
+def kind_compatible(work_kind: str | None, candidate_kind: str | None) -> bool:
+    """作品の種別と公開 DB の候補の種別が食い違わないか。どちらかが未定なら食い違わない。
+
+    公開 DB は同人誌を漫画として返す(KIND_MANGA)ので、同人誌の作品は漫画の候補とも両立する。
+    """
+    if not work_kind or not candidate_kind or work_kind == candidate_kind:
+        return True
+    return work_kind == "doujinshi" and candidate_kind == "manga"

@@ -79,7 +79,7 @@ export const SOURCE_SITES: Record<SourceName, { name: string; api: string; url: 
 
 export const dbName = (s: string): string => (s in SOURCE_SITES ? SOURCE_SITES[s as SourceName].name : s);
 
-export const KIND_TEXT: Record<WorkKind, string> = { manga: "漫画", novel: "小説" };
+export const KIND_TEXT: Record<WorkKind, string> = { manga: "漫画", novel: "小説", doujinshi: "同人誌" };
 
 /** 項目の出所の注記(手動 / 公開データベース(取得元・確信度) / 名前から / 未設定) */
 export function fieldNote(info: FieldInfo<unknown> | null | undefined, unsetText = "未設定"): string {

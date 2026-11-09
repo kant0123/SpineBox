@@ -434,7 +434,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       return json(200, {
         root_id: root ? Number(root) : null,
         works: {
-          total: ws.length, manga: ws.filter((w) => w.kind === "manga").length, novel: ws.filter((w) => w.kind === "novel").length,
+          total: ws.length, manga: ws.filter((w) => w.kind === "manga").length, novel: ws.filter((w) => w.kind === "novel").length, doujinshi: ws.filter((w) => w.kind === "doujinshi").length,
           kind_unknown: ws.filter((w) => !w.kind).length,
           finished: ws.filter((w) => w.reading_state === "finished").length, reading: ws.filter((w) => w.reading_state === "reading").length,
           unread: ws.filter((w) => w.reading_state === "unread").length, link_pending: ws.filter((w) => w.link_pending > 0).length,
