@@ -566,7 +566,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[work-grouping]](ほかに、行番号がずれたコード参照を [[metadata-linking]] で今のコードに合わせた)
 - 備考: #268。#264 の後の本番の全体同期で確認待ちが 5 件残った。名前から付けた作品名どうしの完全一致を自動統合の根拠に加え(`works._alias_evidence()` の `same_derived_title`)、雑誌の号の区切りに `_` を足した。残る確認待ちは空白区切りの副題(`村人転生`)で、外伝の可能性があるので意図どおり。
 
-## [2026-11-10] ingest | (#273) ホーム・作品一覧の並び順(sort)機能を追加
+## [2026-11-10] ingest | PR #274 (#273) ホーム・作品一覧の並び順(sort)機能を追加
 - 更新: [[backend]], [[frontend]], [[work-search]](ほかに、行番号がずれたコード参照を [[metadata-linking]] で今のコードに合わせた)
 - 備考: #273。`GET /api/works` に `sort`(`title` / `recent_read` / `added_desc` / `added_asc` / `released_desc` / `released_asc` / `random`)を追加し、`frontend/src/works/Works.tsx` の検索欄の下(絞り込みパネルの外)に「並び順」選択を常時表示して `localStorage` (`spinebox.works.sort`)に記憶する。
 
