@@ -1,6 +1,6 @@
 ---
 type: component
-summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、危険なエントリ名と展開上限
+summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、RAR4 の化けた Unicode 名を OEM 名(cp932)で直す規則、危険なエントリ名と展開上限
 updated: 2026-11-09
 related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection, novel-reader, organize]
 ---
@@ -22,7 +22,8 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 | `spinebox/archive/base.py:109 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
 | `spinebox/archive/base.py:224 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
 | `spinebox/archive/base.py:197 inner_reader_problem` | 内側アーカイブを取り出す前の判定。親のリーダーで先頭だけを読み(`read_head()`。zip だけが返す)、`open_archive` と同じ規則で読めるかを決める |
-| `spinebox/archive/sevenzip.py:292 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
+| `spinebox/archive/sevenzip.py:302 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
+| `spinebox/archive/rar4.py recovered_names` | RAR4 のヘッダを読み、化けた Unicode 名 → OEM 名(cp932)の対応を返す(下の「RAR4 の化けた Unicode 名」) |
 | `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
 | `spinebox/pages.py:48 page_sort_key` | ページの並び(表紙 → 自然順) |
@@ -101,6 +102,25 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
   開いたときに中の巻の単位を集めて子の巻に分ける([[volume-split]])。`max_depth` を変えると見える単位が変わるので、解析し直す
   重複候補のための指紋(全ページの縮小デコード)も、この経路で巻を開いて 1 ページずつ読む([[duplicate-detection]])
 
+## RAR4 の化けた Unicode 名(#257)
+
+RAR4 のファイル名は「OEM 名のバイト列」と、フラグ 0x200 のときその後ろに続く「Unicode 名」の 2 本立てで、7-Zip は Unicode 名を出す。
+実データ(`君のいる町` の入れ子の rar)に、OEM 名は正しい cp932 なのに、作成ツールが cp932 を cp437 として読んで Unicode 名を
+作った rar があった。7-Zip の名前は `13_#âJâoü[.jpg`(= `13_#カバー.jpg`)になり、さらに cp932 の 2 バイト目の `0x5C` を区切りに
+するので `13_#ò\Äå.jpg`(= `13_#表紙.jpg`)が「`13_#ò` フォルダの 1 ページ」になって、意味の無い名前の巻・作品ができていた。
+
+- 入口: `spinebox/archive/rar4.py recovered_names()` を `spinebox/archive/sevenzip.py SevenZipReader.raw_entries()` が呼び、
+  `_entries_from_records()` が目次の名前だけを差し替える(`encoding` は `cp932 (rar4)`、`raw_name` は OEM 名)。
+  **取り出しの指定は 7-Zip が出した名前のまま**(7-Zip は Unicode 名でしかエントリを引けない)
+- 直す条件(`recovered_name()`): Unicode 名に日本語が無い非 ASCII で、OEM 名が cp932 として**厳密に**読めて日本語が 2 文字以上。
+  正しい Unicode 名・欧文の名前(`café` の OEM 名は cp932 として読めない)・作成ツールが 0x5C で割って作ったフォルダ
+  (末尾が 1 バイト目で切れる)は変えない
+- ヘッダが読めない・想定外(RAR4 でない、ヘッダの暗号化、分割書庫、途中で切れている)なら何も直さず 7-Zip の名前を使う。
+  中身は読まない(ヘッダを読みデータは seek で飛ばす)
+- **直せないもの:** 同じ作成ツールでも、OEM 名まで化けた文字列から作り直された rar がある(`5 巻`。`の`→`╠`→`¦`、`る`→`Θ`→`T`
+  の近似変換で情報が落ちている)。バイト列からは戻せず、`[瀬尾公治] 君みい５町 第05巻` までになる。名寄せ側の扱いは #258
+- テストは RAR4 を手組みする(`tests/archives7z.py rar4_bytes()`。Unicode 名は 16 ビットそのままの形で符号化)
+
 ## 危険なエントリ名と展開上限
 
 - 拒否: `..` を含む・絶対パス(`/` `\`)・ドライブ文字(`C:`)・UNC(`\\server`)・NUL・空。目次の段階でスキップし、
@@ -127,4 +147,5 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
 - #16 で 7z / rar を 7-Zip CLI で実装。実データで入れ子が深さ 3 あったため `max_depth` の既定を 1 から 3 に上げた。テストの rar は
   無圧縮の RAR5 を `tests/archives7z.py:rar5_bytes` で手組みしている(rar の圧縮器が無くても 7-Zip 側の読み取りを試せる)
 - #49 で形式の判定を拡張子から先頭のマジックバイトに変えた。改名した rar / 7z の合成データは `tests/test_archive_magic.py`(7z が無ければ skip)
+- #257 で RAR4 の化けた Unicode 名を OEM 名で直した(SCAN_VERSION=12・ANALYSIS_VERSION=6 で既存の DB も読み直す)
 - #62 で内側アーカイブの取り出す前の判定も中身(先頭のマジックバイト)に揃えた。7-Zip なしの合成データ(名前 rar / 7z で中身 zip、名前 cbz / rar で中身 rar)も同じファイル

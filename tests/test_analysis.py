@@ -408,3 +408,17 @@ def test_unit_ancestors_keep_chapter_folders_in_a_volume_from_getting_volume_num
     root = Unit(("set.zip", "v06s.rar"), "", "v06s", ["001.jpg"])  # 内側アーカイブそのもの
     assert root.ancestors == ("set.zip",)
     assert parse_number_in(root.title, root.ancestors).start == 6
+
+
+def test_analyze_fixes_mojibake_in_unit_titles(make_client, tmp_path):
+    """分解の子の巻の名前も、スキャンの切り出しと同じく文字化けを直す(#257)。"""
+    lib = tmp_path / "lib"
+    garbled = "週刊少年サンデー 2023年09号".encode("cp932").decode("cp437")
+    inner = zip_bytes([(f"{garbled}/001.jpg", page_bytes("a")), ("Vol2/001.jpg", page_bytes("b"))])
+    write_zip(lib / "parent.zip", [("inner.zip", inner)])
+    c, _ = make_client(lib)
+    c.post("/api/scan")
+    (parent,) = listed(c)
+    r = c.post(f"/api/volumes/{parent['id']}/analyze")
+    assert r.status_code == 200
+    assert [ch["title"] for ch in r.json()["children"]] == ["Vol2", "週刊少年サンデー 2023年09号"]

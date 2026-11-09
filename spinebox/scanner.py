@@ -54,7 +54,8 @@ log = logging.getLogger(__name__)
 # 8: タイトル生成および巻番号抽出に文字化け修復(fix_mojibake)を適用(#223)
 # 10: 巻番号の候補から、巻のフォルダの中の印の無い章の範囲を外す(#248)
 # 11: EPUB の OPF の書誌(dc:title / creator / publisher)を読む。ファイル名が日本語でなければ dc:title を巻の名前にする(#251)
-SCAN_VERSION = 11
+# 12: RAR4 の化けた Unicode 名を OEM 名(cp932)で直す(#257)
+SCAN_VERSION = 12
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """

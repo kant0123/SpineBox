@@ -34,6 +34,7 @@ from .archive.base import detect_format, inner_reader_problem
 from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
 from .config import Settings
+from .mojibake import fix_mojibake
 from .pages import is_cover, is_image, natural_key, page_sort_key, sort_pages
 from .scanner import _is_non_content_path, fragment_reason, record_issues, resolve_source_path, root_is_accessible
 
@@ -468,10 +469,11 @@ def _units(found, container: str) -> list[analysis.Unit]:
     for (chain, prefix), names in groups.items():
         if all(is_cover(n) for n in names):
             continue
+        # 名前の文字化けはスキャンの切り出しと同じく直す(spinebox/scanner.py archive_volume_specs())
         if prefix:
-            title = PurePosixPath(prefix.rstrip("/")).name
+            title = fix_mojibake(PurePosixPath(prefix.rstrip("/")).name)[0]
         else:
-            title = PurePosixPath(chain[-1] if chain else container).stem
+            title = fix_mojibake(PurePosixPath(chain[-1] if chain else container).stem)[0]
         units.append(analysis.Unit(chain, prefix, title, sorted(names, key=page_sort_key)))
     # 目次・表紙だけの小さな束は本の断片なので巻にしない(ほかに巻があるときだけ。スキャンと同じ規則)
     keep = [u for u in units if not (u.prefix and fragment_reason(u.title, len(u.page_names)))]
