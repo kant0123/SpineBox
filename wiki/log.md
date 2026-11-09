@@ -578,3 +578,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-10] ingest | PR #276 #275 同人誌の取得元 nHentai・E-Hentai を追加
 - 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[work-grouping]]
 - 備考: 題名の書式 `(イベント) [サークル (作者)] 題名 (原作)` で照合する(`spinebox/metadata/doujin.py`)。どちらも既定では無効。nHentai は `/api/v2/openapi.json` を読む(Swagger ページは JS 描画)、E-Hentai は検索 API が無いので検索ページのリンク + `gdata`。実蔵書 882 件の名前で書式の読み取り率を確かめた。名前解析は先頭のイベント括弧を著者にしないよう修正。
+
+## [2026-11-10] ingest | #279 作品一覧に戻ると表紙が出ない不具合の修正
+- 更新: [[frontend]]
+- 備考: #279。`WorkCover()` が `useEffect` で読み込み状態を戻していたため、キャッシュ済みの表紙は onLoad の後に `loading` へ戻り `opacity: 0` のままだった。描画中のリセットに変更し、回帰テスト `WorkCover.test.tsx` を追加。
