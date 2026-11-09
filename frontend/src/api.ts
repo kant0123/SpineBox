@@ -428,7 +428,7 @@ export interface WorkMerge {
   titles: string[];
 }
 
-export type SourceName = "ndl" | "anilist" | "mangaupdates";
+export type SourceName = "ndl" | "anilist" | "mangaupdates" | "nhentai" | "ehentai";
 
 /** 公開データベースの候補(利用者に見せる概要) */
 export interface LinkCandidate {

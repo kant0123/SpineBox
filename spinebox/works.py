@@ -53,7 +53,8 @@ VOLUME_EDITABLE_FIELDS = ("publisher", "label", "released", "isbn")
 VOLUME_FIELDS = (*VOLUME_EDITABLE_FIELDS, "volume_label", "subtitle")
 
 # 取得元の表示名(取得元の順は結線の検索の順)
-SOURCE_LABELS = {"ndl": "国立国会図書館サーチ", "anilist": "AniList", "mangaupdates": "MangaUpdates"}
+SOURCE_LABELS = {"ndl": "国立国会図書館サーチ", "anilist": "AniList", "mangaupdates": "MangaUpdates",
+                 "nhentai": "nHentai", "ehentai": "E-Hentai"}
 
 # 出所(source)。work_fields / work_aliases / work_volumes / volume_fields で共通。公開 DB は `public_db`(結線は spinebox/linking.py)
 SOURCE_FILENAME = "filename"      # 巻自身の名前から

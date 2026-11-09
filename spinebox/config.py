@@ -38,7 +38,9 @@ class ExtractionLimits:
 
 # 公開 DB クライアント(spinebox/metadata/)の既定。最小間隔の根拠は wiki/concepts/metadata-sources.md
 DEFAULT_METADATA_SOURCES = ("ndl", "anilist", "mangaupdates")
-DEFAULT_MIN_INTERVALS = {"ndl": 1.0, "anilist": 2.0, "mangaupdates": 1.0}
+# nhentai / ehentai は同人誌用で、既定の sources には入れない(利用者が設定で有効にする)。
+# nHentai の匿名の制限は検索 10 回/分(= 6 秒に 1 回)。E-Hentai は「4〜5 回連続したら 5 秒待つ」程度の記述しかない
+DEFAULT_MIN_INTERVALS = {"ndl": 1.0, "anilist": 2.0, "mangaupdates": 1.0, "nhentai": 6.5, "ehentai": 4.0}
 
 
 UNTRANSLATED_TERMS = ("hide", "keep")
@@ -54,7 +56,7 @@ class MetadataSettings:
     timeout_seconds: float = 10.0
     max_retries: int = 2               # 5xx・タイムアウト・接続不可の再試行回数(429 は再試行しない)
     candidate_limit: int = 20          # 1 回の検索で取る候補の上限
-    detail_limit: int = 3              # MangaUpdates で詳細を引き直す候補の数
+    detail_limit: int = 3              # MangaUpdates・nHentai で詳細を引き直す候補の数
     contact: str = ""                  # User-Agent に付ける連絡先(任意)
     # 作品への結線(#50)。background: 設定で有効にしたときだけ、裏で 1 作品ずつ公開 DB の情報を取りに行く
     background: bool = False

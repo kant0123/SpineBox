@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
-updated: 2026-11-09
+updated: 2026-11-10
 related: [metadata-sources, metadata-linking, overview, backend, work-search, follow]
 ---
 
@@ -9,6 +9,7 @@ related: [metadata-sources, metadata-linking, overview, backend, work-search, fo
 
 国立国会図書館サーチ・AniList・MangaUpdates を「作品名(+著者・巻番号)で検索 → 候補の列」で引き、**正規化した項目と確からしさ(数値と根拠)**を返す。#44(GOAL.md フェーズ 3 の取得元クライアント)。
 取得元ごとの癖・制限・採否の理由は [[metadata-sources]]。
+同人誌用に nHentai・E-Hentai も同じ形で引く(#275。既定では無効で、`[metadata] sources` に足したときだけ)。
 
 ## 責務
 
@@ -37,10 +38,13 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | `spinebox/metadata/base.py:79 fetch` | 保存済みの応答つきの取得(下記) |
 | `spinebox/metadata/ndl.py:58 parse_opensearch` / `spinebox/metadata/anilist.py:58 parse_search` / `spinebox/metadata/mangaupdates.py:75 parse_search`・`spinebox/metadata/mangaupdates.py:88 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
 | `spinebox/metadata/match.py:118 score_item` | 確からしさの計算 |
+| `spinebox/metadata/doujin.py:48 parse_doujin_title()` | 同人誌の題名の書式 `(イベント) [サークル (作者)] 題名 (原作) [印]` を分ける。nHentai・E-Hentai の題名もファイル名由来の作品名も同じ規則で読む。`build_item()` が両サイトの項目を作り、`dedupe_key()` が翻訳版・再アップロードをまとめる鍵 |
+| `spinebox/metadata/nhentai.py:27 NHentaiSource` | nHentai(検索 + 上位の詳細)。`parse_search()` / `parse_detail()` |
+| `spinebox/metadata/ehentai.py:48 EHentaiSource` | E-Hentai(検索ページの HTML → `gdata`)。`parse_search_page()` / `parse_gdata()` |
 | `spinebox/metadata/http.py:152 HttpFetcher` | タイムアウト・再試行・User-Agent・取得元ごとの関門(`spinebox/metadata/http.py:86 Gate`) |
 | `spinebox/metadata/store.py:32 ResponseStore` | 生応答の保存。`get_by_key(source, request_key)` で候補の `response_key` から引ける |
 | `spinebox/db.py:40 MIGRATIONS` の 5 番 | `metadata_responses` |
-| `scripts/metadata_probe.py` | 実通信の確認と、記録(`tests/fixtures/metadata/`)の採取。手動実行のみ、CI では動かさない |
+| `scripts/metadata_probe.py` | 実通信の確認と、記録(`tests/fixtures/metadata/`)の採取。手動実行のみ、CI では動かさない。既定で無効の取得元は `--source` で名指しする |
 
 ## 失敗の表現
 
@@ -66,7 +70,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 ## レート制限(`HttpFetcher` / `Gate`)
 
-- 取得元ごとに 1 つの関門。**要求を直列にし、直前の要求が終わってから最小間隔を空ける**(設定 `[metadata.min_interval_seconds]`。既定は NDL 1.0・AniList 2.0・MangaUpdates 1.0 秒、根拠は [[metadata-sources]])。
+- 取得元ごとに 1 つの関門。**要求を直列にし、直前の要求が終わってから最小間隔を空ける**(設定 `[metadata.min_interval_seconds]`。既定は NDL 1.0・AniList 2.0・MangaUpdates 1.0・nHentai 6.5・E-Hentai 4.0 秒、根拠は [[metadata-sources]])。
   時計と sleep は差し替えられる(テストは `tests/metadata_fakes.py FakeClock`)
 - **429 は再試行しない。** `Retry-After`(秒・HTTP 日付。なければ 60 秒、上限 15 分)の間は、その取得元に要求を出さない。残りが 10 秒を超えるなら待たずに `rate_limited` で失敗させ(呼び出しを塞がない)、
   10 秒以内なら待って送る。ほかの取得元には影響しない
@@ -85,7 +89,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 ## 秘匿情報
 
-今の 3 取得元はキー不要。将来の取得元のために、設定 `[metadata.keys]`(設定ファイルはリポジトリ外。`MetadataSettings.keys` は repr に出ない)と、
+今の取得元はキー不要(nHentai のキーは任意で `nhentai_api_key`。あれば `Authorization: Key …` で送る)。将来の取得元のために、設定 `[metadata.keys]`(設定ファイルはリポジトリ外。`MetadataSettings.keys` は repr に出ない)と、
 `SourceRequest.secret_params` / `secret_headers`(送信にだけ使い、鍵・保存する記述・repr に含まない)を用意した。
 **httpx / httpcore は URL をクエリごと INFO・DEBUG で出す**ので、`spinebox/metadata/http.py` が両ロガーを WARNING に固定している(外すとキーがログに出る。テストで確認)。
 

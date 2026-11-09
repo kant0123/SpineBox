@@ -73,6 +73,8 @@ export const SOURCE_SITES: Record<SourceName, { name: string; api: string; url: 
   ndl: { name: "国立国会図書館サーチ", api: "NDL サーチ API", url: "https://ndlsearch.ndl.go.jp/" },
   anilist: { name: "AniList", api: "AniList API", url: "https://anilist.co" },
   mangaupdates: { name: "MangaUpdates", api: "MangaUpdates API", url: "https://www.mangaupdates.com" },
+  nhentai: { name: "nHentai", api: "nHentai API", url: "https://nhentai.net" },
+  ehentai: { name: "E-Hentai", api: "E-Hentai API", url: "https://e-hentai.org" },
 };
 
 export const dbName = (s: string): string => (s in SOURCE_SITES ? SOURCE_SITES[s as SourceName].name : s);

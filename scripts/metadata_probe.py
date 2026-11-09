@@ -38,7 +38,9 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    settings = MetadataSettings(candidate_limit=ns.limit)
+    # 既定で無効の取得元(nhentai / ehentai)も、--source で名指しすれば使える
+    sources = tuple(ns.source) if ns.source else MetadataSettings().sources
+    settings = MetadataSettings(candidate_limit=ns.limit, sources=sources)
     with tempfile.TemporaryDirectory() as tmp:
         conn = open_db(Path(tmp) / "probe.db")
         service = MetadataService(settings, conn)
@@ -82,9 +84,9 @@ def record(conn, service, outcome, label: str, out_dir: Path) -> None:
         request = json.loads(conn.execute("SELECT request FROM metadata_responses WHERE source = ? AND request_key = ?",
                                           (outcome.source, ref.request_key)).fetchone()["request"])
         name = ref.label
-        if ref.label == "detail":
+        if ref.label == "detail" and outcome.source != "ehentai":  # E-Hentai の詳細は api.php への POST(ID は本文)
             name += "-" + request["url"].rsplit("/", 1)[-1]
-        ext = "xml" if outcome.source == "ndl" else "json"
+        ext = "xml" if outcome.source == "ndl" else "html" if outcome.source == "ehentai" and ref.label == "search" else "json"
         path = out_dir / outcome.source / f"{label}-{name}.{ext}"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(stored.body)

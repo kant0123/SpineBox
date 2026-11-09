@@ -11,7 +11,9 @@ import { useTheme, type ThemeChoice } from "../shell/theme";
 import { formatBytes } from "./format";
 
 const THEME_LABELS: Record<ThemeChoice, string> = { system: "OS の設定に従う", light: "ライト", dark: "ダーク" };
-const SOURCE_LABELS: Record<string, string> = { ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates" };
+const SOURCE_LABELS: Record<string, string> = {
+  ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates", nhentai: "nHentai", ehentai: "E-Hentai",
+};
 
 export function Preferences() {
   const { choice, choose } = useTheme();
