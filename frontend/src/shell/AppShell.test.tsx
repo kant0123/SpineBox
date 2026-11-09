@@ -138,7 +138,7 @@ describe("サイドバー", () => {
 describe("蔵書の切り替え", () => {
   it.skip("選んだ蔵書で作品・巻の一覧が絞られ、選んだものを記憶する", async () => {
     render(<App />);
-    await waitFor(() => expect(workTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物"]));
+    await waitFor(() => expect(workTitles()).toEqual(["サンプル漫画", "外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     const select = within(sidebar()).getByLabelText("蔵書") as HTMLSelectElement;
     await waitFor(() => expect(select.options.length).toBe(3));
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["すべての蔵書", "本(7 巻)", "漫画(オフライン)(1 巻)"]);
@@ -155,14 +155,14 @@ describe("蔵書の切り替え", () => {
     render(<App />);
     await waitFor(() => expect(workTitles()).toEqual(["外付けの作品"]));
     fireEvent.change(within(sidebar()).getByLabelText("蔵書"), { target: { value: "" } });
-    await waitFor(() => expect(workTitles()).toHaveLength(3));
+    await waitFor(() => expect(workTitles()).toHaveLength(4));
     expect(localStorage.getItem("spinebox.library")).toBeNull();
   });
 
   it("設定から外した蔵書を覚えていたら、すべての蔵書に戻す", async () => {
     localStorage.setItem("spinebox.library", "99");
     render(<App />);
-    await waitFor(() => expect(workTitles()).toHaveLength(3));
+    await waitFor(() => expect(workTitles()).toHaveLength(4));
     expect(localStorage.getItem("spinebox.library")).toBeNull();
     expect((within(sidebar()).getByLabelText("蔵書") as HTMLSelectElement).value).toBe("");
   });
@@ -319,7 +319,7 @@ describe("管理", () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tile = async (label: string) => (await screen.findByText(label)).closest<HTMLElement>(".stat-tile")!;
-    expect(within(await tile("作品")).getByText("3")).toBeTruthy();
+    expect(within(await tile("作品")).getByText("4")).toBeTruthy();
     expect(within(await tile("巻")).getByText("8")).toBeTruthy();
     expect(within(await tile("オフラインの巻")).getByText("1")).toBeTruthy();
     expect(within(await tile("重複の候補")).getByText("1")).toBeTruthy();

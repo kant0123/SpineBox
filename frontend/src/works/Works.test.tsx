@@ -243,16 +243,16 @@ describe("作品の検索と絞り込み(#56)", () => {
     window.location.hash = "#/works";
     render(<App />);
     await screen.findByText("サンプル漫画");
-    expect(cardTitles()).toHaveLength(3);
+    expect(cardTitles()).toHaveLength(4);
     fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "sample" } }); // 別名で当たる
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
-    expect(screen.getByText(/1 件 \/ 全 3 作品/)).toBeTruthy();
+    expect(screen.getByText(/1 件 \/ 全 4 作品/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "存在しない" } });
     expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();
     expect(screen.queryByText(/作品がありません。蔵書フォルダ/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
-    await waitFor(() => expect(cardTitles()).toHaveLength(3));
+    await waitFor(() => expect(cardTitles()).toHaveLength(4));
     expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
   });
 
