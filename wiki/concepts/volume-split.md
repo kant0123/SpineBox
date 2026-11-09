@@ -16,7 +16,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 - 入口: `spinebox/naming.py:124 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:40 MIGRATIONS` の 2 番)。
-  スキャンが切り出す巻は `spinebox/scanner.py:608 _replace_volumes()` が、子の巻は `spinebox/analysis.py:55 register_units()` が書く。
+  スキャンが切り出す巻は `spinebox/scanner.py:608 _replace_volumes()` が、子の巻は `spinebox/analysis.py:62 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
@@ -50,7 +50,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 分解前に親で挟んだしおり
 
-読書位置と同じく、親の行を残したまま、そのページを持つ子の巻のそのページへ写す(`spinebox/analysis.py:122 _carry_page_marks()`。#136、[[manga-reader]])。
+読書位置と同じく、親の行を残したまま、そのページを持つ子の巻のそのページへ写す(`spinebox/analysis.py:129 _carry_page_marks()`。#136、[[manga-reader]])。
 子に既にあるしおりは触らない。題は持たないので、ページ番号が変わっても「ページN」がずれない
 
 ### 分解前に親で付けた読書位置
@@ -64,7 +64,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 食い違い
 
-`spinebox/analysis.py:206 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
+`spinebox/analysis.py:213 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
 
 - `volume`: 分解した親の名前の範囲 ⇔ 子の巻番号。親と各子に付ける
 - `source`: 外側アーカイブ(スキャンのソース)の名前の範囲 ⇔ その中の巻(分解済みなら子、未解析の内側アーカイブはその名前の範囲)。
