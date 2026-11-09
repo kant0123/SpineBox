@@ -112,3 +112,15 @@ def test_listing_uses_recovered_names_and_extracts(tmp_path, sevenzip):
         assert reader.read_entry(table, ExtractionLimits()) == page_bytes("table")
         got = reader.read_entries([by_name["v13/13_#カバー.jpg"], table], ExtractionLimits())
         assert got[table.index] == page_bytes("table")
+
+
+def test_read_names_skips_other_blocks_with_data(tmp_path):
+    """ファイル以外のブロック(サブブロック 0x7A。ADD_SIZE 分のデータ付き)は飛ばして続きを読む。"""
+    import struct
+    data = sample(tmp_path).read_bytes()
+    main = _rar4_block(0x73, 0, b"\x00" * 6)
+    sub = _rar4_block(0x7A, 0x8000, struct.pack("<I", 5) + b"\x00" * 4) + b"XXXXX"
+    path = tmp_path / "sub.rar"
+    path.write_bytes(rar4.RAR4_MAGIC + main + sub + data[7 + len(main):])
+    assert rar4.recovered_names(path) == rar4.recovered_names(sample(tmp_path))
+    assert len(rar4.recovered_names(path)) == 2
