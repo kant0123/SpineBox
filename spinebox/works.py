@@ -1072,6 +1072,10 @@ def _duplicate_evidence(c, st: _State) -> dict[tuple[int, int], list[dict]]:
     return out
 
 
+# 巻・外側の名前から付けた作品名の出所(手動・公開 DB は含めない。それらが絡む組は確認待ちのまま)
+_DERIVED_TITLE_SOURCES = (SOURCE_FILENAME, SOURCE_CONTAINER, SOURCE_MERGE)
+
+
 def _vouched_alias(n: _Name) -> bool:
     """作品名と完全一致したら同じ作品と言える別名か。外側の名前の別名(#214)と、1 作品だけを収めた入れ物が
     作品を決めた巻の、巻自身の名前(`_keep_own_alias`。確信度 0.9。`Isekai nonbiri sozai saishu seikatsu`)。"""
@@ -1120,7 +1124,12 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
                         or (ny.is_title and not nx.is_title and _vouched_alias(nx))
                     )
                 )
-                if shared or container_alias_matches_title:
+                # 名前から付けた作品名どうしの完全一致(#268)。空の DB から同期すれば巻の割り当てで同じ作品に入る組で、
+                # 前の読み方で別々に作った作品の作品名が、読み方の変更で同じになったもの(`DLRAW.AC あつまれ!…` → `あつまれ!…`)
+                same_derived_title = (
+                    x in active and y in active and nx.is_title and ny.is_title
+                    and nx.source in _DERIVED_TITLE_SOURCES and ny.source in _DERIVED_TITLE_SOURCES)
+                if shared or container_alias_matches_title or same_derived_title:
                     eff = max(conf, AUTO_MERGE_MIN)
                 else:
                     eff = conf

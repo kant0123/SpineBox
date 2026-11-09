@@ -74,7 +74,7 @@ _ROMAN = re.compile(r"(?<=[\u3040-\u30ff\u4e00-\u9fff])(X{0,1}(?:IX|IV|V?I{0,3})
 _ROMAN_VALUES = {"I": 1, "V": 5, "X": 10}
 
 # 雑誌の号(`週刊少年サンデー 2021年36-37号`)。年と号は巻の番号ではない(号を `N-M` の巻と読まない)
-_ISSUE = re.compile(r"\d{4}\s*年\s*\d{1,2}(?:\s*[-・~\s]\s*\d{1,2})*\s*月?\s*(?:合併?)?号")
+_ISSUE = re.compile(r"\d{4}\s*年\s*\d{1,2}(?:\s*[-・~_\s]\s*\d{1,2})*\s*月?\s*(?:合併?)?号")
 
 
 def _roman(text: str) -> int | None:
