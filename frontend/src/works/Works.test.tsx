@@ -263,7 +263,7 @@ describe("作品の検索と絞り込み(#56)", () => {
     expect(screen.queryByLabelText("読書状態")).toBeNull(); // スマホ幅で邪魔にならないよう、初めは閉じている
     fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
     fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "unread" } });
-    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物"]));
+    await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
 
     // 候補のある項目だけ出る(モックでは種別とジャンルと著者。タグは無い)

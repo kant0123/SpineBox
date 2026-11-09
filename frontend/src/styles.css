@@ -694,9 +694,8 @@ button.small::after {
   background: var(--accent-subtle);
   color: var(--accent-hover);
 }
-/* カードは中身の高さに合わせる。行の高さを揃える(grid-auto-rows: 1fr)と、一覧で一番高いカードに
-   全カードが引き伸ばされ、バッジの少ない作品ほど内側の下に余白ができる(#161)。
-   表紙の無い作品も枠を持つので、タイトルの位置はそろう(#132) */
+/* 作品カードの高さは行で揃える(align-items: stretch)。タグを全廃してメタ情報を 1 行に固定し、
+   読書中バッジを表紙に重ねることでカード全体の高さを完全に均一化している(#270)。 */
 .work-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: stretch; }
 .work-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; min-width: 0; display: flex; flex-direction: column; height: 100%; }
 .work-link { display: flex; gap: 12px; padding: 12px; color: inherit; text-decoration: none; }
@@ -750,10 +749,10 @@ button.small::after {
   background: var(--reading-bg, rgba(23, 23, 26, 0.85));
   color: var(--accent);
   border: 1px solid var(--accent);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   line-height: 1.2;
   font-weight: 700;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 9999px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   pointer-events: none;
