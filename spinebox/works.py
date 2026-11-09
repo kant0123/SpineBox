@@ -28,6 +28,7 @@ from dataclasses import dataclass, field, replace
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
+from .mojibake import looks_garbled
 from .naming import (JUNK_NAMES, WorkName, is_chapter_label, is_fragment_name, is_junk_name, normalize_title,
                      parse_number, parse_work_name, trailing_number)
 from .pages import natural_key
@@ -830,11 +831,12 @@ def _dismiss_junk_aliases(c: sqlite3.Connection) -> None:
     3. タイトルが JUNK_NAMES である非手動作品との確認待ち(open)の提案を削除する。
     """
     now = db.now()
+    # 直せない文字化けの別名(統合の根拠の作品名が化けていたもの)も外す。手動の別名には触らない
     junk_alias_ids = [
         r["id"] for r in c.execute(
-            "SELECT id, norm FROM work_aliases WHERE dismissed_at IS NULL AND manual = 0"
+            "SELECT id, norm, alias FROM work_aliases WHERE dismissed_at IS NULL AND manual = 0"
         ).fetchall()
-        if is_junk_name(r["norm"])
+        if is_junk_name(r["norm"]) or looks_garbled(r["alias"] or "")
     ]
     if junk_alias_ids:
         c.executemany("UPDATE work_aliases SET dismissed_at = ? WHERE id = ?",
@@ -1023,11 +1025,20 @@ def _fill_author(c, work: _Work, authors, source: str, confidence: float, eviden
         work.author = text
 
 
+def _stale_title_norm(title: str) -> str | None:
+    """今の読みで作品名を読み直すと変わる古い作品名(`★作品名` `作品名【`)の正規化。変わらなければ None。"""
+    wn = parse_work_name(title)
+    if wn is None or wn.title == title:
+        return None
+    return wn.norm
+
+
 def _refresh_title(c, st: _State, work: _Work, own: OwnName) -> None:
-    """名前から読んだ作品名が変わったら、手動でない 1 巻の作品名を今の読みに合わせる(#167)。
+    """名前から読んだ作品名が変わったら、手動でない作品名を今の読みに合わせる(#167)。
 
     `ようこそ… 第04` のように小数点の巻を誤読して作った作品名を、小数点を外した系列名へ直す。
-    複数の巻を持つ作品は、別の巻の名前と食い違う可能性があるので触らない。
+    1 巻の作品は常に直す。複数の巻を持つ作品は、別の巻の名前と食い違う可能性があるので、
+    今の読みで変わる古い作品名(`★さわらないで小手指くん` など)を、同じ系列の巻が読んだときだけ直す。
     """
     if work.title_manual or work.title_source != SOURCE_FILENAME:
         return  # 手動の作品名・公開 DB が置き換えた作品名は、名前の読みで上書きしない
@@ -1036,8 +1047,10 @@ def _refresh_title(c, st: _State, work: _Work, own: OwnName) -> None:
     title = own.name.title
     if not title or title == work.title:
         return
+    stale = _stale_title_norm(work.title)
     if c.execute("SELECT COUNT(*) FROM work_volumes WHERE work_id = ?", (work.id,)).fetchone()[0] != 1:
-        return
+        if stale is None or own.name.norm != stale:
+            return
     old_norm = normalize_title(work.title)
     if old_norm in st.by_norm:
         st.by_norm[old_norm] = [i for i in st.by_norm[old_norm] if i != work.id]
