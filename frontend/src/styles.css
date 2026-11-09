@@ -707,6 +707,37 @@ button.small::after {
 .work-link:hover .volume-title { text-decoration: underline; }
 .work-text { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .work-card .work-text { padding: 12px; }
+/* 作品カードのタイトル: 通常は 1 行で省略表示し、ホバー・フォーカス時に末尾までスクロールする(#266) */
+.work-card .work-card-title {
+  display: block;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  position: relative;
+}
+.work-card-title-inner {
+  display: inline-block;
+  white-space: nowrap;
+}
+/* マーキー中は省略記号を外し、末尾まで流す */
+.work-card.is-marquee .work-card-title {
+  text-overflow: clip;
+}
+.work-card.is-marquee .work-card-title-inner {
+  animation: marquee-scroll calc(var(--marquee-distance) / 50 * 1s) linear forwards;
+}
+@keyframes marquee-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-1 * var(--marquee-distance) * 1px)); }
+}
+
+/* 作品カードのメタ情報(著者・出版社): 1 行に収めてカードの縦伸びを防ぐ */
+.work-card .volume-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* 後で読む(#173)の重ね表示: 表紙の右下に被せる。アイコンのみ 32px 円で小さく見せ、::after で 44px の押し込み領域を持たせる */
 .work-cover-wrap { position: relative; }
 .read-later-toggle { display: inline; }
@@ -789,6 +820,26 @@ button.small::after {
 .work-cover-placeholder-text { color: var(--muted); font-size: 0.875rem; }
 .work-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .work-badges .volume-count-badge { border-color: var(--border-strong); color: var(--fg); }
+/* 作品カードのタグ(バッジ)表示: 複数行への折り返しを防ぎ、カードの高さを一定に保つ(#266) */
+.work-card .work-badges {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 6px;
+  min-height: calc(26 / 16 * 1rem);
+  align-items: center;
+}
+.work-card .work-badges::-webkit-scrollbar {
+  display: none;
+}
+.work-card .badge {
+  flex: none;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 button.secondary {
   background: var(--card);
   color: var(--accent);
@@ -1240,6 +1291,7 @@ button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
 /* DADS モーション配慮・強制カラー対応 */
 @media (prefers-reduced-motion: reduce) {
   .sidebar, .work-cover, .job-bar span { transition: none; }
+  .work-card.is-marquee .work-card-title-inner { animation: none; }
   .page-loading { animation: none; opacity: 1; }
   .job-bar span.indeterminate { animation: none; width: 50%; margin-left: 25%; }
   .spinner { animation-duration: 3s; }
