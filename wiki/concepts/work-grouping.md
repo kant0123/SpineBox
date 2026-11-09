@@ -14,13 +14,13 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:780 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:847 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:330 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
-  `spinebox/naming.py:229 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
+- **名前の読み方。** `spinebox/naming.py:369 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+  `spinebox/naming.py:264 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
   簡体字の巻表示・話表示(`卷` `话`)は正規の字(`巻` `話`)と同じに読む(`spinebox/naming.py _fold_chars`)。
   巻の**自分の名前**(巻 → 入れ子 → 外側の順で最初に作品名と読めたもの)が既存の作品名・別名と一致すればその作品、無ければ新しい作品
 - **小数点の巻は番号なしの巻として作品に入れる。** `第04.5巻` や `Chapter 002.2`、`ch.02.5`、`第02.5話` などの小数点の巻・話・チャプターは整数の `number_start`/`number_end` で持てないので番号にせず
@@ -50,9 +50,9 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   (実データ 2026-11-06: 4610 巻のうち 782 巻・73 組が該当。確認待ちの提案 6123 件のうち 3500 件超がこれだけで消えた)
 - **作品の表示タイトルは、利用可能な限り日本語を正とする。** ローマ字(`okirakuryoshunotanoshiryochi` など)はファイル名由来の候補・別名として残し、
   表示タイトルと名寄せの代表(統合で残す作品)には使わない(#212)。日本語の出どころは公開 DB の連携・手動編集・コンテナ名。
-  - 統合で残す作品は `spinebox/works.py:615 choose_survivor()` が決める: 手動の作品名 > 日本語の作品名 > 巻の多い方 > id の若い方。
+  - 統合で残す作品は `spinebox/works.py:682 choose_survivor()` が決める: 手動の作品名 > 日本語の作品名 > 巻の多い方 > id の若い方。
   - ファイル名・外側の名前由来のローマ字の作品名・著者は、公開 DB の日本語で置き換える(確信度 0.9 未満でも)。
-    `spinebox/linking.py:526 _prefer_japanese_value()`。日本語同士の置き換えは確信度 0.9 の規則に委ねる([[metadata-linking]])。
+    `spinebox/linking.py:527 _prefer_japanese_value()`。日本語同士の置き換えは確信度 0.9 の規則に委ねる([[metadata-linking]])。
 - **系列として読めた巻は、系列名を別名に持つだけの 1 巻作品に留めない。** 巻の割り当ては、読み直した作品名が
   **今の作品の名前のどれか**(別名を含む)と一致すれば動かさないが、公開 DB に linked した 1 巻 = 1 作品は
   系列名を別名として持つため、系列として読めても留まっていた(#162)。作品名が `系列名 + 末尾の番号` そのもの
@@ -186,9 +186,9 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1503 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+`spinebox/works.py:1613 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
 最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。**巻の番号を持つ巻が 1 つでもある作品では、話の欠けを数えない**(話・章は巻の中身で、別の系列ではない。
-章のフォルダを話として読んだ作品で 1..最大 の欠けが何百件も出たため。#248)。`spinebox/works.py:1527 build_slots()` は
+章のフォルダを話として読んだ作品で 1..最大 の欠けが何百件も出たため。#248)。`spinebox/works.py:1637 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果

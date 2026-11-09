@@ -14,9 +14,9 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 巻番号の候補(名前から読む)
 
-- 入口: `spinebox/naming.py:124 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
+- 入口: `spinebox/naming.py:155 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:40 MIGRATIONS` の 2 番)。
-  スキャンが切り出す巻は `spinebox/scanner.py:638 _replace_volumes()` が、子の巻は `spinebox/analysis.py:62 register_units()` が書く。
+  スキャンが切り出す巻は `spinebox/scanner.py:661 _replace_volumes()` が、子の巻は `spinebox/analysis.py:63 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
@@ -29,20 +29,20 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - `作品名 01` `作品名(3)` の形も `parse_number()` では拾わない(`Kitchen 2` が作品名のこともある)。
   `spinebox/naming.py trailing_number()` が候補を返し、**同じ名前で末尾の番号だけが違う巻が 2 つ以上**のときだけ
   [[work-grouping]] が巻番号として `volumes.number_*` に入れる(スキャンでは書かない)
-- 読み方を変えたら `spinebox/scanner.py:54 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
+- 読み方を変えたら `spinebox/scanner.py:58 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
 
 ### 分解(巻の単位と子の巻)
 
 - **巻の単位** = 画像を直接含むフォルダ(アーカイブの直下に画像があれば、そのアーカイブ自体)。入れ子の全段(`max_depth` まで)を見る。
-  集めるのは `spinebox/library.py:457 _units()`。各ページがどの単位かは、内側アーカイブを開く `_expand()` が入れ子の名前の並びとして持つ。
+  集めるのは `spinebox/library.py:495 _units()`。各ページがどの単位かは、内側アーカイブを開く `_expand()` が入れ子の名前の並びとして持つ。
   単位の名前(フォルダ名・アーカイブ名)はスキャンの切り出しと同じく `fix_mojibake()` で文字化けを直す(#257。前は直さず、化けた名前が子の巻・作品名になっていた)
 - **単位が 2 つ以上のときだけ分解する。** 1 つなら親がそのまま 1 巻(子は作らない。前に作った子は missing にする)
 - 子の巻の場所は (親と同じ `source_id`・`container_path`) + `inner_path`(親の内側アーカイブから単位のあるアーカイブまでの名前の JSON 配列)+
-  `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:356 _open_unit()`
+  `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:357 _open_unit()`
 - **親は「まとめ」として残す。** 開けば今までどおり全ページを読める。一覧(`LISTED_VOLUMES_WHERE`)は見えている子を持つ親を出さず、子を親の位置に並べる
 - 解析する契機: (1) 内側アーカイブの巻を開いたとき(`GET /api/volumes/{id}`。取り出しは済んでいるので追加の展開は無い)、
   (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析(ほかのジョブが動いていないときだけ。[[data-jobs]])、(4) データ管理の「中の巻を調べる」(未解析を全部)
-  (`spinebox/library.py:476 analyze_next()`、1 回に 1 巻、既定は無効)。**スキャンでは解析しない**
+  (`spinebox/library.py:477 analyze_next()`、1 回に 1 巻、既定は無効)。**スキャンでは解析しない**
 - 解析の版 `analyzed_version` = 解析の仕方(`ANALYSIS_VERSION`)・`max_depth`・元ファイルのサイズと mtime。どれかが変われば開いたときに解析し直す。
   スキャンがソースを読み直したときも NULL(未解析)に戻す
 - 子は (inner_path, entry_prefix) で突き合わせるので、解析し直しても同じ単位は同じ巻 id(読書位置が続く)。消えた単位は missing にするだけ
@@ -51,12 +51,12 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 分解前に親で挟んだしおり
 
-読書位置と同じく、親の行を残したまま、そのページを持つ子の巻のそのページへ写す(`spinebox/analysis.py:129 _carry_page_marks()`。#136、[[manga-reader]])。
+読書位置と同じく、親の行を残したまま、そのページを持つ子の巻のそのページへ写す(`spinebox/analysis.py:130 _carry_page_marks()`。#136、[[manga-reader]])。
 子に既にあるしおりは触らない。題は持たないので、ページ番号が変わっても「ページN」がずれない
 
 ### 分解前に親で付けた読書位置
 
-`spinebox/analysis.py:94 _carry_progress()`。親の記録は消さない。位置を持たない子にだけ写す。
+`spinebox/analysis.py:102 _carry_progress()`。親の記録は消さない。位置を持たない子にだけ写す。
 
 - 親が既読 → 全部の子を既読(最終ページ)
 - 親の位置のページを含む子 → そのページから(既読でない)
@@ -65,7 +65,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 食い違い
 
-`spinebox/analysis.py:213 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
+`spinebox/analysis.py:214 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
 
 - `volume`: 分解した親の名前の範囲 ⇔ 子の巻番号。親と各子に付ける
 - `source`: 外側アーカイブ(スキャンのソース)の名前の範囲 ⇔ その中の巻(分解済みなら子、未解析の内側アーカイブはその名前の範囲)。

@@ -21,7 +21,7 @@ related: [overview, backend, frontend, archive-reading, manga-reader]
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/scanner.py:556 _scan_novel()` | 小説の登録。危険な名前・上限超え・container.xml の無い EPUB は理由を `scan_issues` に残して巻にしない |
+| `spinebox/scanner.py:583 _scan_novel()` | 小説の登録。危険な名前・上限超え・container.xml の無い EPUB は理由を `scan_issues` に残して巻にしない |
 | `spinebox/novel/books.py:59 Books` | 巻を開いて区切りの HTML と画像を返す。テキストの復号・区切りと EPUB の構造は元ファイルの版ごとに数冊だけメモリに覚える |
 | `spinebox/novel/epub.py:164 open_book()` | EPUB の解析。参照の解決は `resolve_href()`、XML は `parse_xml()`(実体宣言を拒む) |
 | `spinebox/novel/sanitize.py:185 sanitize_html()` | サーバー側の無害化(1 段目) |
