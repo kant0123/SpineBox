@@ -351,10 +351,16 @@ def _belongs_to(node_key: str, key: str, title: str = "", node_title: str = "") 
         _has_cjk(key) == _has_cjk(node_key) and _extends(key, node_key, node_title))
 
 
+def _differs_only_in_numbers(a: str, b: str) -> bool:
+    """日本語の系列名どうしが、数字の部分だけ違うか(`…前に1ぼすきゃら…` と `…前に2ぼすきゃら…`)。
+    1 つの入れ物の中だけで使う。巻の番号が作品名と副題の間にある名前の組。"""
+    return _has_cjk(a) and _has_cjk(b) and re.sub(r"\d+", "", a) == re.sub(r"\d+", "", b) != ""
+
+
 def _same_series(a: str, b: str, titles: dict[str, str]) -> bool:
     """同じ系列か。長い方が短い方に番号・`…編`・区切りの後ろの副題を足しただけのときだけ(`ゾンビ` と
     `ゾンビだらけの世界` は別)。外側の名前との突き合わせ(`_belongs_to`)と同じ規則。"""
-    if a == b or _romaji_variant(a, b):
+    if a == b or _romaji_variant(a, b) or _differs_only_in_numbers(a, b):
         return True
     short, long_ = (a, b) if len(a) <= len(b) else (b, a)
     return _extends(short, long_, titles.get(long_, ""))
@@ -432,6 +438,9 @@ def _container_claims(st: _State) -> dict[int, OwnName]:
                     counts[wn.title] += 1
                 best = min(counts, key=lambda t: (-counts[t], len(t)))
                 title = next(wn for wn in names if wn.title == best)
+                if len(counts) > 1 and len({re.sub(r"\d+", "", t) for t in counts}) == 1:
+                    # 名前の間の番号だけが違う(`チュートリアルが始まる前に 1 ボスキャラ…`)。番号を落とした名前を作品名にする
+                    title = parse_work_name(re.sub(r"\s+\d{1,3}\s+", " ", best)) or title
                 claimed = mine + free + [r for k in jg[0] for r, _ in jp[k]]
             else:
                 title, claimed = nwn, mine + free
@@ -1127,6 +1136,8 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
     return out
 
 
+SUBTITLE_SPACE_CONF = 0.8  # 空白だけで区切った副題(外伝の作品名のことがある)。確認待ち
+_EXPLICIT_BREAK = re.compile(r"\s*[~〜～\-－‐:：、,]")
 SUBTITLE_MIN_LEN = 4  # 副題を落とした側の作品名(正規化)の最短。`ゾンビ` のような短い名前は別作品の頭になりやすい
 
 
@@ -1145,14 +1156,17 @@ def _subtitle_evidence(st: _State, active: set[int]) -> dict[tuple[int, int], di
     for long_norm, longs in by_title.items():
         long_id = longs[0]
         title = st.works[long_id].title
-        pieces = _TITLE_BREAK.split(title)
-        for i in range(1, len(pieces)):
-            short_norm = normalize_title(" ".join(pieces[:i]))
+        for brk in _TITLE_BREAK.finditer(title):
+            short_norm = normalize_title(title[:brk.start()])
             if len(short_norm) < SUBTITLE_MIN_LEN or short_norm == long_norm or short_norm not in by_title:
                 continue
+            # 区切りの記号(`~` `-` `:` `、`)の後ろの副題は同じ作品として自動統合する。空白だけの区切りの後ろは
+            # 外伝・スピンオフの作品名のこともある(`進撃の巨人 Before the fall`)ので確認待ち
+            sep = brk.group(0)
+            conf = AUTO_MERGE_MIN if _EXPLICIT_BREAK.match(sep) else SUBTITLE_SPACE_CONF
             for short_id in by_title[short_norm]:
                 key = _pair(short_id, long_id)
-                out[key] = {"norm": short_norm, "confidence": AUTO_MERGE_MIN, "alias_confidence": AUTO_MERGE_MIN,
+                out[key] = {"norm": short_norm, "confidence": conf, "alias_confidence": conf,
                             "shared_item": None, "subtitle": True,
                             "a": {"work": short_id, "name": st.works[short_id].title, "source": "title", "is_title": True},
                             "b": {"work": long_id, "name": title, "source": "title", "is_title": True}}

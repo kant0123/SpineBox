@@ -30,6 +30,8 @@ from spinebox.scanner import software_doc_reason
     # 雑誌の号は誌名が作品名で、号は巻の番号にしない
     ("週刊少年サンデー 2021年36-37号", "週刊少年サンデー", None),
     ("週刊少年サンデー 2023年4・5合併号", "週刊少年サンデー", None),
+    ("月刊アフタヌーン 2023年12月号", "月刊アフタヌーン", None),
+    ("月刊アフタヌーン 2024年 5 月号", "月刊アフタヌーン", None),
     ("廡姧彮擭僒儞僨乕 2021擭36-37崋", "週刊少年サンデー", None),  # Shift_JIS を GBK として読んだもの
     # 直せる語だけ直した文字化け(著者の括弧は直せない)
     ("DLRAW.NET-[é¦é+éGé¦é-éµé¦] ânâôâcü[ü~âgâëâbâVâà æµ10è¬", "ハンツー×トラッシュ", 10),
@@ -45,7 +47,8 @@ def test_names_seen_in_the_production_library(name, title, number):
     assert (parse_number(name).start if parse_number(name) else None) == number
 
 
-@pytest.mark.parametrize("name", ["Back to the 80s", "狂四郎2030", "聖☆おにいさん", "History of Japan"])
+@pytest.mark.parametrize("name", ["Back to the 80s", "狂四郎2030", "聖☆おにいさん", "History of Japan",
+                                  "クラスで 2 番目に可愛い女の子と友達になった"])  # 日本語の間の数字は作品名の一部(agy)
 def test_names_that_keep_their_digits_and_marks(name):
     wn = parse_work_name(name)
     assert wn.title == name and wn.number is None
@@ -193,3 +196,26 @@ def test_a_romaji_folder_name_inside_a_japanese_folder_merges_a_romaji_only_work
     cbz(lib, "temp/Isekai nonbiri sozai saishu seikatsu/Isekai nonbiri sozai saishu seikatsu v04.cbz")
     _, client = scan()
     assert titles(client) == [("異世界のんびり素材採取生活", 3)]
+
+
+def test_middle_numbers_group_only_within_a_container(env):
+    """作品名と副題の間の番号(`チュートリアルが始まる前に 1 ボスキャラ…`)は、同じ入れ物で数字だけ違う名前が並ぶときだけ巻。"""
+    lib, scan = env
+    write_zip(lib / "DLRAW.APP_Chutoriaruga_hajimaru_maeni vol 01-03.zip", [
+        (f"DLRAW.APP_チュートリアルが始まる前に {n} ボスキャラ達を破滅させない為に/{i}.jpg", page_bytes(f"c{n}{i}"))
+        for n in (1, 2, 3) for i in range(2)])
+    cbz(lib, "ラノベ/クラスで 2 番目に可愛い女の子と友達になった.cbz")
+    _, client = scan()
+    assert titles(client) == [("クラスで 2 番目に可愛い女の子と友達になった", 1),
+                              ("チュートリアルが始まる前に ボスキャラ達を破滅させない為に", 3)]
+
+
+def test_space_separated_variants_are_proposed_not_merged(env):
+    """空白だけの区切りの後ろは外伝の作品名のこともあるので確認待ち(記号の区切りは自動統合。agy)。"""
+    lib, scan = env
+    cbz(lib, "a/[著者] 進撃の巨人 第01巻.cbz")
+    cbz(lib, "b/[著者] 進撃の巨人 Before the fall 第01巻.cbz")
+    _, client = scan()
+    assert len(titles(client)) == 2
+    (p,) = client.get("/api/works/proposals").json()
+    assert (p["status"], p["confidence"]) == ("open", 0.8)
