@@ -147,9 +147,7 @@ class Library:
         内側 zip の巻だけ(一覧の表紙のように、巻の数だけ呼ばれうるところで使う。spinebox/thumbs.py)。
         """
         row = get_volume_row(conn, volume_id)
-        if row["format"] == "pdf":
-            raise VolumeUnreadable("PDF の巻は直接開けません(先に「CBZ に整理」を実行してください)")
-        if row["format"] is not None:
+        if row["format"] is not None and row["format"] != "pdf":
             # 小説(EPUB・テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
             raise VolumeUnreadable("小説の巻にはページ画像がありません")
         root = Path(row["root_path"])
@@ -174,6 +172,8 @@ class Library:
                     return page.read_bytes()
 
                 opened = OpenVolume(volume_id, names, version, read)
+            elif row["format"] == "pdf":
+                opened = self._open_pdf(stack, volume_id, path, version)
             else:
                 if not extract and detect_format(path) != "zip":
                     raise NeedsExtraction(volume_id)
@@ -182,6 +182,43 @@ class Library:
                 with db.transaction(conn) as c:
                     c.execute("UPDATE volumes SET page_count = ? WHERE id = ?", (len(opened.page_names), volume_id))
             yield opened
+
+    def _open_pdf(self, stack: ExitStack, volume_id: int, path: Path, version: str) -> OpenVolume:
+        """未整理の PDF の巻。整理の抽出(organize/pdf.py)をページ単位で流用し、元の PDF は読むだけ。
+        ページ名は連番の .jpg(実際の形式は抽出まで分からない。配信側が中身で見分ける)。"""
+        from .organize.pdf import PdfError, extract_pdf_page_image
+        import pypdf
+        try:
+            # ファイルは自分で開いて stack に閉じさせる(パスを渡すと pypdf が全体をメモリに読み、閉じ忘れも気づけない)
+            reader = pypdf.PdfReader(stack.enter_context(open(path, "rb")))
+            if reader.is_encrypted:
+                raise VolumeUnreadable("暗号化された PDF は開けません")
+            count = len(reader.pages)
+        except VolumeUnreadable:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise VolumeUnreadable(f"読めない PDF: {type(e).__name__}: {e}") from e
+        if count == 0:
+            raise VolumeUnreadable("ページがありません")
+        names = [f"{i + 1:04d}.jpg" for i in range(count)]
+        lock = self._archive(cache_key("pdf", str(path), version)).lock
+        memory = self.memory
+
+        def read(i: int) -> bytes:
+            key = cache_key("pdfpage", str(path), version, i)
+            data = memory.get(key) if memory.enabled else None
+            if data is not None:
+                return data
+            try:
+                with lock:  # pypdf のリーダーは並行で使わない(先読みの並行要求を直列にする)
+                    _, data = extract_pdf_page_image(reader.pages[i], i, pdf_path=path)
+            except (PdfError, Exception) as e:  # noqa: BLE001
+                raise VolumeUnreadable(f"PDF の {i + 1} ページ目を取り出せません: {e}") from e
+            if memory.enabled:
+                memory.put(key, data)
+            return data
+
+        return OpenVolume(volume_id, names, version, read)
 
     def _open_archive_volume(self, conn, stack: ExitStack, row, path: Path, version: str,
                              extract: bool = True) -> OpenVolume:

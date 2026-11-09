@@ -549,3 +549,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-09] ingest | PR #259 (#257) RAR4 の化けた Unicode 名を OEM 名で直し、0x5C で割れた偽のフォルダの巻をなくす
 - 更新: [[archive-reading]], [[volume-split]]
 - 備考: 本番の作品 552(`13 #ò`)。入れ子の RAR4 の OEM 名は正しい cp932 で、Unicode 名だけが cp437 で化けていた。`spinebox/archive/rar4.py` でヘッダを読み、7-Zip の目次の名前を差し替える(取り出しは 7-Zip の名前のまま)。分解の単位の名前にも `fix_mojibake()` を掛けた。SCAN_VERSION=12・ANALYSIS_VERSION=6。OEM 名まで近似変換で情報が落ちた 5 巻(`君みい５町`)は戻せないので名寄せ側を #258 に分けた。
+
+## [2026-11-09] ingest | PR #262 (#261) 整理前の PDF の巻を直接閲覧できるようにする
+- 更新: [[organize]]
+- 備考: 整理の PDF 抽出(`extract_pdf_page_image`)をページ単位で流用し、`Library._open_pdf()` で閲覧・表紙を可能にした。それまでの 422 / ThumbnailUnavailable は廃止。ページ名は `.jpg` 固定で、配信側が PNG を中身で見分ける。
