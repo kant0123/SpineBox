@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: システム全体像と各ページへの入口
-updated: 2026-11-03
+updated: 2026-11-10
 related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources, novel-reader, work-search, inbox, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
 
