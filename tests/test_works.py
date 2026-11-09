@@ -146,13 +146,23 @@ def test_trailing_numbers_are_stable_after_resync(make_env):
 
 
 def test_numbers_are_dropped_when_the_group_is_gone(make_env):
+    lib, _, client = make_env(["Sakuhin 1.cbz", "Sakuhin 2.cbz"])
+    assert set(by_title(client)) == {"Sakuhin"}
+    (lib / "Sakuhin 2.cbz").unlink()
+    client.post("/api/scan")
+    (w,) = client.get("/api/works").json()["works"]
+    assert (w["title"], w["volume_count"]) == ("Sakuhin", 1)  # 外側の名前の別名で同じ作品に残る
+    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())  # 番号は名前から導出なので消える
+
+
+def test_a_single_japanese_volume_keeps_its_trailing_number(make_env):
+    """日本語の作品名の 1 冊だけの `作品名 3` は巻番号と読む(ローマ字の `Kitchen 2` は作品名のことがある)。"""
     lib, _, client = make_env(["作品名 1.cbz", "作品名 2.cbz"])
-    assert set(by_title(client)) == {"作品名"}
     (lib / "作品名 2.cbz").unlink()
     client.post("/api/scan")
     (w,) = client.get("/api/works").json()["works"]
-    assert (w["title"], w["volume_count"]) == ("作品名", 1)  # 外側の名前の別名で同じ作品に残る
-    assert all(v["volume_number"] is None for v in client.get("/api/volumes").json())  # 番号は名前から導出なので消える
+    assert (w["title"], w["volume_count"]) == ("作品名", 1)
+    assert [v["volume_number"]["start"] for v in client.get("/api/volumes").json()] == [1]
 
 
 def test_a_linked_volume_work_returns_to_the_series(make_env):
@@ -161,27 +171,27 @@ def test_a_linked_volume_work_returns_to_the_series(make_env):
     1 巻ずつの作品が公開 DB に linked されて別名 `作品名` を持つと、名前から読み直した `作品名` が
     「今の作品の別名」と一致して付け替えられず、1 巻 = 1 作品のまま提案が総当たりで残っていた。
     """
-    lib, settings, client = make_env(["作品名.cbz", "[著者] 作品名 1.cbz"])
+    lib, settings, client = make_env(["Sakuhin.cbz", "[Chosha] Sakuhin 1.cbz"])
     ws = by_title(client)
-    assert set(ws) == {"作品名", "作品名 1"}
-    add_alias(settings, ws["作品名 1"]["id"], "作品名", confidence=0.8)  # 公開 DB の連携で付く系列名の別名
-    cbz(lib, "[著者] 作品名 2.cbz")
+    assert set(ws) == {"Sakuhin", "Sakuhin 1"}
+    add_alias(settings, ws["Sakuhin 1"]["id"], "Sakuhin", confidence=0.8)  # 公開 DB の連携で付く系列名の別名
+    cbz(lib, "[Chosha] Sakuhin 2.cbz")
     client.post("/api/scan")
     ws = by_title(client)
-    assert set(ws) == {"作品名"}  # 番号付きの作品は空になり、一覧から消える
-    assert ws["作品名"]["volume_count"] == 3
+    assert set(ws) == {"Sakuhin"}  # 番号付きの作品は空になり、一覧から消える
+    assert ws["Sakuhin"]["volume_count"] == 3
     assert client.get("/api/works/proposals").json() == []
 
 
 def test_a_work_with_a_manual_link_is_not_folded_into_the_series(make_env):
     """手で選んだ公開 DB の連携がある作品は、系列名へ寄せず、自動統合もしない(#162)。"""
-    lib, settings, client = make_env(["[著者] 作品名 1.cbz"])
+    lib, settings, client = make_env(["[Chosha] Sakuhin 1.cbz"])
     (w,) = client.get("/api/works").json()["works"]
-    add_alias(settings, w["id"], "作品名")
+    add_alias(settings, w["id"], "Sakuhin")
     add_manual_link(settings, w["id"])
-    cbz(lib, "[著者] 作品名 2.cbz")
+    cbz(lib, "[Chosha] Sakuhin 2.cbz")
     client.post("/api/scan")
-    assert set(by_title(client)) == {"作品名 1", "作品名"}
+    assert set(by_title(client)) == {"Sakuhin 1", "Sakuhin"}
     (p,) = client.get("/api/works/proposals").json()  # 0.9 でも手動が絡むので確認待ち
     assert (p["status"], p["confidence"]) == ("open", 0.9)
     assert client.get("/api/review/counts").json()["proposals"] == 1  # 確認の画面(#207)

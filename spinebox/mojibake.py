@@ -86,6 +86,15 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
                     len(_ZEN_KANA.findall(fixed)) >= 2 and sum(not c.isascii() for c in fixed) >= 2):
                 return fixed, "文字化けを直しました(EUC-JP の名前を Shift_JIS として読んだもの)"
 
+        # 4. Shift_JIS の名前を GBK(中国語の Windows)として読んだもの(`廡姧彮擭僒儞僨乕` -> `週刊少年サンデー`)。
+        # 本物の日本語の漢字は GBK に戻すと半角カナ混じりになるので、かなを含まない名前が、半角カナ無しの
+        # 全角かな 2 文字以上に戻るときだけ直す
+        if not _ZEN_KANA.search(text):
+            fixed = _redecode(text, "gbk", "cp932")
+            if (fixed is not None and len(_ZEN_KANA.findall(fixed)) >= 2
+                    and not re.search(r"[｡-ﾟ]", fixed)):
+                return fixed, "文字化けを直しました(Shift_JIS の名前を GBK として読んだもの)"
+
         return text, None
 
     # パターン B: 日本語文字を含まないテキスト (欧文・DOS コードページとして誤読されたもの)
@@ -121,5 +130,56 @@ def fix_mojibake(text: str) -> tuple[str, str | None]:
             # 文字列長が短く(UTF-8などの縮み)、カナが多い自然な候補を優先
             candidates.sort(key=lambda x: (x[2], x[3]))
             return candidates[0][0], candidates[0][1]
+        fixed = _redecode_words(text)
+        if fixed is not None:
+            return fixed, "文字化けを直しました(一部の語は元に戻せないまま)"
 
     return text, None
+
+
+# 戻した語で英字とかな・漢字が隣り合うのは偶然の一致(`château` の `â` + `t` が `フ` になる。#225 の誤爆)
+_LETTER_NEXT_TO_JAPANESE = re.compile(r"[A-Za-z][぀-ヿ一-鿿]|[぀-ヿ一-鿿][A-Za-z]")
+
+
+def _redecode_words(text: str) -> str | None:
+    """空白で区切った語ごとに、欧文の文字コードで読んだ Shift_JIS を戻す。
+
+    展開ツールが一部のバイトを `+` `-` `¦` に置き換えた名前(`[é¦é+éG…] ânâôâcü[ü~âgâëâbâVâà æµ10è¬`)は
+    全体では戻せない。全角かなの続く語が 1 つでも戻れば文字コードの誤読と確かめられたとみなし、
+    同じ読み違いで日本語に戻る語だけを戻す(戻せない語はそのまま残す。`looks_garbled` が別に判定する)。
+    """
+    words = re.split(r"(\s+)", text)
+    for wrong in ("cp437", "cp850"):
+        out, proved, changed = [], False, False
+        for w in words:
+            fixed = _redecode(w, wrong, "cp932") if w.strip() and not w.isascii() else None
+            if fixed is not None and _has_japanese(fixed) and not _LETTER_NEXT_TO_JAPANESE.search(fixed):
+                proved |= bool(re.search(r"[ぁ-ゖァ-ヺ]{2,}", fixed))
+                out.append(fixed)
+                changed = True
+            else:
+                out.append(w)
+        if proved and changed:
+            return "".join(out)
+    return None
+
+
+_GARBLED_SJIS = re.compile(r"[縺繧繝荳逕譁蜷遘豁謾霑鬨隴蟾]")
+
+
+def looks_garbled(text: str) -> bool:
+    """直せなかった文字化けに見える名前か(作品名に使わない)。
+
+    - 置換文字(U+FFFD)・私用領域の文字を含む(読めなかったバイトの跡)
+    - 日本語を含まず、Latin-1 のアクセント文字・罫線が、ASCII でない文字の半分以上かつ 4 文字以上
+      (`ûéôsÉ+ò¦…`。`Amélie` `café` のような欧文はアクセント文字が少ない)
+    - UTF-8 の名前を Shift_JIS で読んだ跡の字(`縺` `繧` `繝` …)が 3 文字以上
+    """
+    if "\ufffd" in text or any("\ue000" <= ch <= "\uf8ff" for ch in text):
+        return True
+    if not _has_japanese(text):
+        wide = [ch for ch in text if not ch.isascii()]
+        accents = [ch for ch in wide if "\u00c0" <= ch <= "\u00ff" or ch in "\u00a6\u00ac\u00b5\u00b7"
+                   or "\u2500" <= ch <= "\u259f"]
+        return len(accents) >= 4 and len(accents) * 2 >= len(wide) and len(accents) * 4 >= len(text.replace(" ", ""))
+    return len(_GARBLED_SJIS.findall(text)) >= 3

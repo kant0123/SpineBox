@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 # 10: 巻番号の候補から、巻のフォルダの中の印の無い章の範囲を外す(#248)
 # 11: EPUB の OPF の書誌(dc:title / creator / publisher)を読む。ファイル名が日本語でなければ dc:title を巻の名前にする(#251)
 # 12: RAR4 の化けた Unicode 名を OEM 名(cp932)で直す(#257)
-SCAN_VERSION = 12
+SCAN_VERSION = 13
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -163,6 +163,25 @@ def _is_non_content_path(prefix: str) -> bool:
 FRAGMENT_MAX_PAGES = 15
 SAVED_PAGE_MAX_PAGES = 1  # ブラウザの「ページを保存」のフォルダ(`xxx_files`)に画像が 1 枚だけ(ページの部品。`57_files` は本文のことがある)
 _SAVED_PAGE_DIR = re.compile(r"[_\s]files$", re.IGNORECASE)
+
+
+# ソフトウェアに添えられた説明書き(`README.txt` `CHANGELOG.txt`)。小説ではない
+_SOFTWARE_DOC = re.compile(
+    r"^(?:read[\s_-]?me|change[\s_-]?log|changes|license|licence|copying|install|authors|"
+    r"release[\s_-]?notes?|説明書|お読みください|はじめにお読みください)(?:[_.-]\w{1,8})?$",
+    re.IGNORECASE)
+# 実行ファイル・ライブラリ。これがあるフォルダはソフトウェアのフォルダで、中の .txt は本ではない
+_PROGRAM_EXTS = (".exe", ".dll", ".jar", ".bat", ".cmd", ".msi", ".com", ".sys", ".so", ".dylib")
+
+
+def software_doc_reason(name: str, siblings: list[str]) -> str | None:
+    """.txt がソフトウェアの説明書きなら理由(登録不要)。"""
+    stem = Path(name).stem.strip()
+    if _SOFTWARE_DOC.match(stem):
+        return f"登録不要: ソフトウェアの説明書き({stem})なので巻にしない"
+    if any(f.lower().endswith(_PROGRAM_EXTS) for f in siblings):
+        return "登録不要: 実行ファイルのあるフォルダの説明書きなので巻にしない"
+    return None
 
 
 def fragment_reason(title: str, pages: int) -> str | None:
@@ -410,6 +429,9 @@ class Scanner:
                 for name in sorted(filenames):
                     full = os.path.join(dirpath, name)
                     fmt = novel_format(name)
+                    if fmt and fmt != FORMAT_EPUB and (reason := software_doc_reason(name, filenames)):
+                        self._record_pathless(full, reason)
+                        continue
                     if fmt == FORMAT_EPUB or (fmt and not images):  # 画像のあるフォルダの .txt は添え物
                         visit("archive", full,
                               lambda rel, full=full, fmt=fmt: self._scan_novel(root_id, rel, Path(full), fmt))

@@ -21,6 +21,7 @@ import re
 import sqlite3
 import unicodedata
 from collections import defaultdict
+from difflib import SequenceMatcher
 from dataclasses import dataclass, field, replace
 
 from . import db, ja_terms, search
@@ -125,6 +126,7 @@ class OwnName:
     level: int
     text: str
     container: bool = False  # 1 作品だけを収めた外側の名前で決めた(`_container_claims`)
+    romaji: tuple[str, ...] = ()  # その入れ物の中(と入れ物自身)のローマ字の名前。作品の別名の候補
 
     @property
     def confidence(self) -> float:
@@ -254,6 +256,8 @@ class _State:
 #   (または N の名前の巻が 1 つでもある)なら、ローマ字の巻も N の巻(ローマ字と日本語は字面で結べないため、
 #   入れ物の中で他に候補が無いことを根拠にする)
 # - N がローマ字: 日本語の系列がちょうど 1 つで、N と違うローマ字の系列が無ければ、全部をその日本語の作品にする
+# - ローマ字の綴りの揺れ(`Sudachi no mao-jo` と `Sudachi_no_Maoujou`)は 1 つの系列と数える(`_romaji_variant`)。
+#   巻 1 冊の入れ物の名前(`動物人間 13.zip`)は末尾の番号を落として数える(`_without_trailing_number`。#263)
 # 巻ごとに、当てはまる外側の名前のうち日本語の作品名になる最も内側のものを採る(無ければ最も外側)。
 
 _CATEGORY_NAMES = frozenset(normalize_title(x) for x in (
@@ -263,7 +267,7 @@ _CATEGORY_NAMES = frozenset(normalize_title(x) for x in (
 ))
 # ローマ字の系列名の末尾に付く配布の印(`… raw v03` `… jp v08s`)。系列の突き合わせでだけ落とす
 _ROMAJI_NOISE = frozenset({"raw", "raws", "jp", "jpn", "jap", "dl", "fix", "fixed", "digital", "end", "complete",
-                           "hq", "hd", "s", "b", "w", "zip", "rar", "jpg"})
+                           "hq", "hd", "s", "b", "w", "zip", "rar", "jpg", "color", "colour", "mono"})
 _SAVED_PAGE = re.compile(r"[_\s]files$", re.IGNORECASE)  # ブラウザの「ページを保存」のフォルダ(`16_files`)
 _SUFFIX_OK = re.compile(r"^(?:\d.*|.{0,8}[編篇]|[上中下]|[上中下]巻)$")
 
@@ -284,6 +288,16 @@ def _series_name(text: str) -> WorkName | None:
     if not text or is_chapter_label(text) or is_fragment_name(text) or _SAVED_PAGE.search(text.strip()):
         return None
     return parse_work_name(text)
+
+
+def _without_trailing_number(wn: WorkName) -> WorkName:
+    """`動物人間 13` `黄泉のツガイ 1` `…(4)` のような名前は、末尾の番号を落とした系列名で数える。
+    巻 1 冊を収めたアーカイブ・フォルダの名前で、番号まで作品名にしない。"""
+    t = trailing_number(wn.title)
+    if t is None:
+        return wn
+    base = parse_work_name(t.base)
+    return base if base is not None and len(base.norm) >= 2 else wn
 
 
 def _series_key(wn: WorkName) -> str:
@@ -310,10 +324,28 @@ def _extends(short: str, long_key: str, long_title: str) -> bool:
     return any(normalize_title(" ".join(pieces[:i])) == short for i in range(1, len(pieces)))
 
 
+ROMAJI_PREFIX_SHARE = 0.8   # ローマ字の系列名どうしで、短い方のこの割合以上が共通の頭なら綴りの揺れ
+ROMAJI_SIMILARITY = 0.8     # または文字列の似ている度合い(SequenceMatcher.ratio)がこれ以上
+
+
+def _romaji_variant(a: str, b: str) -> bool:
+    """ローマ字の系列名どうしが同じ作品の綴りの揺れか(`sudachinomaojo` と `sudachinomaoujou`、
+    `asokohatarakumusubu` と `asokodehatarakumusubuchan`、`…hajimattachito` と `…hajimattacheat…`)。
+    1 つの入れ物の中だけで使う(`isekainonbirisozai…` と `isekainonbirinoka` のような別作品は頭の共通が短い)。"""
+    if _has_cjk(a) or _has_cjk(b) or min(len(a), len(b)) < 6:
+        return False
+    prefix = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        prefix += 1
+    return prefix >= ROMAJI_PREFIX_SHARE * min(len(a), len(b)) or SequenceMatcher(None, a, b).ratio() >= ROMAJI_SIMILARITY
+
+
 def _belongs_to(node_key: str, key: str, title: str = "", node_title: str = "") -> bool:
     """系列名 key が外側の名前 node_key の作品の巻か(同じ名前、片方がもう片方に `番号` `…編` `区切り + 副題` を
     足しただけの名前)。外側が長い方(`フシノカミ ~辺境から…~` の下の `フシノカミ`)も同じ規則で見る。"""
-    if key == node_key:
+    if key == node_key or _romaji_variant(node_key, key):
         return True
     return _extends(node_key, key, title) or (
         _has_cjk(key) == _has_cjk(node_key) and _extends(key, node_key, node_title))
@@ -322,7 +354,7 @@ def _belongs_to(node_key: str, key: str, title: str = "", node_title: str = "") 
 def _same_series(a: str, b: str, titles: dict[str, str]) -> bool:
     """同じ系列か。長い方が短い方に番号・`…編`・区切りの後ろの副題を足しただけのときだけ(`ゾンビ` と
     `ゾンビだらけの世界` は別)。外側の名前との突き合わせ(`_belongs_to`)と同じ規則。"""
-    if a == b:
+    if a == b or _romaji_variant(a, b):
         return True
     short, long_ = (a, b) if len(a) <= len(b) else (b, a)
     return _extends(short, long_, titles.get(long_, ""))
@@ -356,7 +388,7 @@ def _container_claims(st: _State) -> dict[int, OwnName]:
         for text in [r["title"], *reversed(parts[depth + 1:-1])]:
             wn = _series_name(text)
             if wn is not None:
-                return wn
+                return _without_trailing_number(wn)
         return None
 
     found: dict[int, list[tuple[int, WorkName, str]]] = defaultdict(list)
@@ -365,6 +397,7 @@ def _container_claims(st: _State) -> dict[int, OwnName]:
         nwn = _series_name(text)
         if nwn is None or nwn.norm in _CATEGORY_NAMES:
             continue
+        nwn = _without_trailing_number(nwn)
         node_jp, nkey = _has_cjk(nwn.title), _series_key(nwn)
         mine, free = [], []
         jp: dict[str, list] = defaultdict(list)
@@ -405,12 +438,27 @@ def _container_claims(st: _State) -> dict[int, OwnName]:
         for r in claimed:
             found[r["id"]].append((depth, title, text))
 
+    def romaji_names(vid: int, depth: int) -> tuple[str, ...]:
+        """入れ物(depth)とその中のフォルダ・アーカイブの、ローマ字の系列名(巻自身の名前は別に残る)。"""
+        names: list[str] = []
+        for text in parts_of[vid][depth:-1]:
+            wn = _series_name(text)
+            if wn is None or _has_cjk(wn.title) or wn.norm in _CATEGORY_NAMES:
+                continue
+            wn = _without_trailing_number(wn)
+            title = " ".join(w for w in re.split(r"[\s_]+", wn.title)
+                             if w.casefold() not in _ROMAJI_NOISE) or wn.title
+            if title not in names:
+                names.append(title)
+        return tuple(names)
+
     out: dict[int, OwnName] = {}
     for vid, cands in found.items():
         cands.sort(key=lambda x: x[0])  # 外側から
         jp_cands = [x for x in cands if _has_cjk(x[1].title)]
-        _, wn, text = jp_cands[-1] if jp_cands else cands[0]
-        out[vid] = OwnName(wn, 1, text, container=True)
+        depth, wn, text = jp_cands[-1] if jp_cands else cands[0]
+        out[vid] = OwnName(wn, 1, text, container=True,
+                           romaji=romaji_names(vid, depth) if _has_cjk(wn.title) else ())
     return out
 
 
@@ -505,6 +553,22 @@ def _settle_claims(c, st: _State, claims: dict[int, OwnName], moved: dict[int, s
             _set_field(c, wid, FIELD_TITLE, title, SOURCE_CONTAINER, False, CONF_CONTAINER_CLAIM, {"container": title})
         else:
             _set_field(c, wid, FIELD_TITLE, title, SOURCE_FILENAME, False, CONF_OWN_NAME, {"name": title})
+
+
+def _keep_container_romaji(c, st: _State, work_id: int, own: OwnName | None) -> None:
+    """日本語の作品名の入れ物の中のローマ字の名前(`Isekai_nonbiri_sozai_saishu_seikatsu_v01-03`)を、外側の名前の
+    別名(確信度 0.5)に残す。別の場所に同じローマ字の名前だけで届いた巻の作品を、作品名との一致で統合する根拠になる
+    (`_alias_evidence` の「外側の名前の別名と作品名の完全一致」)。巻の割り当てには使わない(`_add_index`)。"""
+    work = st.works.get(work_id)
+    if work is None or own is None:
+        return
+    for title in own.romaji:
+        norm = normalize_title(title)
+        if not norm or is_junk_name(norm) or norm in work.names:
+            continue
+        if _insert_alias(c, work_id, title, SOURCE_CONTAINER, manual=False, confidence=CONF_CONTAINER_ALIAS,
+                         evidence={"container": own.text, "name": title}):
+            work.names[norm] = _Name(title, SOURCE_CONTAINER, CONF_CONTAINER_ALIAS, False)
 
 
 def _keep_own_alias(c, st: _State, work_id: int, own: OwnName | None) -> None:
@@ -809,8 +873,9 @@ def _owns_trailing_number(r) -> bool:
 def _trailing_series(st: _State) -> dict[int, dict]:
     """同じ名前で末尾の番号だけが違う巻の組から、作品名と巻番号を読む(名前だけでは決めない)。
 
-    `作品名 01` `作品名 02` … と 2 つ以上の違う番号が並ぶ組だけを系列とみなす。1 巻だけの
-    `作品名 01` は作品名の一部として残す(`Kitchen 2` が作品名のこともあるため。`spinebox/naming.py`)。
+    `作品名 01` `作品名 02` … と 2 つ以上の違う番号が並ぶ組を系列とみなす。1 巻だけの
+    `作品名 01` は、作品名がローマ字なら作品名の一部として残す(`Kitchen 2` が作品名のこともあるため。
+    `spinebox/naming.py`)。日本語なら巻番号と読む。
     """
     groups: dict[str, list] = defaultdict(list)
     for r in st.vols:
@@ -825,7 +890,9 @@ def _trailing_series(st: _State) -> dict[int, dict]:
         groups[wn.norm].append((r["id"], t, wn))
     out: dict[int, dict] = {}
     for items in groups.values():
-        if len({t.number for _, t, _ in items}) < 2:
+        # 1 冊だけの `作品名 01` は、作品名が日本語のときは巻番号と読む(`かぐや様は告らせたい 3`)。
+        # 作品名の一部の番号(`Kitchen 2`)はローマ字の名前に多く、日本語の作品名は番号を空白で離さない(`3月のライオン`)
+        if len({t.number for _, t, _ in items}) < 2 and not all(_has_cjk(wn.title) for _, _, wn in items):
             continue
         for vid, t, wn in items:
             out[vid] = {"work_name": wn, "number": t.number, "evidence": t.evidence}
@@ -889,6 +956,7 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
                 _refresh_assignment(c, vid, cur, own)
             _fill_author(c, work, _authors_of(st, vid, own), SOURCE_FILENAME, own.confidence, own.evidence())
             _keep_own_alias(c, st, work.id, alias)
+            _keep_container_romaji(c, st, work.id, claim)
             continue
         target = st.find_work(norm)
         if want is not None and target is not None and _numbered_variant(st.works[target].title, norm):
@@ -912,6 +980,7 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
         _put_assignment(c, vid, target, SOURCE_FILENAME, False, own.confidence, own.evidence())
         st.assign[vid] = {"work_id": target, "manual": 0, "source": SOURCE_FILENAME}
         _keep_own_alias(c, st, target, alias)
+        _keep_container_romaji(c, st, target, claim)
         summary.volumes_assigned += 1
     _settle_claims(c, st, claims, moved, summary)
 
@@ -994,6 +1063,12 @@ def _duplicate_evidence(c, st: _State) -> dict[tuple[int, int], list[dict]]:
     return out
 
 
+def _vouched_alias(n: _Name) -> bool:
+    """作品名と完全一致したら同じ作品と言える別名か。外側の名前の別名(#214)と、1 作品だけを収めた入れ物が
+    作品を決めた巻の、巻自身の名前(`_keep_own_alias`。確信度 0.9。`Isekai nonbiri sozai saishu seikatsu`)。"""
+    return n.source == SOURCE_CONTAINER or (n.source == SOURCE_FILENAME and n.confidence >= AUTO_MERGE_MIN)
+
+
 def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
     """同じ名前(正規化)を持つ別々の作品の組。名前の確信度の低い方がその組の確信度。
 
@@ -1032,8 +1107,8 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
                 container_alias_matches_title = (
                     (x in active and y in active)
                     and (
-                        (nx.is_title and not ny.is_title and ny.source == SOURCE_CONTAINER)
-                        or (ny.is_title and not nx.is_title and nx.source == SOURCE_CONTAINER)
+                        (nx.is_title and not ny.is_title and _vouched_alias(ny))
+                        or (ny.is_title and not nx.is_title and _vouched_alias(nx))
                     )
                 )
                 if shared or container_alias_matches_title:
@@ -1046,6 +1121,41 @@ def _alias_evidence(st: _State) -> dict[tuple[int, int], dict]:
                                 "shared_item": list(shared[0]) if shared else None,
                                 "a": {"work": x, "name": nx.display, "source": nx.source, "is_title": nx.is_title},
                                 "b": {"work": y, "name": ny.display, "source": ny.source, "is_title": ny.is_title}}
+    for key, ev in _subtitle_evidence(st, active).items():
+        if key not in out or ev["confidence"] > out[key]["confidence"]:
+            out[key] = ev
+    return out
+
+
+SUBTITLE_MIN_LEN = 4  # 副題を落とした側の作品名(正規化)の最短。`ゾンビ` のような短い名前は別作品の頭になりやすい
+
+
+def _subtitle_evidence(st: _State, active: set[int]) -> dict[tuple[int, int], dict]:
+    """日本語の作品名が、もう一方の作品名に区切り(空白・`~`・`、` など)と副題・番号を足しただけの組
+    (`フシノカミ` と `フシノカミ ~辺境から始める文明再生記`、`村人転生` と `村人転生 最強のスローライフ`)。
+
+    1 巻ずつ別の名前で届いた同じ作品で、外側の名前が無い・違うために割れたもの。区切りが無い続き
+    (`異世界のんびり農家` と `異世界のんびり農家の日常`)は別作品なので拾わない(`_extends` と同じ規則)。
+    """
+    by_title: dict[str, list[int]] = defaultdict(list)
+    for w in st.works.values():
+        if w.id in active and _has_cjk(w.title):
+            by_title[normalize_title(w.title)].append(w.id)
+    out: dict[tuple[int, int], dict] = {}
+    for long_norm, longs in by_title.items():
+        long_id = longs[0]
+        title = st.works[long_id].title
+        pieces = _TITLE_BREAK.split(title)
+        for i in range(1, len(pieces)):
+            short_norm = normalize_title(" ".join(pieces[:i]))
+            if len(short_norm) < SUBTITLE_MIN_LEN or short_norm == long_norm or short_norm not in by_title:
+                continue
+            for short_id in by_title[short_norm]:
+                key = _pair(short_id, long_id)
+                out[key] = {"norm": short_norm, "confidence": AUTO_MERGE_MIN, "alias_confidence": AUTO_MERGE_MIN,
+                            "shared_item": None, "subtitle": True,
+                            "a": {"work": short_id, "name": st.works[short_id].title, "source": "title", "is_title": True},
+                            "b": {"work": long_id, "name": title, "source": "title", "is_title": True}}
     return out
 
 

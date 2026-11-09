@@ -55,7 +55,7 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:1947 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
 | `spinebox/organize/template.py:276 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
 | `spinebox/organize/cleanup.py:47 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定・修復は `spinebox/mojibake.py fix_mojibake` |
-| `spinebox/mojibake.py:59 fix_mojibake` | 複数パターンの文字コード誤読(CP437/CP850/CP1252/Latin-1 欧文誤読、CP932/EUC-JP 誤読)の安全な検出と修復。命名解析やスキャン時のタイトルにも適用 |
+| `spinebox/mojibake.py:59 fix_mojibake` | 複数パターンの文字コード誤読(CP437/CP850/CP1252/Latin-1 欧文誤読、CP932/EUC-JP 誤読、Shift_JIS を GBK で読んだもの、一部のバイトが置き換わった名前の語ごとの修復)の安全な検出と修復。命名解析やスキャン時のタイトルにも適用。直せない名前は `looks_garbled` で見分けて作品名にしない([[work-grouping]] #263) |
 | `frontend/src/organize/OrganizeFiles.tsx:843 OrganizeFilesSection` | 整理画面の中身。管理の整理タブ(`frontend/src/admin/panels.tsx:15 OrganizePanel()`。#207 まではデータ管理タブの下の節。[[data-jobs]])にこの部品と整理の履歴を置く。1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行の 3 段、入力欄ごとの項目の差し込み、Esc・フォーカストラップ・フォーカス返却つきのフォルダー選択、結果の見出しへのフォーカス(#149)。結果は要約・競合の行選択・実行内容・整理しない内容のリスト(#151。`ClashGroups` / `RangeWork` / `RangeRest`)。旧 `#/data/organize`・`#/organize` は整理タブを開く(巻の一覧のヘッダーの「ファイル名の整理」は外した) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
