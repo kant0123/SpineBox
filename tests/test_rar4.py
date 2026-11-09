@@ -71,7 +71,9 @@ def test_recovered_name_only_for_broken_unicode_names():
 
 def test_recovered_names_reads_headers(tmp_path):
     names = rar4.recovered_names(sample(tmp_path))
-    assert names == {COVER[1]: p("v13", "13_#カバー.jpg"), TABLE[1]: p("v13", "13_#表紙.jpg")}
+    assert names == {rar4.lookup_key(COVER[1]): p("v13", "13_#カバー.jpg"),
+                     rar4.lookup_key(TABLE[1]): p("v13", "13_#表紙.jpg")}
+    assert rar4.lookup_key(TABLE[1]) == "v13/13_#ò/Äå.jpg"  # Linux の 7-Zip は `/` で出す
 
 
 @pytest.mark.parametrize("data", [b"", b"Rar!\x1a\x07\x01\x00" + b"\x00" * 20, b"7z\xbc\xaf\x27\x1c" + b"\x00" * 20])
@@ -94,6 +96,16 @@ def test_read_names_truncated_or_encrypted_is_empty(tmp_path):
     vol.write_bytes(rar4.RAR4_MAGIC + _rar4_block(0x73, 0x0001, b"\x00" * 6) + data[7 + len(main):])  # 分割書庫
     assert rar4.read_names(vol) == []
     assert rar4.read_names(tmp_path / "missing.rar") == []
+
+
+def test_entries_from_records_matches_either_separator():
+    """Windows の 7-Zip はバックスラッシュ、Linux の 7-Zip は `/` で区切る。どちらでも直した名前になる。"""
+    from spinebox.archive import sevenzip as sz
+    recovered = {rar4.lookup_key(TABLE[1]): p("v13", "13_#表紙.jpg")}
+    for path in (TABLE[1], TABLE[1].replace(SEP, "/")):
+        (entry,), raw_paths, _ = sz._entries_from_records([{"Path": path, "Size": "1"}], recovered)
+        assert entry.name == p("v13", "13_#表紙.jpg") and entry.encoding == "cp932 (rar4)"
+        assert raw_paths[0] == path
 
 
 def test_listing_uses_recovered_names_and_extracts(tmp_path, sevenzip):

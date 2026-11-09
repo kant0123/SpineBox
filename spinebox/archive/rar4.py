@@ -147,11 +147,16 @@ def recovered_name(unicode_name: str, oem: bytes) -> str | None:
     return name
 
 
+def lookup_key(name: str) -> str:
+    """7-Zip の名前と突き合わせる形。7-Zip は Windows ではバックスラッシュ、Linux では `/` で区切って出すので `/` にそろえる。"""
+    return name.replace("\\", "/").rstrip("/")
+
+
 def recovered_names(path: Path) -> dict[str, str]:
-    """7-Zip が出す名前(= Unicode 名)→ 本来の名前。直すものが無ければ空。"""
+    """`lookup_key(7-Zip が出す名前 = Unicode 名)` → 本来の名前。直すものが無ければ空。"""
     out: dict[str, str] = {}
     for uni, oem in read_names(path):
         fixed = recovered_name(uni, oem)
         if fixed is not None:
-            out.setdefault(uni, fixed)
+            out.setdefault(lookup_key(uni), fixed)
     return out

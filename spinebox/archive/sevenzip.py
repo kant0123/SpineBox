@@ -152,7 +152,7 @@ def _entries_from_records(records, recovered: dict[str, str] | None = None):
         if crc is not None:
             crcs[index] = crc
         # 7z はフォルダ名の末尾に区切りを付けない。zip と同じく末尾 `/` でフォルダと分かる名前にそろえる
-        fixed = recovered.get(path.rstrip("/\\"))
+        fixed = recovered.get(rar4.lookup_key(path)) if recovered else None
         shown = fixed if fixed is not None else path
         name = shown + "/" if is_dir and not shown.endswith(("/", "\\")) else shown
         if fixed is not None:
