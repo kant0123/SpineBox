@@ -48,16 +48,6 @@ RETIRED_FIELDS = ("synopsis",)
 LIST_FIELDS = (FIELD_GENRES, FIELD_TAGS)
 KINDS = ("manga", "novel", "doujinshi")
 
-
-def kind_compatible(work_kind: str | None, candidate_kind: str | None) -> bool:
-    """作品の種別と公開 DB の候補の種別が食い違わないか。どちらかが未定なら食い違わない。
-
-    公開 DB は同人誌を漫画として返す(KIND_MANGA)ので、同人誌の作品は漫画の候補とも両立する。
-    """
-    if not work_kind or not candidate_kind or work_kind == candidate_kind:
-        return True
-    return work_kind == "doujinshi" and candidate_kind == "manga"
-
 # 巻単位の書誌(`volume_fields`)。手で直せるのは publisher / label / released / isbn
 VOLUME_EDITABLE_FIELDS = ("publisher", "label", "released", "isbn")
 VOLUME_FIELDS = (*VOLUME_EDITABLE_FIELDS, "volume_label", "subtitle")
@@ -2100,3 +2090,13 @@ def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = 
 def assignments(conn: sqlite3.Connection) -> dict[int, int]:
     """巻 id → 作品 id(一覧の巻に作品へのリンクを付けるため)。"""
     return {r["volume_id"]: r["work_id"] for r in conn.execute("SELECT volume_id, work_id FROM work_volumes")}
+
+
+def kind_compatible(work_kind: str | None, candidate_kind: str | None) -> bool:
+    """作品の種別と公開 DB の候補の種別が食い違わないか。どちらかが未定なら食い違わない。
+
+    公開 DB は同人誌を漫画として返す(KIND_MANGA)ので、同人誌の作品は漫画の候補とも両立する。
+    """
+    if not work_kind or not candidate_kind or work_kind == candidate_kind:
+        return True
+    return work_kind == "doujinshi" and candidate_kind == "manga"
