@@ -605,3 +605,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #292 fix: 確認の画面が遅い(確認待ちの作品ごとに全作品・全巻を引き直していた)
 - 更新: [[backend]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #291。`GET /api/review/links` は `works.get_works()` でまとめて組み立て、`GET /api/review/counts` は一覧を組み立てずに数える。本番 DB の写し(1109 作品・確認待ち 239)で links は約 60 秒 → 0.4 秒、counts は 0.6 秒 → 0.06 秒。
+
+## [2026-11-11] ingest | PR #303 (#298) データ管理タブが表紙の JPEG を読まずに「表紙なし」を数える
+- 更新: [[cover-thumbnails]], [[recurring-review-findings]]
+- 備考: #298。`GET /api/jobs/catalog` の「表紙なし」が作品ごとに `Thumbnails.has()` で表紙の JPEG を読み、`ExtractionCache` の LRU の順を書き換えていた。`are_built()`(`contains()`。巻の行は IN でまとめて引く)に変え、`build()` の作成済み確認も `is_built()` にした。`has()` は削除。`are_built()` はルートの確認(is_dir + scandir)もルートごとに 1 回にした。カタログは見えない・オフラインの巻を数えない(統計は数える)挙動を維持するため `include_unavailable=False`。カタログの `works.list_works()` の全組み立ては #294 の範囲。
