@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import page_bytes, snapshot, write_zip, zip_bytes
+from images import jpeg, make_page
 from metadata_fakes import FakeClock
 from spinebox import db
 from spinebox.app import create_app
@@ -291,6 +292,32 @@ def test_catalog_lists_every_job_with_counts(app_env):
     for k in ("daily_metadata", "metadata", "metadata_thumbs"):
         assert kinds[k]["available"] is False and "取得元" in kinds[k]["unavailable_reason"]
     assert kinds["metadata"]["options"] == [{"name": "all", "label": "全作品を取り直す"}]
+
+
+def test_catalog_counts_missing_covers_without_reading_them(app_env, monkeypatch):
+    """カタログの「表紙なし」は表紙の JPEG を読まず、最後に使った順も変えない(#298)。
+    読むと容量上限の LRU の順が変わり、表紙が押し出される。"""
+    client, _, library = app_env
+    write_zip(library / "Cover A v01.cbz", [("001.jpg", jpeg(make_page(1)))])
+    write_zip(library / "Cover B v01.cbz", [("001.jpg", jpeg(make_page(2)))])
+    client.post("/api/scan")
+    works_ = client.get("/api/works").json()["works"]
+    cover_ids = [w["cover_volume_id"] for w in works_ if w["cover_volume_id"] is not None]
+    cover_works = [w for w in works_ if (w["title"] or "").startswith("Cover")]
+    assert len(cover_works) == 2
+    # 一覧の並び(作品名順)と逆に作って、読むと LRU の順が変わることを検出できるようにする
+    for w in reversed(cover_works):
+        assert client.get(f"/api/volumes/{w['cover_volume_id']}/thumbnail").status_code == 200
+    store = client.app.state.thumbs.store
+    before = store.keys()
+    assert len(before) == 2
+    reads = []
+    original = store.read
+    monkeypatch.setattr(store, "read", lambda key: reads.append(key) or original(key))
+    kinds = {k["kind"]: k for k in client.get("/api/jobs/catalog").json()["kinds"]}
+    assert kinds["thumbnails"]["count"] == len(cover_ids) - 2
+    assert reads == []  # 表紙のファイルを読んでいない
+    assert store.keys() == before  # 最後に使った順も変えていない
 
 
 @pytest.mark.parametrize("kind", ["daily_scan", "maintenance", "full_sync", "scan", "thumbnails", "analyze",

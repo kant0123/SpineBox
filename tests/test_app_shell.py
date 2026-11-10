@@ -312,6 +312,44 @@ def test_stats_counts_a_vanished_cover_file_as_no_cover(env):
     assert r.status_code == 200 and r.json()["works"]["no_cover"] == 3
 
 
+def test_are_built_checks_each_root_once(env, monkeypatch):
+    """全作品の表紙を見るとき、ルートが読めるかの確認(is_dir + scandir)は巻ごとではなくルートごとに 1 回(#298)。"""
+    settings, _, _, _ = env
+    conn = db.connect(settings.db_path)
+    try:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM volumes")]
+        from spinebox import thumbs as thumbs_module  # noqa: PLC0415
+        from spinebox.app import ExtractionCache, Library, Thumbnails  # noqa: PLC0415
+        calls = []
+        original = thumbs_module.root_is_accessible
+        monkeypatch.setattr(thumbs_module, "root_is_accessible",
+                            lambda root: calls.append(root) or original(root))
+        lib = Library(settings, ExtractionCache(settings.cache_dir, 10**9))
+        thumbs = Thumbnails(lib, ExtractionCache(settings.thumbs_dir, 10**9))
+        assert thumbs.are_built(conn, ids) == {vid: False for vid in ids}
+        assert len(calls) == 2 and len(set(calls)) == 2  # 2 つのルートに 1 回ずつ
+    finally:
+        conn.close()
+
+
+def test_catalog_does_not_count_covers_of_an_unreachable_root(env):
+    """カタログの「表紙なし」は、ルートが見えない作品を数えない(表紙を作るジョブも飛ばす)。
+    統計は「表紙を出せない」ので数える(今までどおり。#298)。"""
+    _, client, a, _ = env
+
+    def catalog_no_cover():
+        kinds = {k["kind"]: k for k in client.get("/api/jobs/catalog").json()["kinds"]}
+        return kinds["thumbnails"]["count"]
+
+    assert catalog_no_cover() == 3
+    a.rename(a.with_name("unplugged"))
+    try:
+        assert catalog_no_cover() == 2
+        assert client.get("/api/stats").json()["works"]["no_cover"] == 3
+    finally:
+        a.with_name("unplugged").rename(a)
+
+
 def test_stats_does_not_query_a_volume_row_per_work(env):
     """統計は全作品の表紙の有無を見るので、巻の行を作品の数だけ SELECT しない(agy レビュー。N+1 の禁止)。
     1000 作品分の表紙の巻を渡しても、巻の行は 500 件ずつの IN でまとめて引く。"""

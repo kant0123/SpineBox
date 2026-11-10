@@ -136,6 +136,21 @@ def test_explicit_build_extracts_and_makes_missing_covers(env, lib):
     assert snapshot(lib) == before  # 蔵書は 1 バイトも変わらない
 
 
+def test_build_does_not_read_existing_covers(env, monkeypatch):
+    """「表紙のみ補完」は作成済みの表紙を読んで確かめない(#298。読むと LRU の順が変わる)。"""
+    client, _ = env
+    assert client.post("/api/thumbnails/build?wait=true").status_code == 200
+    store = client.app.state.thumbs.store
+    built = set(store.keys())
+    assert len(built) == 2
+    reads = []
+    original = store.read
+    monkeypatch.setattr(store, "read", lambda key: reads.append(key) or original(key))
+    summary = client.post("/api/thumbnails/build?wait=true").json()["summary"]
+    assert summary["existing"] == 2
+    assert not set(reads) & built  # 作成済みの表紙は読んでいない
+
+
 def test_build_is_refused_during_scan(env):
     client, _ = env
     client.app.state.scan_lock.acquire()
