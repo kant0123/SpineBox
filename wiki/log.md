@@ -606,6 +606,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[backend]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #291。`GET /api/review/links` は `works.get_works()` でまとめて組み立て、`GET /api/review/counts` は一覧を組み立てずに数える。本番 DB の写し(1109 作品・確認待ち 239)で links は約 60 秒 → 0.4 秒、counts は 0.6 秒 → 0.06 秒。
 
-## [2026-11-11] ingest | #295 再スキャンが遅い(画像フォルダの巻を毎回 1 枚ずつ stat していた)
+## [2026-11-11] ingest | PR #301 (#295) 再スキャンが遅い(画像フォルダの巻を毎回 1 枚ずつ stat していた)
 - 更新: [[backend]], [[novel-reader]], [[organize]], [[data-jobs]], [[volume-split]], [[recurring-review-findings]](scanner.py の行番号のみ)
 - 備考: #295。`os.walk` を `DirEntry` を持ち回す `scandir` の再帰 `_walk()` に替え、画像のサイズを列挙で得た情報から取る。画像フォルダの巻は合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が同じなら書かない。拡張子の判定は名前 1 つにつき 1 回。ジャンクション・`onerror`・missing 化・断片フォルダの判定は変えていない。
