@@ -605,3 +605,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #292 fix: 確認の画面が遅い(確認待ちの作品ごとに全作品・全巻を引き直していた)
 - 更新: [[backend]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #291。`GET /api/review/links` は `works.get_works()` でまとめて組み立て、`GET /api/review/counts` は一覧を組み立てずに数える。本番 DB の写し(1109 作品・確認待ち 239)で links は約 60 秒 → 0.4 秒、counts は 0.6 秒 → 0.06 秒。
+
+## [2026-11-11] ingest | PR #293 fix: 作品の編集・候補の選択が遅い(名寄せの名前解析を毎回やり直していた)
+- 更新: [[work-grouping]], [[backend]]
+- 備考: #293。`naming.py` の名前解析の純関数(戻り値は frozen / tuple)を `lru_cache` で包み、同期の間に同じ名前を何万回も解析しないようにした。`PATCH /api/works/{id}` は `title` を変えたときだけ全作品の名寄せを回し、他の項目は `linking.apply_work` だけで済ませる。`naming.py` の行番号参照を直した。

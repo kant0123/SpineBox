@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の名寄せ(フェーズ 3)。巻の名前から作品を派生させ、1 作品だけを収めた外側のフォルダ・アーカイブの名前があればそれ(日本語を優先)で巻をまとめ、末尾の番号は同じ名前の組がそろっているときだけ巻番号として読む。別名・著者・統合の根拠を項目ごとの出所・手動フラグ・確信度つきで持つ。自動統合の基準、手動の決定を守る規則、欠け巻の数え方、却下・分けた組を戻さない理由
-updated: 2026-11-10
+updated: 2026-11-11
 related: [overview, backend, frontend, duplicate-detection, volume-split, organize, metadata-linking, work-search, inbox, cover-thumbnails, bookmarks, follow]
 ---
 
@@ -19,7 +19,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
   項目・別名・割り当ての全部が持つので、公開 DB の取得([[metadata-linking]])・手動編集の保護・全文検索はこの列に乗せる
-- **名前の読み方。** `spinebox/naming.py:373 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
+- **名前の読み方。** `spinebox/naming.py:384 parse_work_name()` が巻番号・配布元・タグ・拡張子を落とした作品名と著者の候補を返し、
   同人誌の先頭の `(C70)` `(例大祭12)` は開催イベントで、直後に `[サークル (作者)]` が続く丸括弧は著者にしない(`parts` では `tag`。#275)。著者欄は `サークル (作者)` のまま持つ。
   著者は作品を作るときにだけ読むので、この修正より前に作られた作品の著者(`C70` など)は読み直されない(公開 DB の連携が確信度 0.9 以上なら置き換わる。検索側はサークル名つきの検索が 0 件なら作品名だけで引き直すので、連携自体は止まらない)。
   `spinebox/naming.py:262 normalize_title()` が突き合わせ用に正規化する(大文字小文字・全角半角・かな種の差を畳む)。
@@ -237,4 +237,6 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 - [[organize]] — CBZ 化で作品の割り当てを引き継ぐ
 - [[work-search]] — 作品名・別名・著者・巻の名前の全文検索。正規化は `normalize_title` を共用
 
+## 名前解析のキャッシュ(#293)
 
+`naming.py` の解析関数(`parse_work_name` など)は `lru_cache` で結果を持つ。戻り値は frozen dataclass / tuple で、呼び出し側は書き換えない前提。新しい解析関数を足すときも、戻り値を可変にしない。
