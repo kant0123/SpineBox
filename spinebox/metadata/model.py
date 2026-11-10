@@ -34,6 +34,9 @@ class SearchQuery:
     kind: str | None = None   # KIND_MANGA / KIND_NOVEL
     isbn: str | None = None   # 国立国会図書館サーチだけが使う(巻の書誌を直接引く)
     limit: int | None = None  # 国立国会図書館サーチだけが使う、取る件数の上限(巻が多い作品で全巻を揃えたいとき)。省略は設定の candidate_limit
+    # 全作品をまとめて取るときの軽い検索(#288)。要求の数が多い取得元(nHentai・E-Hentai)が、採否にほとんど
+    # 効かない要求(0 件のときの引き直し検索・首位以外の詳細)を省く。作品 1 つを調べるときは False のまま
+    quick: bool = False
 
     def __post_init__(self) -> None:
         if not self.title or not self.title.strip():

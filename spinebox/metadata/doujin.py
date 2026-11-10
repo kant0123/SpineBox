@@ -112,11 +112,13 @@ def search_keywords(title: str) -> str:
     return " ".join(w for w in words if w)
 
 
-def search_queries(title: str, author: str | None) -> list[str]:
+def search_queries(title: str, author: str | None, *, fallback: bool = True) -> list[str]:
     """検索語の候補を、絞れるもの(作品名 + サークル名)から順に返す。サークル名が無ければ作品名だけ。
 
     作品名が短い・ありふれていると関係のない本が大量に当たるので、題名に含まれるサークル名を足して絞り、
     0 件ならサークル名なしで引き直す(呼び出し側が順に試す)。著者欄は `サークル (作者)` の書式。
+    fallback が偽なら引き直しの検索語を返さない(全作品をまとめて取るとき。実データで引き直しから
+    連携できたのは 6〜7% で、検索の 3 割を占めていた。#288)。
     """
     keywords = search_keywords(title)
     if not keywords:
@@ -124,7 +126,9 @@ def search_queries(title: str, author: str | None) -> list[str]:
     credit = (author or "").strip()
     parts = _CREDIT_PARTS.match(unicodedata.normalize("NFKC", credit)) if credit else None
     extra = search_keywords(parts.group(1) if parts and parts.group(1).strip() else credit)
-    return [f"{keywords} {extra}", keywords] if extra else [keywords]
+    if not extra:
+        return [keywords]
+    return [f"{keywords} {extra}", keywords] if fallback else [f"{keywords} {extra}"]
 
 
 def category_kind(category: str | None) -> str | None:

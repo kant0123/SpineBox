@@ -50,7 +50,7 @@ class EHentaiSource(MetadataSource):
 
     def _search(self, query: SearchQuery, run: _Run):
         refs: list[tuple[int, str]] = []
-        for keywords in search_queries(query.title, query.author):
+        for keywords in search_queries(query.title, query.author, fallback=not query.quick):
             search_req = SourceRequest(NAME, "GET", SEARCH_URL, params=(("f_search", keywords),), label="search")
             try:
                 refs = run.fetch(search_req, parse_search_page)

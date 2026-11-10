@@ -47,6 +47,17 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | `spinebox/db.py:40 MIGRATIONS` の 5 番 | `metadata_responses` |
 | `scripts/metadata_probe.py` | 実通信の確認と、記録(`tests/fixtures/metadata/`)の採取。手動実行のみ、CI では動かさない。既定で無効の取得元は `--source` で名指しする |
 
+## 軽い検索(`SearchQuery.quick`。#288)
+
+全作品をまとめて取る結線([[metadata-linking]])が指定する。要求の多い nHentai・E-Hentai が、採否にほとんど効かない要求を省く(ほかの取得元は見ない)。
+根拠は本番 856 作品の取得記録(nHentai: 検索 1,215・詳細 1,051、E-Hentai: 検索 1,280・詳細 504)。
+
+- **0 件のときの引き直し検索をしない**(`spinebox/metadata/doujin.py:115 search_queries()` の `fallback=False`)。引き直しは nHentai 359 回で連携 23 件、E-Hentai 424 回で連携 30 件(6〜7%)で、検索の約 3 割を占めていた
+- **nHentai の詳細は、検索結果の項目で見た首位の 1 件だけ**。その確からしさが `QUICK_DETAIL_MIN`(0.5。結線が候補を見せる下限と同じ)未満なら引かない。
+  詳細で増えるのは分類とタグだけで、題名・サークルは検索結果にある。連携 356 件中 318 件は 1 件目の詳細が採用され、該当なしに終わった 103 作品でも詳細を約 270 件引いていた
+- 省いた要求は保存済みの応答の鍵に影響しない(要求ごとの鍵)。軽い検索と通常の検索は同じ保存済み応答を使い回す
+- **軽い検索で見つからなかった作品は、作品ページの「情報を取得」(通常の検索)で引き直せば見つかることがある。** 軽い検索は取りこぼしを許す代わりに速い
+
 ## 失敗の表現
 
 `SearchOutcome.failure` は `Failure(kind, message, status, retry_after)`。`kind`: `timeout` `connect` `http_status` `rate_limited` `invalid_response` `too_large` `disabled` `internal`。

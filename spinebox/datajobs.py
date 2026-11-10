@@ -40,6 +40,9 @@ class Kind:
 
 
 # 画面に並べる順。group は画面の見出しで、先頭の「いつもの更新」だけを開いて見せ、残りは畳む(#207)
+# 公開 DB をまとめて取るとき、何作品ごとに名寄せを挟むか(#288)
+SYNC_EVERY = 25
+
 GROUP_DAILY = "いつもの更新"
 GROUP_OTHER = "個別の処理"
 KINDS: list[Kind] = [
@@ -193,7 +196,10 @@ class DataJobs:
         return linking.works_needing_fetch(c, self.settings.metadata, self.enabled_sources)
 
     def _metadata(self, ctx: JobContext, c, *, all_works: bool = False, ids: list[int] | None = None) -> dict:
+        """ids を渡すと(作品ページの「情報を取得」)、その作品を全取得元で調べる。渡さなければ全作品をまとめて取る
+        経路で、連携したところで残りの取得元を引かない軽い取得にする(`linking.fetch_work(quick=True)`。#288)。"""
         ctx.step("公開データベースの取得")
+        quick = ids is None
         if ids is None:
             ids = ([w["id"] for w in works.list_works(c)["works"]] if all_works else self.work_ids_needing_fetch(c))
         if not ids:
@@ -205,7 +211,7 @@ class DataJobs:
             for i, work_id in enumerate(ids):
                 ctx.progress(i, len(ids), work_title(c, work_id))
                 try:
-                    result = linking.fetch_work(c, service, work_id)
+                    result = linking.fetch_work(c, service, work_id, quick=quick)
                 except works.WorkNotFound:
                     if len(ids) == 1:
                         raise
@@ -213,7 +219,11 @@ class DataJobs:
                 fetched += 1
                 for status in result.sources.values():
                     counts[status] = counts.get(status, 0) + 1
-                self.sync_works(c, apply_links=False)
+                # 名寄せは全作品を見直すので(本番 1,102 作品で 1 回 5 秒)、作品ごとには走らせない。
+                # 途中の名寄せは、取得で入った別名で統合された作品を残りの取得から外すため(外れなくても、
+                # その作品を余分に取得するだけで、最後の名寄せが連携を統合後の作品へ移す)
+                if (i + 1) % SYNC_EVERY == 0 and i + 1 < len(ids):
+                    self.sync_works(c, apply_links=False)
             ctx.progress(len(ids), len(ids))
         finally:
             self.sync_works(c)  # 中止・失敗でも、取得できた分の連携を統合後の作品へ反映する
@@ -287,7 +297,7 @@ class DataJobs:
             if not ids:
                 return None
             ctx.progress(current=work_title(c, ids[0]))
-            linking.fetch_work(c, self.metadata_service(c), ids[0])
+            linking.fetch_work(c, self.metadata_service(c), ids[0], quick=True)
             self.sync_works(c)
             return {"works": 1}
         finally:

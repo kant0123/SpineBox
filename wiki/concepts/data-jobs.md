@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: データ管理とジョブ(#83)。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期を 1 本ずつ動かす待ち行列と履歴(jobs 表)。依頼は待ち行列、その場で結果を返す API は他が動いていれば 409、中止は区切りで止める。1 本ずつにした理由と却下した代替案
-updated: 2026-11-09
+updated: 2026-11-10
 related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize, follow]
 ---
 
@@ -27,14 +27,14 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | 種類(`kind`) | 画面の名前 | 中身 |
 | --- | --- | --- |
 | `daily_scan` / `scan` | 新しいファイルを取り込む / (一覧に出さない) | スキャン(変わっていないソースは開かない)+ 名寄せ。**今の SpineBox では同じ処理**(普段のスキャンがそのまま「新しいファイルの検出」になる)。#83 では Peach の項目に合わせて両方並べたが、#207 で違いを探して迷う元だったので `scan` は一覧から外した(`Kind.listed=False`。API の依頼・履歴の名前・一覧の「スキャン」は `scan` のまま) |
-| `daily_metadata` | 足りない作品情報を補う | `linking.works_needing_fetch()` の作品だけ取得 |
+| `daily_metadata` | 足りない作品情報を補う | `linking.works_needing_fetch()` の作品だけ取得。まとめて取る経路(これと `full_sync` / `metadata` / `metadata_thumbs` / `background_metadata`)は、連携したところで残りの取得元を引かない([[metadata-linking]] の「全作品をまとめて取るとき」) |
 | `maintenance` | 全ファイルを確かめ直す | `Scanner(recheck=True)`: サイズ・mtime が同じアーカイブ・EPUB の目次も読み直す。元ファイルが変わっていなければ中の巻の解析と開いて数えたページ数は残す(`_replace_volumes(keep_analysis=True)`)。見えないものは missing / offline の印だけ |
 | `full_sync` | ライブラリ全体を同期 | メンテナンス → 中の巻を調べる → 名寄せ → 補完待ちの取得(取得元が有効なら)→ 表紙。`plan(5)`(取得元が無効なら 4) |
 | `metadata_thumbs` / `metadata` / `thumbnails` | 情報と表紙 / 作品情報のみ(`all` で全作品)/ 表紙のみ | 取得と `Thumbnails.build()`。`metadata_thumbs` は `plan(2)` |
 | `analyze` | 中の巻を調べる | `Library.pending_analysis()` を一度だけ引いて全部 `analyze()`。読めない巻(7-Zip が無い・壊れた)は理由を記録して次へ |
 | `follow_check` | フォロー中の作品の続刊を調べる | `follows.check_many()`([[follow]])。NDL が無効なら動かせない(画面で押せない・API は 409)。`params.work_ids` で作品を絞れる(作品ごとの確認)。取得元の失敗は作品ごとに `follows.failure` へ残して続ける |
 | `duplicates` / `works_refresh` / `inbox_sync` | 重複 / 名寄せ / 受け入れフォルダの同期 | 既存の処理そのまま。受け入れは検出と整理案まで |
-| `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る |
+| `work_metadata` | (作品ページの「情報を取得」) | 一覧には出さないが履歴に残る。この作品だけは全取得元を引く |
 | `background_analysis` / `background_metadata` / `background_follow` | (裏の定期処理) | 1 回に 1 件。続けて動いた分は履歴の 1 行にまとめる(`runs`) |
 
 **整理処理(CBZ 化・改名・受け入れの承認)の計画(プレビュー)はジョブの自動スケジューリングに入れない**(画面は #84 の整理として管理の「整理」タブ `#/admin/organize` に置く。#207 まではデータ管理タブの下の節だった)。蔵書を動かすので、今どおりプレビューを見てから明示的に実行する(GOAL.md「作らないもの」: ユーザーの操作なしに蔵書を動かさない)。ただし、ユーザーが実行・元に戻す・承認ボタンを押した際は、各画面のボタンと同じく `JobRunner.run_now` (`origin = "button"`) を通じて即時実行され、進捗通知とともにタスクセンターの実行中・履歴(`organize_execute`, `organize_undo`, `inbox_approve`)に記録される(#155)。
@@ -67,6 +67,9 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 - **スキャンは中止で止めたルートの「見つからないソース」を missing にしない**(最後まで見ていないので、見えなかっただけの可能性がある。
   読めないサブフォルダの配下を missing にしないのと同じ理由。[[backend]])。止めるまでに見つけた巻は名寄せまで済ませる
 - 公開 DB の取得は中止・失敗でも最後に連携の反映(`_sync_works`)を走らせ、取得できた分を統合後の作品へ入れる
+- **取得の途中の名寄せは `SYNC_EVERY`(25)作品ごと**(`spinebox/datajobs.py:198 _metadata()`。#288)。名寄せは全作品を見直すので、本番(1,102 作品)で 1 回 5.3 秒かかり、
+  作品ごとに走らせていたときは取得時間の 17% を占めた。途中の名寄せの役目は、取得で入った別名で統合された作品を残りの取得から外すことだけで、
+  外れなくてもその作品を余分に取得するだけ(最後の名寄せが連携を統合後の作品へ移す)
 - DB の書き込みは 1 件ごとのトランザクションなので、途中で止めても壊れない(テスト `tests/test_jobs.py`)。蔵書は読むだけ
 - 裏の定期処理は中止できない(1 件ずつで短い。止めたければ設定で無効にする)
 

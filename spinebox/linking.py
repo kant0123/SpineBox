@@ -36,13 +36,16 @@ from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 log = logging.getLogger(__name__)
 
 # 検索の順。国立国会図書館サーチで種別・著者を決めてから、作品単位の取得元の候補を絞る
-SEARCH_ORDER = ("ndl", "mediaarts", "bangumi", "nhentai", "ehentai")
+# (漫画か小説かが未決の間はほかの取得元を保留にする `kind_unresolved()` が、この順を前提にしている)。
+# 残りは応答が速く要求の少ない順。全作品をまとめて取るときは、連携したところで止める(`fetch_work(quick=True)`)
+SEARCH_ORDER = ("ndl", "mediaarts", "bangumi", "ehentai", "nhentai")
 
 AUTO_LINK_MIN = 0.75      # 自動で連携する最小の確からしさ
 LINK_MARGIN = 0.15        # 2 位との差がこれ以上あるときだけ自動で連携する(拮抗は確認待ち)
 SHOW_MIN = 0.5            # これ未満の候補は利用者に見せない
 SHOW_LIMIT = 5
 REPLACE_MIN = 0.9         # 名前由来の値を公開 DB の値で置き換える最小の確信度(利用者が選んだ連携は無条件)
+QUICK_STOP_MIN = 0.9      # 全作品をまとめて取るとき、連携の確信度がこれ以上なら残りの取得元を引かない(#288)
 VOLUME_FIT_WEIGHT = 0.15  # 国立国会図書館サーチの候補の組を、手元の巻番号が覆う割合で補正する重み
 NDL_LIMIT = 100           # 巻が多い作品でも巻を揃えるため、国立国会図書館サーチではこの件数まで取る
 ALIAS_LIMIT = 6
@@ -249,7 +252,7 @@ def _context(c: sqlite3.Connection, work_id: int) -> _Context:
                     fields.get(works.FIELD_KIND) or None, sorted(numbers))
 
 
-def _query(source: str, ctx: _Context) -> SearchQuery:
+def _query(source: str, ctx: _Context, quick: bool = False) -> SearchQuery:
     title = ctx.title
     if (title and not re.search(r"\s", title) and is_romaji_word(title)
             and re.match(r"[A-Z][a-z]", title)):
@@ -257,7 +260,8 @@ def _query(source: str, ctx: _Context) -> SearchQuery:
         split = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", split)
         if split != title:
             title = split
-    return SearchQuery(title, author=ctx.author, kind=ctx.kind, limit=NDL_LIMIT if source == "ndl" else None)
+    return SearchQuery(title, author=ctx.author, kind=ctx.kind, limit=NDL_LIMIT if source == "ndl" else None,
+                       quick=quick)
 
 
 # --- 取得 ------------------------------------------------------------------------------------
@@ -347,16 +351,32 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
         return status
 
 
+def _settles(row) -> bool:
+    """この連携があれば、全作品をまとめて取るときに残りの取得元を引かないか。
+
+    連携が決まっていて(自動でも利用者が選んだものでも)、確信度が QUICK_STOP_MIN 以上で、直近の取得が
+    失敗していないとき。確認待ちは確信度が高くても数えない(同点・僅差の候補が並んでいる)。
+    """
+    return (row is not None and row["status"] == "linked" and not row["failure"]
+            and (row["confidence"] or 0) >= QUICK_STOP_MIN)
+
+
 def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
-               sources: tuple[str, ...] | None = None) -> FetchResult:
+               sources: tuple[str, ...] | None = None, *, quick: bool = False) -> FetchResult:
     """作品 1 つについて、有効な取得元を順に検索し、結果を work_links に記録して項目に反映する。
 
     取得元の失敗(タイムアウト・5xx・接続不可・429)や想定外の例外は、取得元ごとに記録して次へ進む
     (例外は呼び出し元へ出さない)。利用者が「該当なし」にした取得元には要求を出さない。
+
+    quick(全作品をまとめて取るとき。#288): 取得元が `_settles()` の連携になったら、残りの取得元を引かず
+    `skipped` で返す(行は作らない・変えない。`works_needing_fetch()` が飛ばした取得元を未取得に数えない)。
+    取得元には軽い検索を頼む。ただし連携・確認待ちの行がある取得元は、その候補を見つけたときと同じ検索で引く
+    (軽い検索が省く引き直しで見つけた連携・候補を、取り直しで失わないため)。
     """
     if works.root_of(conn, work_id) != work_id:
         raise works.WorkNotFound(work_id)
     result = FetchResult(work_id)
+    settled = False
     for name in SEARCH_ORDER:
         if name not in service.sources or (sources is not None and name not in sources):
             continue
@@ -364,9 +384,13 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
         if row is not None and row["manual"] and row["status"] == "none":
             result.sources[name] = "none"
             continue
+        if settled:
+            result.sources[name] = "skipped"
+            continue
         try:
             ctx = _context(conn, work_id)
-            outcome = service.search(_query(name, ctx), [name])[0]
+            light = quick and (row is None or row["status"] not in ("linked", "pending"))
+            outcome = service.search(_query(name, ctx, light), [name])[0]
             if not outcome.ok:
                 _record_failure(conn, work_id, name, _failure_json(outcome, db.now()))
                 result.sources[name] = "failed"
@@ -374,6 +398,7 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
             result.sources[name] = _store(conn, work_id, name, outcome, candidates_for(name, outcome, ctx), ctx.kind,
                                           hold=name != "ndl" and kind_unresolved(conn, work_id), numbers=ctx.numbers)
             apply_work(conn, work_id)
+            settled = quick and _settles(_link_row(conn, work_id, name))
         except Exception as e:  # noqa: BLE001 (取得の不具合でスキャン・閲覧・ほかの取得元を止めない)
             log.exception("公開 DB の取得に失敗しました: source=%s", name)
             try:
@@ -695,6 +720,10 @@ def works_needing_fetch(conn: sqlite3.Connection, settings: MetadataSettings, en
 
     必要: 有効な取得元に行が無い / 失敗してから retry_hours 以上 / 取得してから recheck_days 以上。
     利用者が「該当なし」にした取得元は、取り直さない。見えている巻を持つ作品だけ。
+
+    `_settles()` の連携がある作品は、検索の順で最初のその連携だけで決める(取得してから recheck_days 以上)。
+    まとめて取る `fetch_work(quick=True)` はそこで止まり、後ろの取得元は行が無い・古いままになるので、
+    それを「未取得」「期限切れ」に数えると毎回対象に戻る(#288)。
     """
     now = now or datetime.now(timezone.utc)
     sources = [s for s in SEARCH_ORDER if s in enabled]
@@ -710,6 +739,11 @@ def works_needing_fetch(conn: sqlite3.Connection, settings: MetadataSettings, en
     for w in conn.execute("SELECT id FROM works WHERE merged_into IS NULL ORDER BY id"):
         wid = w["id"]
         if wid not in live:
+            continue
+        first = next((links[wid][s] for s in sources if _settles(links[wid].get(s))), None)
+        if first is not None and first["attempted_at"] is not None:
+            if now - datetime.fromisoformat(first["attempted_at"]) >= timedelta(days=settings.recheck_days):
+                due.append((1, first["attempted_at"], wid))
             continue
         oldest = None
         never = False

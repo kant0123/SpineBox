@@ -517,6 +517,31 @@ def test_metadata_jobs_with_a_fake_network(make_settings, tmp_path):
     assert client.get("/api/works/metadata").json()["state"]["job_id"] == history[0]["id"]
 
 
+def test_metadata_job_does_not_regroup_works_after_every_work(make_settings, tmp_path, monkeypatch):
+    """名寄せ(works.sync)は全作品を見直す。取得した作品の数だけ走らせない(#288)。"""
+    from metadata_fakes import FakeNetwork
+    from test_linking import cbz
+    from spinebox import datajobs, works
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    for i in range(7):
+        cbz(lib, f"作品{'あいうえおかき'[i]}の話 第01巻.cbz")
+    meta = MetadataSettings(max_retries=0, sources=("mediaarts",))
+    settings = dataclasses.replace(make_settings(lib), metadata=meta)
+    clock = FakeClock()
+    fetcher = HttpFetcher(meta, transport=FakeNetwork().transport, clock=clock, sleep=clock.sleep)  # どの要求も 404
+    client = TestClient(create_app(settings, frontend_dist=None, metadata_fetcher=fetcher))
+    client.post("/api/scan")
+    assert len(client.get("/api/works").json()["works"]) == 7
+    monkeypatch.setattr(datajobs, "SYNC_EVERY", 3)
+    calls = []
+    real = works.sync
+    monkeypatch.setattr(works, "sync", lambda conn: (calls.append(1), real(conn))[1])
+    job = wait_job(client, client.post("/api/jobs", json={"kind": "metadata"}).json()["id"])
+    assert job["status"] == "succeeded" and job["summary"]["fetched"] == 7
+    assert len(calls) == 3  # 3 作品目・6 作品目の後と、最後の 1 回
+
+
 # --- フォローの続刊の確認(#87)をジョブに載せたもの ---------------------------------------------
 
 
