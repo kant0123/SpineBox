@@ -598,6 +598,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[follow]], [[overview]]
 - 備考: #278。AniList はレート制限が障害対応で 30 回/分に下がっており、保存の永続化も利用条件で禁じていた。MangaUpdates はレート制限が文書化されていなかった。置き換え先はどちらもキー不要。メディア芸術データベースは旧ドメイン(`mediaarts-db.bunka.go.jp`)の証明書が切れていたため新ドメイン(`mediaarts-db.artmuseums.go.jp`)を使い、Neptune の全文検索(`SERVICE neptune-fts:search`)で `rdfs:label` を絞ると 1 クエリ 0.2〜0.3 秒(全件 `CONTAINS` は 3.6 秒)。シリーズの実体(`class:MangaBookSeries`)が無い作品は巻(`class:MangaBook`)の `volumeNumber` の最大値を全巻数とする。読み(カタカナ)を `MetadataItem.reading` に入れ、NDL と同じ経路でローマ字ファイル名の蔵書にも一致させる(ローマ字ファイル名から日本語名へ置き換わる既存のテストが、AniList の `title.romaji` の代わりにこの経路に依存する形になった)。Bangumi は巻ごとに別項目で返るため巻次の接尾辞で作品名にまとめる。タグ(簡体字中国語)は `spinebox.ja_terms.is_japanese()` が仮名の無い中国語を日本語と誤認するため読み取らず、構造化されたジャンル・タグの語彙(少年向け等)を持つ取得元が無くなった(ehentai / nhentai を有効にしたときだけ埋まる)。中国語の誤認は #284 に切り出した。
 
-## [2026-11-10] ingest | PR #PRNUM (#288) 公開 DB の全作品取得を速くする(連携したら残りの取得元を飛ばす・名寄せをまとめる・同人誌の取得元の要求を減らす)
+## [2026-11-10] ingest | PR #290 (#288) 公開 DB の全作品取得を速くする(連携したら残りの取得元を飛ばす・名寄せをまとめる・同人誌の取得元の要求を減らす)
 - 更新: [[metadata-linking]], [[metadata-clients]], [[metadata-sources]], [[data-jobs]]
 - 備考: 本番(1,102 作品)の全体同期で公開 DB の取得が 1 作品 約 30 秒(nHentai 11.5・NDL 8.3・E-Hentai 5.4・取得のたびの名寄せ 5.3 秒)。まとめて取る経路だけ、確信度 0.9 以上の連携で残りを飛ばし、名寄せを 25 作品ごとにし、0 件のときの引き直し検索と nHentai の首位以外の詳細を省いた。作品ページの取得は今までどおり。nHentai・E-Hentai の関門を要求の種類で分ける案は制限の数え方が未確認のため入れていない
