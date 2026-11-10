@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
-updated: 2026-11-09
+updated: 2026-11-11
 related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks, data-jobs, manga-reader]
 ---
 
@@ -38,7 +38,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
   単位の名前(フォルダ名・アーカイブ名)はスキャンの切り出しと同じく `fix_mojibake()` で文字化けを直す(#257。前は直さず、化けた名前が子の巻・作品名になっていた)
 - **単位が 2 つ以上のときだけ分解する。** 1 つなら親がそのまま 1 巻(子は作らない。前に作った子は missing にする)
 - 子の巻の場所は (親と同じ `source_id`・`container_path`) + `inner_path`(親の内側アーカイブから単位のあるアーカイブまでの名前の JSON 配列)+
-  `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:357 _open_unit()`
+  `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:361 _open_unit()`
 - **親は「まとめ」として残す。** 開けば今までどおり全ページを読める。一覧(`LISTED_VOLUMES_WHERE`)は見えている子を持つ親を出さず、子を親の位置に並べる
 - 解析する契機: (1) 内側アーカイブの巻を開いたとき(`GET /api/volumes/{id}`。取り出しは済んでいるので追加の展開は無い)、
   (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析(ほかのジョブが動いていないときだけ。[[data-jobs]])、(4) データ管理の「中の巻を調べる」(未解析を全部)
