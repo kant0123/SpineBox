@@ -2045,9 +2045,7 @@ def _link_json(row) -> dict:
     }
 
 
-def links_json(conn: sqlite3.Connection, work_id: int, enabled: tuple[str, ...] = ()) -> list[dict]:
-    """作品の公開 DB との連携(取得元ごと)。取得元が有効なのにまだ取得していなければ status = None で出す。"""
-    rows = {r["source"]: r for r in conn.execute("SELECT * FROM work_links WHERE work_id = ?", (work_id,))}
+def _links_of(rows: dict, enabled: tuple[str, ...] = ()) -> list[dict]:
     names = [n for n in SOURCE_LABELS if n in enabled or n in rows] + [n for n in rows if n not in SOURCE_LABELS]
     out = []
     for name in names:
@@ -2062,42 +2060,98 @@ def links_json(conn: sqlite3.Connection, work_id: int, enabled: tuple[str, ...] 
     return out
 
 
-def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = ()) -> dict:
-    works = _work_rows(conn)
-    if work_id not in works:
-        raise WorkNotFound(work_id)
-    w = works[work_id]
-    all_vols = _listed_volumes(conn, with_meta=True)
-    vols = all_vols.get(work_id, [])
-    marked = {r[0] for r in conn.execute("SELECT volume_id FROM bookmarks WHERE volume_id IS NOT NULL")}
-    for v in vols:
-        v["bookmarked"] = v["id"] in marked
-    slots, unnumbered = build_slots(vols)
+def links_json(conn: sqlite3.Connection, work_id: int, enabled: tuple[str, ...] = ()) -> list[dict]:
+    """作品の公開 DB との連携(取得元ごと)。取得元が有効なのにまだ取得していなければ status = None で出す。"""
+    rows = {r["source"]: r for r in conn.execute("SELECT * FROM work_links WHERE work_id = ?", (work_id,))}
+    return _links_of(rows, enabled)
+
+
+def link_pending_work_ids(conn: sqlite3.Connection) -> list[int]:
+    """公開 DB の候補が確認待ちの作品(一覧に見えている巻を持つ生きた作品だけ)。並びは作品の一覧(作品名順)と同じ。
+
+    作品の一覧(list_works)を組み立てずに引く。確認の画面の件数は画面を切り替えるたびに呼ばれるので(#291)。
+    """
+    rows = conn.execute(
+        "SELECT w.id, (SELECT value FROM work_fields f WHERE f.work_id = w.id AND f.field = ?) AS title "
+        "FROM works w WHERE w.merged_into IS NULL "
+        "AND EXISTS (SELECT 1 FROM work_links l WHERE l.work_id = w.id AND l.status = 'pending') "
+        "AND w.id IN (SELECT wv.work_id " + LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v.id"
+        + LISTED_VOLUMES_WHERE + ")", (FIELD_TITLE,)).fetchall()
+    return [r["id"] for r in sorted(rows, key=lambda r: (natural_key(r["title"] or ""), r["id"]))]
+
+
+def open_proposal_count(conn: sqlite3.Connection) -> int:
+    """確認待ちの統合の提案の数。list_proposals(conn, "open") の長さと同じ(両方の作品が生きていて、一覧に見えている巻を持つ組)。"""
+    listed = {r[0] for r in conn.execute(
+        "SELECT DISTINCT wv.work_id " + LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v.id"
+        + LISTED_VOLUMES_WHERE)}
+    alive = {r[0] for r in conn.execute("SELECT id FROM works WHERE merged_into IS NULL")} & listed
     roots = _roots(conn)
-    proposals, merges = [], []
+    n = 0
+    for r in conn.execute("SELECT work_a, work_b FROM work_merge_proposals WHERE status = 'open'"):
+        a, b = roots.get(r["work_a"], r["work_a"]), roots.get(r["work_b"], r["work_b"])
+        if a != b and a in alive and b in alive:
+            n += 1
+    return n
+
+
+def get_works(conn: sqlite3.Connection, work_ids: list[int], sources: tuple[str, ...] = ()) -> list[dict]:
+    """作品の詳細を、渡した順にまとめて返す。全作品の項目・全巻・提案・連携は作品の数によらず 1 回ずつ引く
+    (確認の画面は確認待ちの作品を全部並べるので、1 作品ずつ引くと作品の数 × 蔵書全体になる。#291)。"""
+    works = _work_rows(conn)
+    for wid in work_ids:
+        if wid not in works:
+            raise WorkNotFound(wid)
+    wanted = set(work_ids)
+    all_vols = _listed_volumes(conn, with_meta=True)
+    marked = {r[0] for r in conn.execute("SELECT volume_id FROM bookmarks WHERE volume_id IS NOT NULL")}
+    roots = _roots(conn)
+    proposals: dict[int, list[dict]] = defaultdict(list)
+    merges: dict[int, list[dict]] = defaultdict(list)
     for r in conn.execute("SELECT * FROM work_merge_proposals WHERE status IN ('open', 'auto', 'approved') "
                           "ORDER BY confidence DESC, id"):
         a, b = roots.get(r["work_a"], r["work_a"]), roots.get(r["work_b"], r["work_b"])
         if r["status"] == "open":
-            if a != b and work_id in (a, b):
+            if a != b and (a in wanted or b in wanted):
                 item = _proposal_json(r, works, all_vols, roots)
                 if item:
-                    proposals.append(item)
-        elif a == b == work_id:
-            merges.append(_merge_json(conn, r, roots))
-    links = links_json(conn, work_id, sources)
-    return {
-        **_summary(w, vols, len(proposals), sum(1 for x in links if x["status"] == "pending")),
-        "title_confidence": w["title_confidence"], "title_evidence": w["title_evidence"],
-        "author_confidence": w["author_confidence"],
-        "fields": w["fields"], "links": links,
-        "aliases": w["aliases"],
-        "slots": slots, "unnumbered": unnumbered,
-        "numbers": number_summary(vols),
-        "proposals": proposals, "merges": merges, "merged": bool(merges),
-        "bookmarked": conn.execute("SELECT 1 FROM bookmarks WHERE work_id = ?", (work_id,)).fetchone() is not None,
-        "read_later": conn.execute("SELECT 1 FROM read_later WHERE work_id = ?", (work_id,)).fetchone() is not None,
-    }
+                    for wid in {a, b} & wanted:
+                        proposals[wid].append(item)
+        elif a == b and a in wanted:
+            merges[a].append(_merge_json(conn, r, roots))
+    link_rows: dict[int, dict] = defaultdict(dict)
+    ids = sorted(wanted)
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        for r in conn.execute(f"SELECT * FROM work_links WHERE work_id IN ({','.join('?' * len(chunk))})", chunk):
+            link_rows[r["work_id"]][r["source"]] = r
+    work_marks = {r[0] for r in conn.execute("SELECT work_id FROM bookmarks WHERE work_id IS NOT NULL")}
+    later = {r[0] for r in conn.execute("SELECT work_id FROM read_later")}
+    out = []
+    for wid in work_ids:
+        w = works[wid]
+        vols = all_vols.get(wid, [])
+        for v in vols:
+            v["bookmarked"] = v["id"] in marked
+        slots, unnumbered = build_slots(vols)
+        links = _links_of(link_rows.get(wid, {}), sources)
+        out.append({
+            **_summary(w, vols, len(proposals[wid]), sum(1 for x in links if x["status"] == "pending")),
+            "title_confidence": w["title_confidence"], "title_evidence": w["title_evidence"],
+            "author_confidence": w["author_confidence"],
+            "fields": w["fields"], "links": links,
+            "aliases": w["aliases"],
+            "slots": slots, "unnumbered": unnumbered,
+            "numbers": number_summary(vols),
+            "proposals": proposals[wid], "merges": merges[wid], "merged": bool(merges[wid]),
+            "bookmarked": wid in work_marks,
+            "read_later": wid in later,
+        })
+    return out
+
+
+def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = ()) -> dict:
+    return get_works(conn, [work_id], sources)[0]
 
 
 def assignments(conn: sqlite3.Connection) -> dict[int, int]:

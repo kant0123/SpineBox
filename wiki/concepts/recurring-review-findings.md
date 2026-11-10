@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-10
+updated: 2026-11-11
 related: [overview]
 ---
 
@@ -275,6 +275,7 @@ push 前に確かめること:
 - PR #94 — `spinebox/stats.py collect()` — 全作品の表紙の有無を見るのに、作品ごとに `is_built()`(巻の行を 1 件 SELECT)を呼んでいた。`get_volume_rows()` で 500 件ずつ IN でまとめて引く `Thumbnails.are_built()` にし、文の数が巻の数に比例しないことを `set_trace_callback` で確かめるテストを足した
 - PR #135 — `spinebox/organize/organizer.py _plan_range_cbz()` — `include_cbz` の計画で 1 巻 = 1 CBZ の巻ごとに `_classify_renames([r], ...)` を呼び、その中の `sources`・画像フォルダの SELECT が巻数ぶん出た。1 回の `_classify_renames` にまとめ、`folder_sources` / `source_paths` のキャッシュを渡すようにした。計画の SELECT 数が巻数に比例しないことを `set_trace_callback` で確かめるテストを足した
 - PR #249 — `spinebox/works.py _settle_claims()` — 作品名を揃える段で、一覧の巻ごとに `work_volumes` を 1 件 SELECT していた(1 万巻で 2 万文)。割り当てを一度に引く辞書にし、文の数が巻の数に比例しないテストを足した(agy レビューの WARNING)
+- #291 — `spinebox/app.py review_links()` — 確認待ちの作品ごとに `works.get_work()` を呼び、その中で全作品の項目と全巻を引き直していた(本番の 239 作品で 60 秒以上。レビューではなく利用者の報告で発覚)。`get_works()` でまとめて組み立て、文の数が作品の数に比例しないテストを足した。**一覧を返す API から「1 件の詳細を返す関数」を件数ぶん呼ばない**(その関数が全体を引いていないか中を見る)
 
 ### 共有すべき状態を、呼び出しごとに作るインスタンスに持たせている
 
