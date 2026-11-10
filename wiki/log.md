@@ -605,3 +605,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #292 fix: 確認の画面が遅い(確認待ちの作品ごとに全作品・全巻を引き直していた)
 - 更新: [[backend]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #291。`GET /api/review/links` は `works.get_works()` でまとめて組み立て、`GET /api/review/counts` は一覧を組み立てずに数える。本番 DB の写し(1109 作品・確認待ち 239)で links は約 60 秒 → 0.4 秒、counts は 0.6 秒 → 0.06 秒。
+
+## [2026-11-11] ingest | fix: 読み取りの API が毎回書き込みロックを取っていた(#296)
+- 更新: [[backend]]
+- 備考: 内側アーカイブの巻のページ要求ごとの `scan_issues` の DELETE+INSERT と、作品ページ・フォロー一覧ごとの `resolve_merged()` の `BEGIN IMMEDIATE` を、変化があるときだけにした。別接続が書き込み中のページ要求が待たない再現(ロック待ちそのもの)は実測していない。
