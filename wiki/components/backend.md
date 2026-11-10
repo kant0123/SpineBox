@@ -26,10 +26,10 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/app.py recover_interrupted_organize()` | 起動時(lifespan の先頭)に、実行・元に戻すの途中で止まった整理を戻す(#36。[[organize]])。失敗しても起動は止めない |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:539 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:378 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
-| `spinebox/scanner.py:350 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:746 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:601 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:416 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:388 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:808 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:143 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻) |
 | `spinebox/library.py:427 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:153 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
@@ -133,10 +133,14 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   内側アーカイブのページ数を出したくなっても、スキャンで開いてはいけない(GOAL.md フェーズ 1 の完了条件)
 - **開き直さない判定はサイズ・mtime・`SCAN_VERSION`。** 巻の切り出し方を変えたら `spinebox/scanner.py:58 SCAN_VERSION` を上げる。
   上げ忘れると既存 DB の巻は古い切り出し方のまま残る
+- **画像フォルダの巻も、合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が前回と同じなら DB に書かない**(`recheck` のときは読み直す。#295)。
+  走査は `os.walk` ではなく `spinebox/scanner.py:248 _walk()`(`os.scandir` の再帰)で、画像のサイズは列挙で得た `DirEntry.stat()` を使う。
+  Windows では追加のシステムコールが要らない。`os.walk` + 1 枚ずつ `stat` だった頃は、変化の無い蔵書(本番 6,211 巻)の再スキャンが
+  冷えた状態で 98 秒(27 万回の `stat`)、温まった状態でも 14.7 秒かかっていた。走査の順・ジャンクション(`is_symlink` でなければ辿る)・`onerror` の意味は `os.walk` と同じ
 - **巻の切り出しでは、非コンテンツディレクトリ(`__MACOSX`・`META-INF`・`.DS_Store`)の中の画像・内側アーカイブを巻にしない。**
   表紙画像だけを含むフォルダ(すべての画像が表紙)も巻にしない。拡張子に関わらず `META-INF/container.xml` を含むアーカイブは
   EPUB 小説として扱う(`.zip` に包まれた EPUB)。いずれも `spinebox/scanner.py:196 archive_volume_specs()` /
-  `spinebox/scanner.py:539 _scan_archive()` / `spinebox/scanner.py:502 _scan_folder()` で行う
+  `spinebox/scanner.py:601 _scan_archive()` / `spinebox/scanner.py:545 _scan_folder()` で行う
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)

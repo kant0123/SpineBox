@@ -609,3 +609,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | fix: 読み取りの API が毎回書き込みロックを取っていた(#296)
 - 更新: [[backend]]
 - 備考: 内側アーカイブの巻のページ要求ごとの `scan_issues` の DELETE+INSERT と、作品ページ・フォロー一覧ごとの `resolve_merged()` の `BEGIN IMMEDIATE` を、変化があるときだけにした。別接続が書き込み中のページ要求が待たない再現(ロック待ちそのもの)は実測していない。
+
+## [2026-11-11] ingest | PR #301 (#295) 再スキャンが遅い(画像フォルダの巻を毎回 1 枚ずつ stat していた)
+- 更新: [[backend]], [[novel-reader]], [[organize]], [[data-jobs]], [[volume-split]], [[recurring-review-findings]](scanner.py の行番号のみ)
+- 備考: #295。`os.walk` を `DirEntry` を持ち回す `scandir` の再帰 `_walk()` に替え、画像のサイズを列挙で得た情報から取る。画像フォルダの巻は合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が同じなら書かない。拡張子の判定は名前 1 つにつき 1 回。ジャンクション・`onerror`・missing 化・断片フォルダの判定は変えていない。
