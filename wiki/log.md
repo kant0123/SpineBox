@@ -579,6 +579,14 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[work-grouping]]
 - 備考: 題名の書式 `(イベント) [サークル (作者)] 題名 (原作)` で照合する(`spinebox/metadata/doujin.py`)。どちらも既定では無効。nHentai は `/api/v2/openapi.json` を読む(Swagger ページは JS 描画)、E-Hentai は検索 API が無いので検索ページのリンク + `gdata`。実蔵書 882 件の名前で書式の読み取り率を確かめた。名前解析は先頭のイベント括弧を著者にしないよう修正。
 
+## [2026-11-10] ingest | PR #283 (#130) Node 26 で frontend のテストが localStorage 未定義で失敗する問題を修正
+- 更新: [[frontend]]
+- 備考: Node 26 のグローバル localStorage が --localstorage-file 未指定で undefined を返し、jsdom の window.localStorage のアクセサを覆い隠すため、Vitest の test.setupFiles に frontend/src/test/setup.ts を追加し、jsdom が window._localStorage に用意した実装を globalThis.localStorage と window.localStorage の両方へ割り当てた。Node 22 (CI) と Node 26 (開発機) の両方で npm test (203 passed, 11 skipped) と npm run build が通ることを確認した。
+
+## [2026-11-10] ingest | PR #281 (#280) 画面に同人誌を追加し、メニューに同人誌を追加
+- 更新: [[work-search]], [[frontend]]
+- 備考: `doujinshi`。公開 DB は同人誌を含めて返すため `kind_compatible()` で種別の互換を判定する (アットホーム)。
+
 ## [2026-11-10] ingest | PR #282 (#279) 作品一覧に戻ると表紙が出ない不具合の修正
 - 更新: [[frontend]]
 - 備考: #279。`WorkCover()` が `useEffect` で読み込み状態を戻していたため、キャッシュ済みの表紙は onLoad の後に `loading` へ戻り `opacity: 0` のままだった。描画中のリセットに変更し、回帰テスト `WorkCover.test.tsx` を追加。
@@ -586,3 +594,6 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-10] ingest | 本番の古い作品名(★・【)と文字化けの別名を同期で直す
 - 更新: [[work-grouping]]
 - 備考: 本番 job 3 で、複数の巻を持つ作品に `★` `【` の残った作品名が 8 件残っていた。`_refresh_title()` が 1 巻の作品しか直さなかったため、今の読みで変わる作品名だけ同じ系列の巻で直すようにした。統合の根拠になった文字化けの自動別名は同期の冒頭で外す。
+## [2026-11-10] ingest | PR #285 (#278) メタデータ取得元を AniList/MangaUpdates からメディア芸術データベース・Bangumi に置き換える
+- 更新: [[metadata-sources]], [[metadata-clients]], [[metadata-linking]], [[follow]], [[overview]]
+- 備考: #278。AniList はレート制限が障害対応で 30 回/分に下がっており、保存の永続化も利用条件で禁じていた。MangaUpdates はレート制限が文書化されていなかった。置き換え先はどちらもキー不要。メディア芸術データベースは旧ドメイン(`mediaarts-db.bunka.go.jp`)の証明書が切れていたため新ドメイン(`mediaarts-db.artmuseums.go.jp`)を使い、Neptune の全文検索(`SERVICE neptune-fts:search`)で `rdfs:label` を絞ると 1 クエリ 0.2〜0.3 秒(全件 `CONTAINS` は 3.6 秒)。シリーズの実体(`class:MangaBookSeries`)が無い作品は巻(`class:MangaBook`)の `volumeNumber` の最大値を全巻数とする。読み(カタカナ)を `MetadataItem.reading` に入れ、NDL と同じ経路でローマ字ファイル名の蔵書にも一致させる(ローマ字ファイル名から日本語名へ置き換わる既存のテストが、AniList の `title.romaji` の代わりにこの経路に依存する形になった)。Bangumi は巻ごとに別項目で返るため巻次の接尾辞で作品名にまとめる。タグ(簡体字中国語)は `spinebox.ja_terms.is_japanese()` が仮名の無い中国語を日本語と誤認するため読み取らず、構造化されたジャンル・タグの語彙(少年向け等)を持つ取得元が無くなった(ehentai / nhentai を有効にしたときだけ埋まる)。中国語の誤認は #284 に切り出した。

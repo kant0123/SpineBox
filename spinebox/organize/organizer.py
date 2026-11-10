@@ -52,7 +52,7 @@ from .template import NameTemplate, NameValues, RangeTemplate, TemplateError, Va
 log = logging.getLogger(__name__)
 
 NAMINGS = ("title", "template")
-KIND_LABELS = {"manga": "漫画", "novel": "小説"}
+KIND_LABELS = {"manga": "漫画", "novel": "小説", "doujinshi": "同人誌"}
 # 改名・移動だけの整理の種類。rename = 作品単位(name_template)、range = 範囲指定(整理画面のテンプレート・ファイル名の整理)
 RENAME_KINDS = ("rename", "range")
 # 改名・移動の計画の各巻の扱い。cbz = CBZ 化する(範囲指定の整理で include_cbz=True のとき)

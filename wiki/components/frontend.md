@@ -19,7 +19,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 | パス | 役割 |
 | --- | --- |
-| `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:73 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
+| `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:74 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
 | `frontend/src/admin/Admin.tsx:31 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:18 Preferences()`。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
@@ -65,7 +65,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:143 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:145 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。
@@ -101,6 +101,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   (型とメッセージ)をそのままエラー表示に出す。固定の文言だけだと、サーバー機で何が起きたか画面から分からなかった
 - **作品カードに別名は出さない(#103)。** 一覧のカードは作品名・著者・出版社・巻数・バッジだけを出し、
   別名は作品ページで見る(利用者の要望)。API(`GET /api/works` の `aliases`)・作品ページの別名の編集・統合の提案の表示はそのまま。
+- **サイドバーの種別ナビは漫画・小説・同人誌(#280。`#/manga` `#/novels` `#/doujinshi` が種別での作品一覧)。** 作品ページの種別選択・統計にも同人誌がある。
 - **作品カードに種別・ジャンルと「重複」「統合済み」は出さない(#129)。** ホーム・漫画・小説のカードは作品名・著者・出版社に絞り、
   種別(漫画/小説)とジャンルはカードから外す(漫画・小説はナビで分かれ、ジャンルは作品ページで見る)。重複と統合済みは
   一覧の判断には使わず、カードが情報過多になるためバッジから外す(欠け・オフライン・読書状態は残す。統合の提案・候補の確認待ちは #210 で通知ドットに替えた)。
@@ -228,6 +229,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - 漫画のリーダーのテストはライブラリをモックする(本物は jsdom の `matchMedia` が無くて組めない。[[manga-reader]])
 - CSS で `.page` のような汎用のクラス名に紙面用のスタイル(`pointer-events: none` など)を付けない(#99)。画面共通のコンテナ枠 `<div className="page admin">` と衝突して、
   画面全体のタブやリンクがクリックできなくなった。jsdom は CSS のポインターイベントを解釈しないため単体テストでは見逃されやすい
+- Node 26 ではグローバルの `localStorage` が `--localstorage-file` 未指定で `undefined` を返し、jsdom の `window.localStorage` のアクセサを覆い隠す。`frontend/src/test/setup.ts` で `window._localStorage` を両方に割り当てて回避している(#130)。CI は Node 22 だが、開発機の Node 26 でも `npm test` が通る
 
 ## CI への組み込み
 
@@ -255,14 +257,14 @@ npm run build      # frontend/dist
   全体の同期を依頼 → 「実行中: ライブラリ全体を同期(段 2/5: 中の巻を調べる 1 / 3)」の 1 行、タスクセンターの履歴、`#/organize` が整理タブ(整理と履歴)を開くこと、横スクロール 0 を確認した。`npm test` 185 件・`npm run build` が通った
 - #207 で確認の画面(`#/review`)を足し、統合の提案・重複の候補を移した。モック API の 1280px(ライト・ダーク)と 375px で、公開DBの候補の「これを採用」→ 確認済みに畳まれる・サイドバーの件数が 3 → 2、
   旧 `#/admin/proposals`・`#/duplicates` の振り替え、375px の引き出しの件数、横スクロール 0 を確認した。375px のタブの横ずれ(上の `.sr-only`)はこの確認で見つけた。`npm test` 182 件・`npm run build` が通った
-- #210 で作品カードの確認待ちを通知ドットにし、作品ページ・タイトル一覧に確認のタブへの案内を足した。モック API の 1280px(ダーク)と 375px(ライト・ダーク)で、ドットの位置と読み上げ名、案内のリンクから `#/review/proposals` へ移ること、横スクロール 0 を確認した。`npm test` 190 件・`npm run build` が通った(Node 26 の手元では組み込みの `localStorage` が jsdom と衝突するので `NODE_OPTIONS=--no-experimental-webstorage` を付けた。CI は Node 22)
+- #210 で作品カードの確認待ちを通知ドットにし、作品ページ・タイトル一覧に確認のタブへの案内を足した。モック API の 1280px(ダーク)と 375px(ライト・ダーク)で、ドットの位置と読み上げ名、案内のリンクから `#/review/proposals` へ移ること、横スクロール 0 を確認した。`npm test` 190 件・`npm run build` が通った(当時は Node 26 の手元で組み込みの `localStorage` が jsdom と衝突したため `NODE_OPTIONS=--no-experimental-webstorage` を付けていた。#130 で `src/test/setup.ts` により解消済み。CI は Node 22)
 - #161 で作品カードの高さを中身に合わせた。`.work-grid` の `grid-auto-rows: 1fr` は、グリッドの高さが
   不定のとき全行を一覧で一番高いカードの高さに揃えるため、バッジの少ない作品ほど内側の下に空白が残っていた
   (1280px で 29 / 59px、375px で 59px)。タイトルの位置を揃える目的(#132)は表紙の枠(表紙なしを含む)で
   足りていたので、`align-items: start` にしてカードは中身の高さで終わるようにした。モック API をヘッドレス
   Chrome(CDP)で 375 / 767 / 768 / 1280px、ライト・ダークで開き、内側下部の余白が枠の 1px だけになること、
   同じ行のタイトル位置がそろうこと、横スクロールが無いことを確認した。`npm test` 181 件(ローカルの Node 26 は
-  #130 の回避策 `NODE_OPTIONS=--localstorage-file=...` が必要)と `npm run build` が通った。
+  #130 の `src/test/setup.ts` により Node 26 でも `npm test` が通る)と `npm run build` が通った。
 
 - #151 で範囲指定の整理のプレビュー結果を作り直した。カード/ツリーから 1 行 1 件のリストにし、要約 → 競合 → 実行ボタン → 実行する内容 →
   整理しない内容の順にした。競合は整理後の名前ごとに見出しを付け、既定でファイル数の多い方の行にチェックを入れる。行を選ぶと

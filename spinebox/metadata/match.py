@@ -93,7 +93,7 @@ def _author_key(name: str) -> str:
 
 
 def author_score(query_author: str, authors: tuple[str, ...]) -> tuple[float | None, str]:
-    """著者の一致度。表記体系が違って比べられないとき(日本語の著者名と MangaUpdates のローマ字名)は None。"""
+    """著者の一致度。表記体系が違って比べられないとき(日本語の著者名とローマ字名)は None。"""
     qk = _author_key(query_author)
     if not qk:
         return None, "author:empty_query"

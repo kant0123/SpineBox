@@ -1,6 +1,6 @@
 """公開 DB クライアントが共有する型。
 
-取得元(国立国会図書館サーチ・AniList・MangaUpdates)の応答は、ここの `MetadataItem` に正規化して返す。
+取得元(国立国会図書館サーチ・メディア芸術データベース・Bangumi)の応答は、ここの `MetadataItem` に正規化して返す。
 DB の作品・巻への結線、取得元どうしの優先順位マージ、手動編集の保護はこのパッケージの外(後続)で行う。
 ここは「候補の列」と「候補ごとの確からしさ(数値と根拠)」を返すところまで。
 """
@@ -12,7 +12,7 @@ KIND_MANGA = "manga"
 KIND_NOVEL = "novel"
 
 SCOPE_VOLUME = "volume"  # 1 冊(巻)の書誌。国立国会図書館サーチ
-SCOPE_WORK = "work"      # 作品全体の情報。AniList / MangaUpdates
+SCOPE_WORK = "work"      # 作品全体の情報。メディア芸術データベース / Bangumi
 
 # 取得失敗の種別(`Failure.kind`)
 FAIL_TIMEOUT = "timeout"
@@ -46,7 +46,7 @@ class MetadataItem:
 
     scope が volume のものは巻ごとの書誌(volume・isbn・released が巻の値)、
     work のものは作品全体の情報(total_volumes・タグ・別名)。あらすじは読み取らない(#82 で廃止)。
-    genres / tags は取得元の言語のまま(AniList・MangaUpdates は英語)。
+    genres / tags は取得元の言語のまま(英語の対応表を持つのは ehentai・nhentai。メディア芸術データベース・Bangumi は持たない)。
     """
     source: str
     source_id: str
@@ -124,7 +124,7 @@ class SearchOutcome:
     """1 つの取得元に対する検索の結果。例外は投げず、失敗は failure に入れて返す。
 
     failure が None なら検索は成功で、candidates が 0 件でも「見つからなかった」という成功。
-    候補は確からしさの高い順。巻ごとの補足(MangaUpdates の詳細)が取れなかった候補は
+    候補は確からしさの高い順。巻ごとの補足(Bangumi の詳細)が取れなかった候補は
     notes に理由を残し、検索結果の項目だけで返す。
     """
     source: str

@@ -423,7 +423,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
     }
     if (method === "GET" && path === "/api/settings") {
       return json(200, { untranslated_terms: "hide", cache_limit_bytes: 2 * 1024 ** 3, memory_cache_limit_bytes: 256 * 1024 ** 2,
-        metadata_sources: ["ndl", "anilist", "mangaupdates"], metadata_background: false });
+        metadata_sources: ["ndl", "mediaarts", "bangumi"], metadata_background: false });
     }
     if (method === "GET" && path === "/api/stats") {
       if (options.statsFailure) return json(500, { detail: "失敗" });
@@ -434,7 +434,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       return json(200, {
         root_id: root ? Number(root) : null,
         works: {
-          total: ws.length, manga: ws.filter((w) => w.kind === "manga").length, novel: ws.filter((w) => w.kind === "novel").length,
+          total: ws.length, manga: ws.filter((w) => w.kind === "manga").length, novel: ws.filter((w) => w.kind === "novel").length, doujinshi: ws.filter((w) => w.kind === "doujinshi").length,
           kind_unknown: ws.filter((w) => !w.kind).length,
           finished: ws.filter((w) => w.reading_state === "finished").length, reading: ws.filter((w) => w.reading_state === "reading").length,
           unread: ws.filter((w) => w.reading_state === "unread").length, link_pending: ws.filter((w) => w.link_pending > 0).length,

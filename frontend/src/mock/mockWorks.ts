@@ -25,9 +25,9 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v 
 
 const splitValues = (v: string | null | undefined) => (v ?? "").split(/[、,，;；]/).map((x) => x.trim()).filter(Boolean);
 
-const SOURCES: SourceName[] = ["ndl", "anilist", "mangaupdates"];
+const SOURCES: SourceName[] = ["ndl", "mediaarts", "bangumi"];
 const LABELS: Record<SourceName, string> = {
-  ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates", nhentai: "nHentai", ehentai: "E-Hentai",
+  ndl: "国立国会図書館サーチ", mediaarts: "メディア芸術データベース", bangumi: "Bangumi", nhentai: "nHentai", ehentai: "E-Hentai",
 };
 
 const cand = (source_id: string, over: Partial<LinkCandidate>): LinkCandidate => ({
@@ -40,9 +40,9 @@ const emptyLink = (source: SourceName): WorkLink => ({
   failure: null, linked: null, decision: null, margin: null, hold: null, responses: [], candidates: [],
 });
 
-const ANILIST = cand("anilist:101", {
+const MEDIAARTS = cand("mediaarts:101", {
   title: "サンプル漫画", romaji: "Sample Manga", publisher: null, released: null, total_volumes: 4, genres: ["アクション", "コメディ"],
-  url: "https://anilist.co/manga/101", score: 0.95,
+  url: "https://mediaarts-db.artmuseums.go.jp/id/101", score: 0.95,
 });
 
 type Res = { status: number; body: unknown };
@@ -77,11 +77,11 @@ export function createMockWorks(
           ],
         },
         {
-          ...emptyLink("anilist"), status: "pending", hold: "kind_unresolved", attempted_at: "2026-11-02T01:00:01+00:00",
-          candidates: [ANILIST],
+          ...emptyLink("mediaarts"), status: "pending", hold: "kind_unresolved", attempted_at: "2026-11-02T01:00:01+00:00",
+          candidates: [MEDIAARTS],
         },
         {
-          ...emptyLink("mangaupdates"), attempted_at: "2026-11-02T01:00:02+00:00",
+          ...emptyLink("bangumi"), attempted_at: "2026-11-02T01:00:02+00:00",
           failure: { kind: "timeout", message: "timeout", status: null, retry_after: null, at: "2026-11-02T01:00:02+00:00" },
         },
       ],
@@ -607,7 +607,7 @@ export function createMockWorks(
       }
       for (const name of ["kind", "publisher", "genres", "tags"]) {
         if (!(name in body)) continue;
-        if (name === "kind" && body.kind !== null && !["manga", "novel"].includes(body.kind)) return res(422, { detail: "種別は漫画か小説です" });
+        if (name === "kind" && body.kind !== null && !["manga", "novel", "doujinshi"].includes(body.kind)) return res(422, { detail: "種別は漫画・小説・同人誌のいずれかです" });
         if (!(name in w.previous)) w.previous[name] = w.extra[name]?.manual ? (w.previous[name] ?? null) : (w.extra[name] ?? null);
         const empty = body[name] === null || body[name] === "" || (Array.isArray(body[name]) && body[name].length === 0);
         w.extra[name] = { value: empty ? (Array.isArray(body[name]) ? [] : null) : body[name], source: "manual", manual: true, confidence: 1 };

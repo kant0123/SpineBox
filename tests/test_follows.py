@@ -11,7 +11,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from metadata_fakes import ANILIST, MU_SEARCH, NDL, FakeClock, fixture
+from metadata_fakes import BANGUMI_SEARCH, MEDIAARTS, NDL, FakeClock, fixture
 from spinebox import db, follows
 from spinebox.app import create_app
 from spinebox.config import FollowSettings, MetadataSettings, parse_settings
@@ -110,7 +110,7 @@ def test_volume_missing_from_the_library_is_reported_as_a_new_release(env_factor
     entry = env.entry(wid)
     assert entry["checked_at"] and entry["status"] == "ok" and (entry["unseen"], entry["found"]) == (1, 1)
     # 調べるのは巻ごとの書誌を持つ国立国会図書館サーチだけ
-    assert env.net.count(NDL) == 1 and env.net.count(ANILIST) == 0 and env.net.count(MU_SEARCH) == 0
+    assert env.net.count(NDL) == 1 and env.net.count(MEDIAARTS) == 0 and env.net.count(BANGUMI_SEARCH) == 0
     # 作品ページにもフォローの状態と見つけた巻が出る
     detail = env.client.get(f"/api/works/{wid}").json()["follow"]
     assert detail["followed"] and [r["volume"] for r in detail["releases"]] == [5]
@@ -297,7 +297,7 @@ def test_follow_validation(env_factory):
 
 
 def test_check_is_refused_when_ndl_is_disabled(env_factory):
-    env = env_factory("kaku", kaku_files(1), sources=("anilist",))
+    env = env_factory("kaku", kaku_files(1), sources=("mediaarts",))
     env.follow(env.work_id())
     assert env.follows()["available"] is False
     assert env.client.post("/api/follows/check?wait=true").status_code == 409

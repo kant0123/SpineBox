@@ -195,7 +195,7 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX duplicate_candidates_b ON duplicate_candidates (volume_b)",
     ],
-    # 5: 公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)の生応答。同じ要求は有効期限内なら使い回す(#44)。
+    # 5: 公開 DB(国立国会図書館サーチ・メディア芸術データベース・Bangumi)の生応答。同じ要求は有効期限内なら使い回す(#44)。
     # request は秘匿を除いた要求の記述(JSON)、body は応答本文のバイト列そのまま。作品・巻には結び付けない
     [
         """
@@ -285,7 +285,7 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX work_merge_proposals_status ON work_merge_proposals (status)",
     ],
-    # 7: 公開 DB の情報の結線(#50)。work_links: 作品 × 取得元(ndl / anilist / mangaupdates)ごとに 1 行。
+    # 7: 公開 DB の情報の結線(#50)。work_links: 作品 × 取得元(ndl / mediaarts / bangumi)ごとに 1 行。
     #    status: linked(連携済み)/ pending(候補が拮抗・確信度が低く、利用者の確認待ち)/ none(見つからない・
     #    利用者が「該当なし」にした)/ NULL(取得できたことがまだ無い)。manual: 利用者が候補を選んだ(再取得で変えない)。
     #    item: 連携した候補の中身(JSON。項目の反映に使う)、candidates: 利用者に見せる候補(JSON。概要と中身)、

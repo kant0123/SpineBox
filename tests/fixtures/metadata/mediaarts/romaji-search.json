@@ -1,0 +1,8 @@
+{
+  "head" : {
+    "vars" : [ "s", "kind", "name", "reading", "creator", "publisher", "vol", "items" ]
+  },
+  "results" : {
+    "bindings" : [ ]
+  }
+}

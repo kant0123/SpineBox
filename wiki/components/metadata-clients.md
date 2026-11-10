@@ -7,7 +7,8 @@ related: [metadata-sources, metadata-linking, overview, backend, work-search, fo
 
 # 公開 DB クライアント(`spinebox/metadata/`)
 
-国立国会図書館サーチ・AniList・MangaUpdates を「作品名(+著者・巻番号)で検索 → 候補の列」で引き、**正規化した項目と確からしさ(数値と根拠)**を返す。#44(GOAL.md フェーズ 3 の取得元クライアント)。
+国立国会図書館サーチ・メディア芸術データベース・Bangumi を「作品名(+著者・巻番号)で検索 → 候補の列」で引き、**正規化した項目と確からしさ(数値と根拠)**を返す。#44(GOAL.md フェーズ 3 の取得元クライアント)。
+メディア芸術データベース・Bangumi は #278(2026-11-10)で AniList・MangaUpdates を置き換えたもの。
 取得元ごとの癖・制限・採否の理由は [[metadata-sources]]。
 同人誌用に nHentai・E-Hentai も同じ形で引く(#275。既定では無効で、`[metadata] sources` に足したときだけ)。
 
@@ -30,13 +31,13 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 | --- | --- |
 | `spinebox/metadata/service.py:61 MetadataService` | 入口。`search(query, sources=None)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
 | `spinebox/metadata/model.py:29 SearchQuery` | 入力。`title` だけ必須。`author` `volume` `kind` は確からしさの手がかり、`isbn` は NDL で巻の書誌を直接引く |
-| `spinebox/metadata/model.py:44 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(AniList / MangaUpdates: 作品全体) |
+| `spinebox/metadata/model.py:44 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(メディア芸術データベース / Bangumi: 作品全体) |
 | `spinebox/metadata/model.py:82 Match` | 確からしさ。`score`(0〜1)、観点ごとの `components`、根拠 `reasons`(`title:exact` `author:match` `volume:mismatch` など) |
 | `spinebox/metadata/model.py:96 Candidate` | 項目 + `Match` + `response_key`(`metadata_responses.request_key`。生応答を引き直す鍵) |
 | `spinebox/metadata/model.py:123 SearchOutcome` | 取得元ごとの結果。`ok`・`candidates`(確からしさの高い順)・`failure`・`responses`(使った生応答の出所と `from_cache` / `stale`)・`notes` |
 | `spinebox/metadata/base.py:30 MetadataSource` | 取得元の共通基底。`search()` が例外を畳んで `SearchOutcome` にする。取得元は `_search()` だけ書く |
 | `spinebox/metadata/base.py:79 fetch` | 保存済みの応答つきの取得(下記) |
-| `spinebox/metadata/ndl.py:58 parse_opensearch` / `spinebox/metadata/anilist.py:58 parse_search` / `spinebox/metadata/mangaupdates.py:75 parse_search`・`spinebox/metadata/mangaupdates.py:88 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
+| `spinebox/metadata/ndl.py:58 parse_opensearch` / `spinebox/metadata/mediaarts.py:104 parse_search` / `spinebox/metadata/bangumi.py:85 parse_search`・`spinebox/metadata/bangumi.py:141 parse_detail` | 応答 → 項目。不正な応答は `ParseError` |
 | `spinebox/metadata/match.py:118 score_item` | 確からしさの計算 |
 | `spinebox/metadata/doujin.py:48 parse_doujin_title()` | 同人誌の題名の書式 `(イベント) [サークル (作者)] 題名 (原作) [印]` を分ける。nHentai・E-Hentai の題名もファイル名由来の作品名も同じ規則で読む。`build_item()` が両サイトの項目を作り、`dedupe_key()` が翻訳版・再アップロードをまとめる鍵 |
 | `spinebox/metadata/nhentai.py:27 NHentaiSource` | nHentai(検索 + 上位の詳細)。`parse_search()` / `parse_detail()` |
@@ -53,7 +54,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - **失敗は成功した 0 件と別物。** 見つからなかったときは `ok` で `candidates` が空。通信・応答の不備は `failure`。結線側は「失敗 = 何も更新しない」にできる
 - `message` には URL・クエリ・応答本文を入れない(API キーがクエリに入る取得元を足しても漏れない)
 - 例外を投げない境界は 3 重: HTTP 層(`FetchError` に畳む)、`MetadataSource.search`(`ParseError`・想定外の例外を `invalid_response` / `internal` に)、`MetadataService.search`(有効でない取得元は `disabled`)
-- MangaUpdates の詳細だけ失敗したときは `ok` のまま、その候補は検索結果の項目で返し、理由を `notes` に残す
+- 検索と詳細の 2 要求に分かれる取得元(Bangumi)で詳細だけ失敗したときは `ok` のまま、その候補は検索結果の項目で返し、理由を `notes` に残す
 
 ## 生応答の保存(`metadata_responses`)
 
@@ -61,7 +62,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 - 同じ要求は有効期限内(設定 `cache_ttl_days`、既定 30 日)なら保存済みを使い、ネットワークに出ない(`SearchOutcome.from_cache`)
 - **有効期限が切れた行も消さない。取得に失敗したとき、その古い応答を代わりに使う**(`ResponseRef.stale`、`notes` に理由)。取得元が落ちていても検索が返るようにするため
 - 保存するのは**解釈できて 200 だった応答だけ**。失敗・解釈できない応答は保存しない。保存済みが解釈できなくなっていたら捨てて取り直す。保存に失敗(DB ロックなど)しても検索結果は返す
-- 検索 1 回が複数の要求(MangaUpdates は検索 + 詳細)に分かれるので、`ResponseRef` は要求ごとに出る。`Candidate.response_key` はその候補の項目を取り出した要求
+- 検索 1 回が複数の要求(Bangumi は検索 + 詳細)に分かれるので、`ResponseRef` は要求ごとに出る。`Candidate.response_key` はその候補の項目を取り出した要求
 - **DB テーブルにしてファイルにしなかった理由**: GOAL.md が「生レスポンスと、どの項目をどのソースから埋めたかを DB に残す」としており、後続の結線(出所の記録)と同じ DB で引ける。
   ファイル案は、ハッシュ名の管理と掃除を別に作る必要があり、蔵書の DB と別にバックアップ・移行する手間も増える。作品・巻には結び付けない(外部キー無し)ので、結線の仕組みが決まる前でも入れられた
 - 接続はリクエストごとに開く前提(アプリの `get_conn`)。`ResponseStore` の内部ロックは同じインスタンスの中だけ
@@ -70,7 +71,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 ## レート制限(`HttpFetcher` / `Gate`)
 
-- 取得元ごとに 1 つの関門。**要求を直列にし、直前の要求が終わってから最小間隔を空ける**(設定 `[metadata.min_interval_seconds]`。既定は NDL 1.0・AniList 2.0・MangaUpdates 1.0・nHentai 6.5・E-Hentai 4.0 秒、根拠は [[metadata-sources]])。
+- 取得元ごとに 1 つの関門。**要求を直列にし、直前の要求が終わってから最小間隔を空ける**(設定 `[metadata.min_interval_seconds]`。既定は NDL 1.0・メディア芸術データベース 1.0・Bangumi 1.0・nHentai 6.5・E-Hentai 4.0 秒、根拠は [[metadata-sources]])。
   時計と sleep は差し替えられる(テストは `tests/metadata_fakes.py FakeClock`)
 - **429 は再試行しない。** `Retry-After`(秒・HTTP 日付。なければ 60 秒、上限 15 分)の間は、その取得元に要求を出さない。残りが 10 秒を超えるなら待たずに `rate_limited` で失敗させ(呼び出しを塞がない)、
   10 秒以内なら待って送る。ほかの取得元には影響しない
@@ -81,8 +82,8 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 題名 0.55・著者 0.20・巻 0.15・種別 0.10 の重みで、**比べられた観点だけ**の重み付き平均(0〜1)。
 
-- 題名: 作品名・ローマ字名・別名・(NDL の読みをローマ字にしたもの)のうち最良。完全一致 1.0、部分一致(副題つきなど)0.6〜0.9、それ以外は類似度 × 0.8。ローマ字は長音・マクロンの揺れを畳む(`ou`/`o`、`ii`/`i`)
-- 著者: 日本語の著者名と MangaUpdates のローマ字名のように**表記体系が違うと比べない**(`author:not_comparable`。点数に入れず根拠に残す)
+- 題名: 作品名・ローマ字名・別名・(NDL・メディア芸術データベースの読みをローマ字にしたもの)のうち最良。完全一致 1.0、部分一致(副題つきなど)0.6〜0.9、それ以外は類似度 × 0.8。ローマ字は長音・マクロンの揺れを畳む(`ou`/`o`、`ii`/`i`)
+- 著者: 日本語の著者名とローマ字名のように**表記体系が違うと比べない**(`author:not_comparable`。点数に入れず根拠に残す)
 - 巻: NDL(巻ごとの書誌)だけ。一致 1.0、食い違い 0.0、**巻が不明(映画ノベライズなど)は 0.5**。作品単位の項目は比べない
 - 種別: 項目が不明なら比べない
 - 自動採用の閾値はこのパッケージでは決めない(結線側が決める: [[metadata-linking]])。NDL は同じ作品名でも漫画と小説が別の巻として並ぶので、種別と巻の根拠を必ず見る
@@ -97,7 +98,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 - 取得元の追加は `SOURCE_CLASSES` と `[metadata] sources` の両方。設定に未知の名前があれば警告して飛ばす(`MetadataService.unknown`)
 - マイグレーションの版数は #43(作品の名寄せ)と並行で足される。マージ時に衝突したら自分の要素を main の末尾の後ろへ付け替える(未リリースなので可)
-- `tests/fixtures/metadata/` は公開 API の応答そのまま(手で直さない)。取り直すときは `scripts/metadata_probe.py --record`。AniList は利用条件で大量の写しを禁じているので、検索数件分に留める
+- `tests/fixtures/metadata/` は公開 API の応答そのまま(手で直さない)。取り直すときは `scripts/metadata_probe.py --record`
 
 ## 関連
 

@@ -67,9 +67,9 @@ class FakeNetwork:
 
 
 NDL = "https://ndlsearch.ndl.go.jp/api/opensearch"
-ANILIST = "https://graphql.anilist.co"
-MU_SEARCH = "https://api.mangaupdates.com/v1/series/search"
-MU_DETAIL = "https://api.mangaupdates.com/v1/series/"
+MEDIAARTS = "https://mediaarts-db.artmuseums.go.jp/sparql"
+BANGUMI_SEARCH = "https://api.bgm.tv/search/subject/"
+BANGUMI_DETAIL = "https://api.bgm.tv/v0/subjects/"
 
 
 def recorded_network(label: str = "okiraku") -> FakeNetwork:
@@ -86,11 +86,11 @@ def recorded_network(label: str = "okiraku") -> FakeNetwork:
         return fixture(f"ndl/{label}-search.xml")
 
     net.route("GET", NDL, ndl)
-    net.route("POST", ANILIST, fixture(f"anilist/{label}-search.json"))
-    net.route("POST", MU_SEARCH, fixture(f"mangaupdates/{label}-search.json"))
-    for path in (FIXTURES / "mangaupdates").glob(f"{label}-detail-*.json"):
-        series_id = path.stem.rsplit("-", 1)[1]
-        net.route("GET", MU_DETAIL + series_id, path.read_bytes())
+    net.route("GET", MEDIAARTS, fixture(f"mediaarts/{label}-search.json"))
+    net.route("GET", BANGUMI_SEARCH, fixture(f"bangumi/{label}-search.json"))
+    for path in (FIXTURES / "bangumi").glob(f"{label}-detail-*.json"):
+        subject_id = path.stem.rsplit("-", 1)[1]
+        net.route("GET", BANGUMI_DETAIL + subject_id, path.read_bytes())
     return net
 
 

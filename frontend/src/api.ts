@@ -253,8 +253,8 @@ export interface WorkAlias {
   confidence: number | null;
 }
 
-/** 種別。漫画 / 小説(手で直せる。公開データベースから入ることもある) */
-export type WorkKind = "manga" | "novel";
+/** 種別。漫画 / 小説 / 同人誌(手で直せる。公開データベースから入ることもある) */
+export type WorkKind = "manga" | "novel" | "doujinshi";
 
 /** 項目ごとの値と出所。manual = 利用者が手で直した(再取得・再計算で変えない) */
 export interface FieldInfo<T> {
@@ -262,7 +262,7 @@ export interface FieldInfo<T> {
   source: WorkSource;
   manual: boolean;
   confidence: number | null;
-  /** 公開データベースから入った値の取得元(ndl / anilist / mangaupdates) */
+  /** 公開データベースから入った値の取得元(ndl / mediaarts / bangumi) */
   sources?: string[];
   /** 巻の書誌: 取得元と、その書誌の URL */
   from?: string | null;
@@ -428,7 +428,7 @@ export interface WorkMerge {
   titles: string[];
 }
 
-export type SourceName = "ndl" | "anilist" | "mangaupdates" | "nhentai" | "ehentai";
+export type SourceName = "ndl" | "mediaarts" | "bangumi" | "nhentai" | "ehentai";
 
 /** 公開データベースの候補(利用者に見せる概要) */
 export interface LinkCandidate {
@@ -921,7 +921,7 @@ export interface CacheUsage {
 export interface LibraryStats {
   root_id: number | null;
   works: {
-    total: number; manga: number; novel: number; kind_unknown: number;
+    total: number; manga: number; novel: number; doujinshi: number; kind_unknown: number;
     finished: number; reading: number; unread: number;
     /** 公開 DB の候補が確認待ちの作品 */
     link_pending: number;

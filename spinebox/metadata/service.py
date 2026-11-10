@@ -13,11 +13,11 @@ import threading
 import httpx
 
 from ..config import MetadataSettings
-from .anilist import AniListSource
+from .bangumi import BangumiSource
 from .base import MetadataSource
 from .ehentai import EHentaiSource
 from .http import HttpFetcher
-from .mangaupdates import MangaUpdatesSource
+from .mediaarts import MediaArtsSource
 from .model import FAIL_DISABLED, Failure, SearchOutcome, SearchQuery
 from .ndl import NdlSource
 from .nhentai import NHentaiSource
@@ -27,8 +27,8 @@ log = logging.getLogger(__name__)
 
 SOURCE_CLASSES: dict[str, type[MetadataSource]] = {
     NdlSource.name: NdlSource,
-    AniListSource.name: AniListSource,
-    MangaUpdatesSource.name: MangaUpdatesSource,
+    MediaArtsSource.name: MediaArtsSource,
+    BangumiSource.name: BangumiSource,
     NHentaiSource.name: NHentaiSource,
     EHentaiSource.name: EHentaiSource,
 }
