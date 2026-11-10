@@ -602,6 +602,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[metadata-linking]], [[metadata-clients]], [[metadata-sources]], [[data-jobs]]
 - 備考: 本番(1,102 作品)の全体同期で公開 DB の取得が 1 作品 約 30 秒(nHentai 11.5・NDL 8.3・E-Hentai 5.4・取得のたびの名寄せ 5.3 秒)。まとめて取る経路だけ、確信度 0.9 以上の連携で残りを飛ばし、名寄せを 25 作品ごとにし、0 件のときの引き直し検索と nHentai の首位以外の詳細を省いた。作品ページの取得は今までどおり。nHentai・E-Hentai の関門を要求の種類で分ける案は制限の数え方が未確認のため入れていない
 
-## [2026-11-11] ingest | PR #PRNUM fix: 確認の画面が遅い(確認待ちの作品ごとに全作品・全巻を引き直していた)
+## [2026-11-11] ingest | PR #292 fix: 確認の画面が遅い(確認待ちの作品ごとに全作品・全巻を引き直していた)
 - 更新: [[backend]], [[metadata-linking]], [[recurring-review-findings]]
 - 備考: #291。`GET /api/review/links` は `works.get_works()` でまとめて組み立て、`GET /api/review/counts` は一覧を組み立てずに数える。本番 DB の写し(1109 作品・確認待ち 239)で links は約 60 秒 → 0.4 秒、counts は 0.6 秒 → 0.06 秒。
