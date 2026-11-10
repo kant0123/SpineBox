@@ -64,6 +64,11 @@ def unfollow(conn: sqlite3.Connection, work_id: int) -> None:
 
 def resolve_merged(conn: sqlite3.Connection) -> None:
     """統合で吸収された作品のフォローと見つけた巻を、吸収先へ移す(確認済みの印はどちらかにあれば残す)。"""
+    # 移すものが無ければ書き込みのトランザクションを取らない(読み取りの API から毎回呼ばれる。#296)
+    if conn.execute("SELECT 1 FROM follows f JOIN works w ON w.id = f.work_id WHERE w.merged_into IS NOT NULL "
+                    "UNION ALL SELECT 1 FROM follow_releases r JOIN works w ON w.id = r.work_id "
+                    "WHERE w.merged_into IS NOT NULL LIMIT 1").fetchone() is None:
+        return
     with db.transaction(conn) as c:
         rows = c.execute("SELECT f.work_id FROM follows f JOIN works w ON w.id = f.work_id "
                          "WHERE w.merged_into IS NOT NULL").fetchall()

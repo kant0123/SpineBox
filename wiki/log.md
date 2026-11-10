@@ -609,3 +609,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | #294 作品の詳細・巻を開く・提案・ブックマークが蔵書全体を読むのをやめる
 - 更新: [[backend]], [[volume-split]], [[metadata-linking]], [[work-search]]
 - 備考: #294。作品・巻・書誌・重複の印・食い違いの読み出しを id で絞れるようにし、`get_work()` 0.30 秒 → 1.3 ms、`list_proposals()` 0.26 秒 → 2.8 ms、`list_bookmarks()` 0.10 秒 → 1.2 ms(本番 DB の写し 1,141 作品)。ファセット・取得・表紙の作成は `listed_work_ids()` / `cover_volume_ids()` で一覧を組み立てない。統計・カタログとメモリへの保持(案 2)は未着手。
+
+## [2026-11-11] ingest | fix: 読み取りの API が毎回書き込みロックを取っていた(#296)
+- 更新: [[backend]]
+- 備考: 内側アーカイブの巻のページ要求ごとの `scan_issues` の DELETE+INSERT と、作品ページ・フォロー一覧ごとの `resolve_merged()` の `BEGIN IMMEDIATE` を、変化があるときだけにした。別接続が書き込み中のページ要求が待たない再現(ロック待ちそのもの)は実測していない。
