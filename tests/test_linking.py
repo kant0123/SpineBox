@@ -611,8 +611,8 @@ def test_works_needing_fetch_orders_never_fetched_first_and_honours_the_waits(en
     assert linking.works_needing_fetch(conn, meta, enabled, now) == []
     later = now + timedelta(days=meta.recheck_days, minutes=1)
     assert linking.works_needing_fetch(conn, meta, enabled, later) == [wid]          # 取得済みも期限が来れば取り直す
-    # 失敗は retry_hours 後に取り直す(取得済みの期限よりずっと早い)
-    conn.execute("UPDATE work_links SET failure = '{\"kind\": \"timeout\"}' WHERE source = 'ndl'")
+    # 失敗は retry_hours 後に取り直す(取得済みの期限よりずっと早い)。どの取得元にも確かな連携が無いとき
+    conn.execute("UPDATE work_links SET failure = '{\"kind\": \"timeout\"}'")
     soon = now + timedelta(hours=meta.retry_hours, minutes=1)
     assert linking.works_needing_fetch(conn, meta, enabled, soon) == [wid]
     assert linking.works_needing_fetch(conn, meta, enabled, now + timedelta(hours=1)) == []
@@ -622,13 +622,87 @@ def test_works_needing_fetch_orders_never_fetched_first_and_honours_the_waits(en
     conn.close()
 
 
+# --- 全作品をまとめて取る(軽い取得。#288) ---------------------------------------------------------
+
+
+def fetch_direct(env, wid, **kwargs):
+    """ジョブを通さずに `fetch_work` を呼ぶ(quick の有無を選ぶため)。取得元ごとの結果を返す。"""
+    from spinebox.metadata import MetadataService
+    conn = db.connect(env.settings.db_path)
+    try:
+        service = MetadataService(env.settings.metadata, conn, fetcher=env.fetcher)
+        return linking.fetch_work(conn, service, wid, **kwargs).sources
+    finally:
+        conn.close()
+
+
+def needing(env, now=None):
+    conn = db.connect(env.settings.db_path)
+    try:
+        return linking.works_needing_fetch(conn, env.settings.metadata, ("ndl", "mediaarts", "bangumi"), now)
+    finally:
+        conn.close()
+
+
+def test_quick_fetch_stops_at_the_first_confident_link_and_is_not_due_again(env_factory):
+    from datetime import datetime, timedelta, timezone
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    assert fetch_direct(env, wid, quick=True) == {"ndl": "linked", "mediaarts": "skipped", "bangumi": "skipped"}
+    assert env.net.count(NDL) >= 1 and env.net.count(MEDIAARTS) == 0 and env.net.count(BANGUMI_SEARCH) == 0
+    assert [r["source"] for r in env.rows("SELECT source FROM work_links")] == ["ndl"]  # 飛ばした取得元の行は作らない
+    assert env.work(wid)["title"] == KAKU
+    # 飛ばした取得元があっても、未取得として対象に戻らない。再確認の期限が来たら戻る
+    now = datetime.now(timezone.utc)
+    assert needing(env, now) == []
+    assert needing(env, now + timedelta(days=env.settings.metadata.recheck_days, minutes=1)) == [wid]
+    # 確かな連携の取得が失敗している間は、飛ばさずに残りの取得元を引く対象にする
+    conn = db.connect(env.settings.db_path)
+    conn.execute("UPDATE work_links SET failure = '{\"kind\": \"timeout\"}' WHERE source = 'ndl'")
+    conn.close()
+    assert needing(env, now) == [wid]
+
+
+def test_full_fetch_of_one_work_still_asks_every_source(env_factory):
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    fetch_direct(env, wid, quick=True)
+    env.fetch(wid)  # 作品ページの「情報を取得」
+    assert env.net.count(MEDIAARTS) >= 1 and env.net.count(BANGUMI_SEARCH) >= 1
+    assert {r["source"] for r in env.rows("SELECT source FROM work_links")} == {"ndl", "mediaarts", "bangumi"}
+
+
+def test_quick_fetch_goes_on_when_the_best_candidates_tie(env_factory):
+    env = env_factory("okiraku", OKIRAKU_FILES)
+    wid = env.work_id()
+    out = fetch_direct(env, wid, quick=True)
+    # 国立国会図書館サーチは漫画と小説が 1.0 で並ぶ(確認待ち)。確からしさが高くても止めない
+    assert out["ndl"] == "pending" and "skipped" not in out.values()
+    assert env.rows("SELECT confidence FROM work_links WHERE source = 'ndl'")[0]["confidence"] >= linking.QUICK_STOP_MIN
+    assert env.net.count(MEDIAARTS) >= 1 and env.net.count(BANGUMI_SEARCH) >= 1
+
+
+@pytest.mark.parametrize("confidence, manual, stops", [(0.95, False, True), (0.9, True, True), (0.89, False, False),
+                                                       (0.89, True, False)])
+def test_quick_fetch_stop_threshold(env_factory, confidence, manual, stops):
+    """止めるのは連携の確信度が 0.9 以上のとき。手動で選んだ連携も同じ基準(低い候補を選んだ作品は残りも引く)。"""
+    env = env_factory("kaku", KAKU_FILES)
+    wid = env.work_id()
+    fetch_direct(env, wid, sources=("ndl",))
+    conn = db.connect(env.settings.db_path)
+    conn.execute("UPDATE work_links SET confidence = ?, manual = ? WHERE source = 'ndl'", (confidence, int(manual)))
+    conn.close()
+    assert linking._settles(env.rows("SELECT * FROM work_links WHERE source = 'ndl'")[0]) is stops
+
+
 def test_global_fetch_state_and_disabled_sources(env_factory):
     env = env_factory("kaku", KAKU_FILES)
     status = env.client.get("/api/works/metadata").json()
     assert status["sources"] == ["ndl", "mediaarts", "bangumi"] and status["state"]["running"] is False
     r = env.client.post("/api/works/metadata/fetch?wait=true").json()
     assert r["running"] is False and r["error"] is None and r["total"] == 1 and r["done"] == r["total"]
-    assert r["summary"]["sources"]["linked"] == 3
+    # まとめての取得は、国立国会図書館サーチが確かな連携になったところで残りを引かない(#288)
+    assert r["summary"]["sources"] == {"linked": 1, "skipped": 2}
     again = env.client.post("/api/works/metadata/fetch?wait=true").json()               # 取得済みは対象外
     assert again["total"] == 0
 

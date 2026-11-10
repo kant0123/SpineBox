@@ -3,6 +3,8 @@
 記録は `scripts/metadata_probe.py --source nhentai --source ehentai --author "バルバロッサ (東雲太郎)" --record … Flowers` で採った。
 題名の例は、実際の蔵書の同人誌のファイル名の書式から取った。
 """
+import json
+
 import httpx
 import pytest
 
@@ -207,6 +209,46 @@ def test_circle_name_is_added_to_the_query_and_dropped_when_nothing_hits(tmp_pat
     assert [tuple(x) for x in body["gidlist"]] == [(618473, "c1e261db4e"), (41662, "69ff454309")]
 
 
+def test_quick_search_does_not_retry_without_the_circle_name(tmp_path):
+    net = FakeNetwork()
+    net.route("GET", NH_SEARCH, b'{"result":[],"num_pages":0,"per_page":25,"total":0}')
+    net.route("GET", EH_SEARCH, b"<html>No hits found</html>")
+    out = Env(tmp_path, net).search(author=AUTHOR, quick=True)
+    assert out["nhentai"].ok and out["ehentai"].ok
+    assert [r.url.params["query"] for r in net.requests if str(r.url).startswith(NH_SEARCH)] == ["Flowers バルバロッサ"]
+    assert [r.url.params["f_search"] for r in net.requests if str(r.url).startswith(EH_SEARCH)] == ["Flowers バルバロッサ"]
+    # サークル名を読めない作品は、作品名だけの検索が 1 回目なのでそのまま引く
+    assert search_queries("Flowers", None, fallback=False) == ["Flowers"]
+
+
+NH_THREE = json.dumps({"result": [
+    {"id": n, "media_id": str(n), "english_title": "x", "japanese_title": f"[あ (い)] Title{suffix}"}
+    for n, suffix in ((1, ""), (2, " 2"), (3, " 3"))], "num_pages": 1, "per_page": 25, "total": 3}).encode()
+
+
+def test_quick_search_asks_the_detail_of_the_best_candidate_only(tmp_path):
+    net = FakeNetwork()
+    net.route("GET", NH_SEARCH, NH_THREE)
+    net.route("GET", NH_GALLERY, lambda r: fixture("nhentai/flowers-detail-13528.json"))
+    full = Env(tmp_path, net).search("Title", author="あ (い)", sources=["nhentai"])["nhentai"]
+    assert full.ok and net.count(NH_GALLERY) == 3  # 1 作品を調べるときは今までどおり上位 detail_limit 件
+    quick_net = FakeNetwork()
+    quick_net.route("GET", NH_SEARCH, NH_THREE)
+    quick_net.route("GET", NH_GALLERY, lambda r: fixture("nhentai/flowers-detail-13528.json"))
+    (tmp_path / "quick").mkdir()
+    out = Env(tmp_path / "quick", quick_net).search("Title", author="あ (い)", sources=["nhentai"], quick=True)["nhentai"]
+    assert out.ok and len(out.candidates) == 3
+    assert [str(r.url) for r in quick_net.requests if str(r.url).startswith(NH_GALLERY)] == [NH_GALLERY + "1"]
+
+
+def test_quick_search_skips_the_detail_of_a_hopeless_candidate(tmp_path):
+    net = FakeNetwork()
+    net.route("GET", NH_SEARCH, NH_THREE)
+    out = Env(tmp_path, net).search("まったく別の題名の本", author="別 (人)", sources=["nhentai"], quick=True)["nhentai"]
+    assert out.ok and out.candidates and out.candidates[0].match.score < 0.5
+    assert net.count(NH_GALLERY) == 0
+
+
 def test_no_hits_is_a_successful_empty_result(tmp_path):
     net = FakeNetwork()
     net.route("GET", NH_SEARCH, b'{"result":[],"num_pages":0,"per_page":25,"total":0}')
@@ -309,3 +351,34 @@ def test_doujinshi_is_linked_from_both_sources_and_fills_fields(make_settings, t
     assert "Flowers (ストリートファイター)" in {a["alias"] for a in w["aliases"]}
     # 取得元の英語の内容タグは、対応表に無ければ既定(hide)で入れない
     assert "schoolgirl uniform" not in f["tags"]["value"]
+
+
+def fallback_only_network() -> FakeNetwork:
+    """サークル名つきの検索は 0 件で、作品名だけの引き直しでだけ見つかる取得元。"""
+    net = doujin_network()
+    net.route("GET", NH_SEARCH, lambda r: fixture("nhentai/flowers-search.json")
+              if "バルバロッサ" not in r.url.params["query"] else b'{"result":[],"num_pages":0,"per_page":25,"total":0}')
+    net.route("GET", EH_SEARCH, lambda r: fixture("ehentai/flowers-search.html")
+              if "バルバロッサ" not in r.url.params["f_search"] else b"No hits found")
+    return net
+
+
+def test_quick_fetch_stops_after_ehentai_and_keeps_links_found_by_the_retry(make_settings, tmp_path):
+    from test_linking import Env as LinkEnv, fetch_direct
+
+    name = "(C70) [バルバロッサ (東雲太郎)] Flowers (ストリートファイター).cbz"
+    env = LinkEnv(make_settings, tmp_path, fallback_only_network(), [name], sources=("nhentai", "ehentai"))
+    wid = env.work_id()
+    # まとめて取るときは引き直さないので、どちらも見つからない(要求は検索 1 回ずつ)
+    assert fetch_direct(env, wid, quick=True) == {"ehentai": "none", "nhentai": "none"}
+    assert env.net.count(EH_SEARCH) == 1 and env.net.count(NH_SEARCH) == 1 and env.net.count(EH_API) == 0
+    # 作品ページの取得は引き直して両方で見つける
+    w = env.fetch(wid)
+    assert {env.link(w, s)["status"] for s in ("nhentai", "ehentai")} == {"linked"}
+    # 次のまとめての取得: 連携のある取得元は見つけたときと同じ検索で引く(連携を失わない)。
+    # E-Hentai(先に引く)が確かな連携なので、nHentai には要求を出さない
+    before = env.net.count("https://nhentai.net")
+    assert fetch_direct(env, wid, quick=True) == {"ehentai": "linked", "nhentai": "skipped"}
+    assert env.net.count("https://nhentai.net") == before
+    w = env.work(wid)
+    assert {env.link(w, s)["status"] for s in ("nhentai", "ehentai")} == {"linked"}  # 飛ばした側の連携も残る

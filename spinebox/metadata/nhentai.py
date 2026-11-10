@@ -22,6 +22,9 @@ BASE = "https://nhentai.net/api/v2"
 SITE = "https://nhentai.net"
 
 KEY_NAME = "nhentai_api_key"  # [metadata.keys] に置く名前
+# 軽い検索(SearchQuery.quick)で詳細を引く、検索結果の項目で見た確からしさの下限。
+# 結線が候補を利用者に見せる下限(spinebox/linking.py SHOW_MIN)と同じ値にしている
+QUICK_DETAIL_MIN = 0.5
 
 
 class NHentaiSource(MetadataSource):
@@ -34,7 +37,7 @@ class NHentaiSource(MetadataSource):
     def _search(self, query: SearchQuery, run: _Run):
         records: list[dict] = []
         search_req = None
-        for keywords in search_queries(query.title, query.author):
+        for keywords in search_queries(query.title, query.author, fallback=not query.quick):
             search_req = SourceRequest(NAME, "GET", f"{BASE}/search", params=(("query", keywords),),
                                        label="search", secret_headers=self._headers())
             records = run.fetch(search_req, parse_search)[: self.settings.candidate_limit]
@@ -60,8 +63,14 @@ class NHentaiSource(MetadataSource):
         entries = list(best.values())
 
         # 詳細を引くのは、検索結果の項目で見た確からしさの高い順
-        ranked = sorted(range(len(entries)), key=lambda i: score_item(query, entries[i][1]).score, reverse=True)
-        detail_for = set(ranked[: self.settings.detail_limit])
+        scores = [score_item(query, item).score for _, item, _ in entries]
+        ranked = sorted(range(len(entries)), key=lambda i: scores[i], reverse=True)
+        if query.quick:
+            # 詳細で増えるのは分類とタグだけ(題名・サークルは検索結果にある)。首位の 1 件だけ引き、
+            # 見せる下限にも届かない候補には引かない(#288)
+            detail_for = {i for i in ranked[:1] if scores[i] >= QUICK_DETAIL_MIN}
+        else:
+            detail_for = set(ranked[: self.settings.detail_limit])
         out: list[tuple[MetadataItem, SourceRequest]] = []
         for index, (_, item, rec) in enumerate(entries):
             request = search_req
