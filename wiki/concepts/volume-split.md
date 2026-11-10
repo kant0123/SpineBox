@@ -65,7 +65,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 食い違い
 
-`spinebox/analysis.py:214 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
+`spinebox/analysis.py:214 compute_findings()`(`source_ids` を渡すとそのソースの巻だけ読む。1 巻を開くときはこちら。#294)。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
 
 - `volume`: 分解した親の名前の範囲 ⇔ 子の巻番号。親と各子に付ける
 - `source`: 外側アーカイブ(スキャンのソース)の名前の範囲 ⇔ その中の巻(分解済みなら子、未解析の内側アーカイブはその名前の範囲)。

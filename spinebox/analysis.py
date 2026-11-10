@@ -211,18 +211,27 @@ def compare_range(scope: str, subject: str, name: NumberCandidate | None,
     }
 
 
-def compute_findings(conn: sqlite3.Connection) -> dict[int, list[dict]]:
+def compute_findings(conn: sqlite3.Connection, source_ids=None) -> dict[int, list[dict]]:
     """見えている巻(親を含む)ごとの食い違い。保存しない(巻番号は DB にあるので毎回ここから導出する)。
 
     - volume: 分解した親の名前の範囲 ⇔ 子の巻番号。親と各子に付ける
     - source: 外側アーカイブの名前の範囲 ⇔ その中の巻(分解済みなら子、未解析の内側アーカイブはその名前の範囲)。
       そのソースの巻すべてに付ける。外側アーカイブの直下の画像だけの巻(名前が同じ)は比べない
+
+    食い違いは同じソースの巻だけで決まるので、source_ids を渡すとそのソースの巻だけを読む(#294)。
     """
-    rows = conn.execute(
-        """SELECT v.id, v.parent_id, v.source_id, v.title, v.container_path, v.entry_prefix,
+    sql = """SELECT v.id, v.parent_id, v.source_id, v.title, v.container_path, v.entry_prefix,
                   v.number_kind, v.number_start, v.number_end, v.number_evidence, s.rel_path, s.kind
            FROM volumes v JOIN sources s ON s.id = v.source_id JOIN library_roots r ON r.id = s.root_id
-           WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0""").fetchall()
+           WHERE r.enabled = 1 AND v.missing = 0 AND s.missing = 0"""
+    if source_ids is None:
+        rows = conn.execute(sql).fetchall()
+    else:
+        wanted = sorted(set(source_ids))
+        rows = []
+        for i in range(0, len(wanted), 500):
+            chunk = wanted[i:i + 500]
+            rows += conn.execute(f"{sql} AND v.source_id IN ({','.join('?' * len(chunk))})", chunk).fetchall()
     by_id = {r["id"]: r for r in rows}
     children: dict[int, list] = defaultdict(list)
     tops: dict[int, list] = defaultdict(list)

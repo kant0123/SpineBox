@@ -218,10 +218,31 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 `GET /api/review/links` が確認待ちの作品ごとに `get_work()` を呼び、`get_work()` は 1 作品のために全作品の項目と全巻(書誌つき)を
 引き直していた(DB の写しで 1 回 0.26 秒 × 239 回 ≒ 60 秒。実機では 2 分で返らなかった)。
 
-- 詳細は `spinebox/works.py get_works()` がまとめて組み立てる。全作品の項目・全巻・提案・連携を作品の数によらず 1 回ずつ引く
-  (写しで 0.4 秒、HTTP 越しで約 1 秒)。`get_work()` はその 1 件版で、作品ページと確認の画面が同じ組み立てを通る
+- 詳細は `spinebox/works.py get_works()` がまとめて組み立てる。項目・巻・提案・連携を、渡した作品(と提案の相手)の分だけ
+  作品の数によらず 1 回ずつ引く(#294 で蔵書全体を読むのをやめた。写しで 0.4 秒、HTTP 越しで約 1 秒)。`get_work()` はその 1 件版で、作品ページと確認の画面が同じ組み立てを通る
 - 件数は `spinebox/works.py link_pending_work_ids()` と `open_proposal_count()` が、作品・提案の一覧を組み立てずに数える
   (写しで 0.6 秒 → 0.06 秒)。数える条件は一覧(`list_works()` の `link_pending > 0`・`list_proposals("open")`)と同じでなければならない。
   片方だけ変えると「開いても何も出ない件数」になるので、`tests/test_works.py` が一覧の長さ・並びとの一致を確かめている
 - 応答は 239 作品で約 4 MB(巻の枠 `slots` と候補が大半)。形を作品ページと同じにしているのは、候補を選んだ応答(作品の詳細)で行をそのまま差し替えるため。
   LAN 内では表示まで 2 秒弱なので削っていない
+
+## 1 件・件数のために蔵書全体を読まない(#294)
+
+作品の詳細・巻を開く・提案・ブックマークの一覧が、1 件のために全作品の項目・別名と全巻(書誌つき)を読んでいた
+(本番 DB の写し 1,141 作品・6,211 巻で `get_work()` 0.30 秒・`list_proposals()` 0.26 秒・`list_bookmarks()` 0.10 秒・`compute_findings()` 0.07 秒。
+巻数によらず同じ = 全件の読み込みが支配的)。
+
+- 作品・巻の読み出しは id で絞れる: `works._work_rows(c, ids)`・`_volume_meta(c, volume_ids)`・`_listed_volumes(c, work_ids=...)`
+  (`work_volumes_work` 索引)・`duplicates.candidate_counts(conn, volume_ids)`・`analysis.compute_findings(conn, source_ids)`。
+  いずれも省略(None)すれば従来どおり全件。絞った結果は全件を引いた結果の一部と同じでなければならない
+  (重複の印は「両方が一覧に見える組」、食い違いは同じソースの巻だけで決まる。どちらも絞っても値は変わらない)
+- 提案は行を先に引き、提案に出る作品(両側)の id だけ集めてから作品・巻を引く(`list_proposals()`・`get_works()`・`list_bookmarks()` の型)。
+  吸収済みの作品は `_roots()` で吸収先へ寄せた id で集める
+- 作品の id・表紙の巻だけ欲しい経路(ファセット `GET /api/works/facets/{name}`・全作品の取得の対象・表紙の作成の対象)は
+  `works.listed_work_ids()` / `cover_volume_ids()` を使い、`list_works()` を組み立てない。並びは `list_works()` の作品名順と同じ
+  (`tests/test_works.py` が一致を確かめる)
+- 写しで `get_work()` 0.30 秒 → 1.3 ms・`list_proposals()` 0.26 秒 → 2.8 ms・`list_bookmarks()` 0.10 秒 → 1.2 ms・
+  1 ソースの `compute_findings()` 0.07 秒 → 0.1 ms。蔵書の大きさに比例しないことは SQLite の実行命令数
+  (`set_progress_handler`)で数えて `tests/test_works.py` が確かめる
+- 未着手: 統計(`stats.collect`)とデータ管理のカタログ(`datajobs.catalog`)は作品ごとの要約(読書状態・欠け巻など)が要るので、
+  なお `list_works()` を組み立てる。組み立てた結果のメモリへの保持(書き込みで捨てる)は #294 の案 2 として残っている
