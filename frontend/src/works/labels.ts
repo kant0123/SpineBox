@@ -71,8 +71,8 @@ export const READING_STATE_TEXT: Record<ReadingState, string> = { unread: "未�
 /** 公開データベースの取得元の名前・サイト・利用している API(表示義務のあるクレジット) */
 export const SOURCE_SITES: Record<SourceName, { name: string; api: string; url: string }> = {
   ndl: { name: "国立国会図書館サーチ", api: "NDL サーチ API", url: "https://ndlsearch.ndl.go.jp/" },
-  anilist: { name: "AniList", api: "AniList API", url: "https://anilist.co" },
-  mangaupdates: { name: "MangaUpdates", api: "MangaUpdates API", url: "https://www.mangaupdates.com" },
+  mediaarts: { name: "メディア芸術データベース", api: "メディア芸術データベース SPARQL", url: "https://mediaarts-db.artmuseums.go.jp/" },
+  bangumi: { name: "Bangumi", api: "Bangumi API", url: "https://bgm.tv" },
   nhentai: { name: "nHentai", api: "nHentai API", url: "https://nhentai.net" },
   ehentai: { name: "E-Hentai", api: "E-Hentai API", url: "https://e-hentai.org" },
 };

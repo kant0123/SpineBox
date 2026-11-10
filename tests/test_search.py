@@ -466,7 +466,7 @@ def test_work_sort_orders_and_invalid_sort_is_422(env):
             c.execute("INSERT INTO volume_fields (volume_id, field, value, source, manual, updated_at) "
                       "VALUES (?, 'released', '2015-03-25', 'public_db', 0, 't')", (v_k1,))
             c.execute("INSERT INTO work_links (work_id, source, status, manual, source_id, item) "
-                      "VALUES (?, 'anilist', 'linked', 0, 'a:1', '{\"released\": \"2020\"}')", (wid_rom,))
+                      "VALUES (?, 'mediaarts', 'linked', 0, 'a:1', '{\"released\": \"2020\"}')", (wid_rom,))
     finally:
         conn.close()
 

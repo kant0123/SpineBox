@@ -11,7 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import page_bytes, write_zip
-from metadata_fakes import ANILIST, MU_SEARCH, NDL, FakeClock, FakeNetwork, fixture, recorded_network
+from metadata_fakes import BANGUMI_DETAIL, BANGUMI_SEARCH, MEDIAARTS, NDL, FakeClock, FakeNetwork, fixture, \
+    recorded_network
 from spinebox import db, linking, works
 from spinebox.app import create_app
 from spinebox.config import MetadataSettings, load_settings
@@ -103,22 +104,22 @@ def test_kakukaku_is_linked_automatically_and_fills_work_and_volume_fields(env_f
     wid = env.work_id()
     w = env.fetch(wid)
 
-    assert [env.link(w, s)["status"] for s in ("ndl", "anilist", "mangaupdates")] == ["linked"] * 3
+    assert [env.link(w, s)["status"] for s in ("ndl", "mediaarts", "bangumi")] == ["linked"] * 3
     f = w["fields"]
     assert f["title"]["value"] == KAKU
     assert (f["author"]["value"], f["author"]["manual"]) == ("東村アキコ", False)
     assert {k: f["kind"][k] for k in ("value", "source", "manual")} == {"value": "manga", "source": "public_db", "manual": False}
     assert f["kind"]["sources"]
     assert f["publisher"]["value"] == "集英社" and f["publisher"]["source"] == "public_db"
-    # AniList + MangaUpdates の和。英語の語彙は日本語にして入る(#74)
-    assert "日常" in f["genres"]["value"] and "女性向け" in f["genres"]["value"]
-    assert "成長" in f["tags"]["value"] and f["tags"]["source"] == "public_db"
-    assert f["total_volumes"]["value"] == 5
+    # 全巻数はメディア芸術データベースの優先(シリーズの実体 schema:numberOfItems から)
+    assert f["total_volumes"]["value"] == 5 and f["total_volumes"]["sources"] == ["mediaarts"]
+    # メディア芸術データベース・Bangumi はジャンル・タグを持たない(Bangumi のタグは簡体字中国語で読み取らない。#278)
+    assert "genres" not in f and "tags" not in f
     assert "synopsis" not in f  # あらすじは廃止(#82)。取得元にあっても作品の項目に入れない
-    assert w["kind"] == "manga" and w["genres"] and w["tags"]
-    # ローマ字名・別名が別名に入る(出所つき)
+    assert w["kind"] == "manga"
+    # Bangumi の別名(写写画画)が別名に入る(出所つき)
     aliases = {a["alias"]: a for a in w["aliases"]}
-    assert aliases["Kakukaku Shikajika"]["source"] == "public_db"
+    assert aliases["写写画画"]["source"] == "public_db"
 
     # 巻単位: 名前から読んだ巻番号ごとに、国立国会図書館サーチの書誌が入る
     vols = {v["volume_number"]["start"]: v for v in env.volumes(w)}
@@ -142,7 +143,7 @@ def test_okiraku_manga_and_novel_are_not_adopted_automatically(env_factory):
     assert all(c["score"] >= linking.SHOW_MIN for c in ndl["candidates"])
     # 確認待ちの間は、公開 DB の値を何も入れない。漫画か小説かが決まるまで、ほかの取得元も自動で連携しない
     assert all(v["source"] != "public_db" for v in w["fields"].values())
-    assert env.link(w, "mangaupdates")["status"] == "pending" and env.link(w, "mangaupdates")["hold"] == "kind_unresolved"
+    assert env.link(w, "bangumi")["status"] == "pending" and env.link(w, "bangumi")["hold"] == "kind_unresolved"
     assert w["link_pending"] == 3
     assert all("isbn" not in v["metadata"] for v in env.volumes(w))
 
@@ -161,12 +162,11 @@ def test_okiraku_manga_and_novel_are_not_adopted_automatically(env_factory):
     assert vols[1]["metadata"]["label"]["value"] == "ガルドコミックス"
     assert vols[2]["metadata"]["released"]["value"] == "2022-08"
 
-    # 再取得しても、選んだ連携は変わらない。種別が分かったので、AniList / MangaUpdates の漫画だけが残り自動で連携する
+    # 再取得しても、選んだ連携は変わらない。種別が分かったので、メディア芸術データベース / Bangumi の漫画だけが残り自動で連携する
     w = env.fetch(wid)
     assert env.link(w, "ndl")["manual"] and env.link(w, "ndl")["source_id"] == manga["source_id"]
-    assert env.link(w, "anilist")["status"] == "linked" and env.link(w, "mangaupdates")["status"] == "linked"
-    assert any(t for t in w["fields"]["tags"]["value"])
-    assert w["fields"]["genres"]["value"]
+    assert env.link(w, "mediaarts")["status"] == "linked" and env.link(w, "bangumi")["status"] == "linked"
+    assert w["fields"]["total_volumes"]["value"] == 8
 
 
 # --- 手動の項目は何があっても変わらない -----------------------------------------------------------
@@ -203,14 +203,14 @@ def test_manually_edited_work_field_never_changes(env_factory, field, edit_first
     assert (f["value"], f["manual"], f["source"]) == (WORK_EDITS[field], True, "manual")
 
 
-@pytest.mark.parametrize("field", ["author", "kind", "publisher", "genres", "tags"])
+@pytest.mark.parametrize("field", ["author", "kind", "publisher"])
 def test_field_emptied_by_hand_stays_empty(env_factory, field):
+    # genres / tags はメディア芸術データベース・Bangumi が持たないため、既定の取得元では埋まらない(#278)
     env = env_factory("kaku", KAKU_FILES)
     wid = env.work_id()
     env.fetch(wid)
     assert env.work(wid)["fields"][field]["value"]  # 取得で埋まっていた
-    empty = [] if field in ("genres", "tags") else None
-    assert env.client.patch(f"/api/works/{wid}", json={field: empty}).status_code == 200
+    assert env.client.patch(f"/api/works/{wid}", json={field: None}).status_code == 200
     churn(env, wid)
     f = env.work(wid)["fields"][field]
     assert f["manual"] and not f["value"]
@@ -282,10 +282,10 @@ def test_reset_to_automatic_restores_previous_value_or_public_db(env_factory):
     env = env_factory("kaku", KAKU_FILES)
     wid = env.work_id()
     w = env.fetch(wid)
-    original = {k: w["fields"][k]["value"] for k in ("author", "publisher", "genres", "title")}
-    env.client.patch(f"/api/works/{wid}", json={"author": "誰か", "publisher": "どこか", "genres": ["x"], "title": "別名にする"})
+    original = {k: w["fields"][k]["value"] for k in ("author", "publisher", "title")}
+    env.client.patch(f"/api/works/{wid}", json={"author": "誰か", "publisher": "どこか", "title": "別名にする"})
     assert env.work(wid)["fields"]["publisher"]["manual"]
-    for field in ("author", "publisher", "genres", "title"):
+    for field in ("author", "publisher", "title"):
         r = env.client.post(f"/api/works/{wid}/fields/{field}/reset")
         assert r.status_code == 200, r.text
     w = env.work(wid)
@@ -322,7 +322,7 @@ FAILURES = {
 
 
 def fail_all(env, response):
-    for prefix, method in ((NDL, "GET"), (ANILIST, "POST"), (MU_SEARCH, "POST")):
+    for prefix, method in ((NDL, "GET"), (MEDIAARTS, "GET"), (BANGUMI_SEARCH, "GET")):
         env.net.route(method, prefix, response)
 
 
@@ -333,7 +333,7 @@ def test_scan_and_browsing_succeed_when_every_source_is_down(env_factory, name):
     fail_all(env, response)
     wid = env.work_id()
     w = env.fetch(wid)                                       # 取得の失敗は 200 で返り、作品に記録される
-    for source in ("ndl", "anilist", "mangaupdates"):
+    for source in ("ndl", "mediaarts", "bangumi"):
         link = env.link(w, source)
         assert link["status"] is None and link["failure"]["kind"] == kind, (source, link)
         assert link["failure"]["message"] and link["attempted_at"] and not link["checked_at"]
@@ -352,11 +352,11 @@ def test_scan_and_browsing_succeed_when_every_source_is_down(env_factory, name):
 
 def test_one_source_down_does_not_stop_the_others(env_factory):
     env = env_factory("kaku", KAKU_FILES)
-    env.net.route("POST", ANILIST, httpx.Response(503, content=b"unavailable"))
+    env.net.route("GET", MEDIAARTS, httpx.Response(503, content=b"unavailable"))
     w = env.fetch(env.work_id())
-    assert env.link(w, "ndl")["status"] == "linked" and env.link(w, "mangaupdates")["status"] == "linked"
-    assert env.link(w, "anilist")["failure"]["kind"] == "http_status" and env.link(w, "anilist")["failure"]["status"] == 503
-    assert w["fields"]["publisher"]["value"] == "集英社" and w["fields"]["genres"]["value"]
+    assert env.link(w, "ndl")["status"] == "linked" and env.link(w, "bangumi")["status"] == "linked"
+    assert env.link(w, "mediaarts")["failure"]["kind"] == "http_status" and env.link(w, "mediaarts")["failure"]["status"] == 503
+    assert w["fields"]["publisher"]["value"] == "集英社"
 
 
 def test_failure_after_success_keeps_the_link_and_values(env_factory):
@@ -369,7 +369,7 @@ def test_failure_after_success_keeps_the_link_and_values(env_factory):
     conn.close()
     fail_all(env, httpx.Response(500, content=b"boom"))
     after = env.fetch(wid)
-    for source in ("ndl", "anilist", "mangaupdates"):
+    for source in ("ndl", "mediaarts", "bangumi"):
         link = env.link(after, source)
         assert link["status"] == "linked" and link["failure"]["kind"] == "http_status"   # 連携は残り、失敗が記録される
         assert link["checked_at"] == env.link(before, source)["checked_at"]
@@ -434,9 +434,9 @@ def put_link(env, wid, source, item, *, confidence, manual=False, status="linked
         conn.close()
 
 
-ANILIST_ITEM = {"title": "公開DBの作品名", "authors": ["公開DBの著者"], "kind": "manga", "genres": ["Drama"],
+PUBLIC_DB_ITEM = {"title": "公開DBの作品名", "authors": ["公開DBの著者"], "kind": "manga", "genres": ["Drama"],
                 "tags": ["Tag"], "synopsis": "あらすじ", "romaji": "Koukai DB no Sakuhin", "aliases": []}
-ANILIST_ITEM_ROMAJI = {"title": "Koukai DB no Sakuhin", "authors": ["Koukai DB Author"], "kind": "manga",
+PUBLIC_DB_ITEM_ROMAJI = {"title": "Koukai DB no Sakuhin", "authors": ["Koukai DB Author"], "kind": "manga",
                        "genres": ["Drama"], "tags": ["Tag"], "synopsis": "あらすじ", "aliases": []}
 
 
@@ -445,7 +445,7 @@ def test_name_derived_values_are_replaced_only_when_confident_or_chosen(env_fact
     env = env_factory("kaku", ["[ファイル名の著者] 作品名X 第01巻.cbz", "[ファイル名の著者] 作品名X 第02巻.cbz"])
     wid = env.work_id()
     assert env.work(wid)["fields"]["author"]["source"] == "filename"
-    put_link(env, wid, "anilist", ANILIST_ITEM_ROMAJI, confidence=confidence, manual=manual)
+    put_link(env, wid, "ehentai", PUBLIC_DB_ITEM_ROMAJI, confidence=confidence, manual=manual)
     f = env.work(wid)["fields"]
     # 空欄は、確信度が低くても埋める
     assert f["kind"]["value"] == "manga" and f["genres"]["value"] == ["ドラマ"]
@@ -475,7 +475,7 @@ def test_japanese_title_and_author_are_preferred_over_filename_at_low_confidence
                                 "[File Author] Atumare Fushigi Kenkyubu 第02巻.cbz"])
     wid = env.work_id()
     assert env.work(wid)["title"] == "Atumare Fushigi Kenkyubu"
-    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
+    put_link(env, wid, "ehentai", PUBLIC_DB_ITEM, confidence=0.8)
     w = env.work(wid)
     assert w["title"] == "公開DBの作品名" and w["title_source"] == "public_db"
     assert w["fields"]["author"]["value"] == "公開DBの著者"
@@ -498,11 +498,11 @@ def test_japanese_filename_title_and_author_are_not_overwritten_at_low_confidenc
     env = env_factory("kaku", ["[ファイル名の著者] かくかくしかじか 第01巻.cbz"])
     wid = env.work_id()
     assert env.work(wid)["title"] == "かくかくしかじか"
-    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
+    put_link(env, wid, "ehentai", PUBLIC_DB_ITEM, confidence=0.8)
     w = env.work(wid)
     assert w["title"] == "かくかくしかじか" and w["fields"]["author"]["value"] == "ファイル名の著者"
     # 確信度が高いときは置き換える
-    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.95)
+    put_link(env, wid, "ehentai", PUBLIC_DB_ITEM, confidence=0.95)
     w = env.work(wid)
     assert w["title"] == "公開DBの作品名" and w["fields"]["author"]["value"] == "公開DBの著者"
 
@@ -511,7 +511,7 @@ def test_manual_title_and_author_are_not_overwritten_by_japanese_public_db(env_f
     env = env_factory("kaku", ["[ファイル名の著者] Atumare Fushigi Kenkyubu 第01巻.cbz"])
     wid = env.work_id()
     env.client.patch(f"/api/works/{wid}", json={"title": "手で直した作品名", "author": "手で直した著者"})
-    put_link(env, wid, "anilist", ANILIST_ITEM, confidence=0.8)
+    put_link(env, wid, "ehentai", PUBLIC_DB_ITEM, confidence=0.8)
     w = env.work(wid)
     assert w["title"] == "手で直した作品名" and w["title_manual"] is True
     assert w["fields"]["author"]["value"] == "手で直した著者"
@@ -556,11 +556,12 @@ def test_public_db_name_merges_a_romaji_work_into_the_japanese_one(env_factory):
     ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
     assert set(ws) == {"Kakukaku Shikajika", KAKU}
     w = env.fetch(ws["Kakukaku Shikajika"])
-    # AniList のローマ字名で連携 → 作品名が日本語名に置き換わり(確信度が高い)、もう一方の作品名と一致して自動で統合される
+    # メディア芸術データベースの読み(カタカナ→ローマ字)で連携 → 作品名が日本語名に置き換わり(確信度が高い)、
+    # もう一方の作品名と一致して自動で統合される
     assert w["title"] == KAKU and w["volume_count"] == 4 and w["merged"]
     assert any(m["rule"] == "alias" and m["status"] == "auto" for m in w["merges"])
     assert "Kakukaku Shikajika" in [a["alias"] for a in w["aliases"]]       # 置き換えた名前は別名に残る
-    assert env.link(w, "anilist")["status"] == "linked"
+    assert env.link(w, "mediaarts")["status"] == "linked"
     assert len(env.client.get("/api/works").json()["works"]) == 1
     absorbed = ws[KAKU] if w["id"] == ws["Kakukaku Shikajika"] else ws["Kakukaku Shikajika"]
     assert env.client.get(f"/api/works/{absorbed}").status_code == 404
@@ -571,7 +572,7 @@ def test_public_db_aliases_alone_only_propose_when_the_link_is_weak(env_factory)
     ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
     # 確信度の低い連携の別名は、自動統合の基準(0.9)に届かず、提案止まり
     # 日本語の作品名なら #166 でタイトルが置き換わり作品が合くため、別名だけを試す(タイトルはローマ字のまま)
-    put_link(env, ws["Kakukaku Shikajika"], "anilist",
+    put_link(env, ws["Kakukaku Shikajika"], "ehentai",
              {"title": "Kakukaku Shikajika", "romaji": "Kakukaku Shikajika", "aliases": [KAKU], "authors": []}, confidence=0.8)
     env.client.post("/api/works/refresh")
     works_now = {w["title"]: w for w in env.client.get("/api/works").json()["works"]}
@@ -599,7 +600,7 @@ def test_works_needing_fetch_orders_never_fetched_first_and_honours_the_waits(en
     env = env_factory("kaku", KAKU_FILES)
     wid = env.work_id()
     meta = env.settings.metadata
-    enabled = ("ndl", "anilist", "mangaupdates")
+    enabled = ("ndl", "mediaarts", "bangumi")
     conn = db.connect(env.settings.db_path)
     now = datetime.now(timezone.utc)
     assert linking.works_needing_fetch(conn, meta, enabled, now) == [wid]            # 一度も取得していない
@@ -624,7 +625,7 @@ def test_works_needing_fetch_orders_never_fetched_first_and_honours_the_waits(en
 def test_global_fetch_state_and_disabled_sources(env_factory):
     env = env_factory("kaku", KAKU_FILES)
     status = env.client.get("/api/works/metadata").json()
-    assert status["sources"] == ["ndl", "anilist", "mangaupdates"] and status["state"]["running"] is False
+    assert status["sources"] == ["ndl", "mediaarts", "bangumi"] and status["state"]["running"] is False
     r = env.client.post("/api/works/metadata/fetch?wait=true").json()
     assert r["running"] is False and r["error"] is None and r["total"] == 1 and r["done"] == r["total"]
     assert r["summary"]["sources"]["linked"] == 3
@@ -674,7 +675,7 @@ def test_choose_validates_the_candidate(env_factory):
     assert env.client.post(f"/api/works/{wid}/links/ndl/reset").status_code == 409                          # 手動でない
 
 
-def test_list_and_detail_expose_kind_genres_tags_and_pending_counts(env_factory):
+def test_list_and_detail_expose_kind_and_pending_counts(env_factory):
     env = env_factory("okiraku", OKIRAKU_FILES)
     wid = env.work_id()
     env.fetch(wid)
@@ -686,7 +687,6 @@ def test_list_and_detail_expose_kind_genres_tags_and_pending_counts(env_factory)
     env.fetch(wid)
     (summary,) = env.client.get("/api/works").json()["works"]
     assert summary["kind"] == "manga" and summary["publisher"] == "オーバーラップ" and summary["link_pending"] == 0
-    assert "少年向け" in summary["genres"] and summary["tags"]
 
 
 def test_review_lists_works_with_pending_candidates_and_counts(env_factory):
@@ -746,7 +746,7 @@ def test_a_manually_chosen_link_keeps_the_work_out_of_automatic_merging(env_fact
     """手動で選んだ連携は手動の決定。強い証拠(同じ作品名)があっても、自動では統合せず提案に留める。"""
     env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
     ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
-    put_link(env, ws["Kakukaku Shikajika"], "anilist",
+    put_link(env, ws["Kakukaku Shikajika"], "ehentai",
              {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []}, confidence=0.95, manual=True)
     env.client.post("/api/works/refresh")
     assert len(env.client.get("/api/works").json()["works"]) == 2
@@ -759,14 +759,14 @@ def test_public_db_aliases_go_away_with_the_link(env_factory):
     wid = env.work_id()
     w = env.fetch(wid)
     assert any(a["source"] == "public_db" for a in w["aliases"])
-    for source in ("ndl", "anilist", "mangaupdates"):
+    for source in ("ndl", "mediaarts", "bangumi"):
         r = env.client.post(f"/api/works/{wid}/links/{source}/choose", json={"source_id": None})
         assert r.status_code == 200, r.text
     w = env.work(wid)
     assert [a["alias"] for a in w["aliases"] if a["source"] == "public_db"] == []
     # 手動の別名は残る
     env.client.post(f"/api/works/{wid}/aliases", json={"alias": "手で足した別名"})
-    env.client.post(f"/api/works/{wid}/links/anilist/reset")
+    env.client.post(f"/api/works/{wid}/links/ehentai/reset")
     assert "手で足した別名" in [a["alias"] for a in env.work(wid)["aliases"]]
 
 
@@ -777,7 +777,7 @@ def test_approving_a_proposal_fills_the_volumes_that_joined_the_work(env_factory
               "label": None, "released": "2012-01", "isbn": "9784088700000", "url": None, "score": 1.0, "response_key": None}
     put_link(env, ws[KAKU], "ndl", {"title": KAKU, "authors": [], "kind": "manga", "publisher": "集英社", "label": None,
                                     "records": [record]}, confidence=0.95)
-    put_link(env, ws["Kakukaku Shikajika"], "anilist",
+    put_link(env, ws["Kakukaku Shikajika"], "ehentai",
              {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []}, confidence=0.8)
     env.client.post("/api/works/refresh")
     proposal = env.client.get("/api/works/proposals").json()[0]
@@ -828,7 +828,7 @@ def test_resetting_a_field_that_unblocks_an_auto_merge_returns_the_surviving_wor
     romaji, jp = ws["Kakukaku Shikajika"], ws[KAKU]
     assert romaji < jp                                                       # 吸収されるのは id の大きい日本語名の側
     assert env.client.patch(f"/api/works/{jp}", json={"title": "手で付けた名前"}).status_code == 200
-    put_link(env, romaji, "anilist", {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []},
+    put_link(env, romaji, "ehentai", {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": [], "authors": []},
              confidence=0.95)
     env.client.post("/api/works/refresh")
     assert len(env.client.get("/api/works").json()["works"]) == 2           # 手動の作品名があるので提案止まり
@@ -847,14 +847,14 @@ def test_resetting_a_manual_link_keeps_the_hold_while_the_kind_is_unresolved(env
     env = env_factory("okiraku", OKIRAKU_FILES)
     wid = env.work_id()
     w = env.fetch(wid)
-    anilist = env.link(w, "anilist")
-    assert anilist["status"] == "pending" and anilist["hold"] == "kind_unresolved"
-    manga = next(c for c in anilist["candidates"] if c["kind"] == "manga")
-    r = env.client.post(f"/api/works/{wid}/links/anilist/choose", json={"source_id": manga["source_id"]})
+    mediaarts = env.link(w, "mediaarts")
+    assert mediaarts["status"] == "pending" and mediaarts["hold"] == "kind_unresolved"
+    manga = next(c for c in mediaarts["candidates"] if c["kind"] == "manga")
+    r = env.client.post(f"/api/works/{wid}/links/mediaarts/choose", json={"source_id": manga["source_id"]})
     assert r.status_code == 200
-    r = env.client.post(f"/api/works/{wid}/links/anilist/reset")
+    r = env.client.post(f"/api/works/{wid}/links/mediaarts/reset")
     assert r.status_code == 200, r.text
-    after = env.link(r.json(), "anilist")
+    after = env.link(r.json(), "mediaarts")
     assert after["status"] == "pending" and after["hold"] == "kind_unresolved" and after["manual"] is False
     assert r.json()["kind"] is None
 
@@ -863,12 +863,11 @@ def test_an_auto_link_whose_kind_contradicts_the_known_kind_is_dropped_on_refetc
     env = env_factory("kaku", KAKU_FILES)
     wid = env.work_id()
     w = env.fetch(wid)
-    assert env.link(w, "anilist")["status"] == "linked"
+    assert env.link(w, "mediaarts")["status"] == "linked"
     assert env.client.patch(f"/api/works/{wid}", json={"kind": "novel"}).status_code == 200
     w = env.fetch(wid)
-    assert env.link(w, "anilist")["status"] != "linked"
+    assert env.link(w, "mediaarts")["status"] != "linked"
     assert w["fields"]["kind"]["value"] == "novel" and w["fields"]["kind"]["manual"]
-    assert "Comedy" not in (w["fields"].get("genres") or {}).get("value", [])      # 漫画側の候補の分類は残さない
 
 
 # --- 日本語での表示(#74) ----------------------------------------------------------------------------
@@ -879,15 +878,19 @@ def _ascii_only(values) -> list[str]:
 
 
 def test_english_genres_and_tags_are_filled_in_japanese_and_the_raw_values_are_kept(env_factory):
-    env = env_factory("kaku", KAKU_FILES)
+    """メディア芸術データベース・Bangumi はジャンル・タグを持たないため(#278)、英語の語彙を持つ
+    取得元(ehentai / nhentai)で確かめる。実際の有効な既定の取得元ではない(put_link で直接連携を作る)。"""
+    env = env_factory("kaku", ["作品名X 第01巻.cbz"])
     wid = env.work_id()
-    f = env.fetch(wid)["fields"]
+    put_link(env, wid, "ehentai", {**PUBLIC_DB_ITEM, "genres": ["Slice of Life"], "tags": ["Teacher"]}, confidence=0.95)
+    put_link(env, wid, "nhentai", {**PUBLIC_DB_ITEM, "genres": ["Drama"], "tags": ["Teacher/s"]}, confidence=0.8)
+    f = env.work(wid)["fields"]
     assert f["genres"]["value"] and not _ascii_only(f["genres"]["value"])
     assert f["tags"]["value"] and not _ascii_only(f["tags"]["value"])
-    # 訳して同じになる語は 1 つにまとまる(MangaUpdates の `Teacher/s` と AniList の `Teacher`)
+    # 訳して同じになる語は 1 つにまとまる(ehentai の `Teacher` と nhentai の `Teacher/s`)
     assert f["tags"]["value"].count("教師") == 1
     # 取得元の応答から作った連携の中身は英語のまま(訳は反映で作るだけ)
-    (row,) = env.rows("SELECT item FROM work_links WHERE work_id = ? AND source = 'anilist'", wid)
+    (row,) = env.rows("SELECT item FROM work_links WHERE work_id = ? AND source = 'ehentai'", wid)
     assert "Slice of Life" in json.loads(row["item"])["genres"]
 
 
@@ -900,7 +903,7 @@ def test_untranslated_terms_are_hidden_unless_configured(env_factory, setting, e
     extra = {} if setting is None else {"untranslated_terms": setting}
     env = env_factory("kaku", ["作品名X 第01巻.cbz"], **extra)
     wid = env.work_id()
-    put_link(env, wid, "anilist", {**ANILIST_ITEM, "genres": [], "tags": ["Drama", "Unheard-of Tag", "Teacher/s"]},
+    put_link(env, wid, "ehentai", {**PUBLIC_DB_ITEM, "genres": [], "tags": ["Drama", "Unheard-of Tag", "Teacher/s"]},
              confidence=0.8)
     assert env.work(wid)["fields"]["tags"]["value"] == expected
 
@@ -912,8 +915,8 @@ def test_untranslated_terms_are_hidden_unless_configured(env_factory, setting, e
 def test_synopsis_from_public_db_is_not_put_into_the_work(env_factory, synopsis):
     env = env_factory("kaku", ["作品名X 第01巻.cbz"])
     wid = env.work_id()
-    put_link(env, wid, "anilist", {**ANILIST_ITEM, "synopsis": synopsis}, confidence=0.95)
-    put_link(env, wid, "mangaupdates", {**ANILIST_ITEM, "synopsis": synopsis}, confidence=0.95)
+    put_link(env, wid, "ehentai", {**PUBLIC_DB_ITEM, "synopsis": synopsis}, confidence=0.95)
+    put_link(env, wid, "nhentai", {**PUBLIC_DB_ITEM, "synopsis": synopsis}, confidence=0.95)
     assert "synopsis" not in env.work(wid)["fields"]
     assert env.work(wid)["fields"]["genres"]["value"] == ["ドラマ"]  # ほかの項目は入る
     conn = db.connect(env.settings.db_path)
@@ -992,33 +995,34 @@ def test_old_english_synopsis_setting_does_not_stop_the_app(tmp_path, caplog):
 
 @pytest.mark.parametrize("publisher, expected", [("Overlap", "オーバーラップ"), ("Kadokawa Shoten", "角川書店"),
                                                  ("Unknown Shobo", "Unknown Shobo")])
-def test_romanized_publisher_from_mangaupdates_is_shown_in_japanese(env_factory, publisher, expected):
+def test_romanized_publisher_from_public_db_is_shown_in_japanese(env_factory, publisher, expected):
     env = env_factory("kaku", ["作品名X 第01巻.cbz"])
     wid = env.work_id()
-    put_link(env, wid, "mangaupdates", {**ANILIST_ITEM, "publisher": publisher}, confidence=0.8)
+    put_link(env, wid, "nhentai", {**PUBLIC_DB_ITEM, "publisher": publisher}, confidence=0.8)
     assert env.work(wid)["fields"]["publisher"]["value"] == expected
     # 国立国会図書館サーチの出版者があれば、そちらが先
     put_link(env, wid, "ndl", {"title": "作品名X", "publisher": "集英社", "records": []}, confidence=0.8)
     assert env.work(wid)["fields"]["publisher"]["value"] == "集英社"
 
 
-def test_candidates_are_shown_in_japanese_but_stored_as_fetched(env_factory):
+def test_candidates_are_shown_with_the_fetched_publisher(env_factory):
     env = env_factory("okiraku", OKIRAKU_FILES)
     wid = env.work_id()
     w = env.fetch(wid)
-    mu = env.link(w, "mangaupdates")
-    assert mu["status"] == "pending"
-    assert "オーバーラップ" in [c["publisher"] for c in mu["candidates"]]
-    assert all(not _ascii_only(c["genres"]) for c in mu["candidates"] if c["genres"])
-    (row,) = env.rows("SELECT candidates FROM work_links WHERE work_id = ? AND source = 'mangaupdates'", wid)
-    assert "Overlap" in [c["summary"]["publisher"] for c in json.loads(row["candidates"])]
+    mediaarts = env.link(w, "mediaarts")
+    assert mediaarts["status"] == "pending"
+    assert "オーバーラップ" in [c["publisher"] for c in mediaarts["candidates"]]
+    (row,) = env.rows("SELECT candidates FROM work_links WHERE work_id = ? AND source = 'mediaarts'", wid)
+    assert "オーバーラップ" in [c["summary"]["publisher"] for c in json.loads(row["candidates"])]
 
 
 def test_english_values_already_in_the_db_turn_japanese_at_startup_but_manual_ones_do_not(env_factory):
     env = env_factory("kaku", KAKU_FILES)
     wid = env.work_id()
     env.fetch(wid)
-    # 日本語化の前に入った値(英語)と、利用者が手で入れた英語の値
+    # メディア芸術データベース・Bangumi はジャンルを持たないため、ehentai の連携で作る(#278)。
+    # 日本語化の前に入った値(英語)を装うため、連携した後に値だけ英語へ書き戻す(連携自体は残す)
+    put_link(env, wid, "ehentai", {**PUBLIC_DB_ITEM, "genres": ["Drama"]}, confidence=0.95)
     conn = db.connect(env.settings.db_path)
     with db.transaction(conn) as c:
         c.execute("UPDATE work_fields SET value = ? WHERE work_id = ? AND field = 'genres'", ('["Drama"]', wid))
@@ -1036,15 +1040,15 @@ def test_english_values_already_in_the_db_turn_japanese_at_startup_but_manual_on
 def test_query_splits_camel_case_romaji_title():
     from spinebox.linking import _Context, _query
     ctx = _Context("KakukakuShikajika", None, None, [])
-    assert _query("anilist", ctx).title == "Kakukaku Shikajika"
+    assert _query("ehentai", ctx).title == "Kakukaku Shikajika"
 
     # 連続する大文字の後に小文字が続く場合（頭字語など）も正しく分割される
     ctx_seed = _Context("GundamSEEDDestiny", None, None, [])
-    assert _query("anilist", ctx_seed).title == "Gundam SEED Destiny"
+    assert _query("ehentai", ctx_seed).title == "Gundam SEED Destiny"
 
     # 日本語混じりや英字を含む日本語作品名は誤分割しない
     ctx_spy = _Context("SPYxFAMILY", None, None, [])
-    assert _query("anilist", ctx_spy).title == "SPYxFAMILY"
+    assert _query("ehentai", ctx_spy).title == "SPYxFAMILY"
 
 
 def test_decide_threshold_is_not_loosened_for_ambiguous_matches():
@@ -1059,7 +1063,7 @@ def test_proposals_can_be_filtered_by_title_author_and_alias(env_factory):
     """統合の提案の絞り込み(#208): 作品名・別名の部分一致、空白区切りは AND、正規化は名寄せと同じ。"""
     env = env_factory("kaku", ["Kakukaku Shikajika v01.cbz", f"{KAKU} 第03巻.cbz"])
     ws = {w["title"]: w["id"] for w in env.client.get("/api/works").json()["works"]}
-    put_link(env, ws["Kakukaku Shikajika"], "anilist",
+    put_link(env, ws["Kakukaku Shikajika"], "ehentai",
              {"title": KAKU, "romaji": "Kakukaku Shikajika", "aliases": ["別名の短編集"], "authors": ["山田太郎"]},
              confidence=0.95, manual=True)
     env.client.post("/api/works/refresh")
@@ -1117,17 +1121,17 @@ def test_reset_link_also_breaks_the_tie_by_the_owned_volumes(env_factory):
     cands = []
     for sid, total in (("a", None), ("b", 3)):
         c = _cand(sid, 1.0, total=total)
-        c["item"] = {**ANILIST_ITEM, "source_id": sid, "total_volumes": total}
+        c["item"] = {**PUBLIC_DB_ITEM, "source_id": sid, "total_volumes": total}
         cands.append(c)
     conn = db.connect(env.settings.db_path)
     try:
         with db.transaction(conn) as c:
-            c.execute("DELETE FROM work_links WHERE work_id = ? AND source = 'anilist'", (wid,))
+            c.execute("DELETE FROM work_links WHERE work_id = ? AND source = 'ehentai'", (wid,))
             c.execute("""INSERT INTO work_links (work_id, source, status, source_id, manual, confidence, item, candidates)
-                         VALUES (?, 'anilist', 'linked', 'a', 1, 1.0, ?, ?)""",
+                         VALUES (?, 'ehentai', 'linked', 'a', 1, 1.0, ?, ?)""",
                       (wid, json.dumps(cands[0]["item"]), json.dumps(cands)))
-        linking.reset_link(conn, wid, "anilist")
+        linking.reset_link(conn, wid, "ehentai")
     finally:
         conn.close()
-    row = env.rows("SELECT status, source_id, manual FROM work_links WHERE work_id = ? AND source = 'anilist'", wid)[0]
+    row = env.rows("SELECT status, source_id, manual FROM work_links WHERE work_id = ? AND source = 'ehentai'", wid)[0]
     assert (row["status"], row["source_id"], row["manual"]) == ("linked", "b", 0)

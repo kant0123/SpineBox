@@ -281,7 +281,7 @@ def test_default_intervals_follow_the_published_limits():
     s = MetadataSettings()
     assert s.interval("nhentai") >= 6.0  # 匿名の検索は 10 回/分
     assert s.interval("ehentai") >= 4.0
-    assert s.sources == ("ndl", "anilist", "mangaupdates")  # 同人誌の取得元は利用者が有効にするまで使わない
+    assert s.sources == ("ndl", "mediaarts", "bangumi")  # 同人誌の取得元は利用者が有効にするまで使わない
 
 
 def test_requests_are_spaced_by_the_gate(env):

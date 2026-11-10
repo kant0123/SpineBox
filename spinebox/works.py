@@ -53,7 +53,7 @@ VOLUME_EDITABLE_FIELDS = ("publisher", "label", "released", "isbn")
 VOLUME_FIELDS = (*VOLUME_EDITABLE_FIELDS, "volume_label", "subtitle")
 
 # 取得元の表示名(取得元の順は結線の検索の順)
-SOURCE_LABELS = {"ndl": "国立国会図書館サーチ", "anilist": "AniList", "mangaupdates": "MangaUpdates",
+SOURCE_LABELS = {"ndl": "国立国会図書館サーチ", "mediaarts": "メディア芸術データベース", "bangumi": "Bangumi",
                  "nhentai": "nHentai", "ehentai": "E-Hentai"}
 
 # 出所(source)。work_fields / work_aliases / work_volumes / volume_fields で共通。公開 DB は `public_db`(結線は spinebox/linking.py)
@@ -64,7 +64,7 @@ SOURCE_ALIAS = "alias"            # 別名と作品名の一致で統合した
 SOURCE_MERGE = "merge"            # 統合された作品の名前(別名になった)
 SOURCE_MANUAL = "manual"          # 利用者が決めた
 SOURCE_PREVIOUS = "previous_title"  # 手で直す前の作品名(別名に残す)
-SOURCE_PUBLIC_DB = "public_db"    # 公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)から
+SOURCE_PUBLIC_DB = "public_db"    # 公開 DB(国立国会図書館サーチ・メディア芸術データベース・Bangumi)から
 
 # 確信度(0〜1)。しきい値の根拠は wiki/concepts/work-grouping.md
 CONF_OWN_NAME = 0.9          # 巻自身の名前から作品名を読めた

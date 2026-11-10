@@ -1,0 +1,918 @@
+{
+  "head" : {
+    "vars" : [ "s", "kind", "name", "reading", "creator", "publisher", "vol", "items" ]
+  },
+  "results" : {
+    "bindings" : [ {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M866535"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作]赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M866535"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作イラスト]転"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M866535"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "1"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[漫画]青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M873440"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作]赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M873440"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作イラスト]転"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M873440"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "2"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[漫画]青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M966357"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作]赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M966357"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作イラスト]転"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M966357"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "5"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[漫画]青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Fu"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Fu"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "アオイロマロ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Fu"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "アオイロマロ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "アカイケソウ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1109239"
+      },
+      "name" : {
+        "xml:lang" : "en",
+        "type" : "literal",
+        "value" : "Fu"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "8"
+      },
+      "creator" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "アカイケソウ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M932056"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作]赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M932056"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作イラスト]転"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M932056"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "4"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[漫画]青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1061866"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "7"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1061866"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "7"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1061866"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "7"
+      },
+      "creator" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "アオイロマロ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M1061866"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "7"
+      },
+      "creator" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "アカイケソウ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M881446"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作]赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M881446"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作イラスト]転"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M881446"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "3"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[漫画]青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M972532"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作]赤池宗"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M972532"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[原作イラスト]転"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    }, {
+      "s" : {
+        "type" : "uri",
+        "value" : "https://mediaarts-db.artmuseums.go.jp/id/M972532"
+      },
+      "name" : {
+        "type" : "literal",
+        "value" : "お気楽領主の楽しい領地防衛"
+      },
+      "kind" : {
+        "type" : "literal",
+        "value" : "volume"
+      },
+      "vol" : {
+        "type" : "literal",
+        "value" : "6"
+      },
+      "creator" : {
+        "type" : "literal",
+        "value" : "[漫画]青色まろ"
+      },
+      "publisher" : {
+        "type" : "literal",
+        "value" : "オーバーラップ　∥　オーバーラップ"
+      },
+      "reading" : {
+        "xml:lang" : "ja-hrkt",
+        "type" : "literal",
+        "value" : "オキラク リョウシュ ノ タノシイ リョウチ ボウエイ"
+      }
+    } ]
+  }
+}

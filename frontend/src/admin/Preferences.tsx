@@ -12,7 +12,7 @@ import { formatBytes } from "./format";
 
 const THEME_LABELS: Record<ThemeChoice, string> = { system: "OS の設定に従う", light: "ライト", dark: "ダーク" };
 const SOURCE_LABELS: Record<string, string> = {
-  ndl: "国立国会図書館サーチ", anilist: "AniList", mangaupdates: "MangaUpdates", nhentai: "nHentai", ehentai: "E-Hentai",
+  ndl: "国立国会図書館サーチ", mediaarts: "メディア芸術データベース", bangumi: "Bangumi", nhentai: "nHentai", ehentai: "E-Hentai",
 };
 
 export function Preferences() {

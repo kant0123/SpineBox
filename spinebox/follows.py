@@ -25,7 +25,7 @@ from .metadata import MetadataService
 
 log = logging.getLogger(__name__)
 
-SOURCE = "ndl"  # 巻ごとの書誌を持つ取得元。AniList / MangaUpdates は作品単位で、巻の発売を持たない
+SOURCE = "ndl"  # 巻ごとの書誌を持つ取得元。メディア芸術データベース / Bangumi は作品単位で、巻の発売を持たない
 
 # 調べた結果(follows.status)
 STATUS_OK = "ok"                    # 連携した組の書誌で数えた

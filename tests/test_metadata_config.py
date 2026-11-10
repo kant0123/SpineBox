@@ -12,20 +12,20 @@ def parse(table: dict) -> MetadataSettings:
 
 def test_defaults():
     m = parse_settings({}, Path.cwd()).metadata
-    assert m.sources == ("ndl", "anilist", "mangaupdates")
+    assert m.sources == ("ndl", "mediaarts", "bangumi")
     assert (m.cache_ttl_days, m.timeout_seconds, m.max_retries) == (30.0, 10.0, 2)
-    assert m.interval("ndl") == 1.0 and m.interval("anilist") == 2.0 and m.interval("mangaupdates") == 1.0
+    assert m.interval("ndl") == 1.0 and m.interval("mediaarts") == 1.0 and m.interval("bangumi") == 1.0
     assert m.keys == {} and m.contact == ""
 
 
 def test_overrides_and_partial_interval_table():
     m = parse({"sources": ["ndl"], "cache_ttl_days": 7, "timeout_seconds": 3.5, "max_retries": 0,
                "candidate_limit": 5, "detail_limit": 1, "contact": " me@example.test ",
-               "min_interval_seconds": {"anilist": 4, "rakuten": 0.5},
+               "min_interval_seconds": {"mediaarts": 4, "rakuten": 0.5},
                "keys": {"rakuten_application_id": "abc"}})
     assert m.sources == ("ndl",) and m.cache_ttl_days == 7.0 and m.timeout_seconds == 3.5 and m.max_retries == 0
     assert (m.candidate_limit, m.detail_limit, m.contact) == (5, 1, "me@example.test")
-    assert m.interval("anilist") == 4.0 and m.interval("ndl") == 1.0 and m.interval("rakuten") == 0.5  # 既定に上書き
+    assert m.interval("mediaarts") == 4.0 and m.interval("ndl") == 1.0 and m.interval("rakuten") == 0.5  # 既定に上書き
     assert m.keys == {"rakuten_application_id": "abc"} and "abc" not in repr(m)
 
 
@@ -94,7 +94,7 @@ def test_example_config_parses():
     import tomllib
     root = Path(__file__).resolve().parents[1]
     data = tomllib.loads((root / "config.example.toml").read_text(encoding="utf-8"))
-    assert parse_settings(data, root).metadata.sources == ("ndl", "anilist", "mangaupdates")
+    assert parse_settings(data, root).metadata.sources == ("ndl", "mediaarts", "bangumi")
 
 
 def test_metadata_responses_table_is_created_and_unique_per_request(tmp_path):
@@ -106,7 +106,7 @@ def test_metadata_responses_table_is_created_and_unique_per_request(tmp_path):
     conn.execute(insert, row)
     with pytest.raises(Exception):
         conn.execute(insert, row)                       # 同じ (取得元, 要求の鍵) は 1 行
-    conn.execute(insert, ("anilist", "k", "{}", 200, b"x", "2026-11-01T00:00:00+00:00"))
+    conn.execute(insert, ("mediaarts", "k", "{}", 200, b"x", "2026-11-01T00:00:00+00:00"))
 
 
 def test_store_put_overwrites_and_get_by_key(tmp_path):
@@ -120,6 +120,6 @@ def test_store_put_overwrites_and_get_by_key(tmp_path):
     assert store.get(request).body == b"two"
     assert conn.execute("SELECT COUNT(*) FROM metadata_responses").fetchone()[0] == 1
     assert store.get_by_key("ndl", request.key()).body == b"two"
-    assert store.get_by_key("anilist", request.key()) is None
+    assert store.get_by_key("mediaarts", request.key()) is None
     store.delete(request)
     assert store.get(request) is None

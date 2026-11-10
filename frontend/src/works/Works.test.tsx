@@ -446,8 +446,8 @@ describe("公開データベースの情報(#50)", () => {
     const credits = await screen.findByRole("contentinfo", { name: "利用している公開データベース" });
     expect(within(credits).getByRole("link", { name: "国立国会図書館サーチ" }).getAttribute("href")).toBe("https://ndlsearch.ndl.go.jp/");
     expect(credits.textContent).toContain("NDL サーチ API");
-    expect(credits.textContent).toContain("AniList API");
-    expect(credits.textContent).toContain("MangaUpdates API");
+    expect(credits.textContent).toContain("メディア芸術データベース SPARQL");
+    expect(credits.textContent).toContain("Bangumi API");
   });
 
   it("確認待ちの候補を選ぶと反映され、出所が公開データベースになる。失敗した取得元はその理由が出る", async () => {
@@ -455,8 +455,8 @@ describe("公開データベースの情報(#50)", () => {
     render(<App />);
     const ndl = (await screen.findByLabelText("国立国会図書館サーチとの連携")) as HTMLElement;
     expect(within(ndl).getByText("確認待ち")).toBeTruthy();
-    expect(screen.getByLabelText("AniListとの連携").textContent).toContain("漫画か小説かが決まるまで保留");
-    expect(screen.getByLabelText("MangaUpdatesとの連携").textContent).toContain("応答が時間内に返りませんでした");
+    expect(screen.getByLabelText("メディア芸術データベースとの連携").textContent).toContain("漫画か小説かが決まるまで保留");
+    expect(screen.getByLabelText("Bangumiとの連携").textContent).toContain("応答が時間内に返りませんでした");
     // 種別はまだ入っていない
     expect((screen.getByLabelText("種別") as HTMLSelectElement).value).toBe("");
 
@@ -466,8 +466,8 @@ describe("公開データベースの情報(#50)", () => {
     expect((screen.getByLabelText("種別") as HTMLSelectElement).value).toBe("manga");
     expect((screen.getByLabelText("出版社") as HTMLInputElement).value).toBe("集英社");
     expect(screen.getAllByText(/公開データベース: 国立国会図書館サーチ/).length).toBeGreaterThan(0);
-    // 保留だった AniList は種別が決まって自動で連携する
-    expect(within(screen.getByLabelText("AniListとの連携")).getByText(/自動で連携/)).toBeTruthy();
+    // 保留だったメディア芸術データベースは種別が決まって自動で連携する
+    expect(within(screen.getByLabelText("メディア芸術データベースとの連携")).getByText(/自動で連携/)).toBeTruthy();
     expect((screen.getByLabelText("ジャンル(「、」区切り)") as HTMLInputElement).value).toBe("アクション、コメディ");
   });
 
@@ -476,7 +476,7 @@ describe("公開データベースの情報(#50)", () => {
     render(<App />);
     const ndl = (await screen.findByLabelText("国立国会図書館サーチとの連携")) as HTMLElement;
     fireEvent.click(within(ndl).getByRole("button", { name: "サンプル漫画(漫画・集英社) を採用" }));
-    await waitFor(() => expect(within(screen.getByLabelText("AniListとの連携")).getByText(/自動で連携/)).toBeTruthy());
+    await waitFor(() => expect(within(screen.getByLabelText("メディア芸術データベースとの連携")).getByText(/自動で連携/)).toBeTruthy());
     expect(screen.queryByLabelText("あらすじ")).toBeNull();
     expect(screen.queryByText(/あらすじ/)).toBeNull();
   });
@@ -503,8 +503,8 @@ describe("公開データベースの情報(#50)", () => {
     window.location.hash = "#/works/1";
     render(<App />);
     const credits = await screen.findByRole("contentinfo", { name: "利用している公開データベース" });
-    expect(within(credits).getByRole("link", { name: "AniList" }).getAttribute("href")).toBe("https://anilist.co");
-    expect(within(credits).getByRole("link", { name: "MangaUpdates" }).getAttribute("href")).toBe("https://www.mangaupdates.com");
+    expect(within(credits).getByRole("link", { name: "メディア芸術データベース" }).getAttribute("href")).toBe("https://mediaarts-db.artmuseums.go.jp/");
+    expect(within(credits).getByRole("link", { name: "Bangumi" }).getAttribute("href")).toBe("https://bgm.tv");
   });
 
   it("巻の書誌に出所と出典が出て、手で直して自動に戻せる", async () => {

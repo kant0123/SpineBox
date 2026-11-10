@@ -1,4 +1,4 @@
-"""公開 DB(国立国会図書館サーチ・AniList・MangaUpdates)の情報を作品・巻へ結線する(GOAL.md フェーズ 3、#50)。
+"""公開 DB(国立国会図書館サーチ・メディア芸術データベース・Bangumi)の情報を作品・巻へ結線する(GOAL.md フェーズ 3、#50)。
 
 取得(`fetch_work`)と反映(`apply_work`)を分けている。
 
@@ -36,7 +36,7 @@ from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 log = logging.getLogger(__name__)
 
 # 検索の順。国立国会図書館サーチで種別・著者を決めてから、作品単位の取得元の候補を絞る
-SEARCH_ORDER = ("ndl", "anilist", "mangaupdates", "nhentai", "ehentai")
+SEARCH_ORDER = ("ndl", "mediaarts", "bangumi", "nhentai", "ehentai")
 
 AUTO_LINK_MIN = 0.75      # 自動で連携する最小の確からしさ
 LINK_MARGIN = 0.15        # 2 位との差がこれ以上あるときだけ自動で連携する(拮抗は確認待ち)
@@ -50,15 +50,17 @@ GENRES_LIMIT = 15
 TAGS_LIMIT = 30
 
 PRIORITY = {
-    works.FIELD_TITLE: ("ndl", "mangaupdates", "anilist", "ehentai", "nhentai"),
-    works.FIELD_AUTHOR: ("ndl", "anilist", "mangaupdates", "ehentai", "nhentai"),
-    works.FIELD_KIND: ("ndl", "mangaupdates", "anilist", "ehentai", "nhentai"),
-    works.FIELD_PUBLISHER: ("ndl", "mangaupdates", "ehentai", "nhentai"),
-    works.FIELD_TOTAL_VOLUMES: ("anilist", "mangaupdates"),
+    works.FIELD_TITLE: ("ndl", "mediaarts", "bangumi", "ehentai", "nhentai"),
+    works.FIELD_AUTHOR: ("ndl", "mediaarts", "bangumi", "ehentai", "nhentai"),
+    works.FIELD_KIND: ("ndl", "mediaarts", "bangumi", "ehentai", "nhentai"),
+    works.FIELD_PUBLISHER: ("ndl", "mediaarts", "bangumi", "ehentai", "nhentai"),
+    works.FIELD_TOTAL_VOLUMES: ("mediaarts", "bangumi"),
 }
 UNION_PRIORITY = {
-    works.FIELD_GENRES: ("mangaupdates", "anilist", "ehentai", "nhentai"),
-    works.FIELD_TAGS: ("mangaupdates", "anilist", "ehentai", "nhentai"),
+    # メディア芸術データベース・Bangumi はジャンル・タグを持たない(Bangumi のタグは簡体字中国語で、
+    # 既存の日本語判定が仮名の無い中国語を誤って日本語と見なすため読み取らない。#278)
+    works.FIELD_GENRES: ("ehentai", "nhentai"),
+    works.FIELD_TAGS: ("ehentai", "nhentai"),
 }
 UNION_LIMIT = {works.FIELD_GENRES: GENRES_LIMIT, works.FIELD_TAGS: TAGS_LIMIT}
 MANAGED_FIELDS = (*PRIORITY, *UNION_PRIORITY)
@@ -210,7 +212,7 @@ def decide(cands: list[dict], known_kind: str | None, hold: bool = False,
 def kind_unresolved(c: sqlite3.Connection, work_id: int) -> bool:
     """漫画か小説かが未決か。国立国会図書館サーチの候補が確認待ちで、種別の違う候補が並んでいるとき真。
 
-    この間は、AniList / MangaUpdates が作品名の一致だけで種別を決めてしまわないよう、自動で連携しない
+    この間は、メディア芸術データベース / Bangumi が作品名の一致だけで種別を決めてしまわないよう、自動で連携しない
     (利用者が国立国会図書館サーチの候補か種別を選ぶと、次の取得で連携する)。
     """
     if _context(c, work_id).kind:
@@ -493,7 +495,7 @@ def _desired_fields(links: dict[str, sqlite3.Row]) -> dict[str, _Desired]:
         if found:
             source, value = found[0]
             if name == works.FIELD_PUBLISHER:
-                value = ja_terms.publisher_ja(value)  # NDL は日本語。MangaUpdates のローマ字名を日本語に
+                value = ja_terms.publisher_ja(value)  # NDL・メディア芸術データベース・Bangumi は基本的に日本語(念のため通す)
             conf, manual = meta(source)
             out[name] = _Desired(value, conf, manual, [source])
     for name, order in UNION_PRIORITY.items():
@@ -501,7 +503,7 @@ def _desired_fields(links: dict[str, sqlite3.Row]) -> dict[str, _Desired]:
         seen: set[str] = set()
         used: list[str] = []
         for source in order:
-            # 英語の語を日本語にしてから重ねる(MangaUpdates の `Teacher/s` と AniList の `Teacher` は同じ「教師」)
+            # 対応表にある語(英語。ehentai / nhentai 由来)は日本語にしてから重ねる
             values = ja_terms.localize_terms((payload.get(source) or {}).get(name) or [],
                                              keep_unknown=_display.keep_untranslated_terms)
             for v in values:
