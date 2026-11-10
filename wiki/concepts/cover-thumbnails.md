@@ -1,15 +1,15 @@
 ---
 type: concept
 summary: 作品カードの表紙(#75, #222)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。作品カード枠(2:3)を満たす高精細化と横長表紙の左寄せ表示、一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のスキャンと補完タブの「表紙のみ補完」)で作る理由と、却下した代替案
-updated: 2026-11-09
+updated: 2026-11-10
 related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection, data-jobs]
 ---
 
 # 表紙のサムネイル
 
 作品の一覧(`#/works`)のカードに出す表紙。ネットからは取らず(GOAL.md「作らないもの」)、巻の 1 ページ目から作る。
-入口は `spinebox/thumbs.py:105 Thumbnails`、API は `spinebox/app.py:999 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
-`spinebox/app.py:1020 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:30 WorkCover()`。
+入口は `spinebox/thumbs.py:105 Thumbnails`、API は `spinebox/app.py:1000 get_thumbnail()`(`GET /api/volumes/{id}/thumbnail`)と
+`spinebox/app.py:1021 start_thumbnail_build()`(`POST /api/thumbnails/build`)、画面は `frontend/src/works/WorkCover.tsx:30 WorkCover()`。
 
 ## 内容
 

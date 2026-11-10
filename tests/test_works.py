@@ -1052,3 +1052,45 @@ def test_dismiss_junk_aliases_cleans_up_numbered_junk(make_env):
         assert len(props) == 0
     finally:
         conn.close()
+
+
+def test_a_stale_title_with_a_leading_mark_is_read_again_from_its_volumes(make_env):
+    """`★作品名` のように今の読みで変わる古い作品名は、複数の巻でも同じ系列の巻が読んだときに直す。"""
+    _, settings, client = make_env(["★作品テスト 第01巻.cbz", "★作品テスト 第02巻.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("UPDATE work_fields SET value = ? WHERE work_id = ? AND field = 'title'",
+                      ("★作品テスト", w["id"]))
+    finally:
+        conn.close()
+    client.post("/api/works/refresh")
+    assert client.get(f"/api/works/{w['id']}").json()["title"] == "作品テスト"
+
+
+def test_a_stale_title_with_an_open_bracket_is_read_again(make_env):
+    """末尾の `【` が残った古い作品名は、今の読みの作品名へ直す(複数の巻)。"""
+    _, settings, client = make_env(["作品テスト 第01巻.cbz", "作品テスト 第02巻.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("UPDATE work_fields SET value = ? WHERE work_id = ? AND field = 'title'",
+                      ("作品テスト【", w["id"]))
+    finally:
+        conn.close()
+    client.post("/api/works/refresh")
+    assert client.get(f"/api/works/{w['id']}").json()["title"] == "作品テスト"
+
+
+def test_a_garbled_automatic_alias_is_dismissed_on_sync(make_env):
+    """直せない文字化けの自動別名は、同期のたびに外す(手動の別名は触らない)。"""
+    _, settings, client = make_env(["作品テスト 第01巻.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    add_alias(settings, w["id"], "縺繧繝テスト�", source="merge", confidence=0.9)
+    add_alias(settings, w["id"], "手動の別名", source="manual", confidence=1.0, manual=True)
+    client.post("/api/works/refresh")
+    aliases = [a["alias"] for a in client.get(f"/api/works/{w['id']}").json()["aliases"]]
+    assert "縺繧繝テスト�" not in aliases
+    assert "手動の別名" in aliases

@@ -19,10 +19,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 
 | パス | 役割 |
 | --- | --- |
-| `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:73 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
+| `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:74 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
-| `frontend/src/admin/Admin.tsx:31 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:16 Preferences()`。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
+| `frontend/src/admin/Admin.tsx:31 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:18 Preferences()`。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
@@ -65,7 +65,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。
-  そのため起動時に `frontend/src/route.ts:143 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
+  そのため起動時に `frontend/src/route.ts:145 canonicalUrl()` が `/#/read/<id>` へ `replaceState` で直す(#19)
 - **食い違いの説明はカードのリンクの外の `<details>` に置く。** リンクの中に置くと、説明を開くつもりのタップでリーダーへ飛ぶ。
   バッジ(「巻の食い違い」)はリンクの中。分解で作った子の巻には「「親の名前」の中」と出す。同じ食い違いは親の子すべてに出る([[volume-split]])
 - **整理は一覧のカードの「CBZ に整理」から。** 押しただけでは計画(プレビュー)を作るだけで、蔵書は動かない。

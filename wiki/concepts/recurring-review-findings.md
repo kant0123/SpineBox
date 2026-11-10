@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-09
+updated: 2026-11-10
 related: [overview]
 ---
 
@@ -428,7 +428,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:931 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
+- PR #172 — `spinebox/works.py:938 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
 
 ### 解析規則を変えたのに、既存データを読み直す版を上げていない
 
@@ -457,7 +457,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:911 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+- PR #172 — `spinebox/works.py:918 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
 
 ### 前提条件の内側に置いた処理が、前提を満たさない自然な状態で実行されない
 

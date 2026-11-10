@@ -14,7 +14,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 - **作品は派生データ。** 巻の名前から作る。名前は候補なので([[volume-split]] の巻番号と同じ扱い)、
   作品の項目・別名・巻の割り当てはどれも 1 件ごとに `source`・`manual`・`confidence`・`evidence`(JSON)を持つ。
-  入口: `spinebox/works.py:856 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
+  入口: `spinebox/works.py:863 sync()`(割り当て `_assign_volumes` → 外側の名前の別名 `_container_aliases` → 提案と自動統合 `_propose_and_merge`)
 - **保存先。** 作品 `works`(統合されたものは `merged_into` でリダイレクト)、項目 `work_fields`(title・author を行で持つ。
   項目を足すときは行を足すだけで列は足さない)、別名 `work_aliases`、巻の割り当て `work_volumes`(巻あたり 1 行)、
   統合の提案と履歴 `work_merge_proposals`。`spinebox/db.py:40 MIGRATIONS` の版 6。「手動か」「出所」は
@@ -38,6 +38,7 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   この名前を読ませると、同じ公開 DB 項目に linked した 73 の作品どうしが別名で結ばれて 2000 組超の提案になり、
   末尾の番号の系列(#157)としては「files」1〜109 巻という作品にもなる
 - **EPUB の構造名や汎用名、数字付きゴミ名は作品名・別名にしない。** `oebps` `ops` `metainf` `meta-inf` `epub` `mimetype` `cover` `image` `chapter` `episode` などは作品名として中身のない名前(`spinebox/naming.py JUNK_NAMES`)。また、`cover2` や `scans 01` のように単語の後ろに数字が付いた名前も作品名として中身のない名前(`spinebox/naming.py is_junk_name()`)。スキャン・分解で非コンテンツディレクトリとして巻にしない(`spinebox/scanner.py _NON_CONTENT_DIRS`、`SCAN_VERSION=7`、`ANALYSIS_VERSION=3`)。名寄せでは `_container_aliases` での別名登録や `_alias_evidence` での統合提案の根拠にしない。子フォルダが `cover2` のような名前でも作品名とならず親フォルダ名が採用される(#220)。さらに既存 DB に紛れ込んだ汚染を解消するため、`sync()` の冒頭で `is_junk_name()` に該当する自動別名、およびタイトルがジャンク名である非手動作品に付いた自動別名を `dismissed_at` で外し、ジャンク作品との確認待ち提案を削除する(#215, #220)。
+- **古い作品名の読み直し。** 作品名は作られたときの読みで残るため、今の読みで変わる作品名(`★作品名` `作品名【` など)は、1 巻だけの作品に加えて、同じ系列の巻が今の読みで同じ名前を読んだときに直す(`works._refresh_title()` / `_stale_title_norm()`)。直せない文字化けの自動別名は `_dismiss_junk_aliases()` が同期のたびに外す(手動の別名は触らない)。
 - **確信度の目安。** 自分の名前から 0.9、巻の名前に作品名が無く外側の名前から読んだものは 0.6(`CONF_*` 定数)。
   外側のアーカイブ・フォルダの名前は、**その全部の巻が 1 つの作品に入っているときだけ**別名・著者の候補(0.5)にする
   (複数作品の入れ物の名前を別名にすると、別作品を混ぜる根拠になるため)
@@ -52,9 +53,9 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
   (実データ 2026-11-06: 4610 巻のうち 782 巻・73 組が該当。確認待ちの提案 6123 件のうち 3500 件超がこれだけで消えた)
 - **作品の表示タイトルは、利用可能な限り日本語を正とする。** ローマ字(`okirakuryoshunotanoshiryochi` など)はファイル名由来の候補・別名として残し、
   表示タイトルと名寄せの代表(統合で残す作品)には使わない(#212)。日本語の出どころは公開 DB の連携・手動編集・コンテナ名。
-  - 統合で残す作品は `spinebox/works.py:691 choose_survivor()` が決める: 手動の作品名 > 日本語の作品名 > 巻の多い方 > id の若い方。
+  - 統合で残す作品は `spinebox/works.py:697 choose_survivor()` が決める: 手動の作品名 > 日本語の作品名 > 巻の多い方 > id の若い方。
   - ファイル名・外側の名前由来のローマ字の作品名・著者は、公開 DB の日本語で置き換える(確信度 0.9 未満でも)。
-    `spinebox/linking.py:527 _prefer_japanese_value()`。日本語同士の置き換えは確信度 0.9 の規則に委ねる([[metadata-linking]])。
+    `spinebox/linking.py:529 _prefer_japanese_value()`。日本語同士の置き換えは確信度 0.9 の規則に委ねる([[metadata-linking]])。
 - **系列として読めた巻は、系列名を別名に持つだけの 1 巻作品に留めない。** 巻の割り当ては、読み直した作品名が
   **今の作品の名前のどれか**(別名を含む)と一致すれば動かさないが、公開 DB に linked した 1 巻 = 1 作品は
   系列名を別名として持つため、系列として読めても留まっていた(#162)。作品名が `系列名 + 末尾の番号` そのもの
@@ -194,9 +195,9 @@ related: [overview, backend, frontend, duplicate-detection, volume-split, organi
 
 ## 欠け巻と重複
 
-`spinebox/works.py:1636 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
+`spinebox/works.py:1654 number_summary()` が、巻と話を別々に 1..最大 のうち範囲(`第01-04巻`)に覆われない番号を欠けとして数える。
 最大が 500 を超えると数えない(`limited`。名前の誤読で何千件も欠けを出さない)。**巻の番号を持つ巻が 1 つでもある作品では、話の欠けを数えない**(話・章は巻の中身で、別の系列ではない。
-章のフォルダを話として読んだ作品で 1..最大 の欠けが何百件も出たため。#248)。`spinebox/works.py:1660 build_slots()` は
+章のフォルダを話として読んだ作品で 1..最大 の欠けが何百件も出たため。#248)。`spinebox/works.py:1678 build_slots()` は
 同じ (種別, 開始, 終了) の巻を 1 つの枠にまとめ、2 冊以上入った枠を重複として表示する。番号を読めない巻は「番号の読めない巻」に分けて数えない。
 
 ## 実データでの結果
