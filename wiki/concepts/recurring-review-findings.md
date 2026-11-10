@@ -489,6 +489,7 @@ push 前に確かめること:
 
 - PR #213 — `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(agy レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
 - PR #216 — `wiki/log.md` — スクリプトによる文字列の一括置換(`replace`)で、最新エントリだけでなく過去の PR (#159, #160, #164, #174, #172) の更新行まで同じ文字列として置換され、同一ページへの重複リンクが混入していた(agy レビューの WARNING。過去ログを元に戻し最新エントリのみ追記する形に修正)
+- PR #302 — `wiki/log.md` — 最新エントリの「更新:」行を `sed` で書き換えたとき、同じ文面の過去の行(PR #192・#201)にも当たって履歴が変わった(agy レビューの NITPICK。置換後に `git diff` で当たった行を数える)
 
 ### 文字化け修復の判定で、正常な別文字コードの文字列が偶然デコードされる誤爆を考えていない
 
