@@ -173,7 +173,7 @@ def looks_garbled(text: str) -> bool:
     - 置換文字(U+FFFD)・私用領域の文字を含む(読めなかったバイトの跡)
     - 日本語を含まず、Latin-1 のアクセント文字・罫線が、ASCII でない文字の半分以上かつ 4 文字以上
       (`ûéôsÉ+ò¦…`。`Amélie` `café` のような欧文はアクセント文字が少ない)
-    - UTF-8 の名前を Shift_JIS で読んだ跡の字(`縺` `繧` `繝` …)が 3 文字以上
+    - UTF-8 の名前を Shift_JIS で読んだ跡の字(`縺` `繧` `繝` …)が 2 文字以上(本番の 1724・1419 は 2 文字)
     """
     if "\ufffd" in text or any("\ue000" <= ch <= "\uf8ff" for ch in text):
         return True
@@ -182,4 +182,4 @@ def looks_garbled(text: str) -> bool:
         accents = [ch for ch in wide if "\u00c0" <= ch <= "\u00ff" or ch in "\u00a6\u00ac\u00b5\u00b7"
                    or "\u2500" <= ch <= "\u259f"]
         return len(accents) >= 4 and len(accents) * 2 >= len(wide) and len(accents) * 4 >= len(text.replace(" ", ""))
-    return len(_GARBLED_SJIS.findall(text)) >= 3
+    return len(_GARBLED_SJIS.findall(text)) >= 2

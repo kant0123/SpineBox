@@ -244,3 +244,19 @@ def test_works_whose_derived_titles_became_equal_are_merged(env):
     client.post("/api/works/refresh")
     assert titles(client) == [("作品甲", 2)]
     assert client.get("/api/works/proposals").json() == []
+
+
+@pytest.mark.parametrize("name", [
+    "11266 諱九☆繧九・繧薙▽",
+    "蟆大・ウ縺ョ驕楢拷・樊叛隱イ蠕後・螯也イセ驕費ス・縺翫s!",
+])
+def test_two_shift_jis_misread_marks_are_garbled(name):
+    """UTF-8 の名前を Shift_JIS で読んだ跡の字が 2 文字だけの名前も、直せない文字化けとして作品名にしない(本番 1724・1419)。"""
+    from spinebox.mojibake import looks_garbled
+    assert looks_garbled(name)
+
+
+@pytest.mark.parametrize("name", ["進撃の巨人", "ブルーロック 第1巻"])
+def test_real_japanese_titles_are_not_garbled(name):
+    from spinebox.mojibake import looks_garbled
+    assert not looks_garbled(name)
