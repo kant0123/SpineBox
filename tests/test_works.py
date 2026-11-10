@@ -1094,3 +1094,94 @@ def test_a_garbled_automatic_alias_is_dismissed_on_sync(make_env):
     aliases = [a["alias"] for a in client.get(f"/api/works/{w['id']}").json()["aliases"]]
     assert "縺繧繝テスト�" not in aliases
     assert "手動の別名" in aliases
+
+
+# --- 確認の画面(#207)を蔵書の規模で遅くしない(#291) ------------------------------------------
+
+
+def add_pending_link(settings, work_id, source="ndl"):
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("INSERT INTO work_links (work_id, source, status, candidates) VALUES (?, ?, 'pending', '[]')",
+                      (work_id, source))
+    finally:
+        conn.close()
+
+
+def add_open_proposal(settings, a, b):
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute("""INSERT INTO work_merge_proposals (work_a, work_b, rule, confidence, evidence, status, created_at)
+                         VALUES (?, ?, 'alias', 0.5, '{}', 'open', ?)""", (a, b, db.now()))
+    finally:
+        conn.close()
+
+
+REVIEW_FILES = [f"{name} {n:02d}.cbz" for name in ("Beta", "Alpha", "Gamma", "Delta", "Epsilon") for n in (1, 2)]
+
+
+def test_review_counts_match_the_lists_without_building_them(make_env):
+    """件数は一覧を組み立てずに数えるが、一覧(作品の一覧の確認待ち・提案の一覧)と同じ数・同じ並びになる。
+    見えない作品(巻が missing)と統合で吸収された作品の確認待ち・提案は数えない。"""
+    lib, settings, client = make_env(REVIEW_FILES)
+    ws = by_title(client)
+    for title in ("Beta", "Alpha", "Gamma", "Delta"):
+        add_pending_link(settings, ws[title]["id"])
+    add_pending_link(settings, ws["Alpha"]["id"], "bangumi")  # 取得元が 2 つでも作品は 1 件
+    for n in (1, 2):
+        (lib / f"Gamma {n:02d}.cbz").unlink()
+    client.post("/api/scan")
+    assert client.post(f"/api/works/{ws['Epsilon']['id']}/merge", json={"other_id": ws["Delta"]["id"]}).status_code == 200
+    # 提案は再計算で作り直されるので、スキャンと統合の後に足す
+    add_open_proposal(settings, ws["Alpha"]["id"], ws["Beta"]["id"])
+    add_open_proposal(settings, ws["Alpha"]["id"], ws["Gamma"]["id"])    # Gamma は見えなくなる
+    add_open_proposal(settings, ws["Beta"]["id"], ws["Delta"]["id"])     # Delta は Epsilon に吸収済み(吸収先との組として出る)
+    add_open_proposal(settings, ws["Delta"]["id"], ws["Epsilon"]["id"])  # 吸収済みなので同じ作品どうし
+
+    listing = client.get("/api/works").json()["works"]
+    pending = [w["id"] for w in listing if w["link_pending"] > 0]
+    assert len(pending) >= 2 and ws["Gamma"]["id"] not in pending
+    proposals = client.get("/api/works/proposals").json()
+    counts = client.get("/api/review/counts").json()
+    assert counts["links"] == len(pending) and counts["proposals"] == len(proposals) == 2
+    assert [w["id"] for w in client.get("/api/review/links").json()["works"]] == pending  # 並びも作品の一覧と同じ
+
+
+def test_review_links_have_the_work_page_shape(make_env):
+    """まとめて引いた詳細は、作品ページの詳細(1 件ずつ)と同じ。"""
+    _, settings, client = make_env(REVIEW_FILES)
+    ws = by_title(client)
+    for title in ("Alpha", "Beta", "Delta"):
+        add_pending_link(settings, ws[title]["id"])
+    add_open_proposal(settings, ws["Alpha"]["id"], ws["Beta"]["id"])
+    client.put(f"/api/works/{ws['Alpha']['id']}/follow")
+    items = client.get("/api/review/links").json()["works"]
+    assert [w["title"] for w in items] == ["Alpha", "Beta", "Delta"]
+    for item in items:
+        assert item == client.get(f"/api/works/{item['id']}").json()
+    assert len(items[0]["proposals"]) == len(items[1]["proposals"]) == 1 and items[2]["proposals"] == []
+
+
+def test_get_works_does_not_query_per_work(make_env):
+    """確認待ちの作品を全部並べるので、作品の数に比例して SQL を発行しない(#291。1 件ずつ引くと作品の数 × 蔵書全体)。"""
+    _, settings, client = make_env(REVIEW_FILES)
+    ids = [w["id"] for w in client.get("/api/works").json()["works"]]
+    conn = db.connect(settings.db_path)
+    statements: list[str] = []
+
+    def count(work_ids) -> int:
+        statements.clear()
+        works.get_works(conn, work_ids)
+        return len(statements)
+
+    conn.set_trace_callback(statements.append)
+    try:
+        one, many = count(ids[:1]), count(ids)
+    finally:
+        conn.set_trace_callback(None)
+        conn.close()
+    assert len(ids) == 5 and many == one, (one, many)
+    with pytest.raises(works.WorkNotFound):
+        works.get_works(db.connect(settings.db_path), [ids[0], 999999])

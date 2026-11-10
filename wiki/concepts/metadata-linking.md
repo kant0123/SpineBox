@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 公開 DB の情報を作品・巻へ結線する規則(#50)。連携(work_links)の自動/確認待ちの基準、空欄だけを埋める・手動は不変・名前由来の値を置き換える条件、英語の語彙を日本語にして反映する規則(#74)、あらすじの廃止(#82)、失敗の扱い、保存場所(全文検索・絞り込みが乗る列)、却下した代替案
-updated: 2026-11-10
+updated: 2026-11-11
 related: [metadata-clients, metadata-sources, work-grouping, work-search, backend, frontend, overview, follow, data-jobs]
 ---
 
@@ -147,7 +147,7 @@ AniList / MangaUpdates(#278 で置き換える前)のジャンル・タグは英
 
 - [[follow]] は NDL の連携だけを短い有効期限で取り直し(`fetch_work(..., sources=("ndl",))`)、連携した組の巻ごとの書誌から蔵書に無い巻番号を数える。連携の規則は変えずに乗っている
 
-- 確認待ち(`pending`)の作品は、作品ページのほか確認の画面(`#/review`。#207)でまとめて選べる。一覧は `GET /api/review/links`(`spinebox/app.py:709 review_links()`)で、選ぶ API は作品ページと同じ([[frontend]])
+- 確認待ち(`pending`)の作品は、作品ページのほか確認の画面(`#/review`。#207)でまとめて選べる。一覧は `GET /api/review/links`(`spinebox/app.py:706 review_links()`)で、選ぶ API は作品ページと同じ([[frontend]])
 
 ## 却下した案
 
