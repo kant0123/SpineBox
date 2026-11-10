@@ -435,7 +435,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: 作品カードの表紙(WorkCover)が画像読み込み後に aspect ratio を判定し、横長なら寄せ位置/全体表示を切り替える。ar > 2.0 は contain、1.2 < ar <= 2.0 は右寄せ(右綴じの表紙側が残る)。しきい値と方向は実データ(お気楽領主は全巻縦長、かくかくしかじかは 4 巻中 3 巻が横長 ar 1.41、2.21)を根拠にした仮定。agy レビュー #194 WARNING 1 で右寄せに統一。Vitest 189 件・tsc ビルドパス。
 
 ## [2026-11-07] ingest | PR #192 (#178, #179, #180) .zip 内 EPUB の内容判定・非コンテンツ dir 除外・表紙のみフォルダのスキップ
-- 更新: [[backend]], [[volume-split]]
+- 更新: [[backend]], [[volume-split]], [[metadata-linking]], [[work-search]]
 - 備考: SCAN_VERSION を 6 に上げ、既存 DB を再スキャンさせる。`.zip` でも `META-INF/container.xml` を含むアーカイブを EPUB 小説として扱う。`archive_volume_specs()` で `__MACOSX` / `META-INF` / `.DS_Store` 配下と表紙画像だけのフォルダを巻にしない。`_scan_folder()` でも表紙のみフォルダをスキップ。回帰テストを `tests/test_scanner.py` に追加。
 
 ## [2026-11-07] ingest | PR #189 (#184) タイトル一覧の「N巻」列を外す
@@ -459,7 +459,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #195。`linking._query` が CamelCase/PascalCase の連結されたローマ字作品名を空白区切りに変換してから検索するようになった（表示名・突き合わせ用の名前は変更しない）。分割は `match.is_romaji_word` でローマ字全体のときだけ行い、空白判定は `\s` で行う。`decide` の閾値は 0.75 のまま（低確信度候補は pending のまま）。テスト 2 件追加。wiki の linking.py 行番号参照を更新。
 
 ## [2026-11-07] ingest | PR #201 inner archive decomposition の非コンテンツ dir・表紙のみフォルダ除外と EPUB 構造名の junk 化
-- 更新: [[backend]], [[volume-split]]
+- 更新: [[backend]], [[volume-split]], [[metadata-linking]], [[work-search]]
 - 備考: library.py:_units() でも __MACOSX / META-INF / .DS_Store 配下と表紙のみフォルダを単位(巻)にしないようにし、scanner.py:archive_volume_specs() と基準を統一。ANALYSIS_VERSION を 2 に上げ既存データを再解析させる。naming.py:_JUNK_RAW に oebps, ops, metainf, epub を追加し EPUB の構造名が作品名の候補になるのを防ぐ。agy APPROVE。
 
 ## [2026-11-08] revert | PR #213 (#190) 作品一覧の候補の確認待ち・統合の提案フィルタを撤回
@@ -607,5 +607,5 @@ grep "^## \[" wiki/log.md | tail -5
 - 備考: #291。`GET /api/review/links` は `works.get_works()` でまとめて組み立て、`GET /api/review/counts` は一覧を組み立てずに数える。本番 DB の写し(1109 作品・確認待ち 239)で links は約 60 秒 → 0.4 秒、counts は 0.6 秒 → 0.06 秒。
 
 ## [2026-11-11] ingest | #294 作品の詳細・巻を開く・提案・ブックマークが蔵書全体を読むのをやめる
-- 更新: [[backend]], [[volume-split]]
+- 更新: [[backend]], [[volume-split]], [[metadata-linking]], [[work-search]]
 - 備考: #294。作品・巻・書誌・重複の印・食い違いの読み出しを id で絞れるようにし、`get_work()` 0.30 秒 → 1.3 ms、`list_proposals()` 0.26 秒 → 2.8 ms、`list_bookmarks()` 0.10 秒 → 1.2 ms(本番 DB の写し 1,141 作品)。ファセット・取得・表紙の作成は `listed_work_ids()` / `cover_volume_ids()` で一覧を組み立てない。統計・カタログとメモリへの保持(案 2)は未着手。
