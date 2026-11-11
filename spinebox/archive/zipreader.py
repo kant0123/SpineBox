@@ -100,9 +100,12 @@ def _decompress(raw: bytes, method: int, limit: int) -> bytes:
     else:
         raise NotImplementedError(f"未対応の圧縮方式({method})")
     data = decompressor.decompress(raw, limit + 1)
-    if len(data) > limit or getattr(decompressor, "unconsumed_tail", b""):
+    if len(data) > limit:
         raise LimitExceeded(f"エントリの展開サイズが上限を超える(> {limit} バイト)")
-    if hasattr(decompressor, "eof") and not decompressor.eof:
+    if getattr(decompressor, "eof", True) is False:
+        # 上限で出力を打ち切ったか(zlib は unconsumed_tail、bz2 / lzma は needs_input)、入力が途中で切れているか
+        if getattr(decompressor, "unconsumed_tail", b"") or getattr(decompressor, "needs_input", True) is False:
+            raise LimitExceeded(f"エントリの展開サイズが上限を超える(> {limit} バイト)")
         raise ArchiveError("圧縮データが途中で切れている")
     return data
 

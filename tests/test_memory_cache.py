@@ -4,9 +4,13 @@
 Library の先読み(zip リーダーを「まとめて読む形式」に見せかける)。実機の 7z を使うものは `sevenzip` fixture で skip する。
 """
 from concurrent.futures import ThreadPoolExecutor
+import bz2
+import lzma
+import struct
 import threading
 import time
 import zipfile
+import zlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -199,6 +203,23 @@ def test_cached_zip_reader_rejects_crc_mismatch(tmp_path):
     path.write_bytes(raw)
     with pytest.raises(ArchiveError, match="CRC"):
         ZipReader.from_cache_state(state).read_entry(entry, LIMITS)
+
+
+@pytest.mark.parametrize("method", [zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA])
+def test_decompress_stops_at_the_limit_even_if_the_size_lies(method):
+    # 宣言サイズが嘘でも、上限を超えて展開しきらない(超えたら LimitExceeded と言う)
+    if method == zipfile.ZIP_DEFLATED:
+        raw = zlib.compressobj(wbits=-15)
+        payload = raw.compress(b"x" * 1000) + raw.flush()
+    elif method == zipfile.ZIP_BZIP2:
+        payload = bz2.compress(b"x" * 1000)
+    else:
+        filters = [{"id": lzma.FILTER_LZMA1, "preset": 1}]
+        compressed = lzma.compress(b"x" * 1000, format=lzma.FORMAT_RAW, filters=filters)
+        props = lzma._encode_filter_properties(filters[0])  # noqa: SLF001 (zipfile と同じ形式)
+        payload = b"\x09\x04" + struct.pack("<H", len(props)) + props + compressed
+    with pytest.raises(LimitExceeded):
+        zipreader_mod._decompress(payload, method, 10)  # noqa: SLF001
 
 
 # --- 先読みの枚数 -------------------------------------------------------------
