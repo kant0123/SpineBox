@@ -301,6 +301,7 @@ def _stream_split(cmd: list[str], sizes: list[int], timeout: float) -> list[byte
 
 class SevenZipReader(ArchiveReader):
     batch_reads = True
+    cache_requires_external = True
 
     def __init__(self, path: Path, exe: str):
         self._path = Path(path)
@@ -327,6 +328,24 @@ class SevenZipReader(ArchiveReader):
 
     def restore_listing(self, state: tuple) -> None:
         self._entries, self._raw_paths, self._crcs = state
+
+    # ページ表のキャッシュ用(中央ディレクトリが無い形式なので、目次と取り出しの指定を持ち越す)
+    def cache_state(self) -> tuple:
+        return self._path, self._exe, self.listing_state()
+
+    def cache_size(self) -> int:
+        return _listing_size(self.raw_entries())
+
+    @classmethod
+    def from_cache_state(cls, state: tuple) -> "SevenZipReader":
+        path, exe, listing = state
+        self = cls(path, exe)
+        self.restore_listing(listing)
+        return self
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     def read_entries(self, entries: list[ArchiveEntry], limits: ExtractionLimits) -> dict[int, bytes]:
         """1 回の `7z e -so` で取り出す。名前が目次で一意なものだけをまとめ、残りは 1 つずつ読む。
@@ -377,3 +396,8 @@ def make_reader(path: Path, sevenzip_path: str) -> SevenZipReader:
     if exe is None:
         raise UnsupportedArchive(f"未対応: 7-Zip が見つからない(sevenzip_path = {sevenzip_path!r})")
     return SevenZipReader(path, exe)
+
+
+def _listing_size(entries) -> int:
+    """目次を RAM 層に置くときの大きさの見積もり(spinebox/library.py と同じ)。"""
+    return sum(len(e.name) * 2 + len(e.raw_name) + 256 for e in entries) + 1024

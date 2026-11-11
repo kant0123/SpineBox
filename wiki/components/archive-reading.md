@@ -1,7 +1,7 @@
 ---
 type: component
-summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、RAR4 の化けた Unicode 名を OEM 名(cp932)で直す規則、危険なエントリ名と展開上限
-updated: 2026-11-09
+summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、RAR4 の化けた Unicode 名を OEM 名(cp932)で直す規則、危険なエントリ名と展開上限、ページ表からの読み直し
+updated: 2026-11-11
 related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection, novel-reader, organize]
 ---
 
@@ -19,12 +19,12 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/archive/base.py:109 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
-| `spinebox/archive/base.py:224 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
-| `spinebox/archive/base.py:197 inner_reader_problem` | 内側アーカイブを取り出す前の判定。親のリーダーで先頭だけを読み(`read_head()`。zip だけが返す)、`open_archive` と同じ規則で読めるかを決める |
+| `spinebox/archive/base.py:123 list_entries` | 形式によらない検証(名前・上限)。リーダーを使うときは必ずここを通す。EPUB([[novel-reader]])も zip としてここを通す |
+| `spinebox/archive/base.py:238 open_archive` | 先頭のマジックバイト(`detect_format()`)でリーダーを選び、分からなければ拡張子で選ぶ。`reader_available()` は名前だけで、7z / rar を「7-Zip が見つかるとき」だけ true にする |
+| `spinebox/archive/base.py:211 inner_reader_problem` | 内側アーカイブを取り出す前の判定。親のリーダーで先頭だけを読み(`read_head()`。zip だけが返す)、`open_archive` と同じ規則で読めるかを決める |
 | `spinebox/archive/sevenzip.py:302 SevenZipReader` | 7z / rar / cb7 / cbr。目次は `parse_listing()`、取り出しは `_stream()` |
 | `spinebox/archive/rar4.py recovered_names` | RAR4 のヘッダを読み、化けた Unicode 名 → OEM 名(cp932)の対応を返す(下の「RAR4 の化けた Unicode 名」) |
-| `spinebox/archive/zipreader.py:54 decode_name` | zip の名前の復号順 |
+| `spinebox/archive/zipreader.py:56 decode_name` | zip の名前の復号順 |
 | `spinebox/archive/safety.py:24 entry_name_problem` | 拒否するエントリ名 |
 | `spinebox/pages.py:48 page_sort_key` | ページの並び(表紙 → 自然順) |
 
@@ -102,6 +102,16 @@ Issue #14 の指定順に従っている。実データで出たら順の見直�
   開いたときに中の巻の単位を集めて子の巻に分ける([[volume-split]])。`max_depth` を変えると見える単位が変わるので、解析し直す
   重複候補のための指紋(全ページの縮小デコード)も、この経路で巻を開いて 1 ページずつ読む([[duplicate-detection]])
 
+## ページ表からの読み直し(#297)
+
+同じ巻の 2 ページ目以降も `GET .../pages/{i}` は毎回 `spinebox/library.py Library.open()` を通る。そこで zip の中央ディレクトリの読み直し・フォルダの列挙・`7z l` をやり直さないよう、`Library._PageTable` に目次を持ち越し、リーダーはその状態から作り直す([[extraction-cache]] の RAM 層)。
+
+- `ZipReader.cache_state()` はパスと `ZipInfo` の列(中央ディレクトリの情報)を返す。`ZipReader.from_cache_state()` は `ZipFile` を作らず、ページを読むときにローカルヘッダ(`header_offset`)から圧縮データを読み、`_decompress()` で stored / deflate / bzip2 / lzma を展開する。サイズと CRC は中央ディレクトリの宣言値と照合する。未対応の圧縮方式だけは `ZipFile` を開き直して読む(読めるものは読む)
+- `SevenZipReader.cache_state()` は目次(`listing_state()`。エントリ・7z が出した名前・CRC)を持つ。`SevenZipReader.from_cache_state()` は `7z l` を起動しない。ページのまとめ取り出しは従来どおり `7z e -so`
+- 名前の復号は目次を読んだときの結果(`ArchiveEntry`)を使うので、キャッシュから作っても同じ名前・同じエントリ番号になる
+- 状態を持てないリーダーは `cache_state()` が None を返し、ページ表にしない(毎回開く。未整理の PDF がこれ)
+- 元ファイルが変わったかは `Library.open()` が毎回 stat するサイズ・mtime で見る。内側アーカイブの展開キャッシュが消えていたら、そのページ表は捨てて開き直す
+
 ## RAR4 の化けた Unicode 名(#257)
 
 RAR4 のファイル名は「OEM 名のバイト列」と、フラグ 0x200 のときその後ろに続く「Unicode 名」の 2 本立てで、7-Zip は Unicode 名を出す。
@@ -151,3 +161,4 @@ RAR4 のファイル名は「OEM 名のバイト列」と、フラグ 0x200 の�
 - #49 で形式の判定を拡張子から先頭のマジックバイトに変えた。改名した rar / 7z の合成データは `tests/test_archive_magic.py`(7z が無ければ skip)
 - #257 で RAR4 の化けた Unicode 名を OEM 名で直した(SCAN_VERSION=12・ANALYSIS_VERSION=6 で既存の DB も読み直す)
 - #62 で内側アーカイブの取り出す前の判定も中身(先頭のマジックバイト)に揃えた。7-Zip なしの合成データ(名前 rar / 7z で中身 zip、名前 cbz / rar で中身 rar)も同じファイル
+- #297 でページ表を RAM 層に持ち越すようにした。`ZipReader.from_cache_state()` / `SevenZipReader.from_cache_state()` で、2 ページ目以降の中央ディレクトリ読み直しと `7z l` を省く

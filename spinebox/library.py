@@ -9,7 +9,8 @@
 - 子の巻(分解で作った巻): 親の内側アーカイブから inner_path の入れ子を順に取り出し、
   entry_prefix のフォルダ直下の画像を読む。取り出しは親と同じキャッシュキーなので、親を開いた後なら取り出し直さない
 
-どの経路も蔵書には読み取りしかしない。ページの並びは毎回目次から作り直す(DB にはページ数だけ持つ)。
+どの経路も蔵書には読み取りしかしない。ページの並びは RAM 層のページ表に持ち越し、2 回目以降は元ファイルの版を
+確かめるだけで書庫を開き直さない(#297。DB にはページ数だけ持つ)。
 
 7z / rar のページと目次は RAM 層(`MemoryCache`、設定 `memory_cache_limit_bytes`)に置く。ページは、要求された
 ページから先の数ページを 1 回の 7-Zip 起動でまとめて取り出して置く(ソリッド 7z は 1 ページごとに塊の先頭から
@@ -20,16 +21,17 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import stat
 import threading
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Callable, Iterator
 
 from . import analysis, db
-from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
-                      open_archive)
+from .archive import (ArchiveEntry, ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name,
+                      list_entries, open_archive)
 from .archive.base import detect_format, inner_reader_problem
 from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
@@ -65,6 +67,8 @@ READAHEAD_PAGES = 64
 READAHEAD_BYTES = 128 * 1024 ** 2
 # 書庫ごとの状態(先読みの枚数・直列化のロック)を持つ数。超えたら使用中でないものを捨てる(捨てても 1 枚から始まるだけ)
 MAX_ARCHIVE_STATES = 1024
+# ページ表を作る処理(同じ巻への並行した最初の要求)を 1 回にするロックの数。超えたら使用中でないものを捨てる
+MAX_TABLE_LOCKS = 1024
 
 
 @dataclass
@@ -81,6 +85,34 @@ class OpenVolume:
         if not 0 <= index < len(self.page_names):
             raise IndexError(index)
         return self._read(index)
+
+
+@dataclass
+class _PageTable:
+    """同じ版の巻のページ表(RAM 層に置く)。
+
+    2 回目以降は、巻の行・ルートの確認・元ファイルの stat(版の確認)だけでページを読めるようにする。
+    zip は中央ディレクトリの ZipInfo、7z / rar は目次と取り出しの指定を持ち越し、`Library.open()` は
+    書庫を開き直さずに `ArchiveReader` を作り直す(内側アーカイブは展開キャッシュのファイルを使う)。
+    """
+
+    names: list[str]
+    version: str
+    kind: str  # "folder" | "archive"
+    path: Path
+    states: list[tuple[type, object, Path]] = field(default_factory=list)
+    pages: list[tuple[int, ArchiveEntry, str]] = field(default_factory=list)
+    units: list[analysis.Unit] | None = None
+    page_units: list[analysis.UnitKey] | None = None
+    size: int = 0
+
+    def sources_available(self) -> bool:
+        """内側アーカイブの展開キャッシュが消えていないか。消えていたら開き直して作り直す。"""
+        return all(path.is_file() for _, _, path in self.states)
+
+    def readable_without_extraction(self) -> bool:
+        """取り出し・7-Zip の起動をせずに読めるか(`open(extract=False)` 用)。"""
+        return not any(cls.cache_requires_external for cls, _, _ in self.states)
 
 
 VOLUME_QUERY = """
@@ -138,6 +170,9 @@ class Library:
         # まとめ取り出しを重ねて起動しない(後の要求は先の取り出しが RAM に置いたものを使う)
         self._archives: dict[str, _ArchiveState] = {}
         self._archives_guard = threading.Lock()
+        # 同じ巻のページ表を並行して作り直さないためのロック
+        self._table_locks: dict[str, threading.Lock] = {}
+        self._tables_guard = threading.Lock()
 
     @contextmanager
     def open(self, conn: sqlite3.Connection, volume_id: int, *, extract: bool = True) -> Iterator[OpenVolume]:
@@ -145,6 +180,9 @@ class Library:
 
         extract=False で開けるのは、フォルダの巻、zip の中の画像を直接読む巻、展開キャッシュに取り出し済みの
         内側 zip の巻だけ(一覧の表紙のように、巻の数だけ呼ばれうるところで使う。spinebox/thumbs.py)。
+
+        ページ表(ページ名と読み出しに要る ZipInfo・7z の目次)は RAM 層に置き、2 回目以降は書庫を開き直さない。
+        元ファイルの版(サイズ・mtime)が変わったときと、内側アーカイブの展開キャッシュが消えたときに作り直す。
         """
         row = get_volume_row(conn, volume_id)
         if row["format"] is not None and row["format"] != "pdf":
@@ -159,29 +197,133 @@ class Library:
         except OSError as e:
             raise VolumeNotFound(volume_id) from e
         version = f"{st.st_size}-{st.st_mtime_ns}"
-        limits = self.settings.limits
+        key = self._page_table_key(row, path, version)
         with ExitStack() as stack:
-            if row["kind"] == "folder":
-                names = sort_pages(p.name for p in path.iterdir() if p.is_file())
-
-                def read(i: int) -> bytes:
-                    page = path / names[i]
-                    problem = entry_limit_problem(page.stat().st_size, limits)
-                    if problem:
-                        raise VolumeUnreadable(problem)
-                    return page.read_bytes()
-
-                opened = OpenVolume(volume_id, names, version, read)
-            elif row["format"] == "pdf":
-                opened = self._open_pdf(stack, volume_id, path, version)
-            else:
-                if not extract and detect_format(path) != "zip":
-                    raise NeedsExtraction(volume_id)
-                opened = self._open_archive_volume(conn, stack, row, path, version, extract)
+            table = self._cached_page_table(key, version, st)
+            if table is not None and not extract and not table.readable_without_extraction():
+                table = None  # 一覧の表紙では 7-Zip を起動しない(従来どおり NeedsExtraction にする)
+            opened = None
+            if table is None:
+                # 同じ巻への並行した最初の要求(フロントは前後を先読みする)で、開き直しを重ねない
+                with self._table_lock(key):
+                    table = self._cached_page_table(key, version, st)
+                    if table is None:
+                        opened, table = self._open_volume(conn, stack, row, path, version, st, extract)
+                        self._remember_page_table(key, table)
+            if opened is None:
+                opened = self._open_from_page_table(table, volume_id, stack)
             if row["page_count"] != len(opened.page_names):
                 with db.transaction(conn) as c:
                     c.execute("UPDATE volumes SET page_count = ? WHERE id = ?", (len(opened.page_names), volume_id))
             yield opened
+
+    def _open_volume(self, conn, stack: ExitStack, row, path: Path, version: str, st,
+                     extract: bool) -> tuple[OpenVolume, _PageTable | None]:
+        """ページ表が無いときに開く。キャッシュできる巻なら、ページ表も一緒に返す。"""
+        limits = self.settings.limits
+        if row["kind"] == "folder":
+            names = sort_pages(p.name for p in path.iterdir() if p.is_file())
+
+            def read(i: int) -> bytes:
+                page = path / names[i]
+                problem = entry_limit_problem(page.stat().st_size, limits)
+                if problem:
+                    raise VolumeUnreadable(problem)
+                return page.read_bytes()
+
+            table = _PageTable(names, version, "folder", path,
+                               size=1024 + sum(len(n) * 2 + 128 for n in names)) if self.memory.enabled else None
+            return OpenVolume(row["id"], names, version, read), table
+        if row["format"] == "pdf":
+            return self._open_pdf(stack, row["id"], path, version), None
+        if not extract and detect_format(path) != "zip":
+            raise NeedsExtraction(row["id"])
+        return self._open_archive_volume(conn, stack, row, path, version, extract)
+
+    # --- ページ表(RAM 層) ----------------------------------------------------
+
+    def _page_table_key(self, row, path: Path, version: str) -> str:
+        """ページ表のキー。元ファイル・巻の切り出し方・上限が変われば別キーになる。"""
+        limits = self.settings.limits
+        return cache_key("pages", row["id"], str(path), version, row["kind"], row["format"],
+                         row["container_path"], row["entry_prefix"], row["inner_path"],
+                         limits.max_depth, limits.max_entries, limits.max_total_bytes,
+                         limits.max_entry_bytes, self.settings.sevenzip_path)
+
+    def _cached_page_table(self, key: str, version: str, st) -> _PageTable | None:
+        if not self.memory.enabled:
+            return None
+        table = self.memory.get(key)
+        if table is None or table.version != version:
+            return None
+        if table.kind == "folder":
+            if not stat.S_ISDIR(st.st_mode):
+                return None
+        elif not stat.S_ISREG(st.st_mode):
+            return None
+        if not table.sources_available():
+            return None  # 展開キャッシュが消えた。開き直して作り直す
+        return table
+
+    def _remember_page_table(self, key: str, table: _PageTable | None) -> None:
+        if table is not None and self.memory.enabled:
+            self.memory.put(key, table, table.size)
+
+    def _table_lock(self, key: str) -> threading.Lock:
+        with self._tables_guard:
+            lock = self._table_locks.get(key)
+            if lock is None:
+                if len(self._table_locks) >= MAX_TABLE_LOCKS:
+                    for k in [k for k, v in self._table_locks.items() if not v.locked()]:
+                        del self._table_locks[k]
+                lock = self._table_locks[key] = threading.Lock()
+            return lock
+
+    def _open_from_page_table(self, table: _PageTable, volume_id: int, stack: ExitStack) -> OpenVolume:
+        """ページ表から、書庫を開き直さずに OpenVolume を作る。"""
+        if table.kind == "folder":
+            limits = self.settings.limits
+            names = list(table.names)
+
+            def read(i: int) -> bytes:
+                page = table.path / names[i]
+                problem = entry_limit_problem(page.stat().st_size, limits)
+                if problem:
+                    raise VolumeUnreadable(problem)
+                return page.read_bytes()
+
+            return OpenVolume(volume_id, names, table.version, read)
+        readers = [stack.enter_context(cls.from_cache_state(state)) for cls, state, _ in table.states]
+        pages = [(readers[sid], entry, key) for sid, entry, key in table.pages]
+
+        def read(i: int) -> bytes:
+            try:
+                return self._read_page(pages, i)
+            except (LimitExceeded, ArchiveError) as e:
+                raise VolumeUnreadable(str(e)) from e
+
+        return OpenVolume(volume_id, list(table.names), table.version, read, table.units, table.page_units)
+
+    def _page_table(self, pages, version: str, path: Path, units, page_units) -> _PageTable | None:
+        """開いたページ列から、書庫を開き直さずに読めるページ表を作る(対応するリーダーだけ)。"""
+        states: list[tuple[type, object, Path]] = []
+        state_ids: dict[int, int] = {}
+        cached_pages = []
+        size = 1024
+        for reader, entry, key in pages:
+            sid = state_ids.get(id(reader))
+            if sid is None:
+                state = reader.cache_state()
+                if state is None:
+                    return None  # 目次を持ち越せないリーダー(将来の形式)。毎回開く
+                sid = len(states)
+                state_ids[id(reader)] = sid
+                states.append((type(reader), state, reader.path))
+                size += reader.cache_size()
+            cached_pages.append((sid, entry, key))
+        size += _listing_size([e for _, e, _ in pages])
+        return _PageTable([e.name for _, e, _ in pages], version, "archive", path,
+                          states, cached_pages, units, page_units, size)
 
     def _open_pdf(self, stack: ExitStack, volume_id: int, path: Path, version: str) -> OpenVolume:
         """未整理の PDF の巻。整理の抽出(organize/pdf.py)をページ単位で流用し、元の PDF は読むだけ。
@@ -221,7 +363,7 @@ class Library:
         return OpenVolume(volume_id, names, version, read)
 
     def _open_archive_volume(self, conn, stack: ExitStack, row, path: Path, version: str,
-                             extract: bool = True) -> OpenVolume:
+                             extract: bool = True) -> tuple[OpenVolume, _PageTable | None]:
         limits = self.settings.limits
         sevenzip = self.settings.sevenzip_path
         units = page_units = None
@@ -251,7 +393,9 @@ class Library:
             except (LimitExceeded, ArchiveError) as e:
                 raise VolumeUnreadable(str(e)) from e
 
-        return OpenVolume(row["id"], [e.name for _, e, _ in pages], version, read, units, page_units)
+        opened = OpenVolume(row["id"], [e.name for _, e, _ in pages], version, read, units, page_units)
+        table = self._page_table(pages, version, path, units, page_units) if self.memory.enabled else None
+        return opened, table
 
     def _root_key(self, path: Path) -> str:
         st = path.stat()

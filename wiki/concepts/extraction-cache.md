@@ -1,14 +1,14 @@
 ---
 type: concept
-summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ(ディスク)と、7z / rar のページと目次を置く RAM 層。どちらも容量上限つき LRU、スキャンでは使わない。RAM 層を 7z / rar に絞った計測結果と、実データでの計測
-updated: 2026-11-09
+summary: 内側アーカイブだけを開いたときにハッシュ名で取り出す展開キャッシュ(ディスク)と、7z / rar のページ・目次および全形式の巻のページ表を置く RAM 層。どちらも容量上限つき LRU、スキャンでは使わない。RAM 層の計測結果と、実データでの計測
+updated: 2026-11-11
 related: [overview, backend, archive-reading, volume-split, duplicate-detection, server-setup, cover-thumbnails]
 ---
 
 # 展開キャッシュと RAM 層
 
 内側アーカイブ(アーカイブの中のアーカイブ)の巻を開いたときだけ、内側アーカイブを丸ごと `data_dir/cache/` に取り出す。
-入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:408 _expand`(入れ子の各段を再帰で開く)。
+入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:552 _expand`(入れ子の各段を再帰で開く)。
 
 ## 内容
 
@@ -24,16 +24,22 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
 - **作らずに使う入口 `ExtractionCache.use_existing()`(#75)。** 取り出し済みなら `use()` と同じく使用中にして渡し、無ければ `NotCached`。
   `Library.open(extract=False)` がこれを使い、一覧の表紙が「取り出し済みの内側 zip の巻」だけを読む([[cover-thumbnails]])。
   表紙の置き場(`data_dir/thumbs/`)も同じ `ExtractionCache` を別の上限で使っている
-- **RAM 層(`spinebox/cache.py MemoryCache`、上限 `memory_cache_limit_bytes`、既定 256 MiB、0 で無効)には 7z / rar のページと目次だけを置く。**
-  使う側は `spinebox/library.py Library._read_page()` / `Library._list()`。ページのキーは「そのページを持つ書庫のキー(外側なら上の
+- **RAM 層(`spinebox/cache.py MemoryCache`、上限 `memory_cache_limit_bytes`、既定 256 MiB、0 で無効)には 7z / rar のページと、全形式の巻のページ表(目次)を置く。**
+  ページのキーは「そのページを持つ書庫のキー(外側なら上の
   外側のキー、内側なら展開キャッシュのキー)+ エントリ番号 + 名前」、目次のキーも書庫のキーから作るので、元が変われば別キーになる。
   合計が上限を超えたら最後に使ったのが古いものから消し、1 つで上限を超えるものは置かない。再起動で消える
+- **巻のページ表(#297)。** 同じ版の巻のページ名と読み出しの指定(`Library._PageTable`)を、巻ごとに RAM 層へ置く。2 回目以降のページ要求は、
+  巻の行・ルートの確認・元ファイルの stat(版の確認)だけでページを読める。zip は中央ディレクトリの `ZipInfo`、7z / rar は目次を持ち越し、
+  `Library.open()` が `ZipReader.from_cache_state()` / `SevenZipReader.from_cache_state()` でリーダーを作り直す([[archive-reading]])。
+  キーは巻 id・パス・版(サイズ・mtime)・kind / format・`container_path` / `entry_prefix` / `inner_path`・各上限・`sevenzip_path`。
+  版が変わったときと、内側アーカイブの展開キャッシュが消えたときに捨てる。PDF と状態を持てないリーダーは対象外(毎回開く)。
+  同じ巻への並行した最初の要求はロックで 1 回にまとめる。ページ画像そのものは置かない(下の「検討して採らなかった選択肢」)
 - **7z / rar のページは、要求されたページから先を 1 回の 7-Zip 起動でまとめて取り出して RAM に置く**
   (`spinebox/archive/sevenzip.py SevenZipReader.read_entries()`。出力を目次のサイズで切り分け、CRC で照合する。[[archive-reading]])。
   まとめる枚数は前回の取り出しの続きを読むたびに 1 → 2 → 4 … 64 枚と倍にし、続きでなければ 1 枚に戻す(`_ArchiveState`)。
   バイト数は 128 MiB と RAM 層の上限の 1/4 の小さい方まで。同じ書庫の取り出しは直列化し(フロントは前後を並行で先読みする)、
   後から来た要求は先の取り出しが置いたものを使う。まとめ取り出しが失敗したら、要求されたページだけを 1 枚で読み直す
-- **分解で作った子の巻も同じキーで取り出す**(`spinebox/library.py:377 _extract`)。親を開いた後に子を開いても取り出し直さない。
+- **分解で作った子の巻も同じキーで取り出す**(`spinebox/library.py:521 _extract`)。親を開いた後に子を開いても取り出し直さない。
   子は親の内側アーカイブから自分の段までだけを取り出すので、v01 を読むのに v02・v03 の zip は取り出さない([[volume-split]])
 
 ## なぜこうなっているか
@@ -59,8 +65,9 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
   走る数ページ(1 巻で 6 回ほど)では同じく先頭から展開し直すので、最大の待ちは変わらない(合成データは LZMA の展開が実データより遅い)。
   最初から 16 枚まとめると 1 ページ目が 43 ms → 470 ms に悪化したので、1 枚から倍にしていく形にした。
   上限の枚数は 16 / 32 / 64 で比べ、120 ページ通読の平均が 144 / 86 / 70 ms だったので 64 にした
-- 7z / rar の目次(`7z l`)も RAM 層に持ち越す。ページの要求ごとに巻を開き直す作り(`GET .../pages/{i}` は毎回 `Library.open()`)なので、
-  持ち越さないと 1 ページごとに外側・内側の `7z l` が走る(上の「開き直す」の差)
+- **ページ表を持ち越すのは、ページの要求ごとに巻を開き直す作りだから。** `GET .../pages/{i}` は毎回 `Library.open()` を通るので、
+  持ち越さないと zip は末尾の中央ディレクトリを読み直し、フォルダは `iterdir()`、7z / rar は `7z l` の子プロセスを 1 ページごとに走らせる
+  (上の「開き直す」の差)
 - 最終使用順はプロセス内のカウンタで持つ。ファイルの mtime だけだと、同じ時刻分解能内の連続アクセスで順序が決まらない。
   使うたびに mtime も触るので、再起動後は mtime の順で復元する
 
@@ -75,6 +82,7 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
 | 内側の zip を展開キャッシュではなく RAM(`BytesIO`)に置く | 計測で差が出なかった(24 MiB の内側 zip で、取り出し 18.8 → 19.0 ms、開いて 1 ページ 0.31 → 0.51 ms)。ディスクの方は再起動後も残る |
 | 7z / rar の巻を開いたら全ページを 1 回で取り出す | 開いて最初のページが出るまでが巻全体の展開時間になる(上の 16 枚でも 470 ms)。倍々に増やす形にした |
 | 1 つの 7-Zip を起動したまま、裏で巻の最後まで流し続ける | まとめ取り出しのたびに塊の先頭から展開し直す待ちは消えるが、プロセスの寿命・中断・メモリの管理が要る。今回は入れていない。実データの計測で待ちが目立てば検討する |
+| 開いた `ZipFile` や 7-Zip のプロセスをページ要求をまたいで保持する | 元ファイルを掴み続けると Windows では整理処理の置き換えを妨げ、巻の数だけハンドル・プロセスを抱える。パスと目次(`ZipInfo`・`7z l` の結果)だけを持ち、要求ごとに開き直す。zip はローカルヘッダから読むので、開き直しても中央ディレクトリは読まない |
 
 ## 実データでの計測(`_参考/サンプル本`、開発機 Windows・7-Zip 26.02)
 
@@ -96,6 +104,26 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
   (ページ送り 平均 573 → 39 ms、同じページ 71 → 5.7 ms、最大の待ち 約 1.2 秒は変わらず)。rar は 7-Zip で作れないので合成の手組みのみ
 - 上限の確認: 合成データ(7z / rar 入りの 5 巻 × 120 ページ、1 ページ 400 KiB)を全ページ往復で読み、上限 16 MiB で最大 15.7 MiB、
   64 MiB で最大 63.8 MiB(超えない)。回帰テストは `tests/test_memory_cache.py`
+
+## ページ表のキャッシュ(#297、合成データ)
+
+`scripts/bench_reading.py`(合成データ 5 巻・60 ページ・1 ページ 400 KiB、API 越し、3 回の中央値、開発機 Windows・7-Zip 26.05)で、
+変更前(`origin/main`)と変更後を同じ条件(RAM 層 256 MiB、ページ送りは 10 ページ)で比べた。
+
+| 巻 | ページ送り(平均 / 最大) | 同じページ | 開き直す |
+| --- | ---: | ---: | ---: |
+| cbz | 12.6 / 13.8 → 10.8 / 12.5 ms | 12.4 → 10.3 ms | 13.2 → 10.7 ms |
+| zip の中の zip | 16.2 / 17.3 → 10.8 / 11.8 ms | 15.4 → 11.2 ms | 16.9 → 11.9 ms |
+| 7z の中の zip | 62.3 / 259 → 57.4 / 248 ms | 15.2 → 10.2 ms | 16.0 → 11.3 ms |
+| 7z の中の rar | 34.6 / 99 → 28.0 / 74 ms | 15.3 → 9.9 ms | 15.7 → 10.9 ms |
+| ソリッド 7z | 60.9 / 259 → 58.6 / 257 ms | 11.8 → 9.5 ms | 12.0 → 10.9 ms |
+
+- ページ送りの平均には 7z のまとめ取り出し(ページ画像を RAM に置く効果)も含まれる。**ページ表だけの効果は「同じページ」「開き直す」に出る**
+  (どちらも毎回 `Library.open()` を通るが、ページ画像は前の要求の RAM から返るため)。zip では中央ディレクトリの読み直しが消え、
+  7z / rar では `7z l` の子プロセスが消える
+- 1 ページ目(開いた直後)も、zip の中の zip で 18.0 → 10.7 ms、cbz で 14.2 → 11.4 ms になった。内側アーカイブの取り出し(初回だけ)は変わらない
+- 内側アーカイブの巻で特に効くのは、外側の zip の中央ディレクトリと内側の目次を毎回読み直さないため。ソリッド 7z の最大の待ちは
+  まとめ取り出しの塊の先頭からの展開で、ページ表では変わらない(設計どおり)
 
 ## 覆すとしたら
 

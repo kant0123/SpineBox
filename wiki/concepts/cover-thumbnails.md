@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品カードの表紙(#75, #222)。最小の巻番号の巻の 1 ページ目を縮小してハッシュ名で置く。作品カード枠(2:3)を満たす高精細化と横長表紙の左寄せ表示、一覧からは取り出し・7-Zip が要らない巻だけその場で作り、入れ子の巻は開いた後か明示操作(管理のスキャンと補完タブの「表紙のみ補完」)で作る理由と、却下した代替案
-updated: 2026-11-10
+updated: 2026-11-11
 related: [overview, frontend, backend, extraction-cache, work-grouping, volume-split, duplicate-detection, data-jobs]
 ---
 
@@ -24,7 +24,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   (`thumb_cache_limit_bytes`、既定 256 MiB)で使う。キーは作り方の版・大きさ・元ファイルのパス・サイズ・mtime・巻の位置
   (`container_path` / `inner_path` / `entry_prefix`)。元が変われば別のキーになり、古いものは LRU で消える。消えてもよいもの
 - **一覧から呼ばれる `GET /api/volumes/{id}/thumbnail` は、取り出し・7-Zip の起動が要らない巻だけその場で作る。**
-  `Library.open(extract=False)`(`spinebox/library.py:143 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
+  `Library.open(extract=False)`(`spinebox/library.py:178 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。テキスト小説・表紙の指定が無い EPUB・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の

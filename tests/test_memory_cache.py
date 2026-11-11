@@ -4,16 +4,18 @@
 Library の先読み(zip リーダーを「まとめて読む形式」に見せかける)。実機の 7z を使うものは `sevenzip` fixture で skip する。
 """
 from concurrent.futures import ThreadPoolExecutor
+import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
 
 from archives7z import make_7z, rar5_bytes
-from conftest import page_bytes, snapshot, write_zip
+from conftest import page_bytes, snapshot, write_zip, zip_bytes
 from spinebox import library as library_mod
 from spinebox.app import create_app
 from spinebox.archive import ArchiveError, LimitExceeded
 from spinebox.archive import sevenzip as sz
+from spinebox.archive import zipreader as zipreader_mod
 from spinebox.archive.base import ArchiveReader
 from spinebox.archive.zipreader import ZipReader
 from spinebox.cache import MemoryCache
@@ -158,8 +160,10 @@ def test_listing_state_round_trip_skips_7z_l(monkeypatch):
     reader, entries, _ = _fake_reader(monkeypatch)
     state = reader.listing_state()
     monkeypatch.setattr(sz, "_run_capture", lambda cmd, timeout: pytest.fail("7z l を起動した"))
-    other = sz.SevenZipReader("x.7z", "7z")
-    other.restore_listing(state)
+    restored = sz.SevenZipReader("x.7z", "7z")
+    restored.restore_listing(state)
+    assert restored.raw_entries() == entries
+    other = sz.SevenZipReader.from_cache_state(reader.cache_state())
     assert other.raw_entries() == entries
     assert other.read_entries([entries[0], entries[1]], LIMITS) == {0: b"BBBB", 1: b"AA"}
 
@@ -170,6 +174,16 @@ def test_default_read_entries_reads_one_by_one(tmp_path):
         entries = r.raw_entries()
         assert not r.batch_reads
         assert r.read_entries(entries, LIMITS) == {0: b"one", 1: b"two"}
+
+
+def test_cached_zip_reader_reads_head_by_reopening(tmp_path):
+    data = page_bytes("head") + b"tail"
+    path = write_zip(tmp_path / "a.zip", [("001.jpg", data)])
+    with ZipReader(path) as r:
+        state, entry = r.cache_state(), r.raw_entries()[0]
+    cached = ZipReader.from_cache_state(state)
+    assert cached.read_head(entry, 5) == data[:5]  # 先頭だけでも展開の途中まで読むので zipfile に任せる
+    assert cached.read_head(entry, len(data) + 100) == data
 
 
 # --- 先読みの枚数 -------------------------------------------------------------
@@ -201,6 +215,19 @@ def test_archive_states_are_bounded(monkeypatch, make_settings, tmp_path):
             lib._archive(key)  # noqa: SLF001
             assert len(lib._archives) <= 3  # noqa: SLF001
         assert lib._archive("busy") is busy  # noqa: SLF001 (使用中の状態は捨てない)
+
+
+def test_page_table_locks_are_bounded(monkeypatch, make_settings, tmp_path):
+    from spinebox.cache import ExtractionCache
+    monkeypatch.setattr(library_mod, "MAX_TABLE_LOCKS", 3)
+    settings = make_settings(tmp_path)
+    lib = library_mod.Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    busy = lib._table_lock("busy")  # noqa: SLF001
+    with busy:
+        for key in "abcde":
+            lib._table_lock(key)  # noqa: SLF001
+            assert len(lib._table_locks) <= 3  # noqa: SLF001
+        assert lib._table_lock("busy") is busy  # noqa: SLF001 (使用中のロックは捨てない)
 
 
 # --- Library(zip を「まとめて読む形式」に見せかけて、7z 無しで先読みを確かめる) --
@@ -247,7 +274,7 @@ def test_readahead_grows_and_pages_come_from_memory(make_client, tmp_path, batch
     assert _read_all(c, vol["id"]) == [d for _, d in files]
     assert [len(b) for b in batching_zip] == [1, 2, 4, 8, 5]  # 最初は 1 枚、続きを読むたびに倍(残りは 5 枚)
     memory = c.app.state.memory
-    assert len(memory) == 20
+    assert len(memory) == 21  # 20 ページ + ページ表 1 件
     batching_zip.clear()
     assert _read_all(c, vol["id"]) == [d for _, d in files]
     assert batching_zip == []  # 2 回目は全部 RAM から
@@ -296,7 +323,129 @@ def test_zip_pages_are_not_kept_in_memory(make_client, tmp_path):
     c.post("/api/scan")
     for vol in c.get("/api/volumes").json():
         assert _read_all(c, vol["id"]) == [d for _, d in files]
-    assert c.app.state.memory.total_bytes == 0  # zip は毎回読んでも速い(計測で差が出なかった)
+    # ページ表(目次)は RAM に置く。ページ本体は置かない(計測で差が出なかった)
+    assert 0 < c.app.state.memory.total_bytes < 64_000
+
+
+def test_zip_page_table_avoids_reopening_the_archive(make_client, tmp_path, monkeypatch):
+    files = _pages(6)
+    write_zip(tmp_path / "lib" / "v01.cbz", files)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    assert c.get(f"/api/volumes/{vid}/pages/0").content == files[0][1]  # ここでページ表を作る
+    calls = []
+    real_init = ZipReader.__init__
+
+    def counted(self, path):
+        calls.append(path)
+        real_init(self, path)
+
+    monkeypatch.setattr(ZipReader, "__init__", counted)
+    assert c.get(f"/api/volumes/{vid}").status_code == 200
+    for i in range(1, len(files)):
+        assert c.get(f"/api/volumes/{vid}/pages/{i}").content == files[i][1]
+    etag = c.get(f"/api/volumes/{vid}/pages/0").headers["etag"]
+    assert c.get(f"/api/volumes/{vid}/pages/0", headers={"If-None-Match": etag}).status_code == 304
+    assert calls == []  # 2 回目以降は zip の中央ディレクトリを読み直さない
+
+
+@pytest.mark.parametrize("compression", [zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA])
+def test_page_table_reads_bzip2_and_lzma_pages(make_client, tmp_path, compression):
+    files = _pages(4)
+    path = tmp_path / "lib" / "v01.cbz"
+    path.parent.mkdir(parents=True)
+    with zipfile.ZipFile(path, "w", compression) as z:
+        for name, data in files:
+            z.writestr(name, data)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    for i, (_, data) in enumerate(files):
+        assert c.get(f"/api/volumes/{vid}/pages/{i}").content == data
+
+
+def test_page_table_falls_back_to_zipfile_for_unsupported_compression(make_client, tmp_path, monkeypatch):
+    files = _pages(3)
+    write_zip(tmp_path / "lib" / "v01.cbz", files)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    assert c.get(f"/api/volumes/{vid}/pages/0").content == files[0][1]
+
+    def unsupported(raw, method, limit):
+        raise NotImplementedError("未対応の圧縮方式")
+
+    monkeypatch.setattr(zipreader_mod, "_decompress", unsupported)
+    opened = []
+    real_init = ZipReader.__init__
+
+    def counted(self, path):
+        opened.append(path)
+        real_init(self, path)
+
+    monkeypatch.setattr(ZipReader, "__init__", counted)
+    assert c.get(f"/api/volumes/{vid}/pages/1").content == files[1][1]
+    assert len(opened) == 1  # 未対応の圧縮方式だけ zipfile に任せる
+
+
+def test_folder_page_table_avoids_listing_the_folder_again(make_client, tmp_path, monkeypatch):
+    folder = tmp_path / "lib" / "v01"
+    folder.mkdir(parents=True)
+    files = _pages(5)
+    for name, data in files:
+        (folder / name).write_bytes(data)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    assert c.get(f"/api/volumes/{vid}/pages/0").content == files[0][1]
+    calls = []
+    real_sort = library_mod.sort_pages
+
+    def counted(names):
+        calls.append(1)
+        return real_sort(names)
+
+    monkeypatch.setattr(library_mod, "sort_pages", counted)
+    assert c.get(f"/api/volumes/{vid}").status_code == 200
+    for i in range(1, len(files)):
+        assert c.get(f"/api/volumes/{vid}/pages/{i}").content == files[i][1]
+    assert calls == []  # 2 回目以降はフォルダを列挙しない
+
+
+def test_page_table_is_dropped_when_the_file_changes(make_client, tmp_path):
+    old = _pages(3)
+    path = write_zip(tmp_path / "lib" / "v01.cbz", old)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    assert c.get(f"/api/volumes/{vid}/pages/0").content == old[0][1]
+    new = [(name, data + b"changed") for name, data in old]
+    write_zip(path, new)  # サイズが変わるので版も変わる
+    assert c.get(f"/api/volumes/{vid}/pages/0").content == new[0][1]
+
+
+def test_page_table_is_rebuilt_when_the_extracted_inner_archive_is_gone(make_client, tmp_path):
+    files = _pages(5)
+    inner_set = zip_bytes([
+        ("v01.zip", write_zip(tmp_path / "x1.zip", files).read_bytes()),
+        ("v02.zip", write_zip(tmp_path / "x2.zip", files).read_bytes()),
+    ])
+    write_zip(tmp_path / "lib" / "outer.zip", [("set v01-02.zip", inner_set)])
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (outer,) = c.get("/api/volumes").json()  # 外側アーカイブの中の内側アーカイブ(分解前は 1 巻)
+    c.get(f"/api/volumes/{outer['id']}")  # 内側の巻を子として登録する
+    child = next(v for v in c.get("/api/volumes").json() if v["parent_id"] == outer["id"])
+    assert c.get(f"/api/volumes/{child['id']}/pages/0").content == files[0][1]
+    for cached in list(c.app.state.cache.directory.iterdir()):
+        cached.unlink()
+    assert c.get(f"/api/volumes/{child['id']}/pages/1").content == files[1][1]  # 取り出し直して読む
 
 
 def test_concurrent_requests_share_one_extraction(make_client, tmp_path, batching_zip):
