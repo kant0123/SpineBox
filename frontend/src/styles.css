@@ -724,9 +724,13 @@ button.small::after {
   white-space: nowrap;
   position: relative;
 }
+/* .volume-title の overflow-wrap:anywhere だと inline-block が親幅まで縮み、はみ出し量が測れない。
+   max-content で本来の幅を保つ(#310) */
 .work-card-title-inner {
   display: inline-block;
+  width: max-content;
   white-space: nowrap;
+  overflow-wrap: normal;
 }
 /* マーキー中は省略記号を外し、末尾まで流す */
 .work-card.is-marquee .work-card-title {
@@ -1321,7 +1325,9 @@ button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
 /* DADS モーション配慮・強制カラー対応 */
 @media (prefers-reduced-motion: reduce) {
   .sidebar, .work-cover, .job-bar span { transition: none; }
-  .work-card.is-marquee .work-card-title-inner { animation: none; }
+  /* 動きを減らす設定ではスクロールの代わりに、ホバー・フォーカス中だけ全文を折り返して見せる(#310) */
+  .work-card.is-marquee .work-card-title-inner { animation: none; width: auto; white-space: normal; overflow-wrap: anywhere; }
+  .work-card.is-marquee .work-card-title { white-space: normal; overflow: visible; }
   .page-loading { animation: none; opacity: 1; }
   .job-bar span.indeterminate { animation: none; width: 50%; margin-left: 25%; }
   .spinner { animation-duration: 3s; }

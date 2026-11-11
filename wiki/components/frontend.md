@@ -111,7 +111,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   カーソルを合わせるとツールチップで出る。欠けの多い作品でカードが数行になり、一覧が読みにくくなるのを避ける。
   DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う(件数は常に見えるので、
   内訳は補助)。組み立ては frontend/src/works/labels.ts:40 missingLabel()。
-- **作品カードのタイトルは 1 行で省略表示し、ホバー・フォーカス時に横スクロール(マーキー)する(#266)。** 長いタイトルでも改行でカードが縦に伸びたり改行が重なって読みにくくなるのを防ぎ、Peach と同様にカードへカーソルを合わせたとき末尾まで自動スクロールさせる。`prefers-reduced-motion: reduce` ではアニメーションを停止する。コードは `frontend/src/works/Works.tsx:70 WorkCard()`。
+- **作品カードのタイトルは 1 行で省略表示し、ホバー・フォーカス時に横スクロール(マーキー)する(#266)。** 長いタイトルでも改行でカードが縦に伸びたり改行が重なって読みにくくなるのを防ぎ、Peach と同様にカードへカーソルを合わせたとき末尾まで自動スクロールさせる。`.volume-title` の `overflow-wrap: anywhere` が inline-block を親幅へ縮めてはみ出し量が測れなくなるため、内側の span は `width: max-content` で本来の幅を保つ(#310)。`prefers-reduced-motion: reduce` ではアニメーションを止め、代わりにホバー・フォーカス中だけ全文を折り返して見せる。コードは `frontend/src/works/Works.tsx:70 WorkCard()`。
 - **作品カードのタグ(バッジ)は 1 行に収めて高さを揃える(#266)。** 欠け情報や複数バッジが複数行にまたがってカードの高さが不揃いになるのを防ぐため、`.work-badges` を 1 行(`flex-wrap: nowrap`)・最小高さ 26px に固定し、各 `.badge` に `white-space: nowrap` と省略記号(`text-overflow: ellipsis`)を適用した。
 - **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** カードの横幅いっぱい(`.work-card .work-cover` で幅 100%・2:3 の縦横比・上角丸)に置き、
   文字は表紙の下へ続ける(#129)。`cover_volume_id` の巻の縮小画像を `<img loading="lazy">` で取り、
