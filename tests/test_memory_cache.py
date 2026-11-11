@@ -4,6 +4,8 @@
 Library の先読み(zip リーダーを「まとめて読む形式」に見せかける)。実機の 7z を使うものは `sevenzip` fixture で skip する。
 """
 from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 import zipfile
 
 import pytest
@@ -184,6 +186,19 @@ def test_cached_zip_reader_reads_head_by_reopening(tmp_path):
     cached = ZipReader.from_cache_state(state)
     assert cached.read_head(entry, 5) == data[:5]  # 先頭だけでも展開の途中まで読むので zipfile に任せる
     assert cached.read_head(entry, len(data) + 100) == data
+
+
+def test_cached_zip_reader_rejects_crc_mismatch(tmp_path):
+    path = tmp_path / "a.zip"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
+        z.writestr("001.jpg", b"payload")
+    with ZipReader(path) as r:
+        state, entry = r.cache_state(), r.raw_entries()[0]
+    raw = bytearray(path.read_bytes())
+    raw[raw.index(b"payload")] ^= 0xFF
+    path.write_bytes(raw)
+    with pytest.raises(ArchiveError, match="CRC"):
+        ZipReader.from_cache_state(state).read_entry(entry, LIMITS)
 
 
 # --- 先読みの枚数 -------------------------------------------------------------
@@ -462,6 +477,35 @@ def test_concurrent_requests_share_one_extraction(make_client, tmp_path, batchin
     assert got == [files[i][1] for i in (3, 2, 5, 4)]
     extracted = [i for b in batching_zip for i in b]
     assert len(extracted) == len(set(extracted))  # 並行した要求でも同じページを二重に取り出さない
+
+
+def test_concurrent_first_requests_build_one_page_table(make_client, tmp_path, monkeypatch):
+    files = _pages(6)
+    write_zip(tmp_path / "lib" / "v01.cbz", files)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    started, release = threading.Event(), threading.Event()
+    calls = []
+    real = library_mod.Library._open_volume  # noqa: SLF001
+
+    def slow(self, *args, **kwargs):
+        calls.append(1)
+        started.set()
+        release.wait(5)
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(library_mod.Library, "_open_volume", slow)
+    with ThreadPoolExecutor(2) as ex:
+        first = ex.submit(lambda: c.get(f"/api/volumes/{vid}/pages/0").content)
+        assert started.wait(5)  # 1 本目がページ表を作り始めた
+        second = ex.submit(lambda: c.get(f"/api/volumes/{vid}/pages/1").content)
+        time.sleep(0.3)  # 2 本目がページ表のロックで待つところまで進める
+        release.set()
+        assert first.result() == files[0][1]
+        assert second.result() == files[1][1]
+    assert len(calls) == 1  # 並行した最初の要求でも、書庫を開くのは 1 回だけ
 
 
 # --- 実機の 7z ------------------------------------------------------------------
