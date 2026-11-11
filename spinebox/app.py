@@ -789,7 +789,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         if "title" in sent and body.title is None:
             raise HTTPException(422, "作品名は null にできません")
         works.edit_fields(conn, work_id, {name: getattr(body, name) for name in works.EDITABLE_FIELDS if name in sent})
-        _sync_works(conn)  # 直した作品名が別の作品の名前と一致したら、統合の提案が出る
+        if "title" in sent:
+            _sync_works(conn)  # 直した作品名が別の作品の名前と一致したら、統合の提案が出る
+        else:
+            linking.apply_work(conn, work_id)  # 名寄せに効かない項目は、この作品の連携の反映だけ(全作品の名寄せを避ける。#293)
         return work_detail(conn, work_id)
 
     @app.post("/api/works/{work_id}/fields/{field}/reset")
