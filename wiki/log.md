@@ -617,3 +617,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #301 (#295) 再スキャンが遅い(画像フォルダの巻を毎回 1 枚ずつ stat していた)
 - 更新: [[backend]], [[novel-reader]], [[organize]], [[data-jobs]], [[volume-split]], [[recurring-review-findings]](scanner.py の行番号のみ)
 - 備考: #295。`os.walk` を `DirEntry` を持ち回す `scandir` の再帰 `_walk()` に替え、画像のサイズを列挙で得た情報から取る。画像フォルダの巻は合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が同じなら書かない。拡張子の判定は名前 1 つにつき 1 回。ジャンクション・`onerror`・missing 化・断片フォルダの判定は変えていない。
+
+## [2026-11-11] ingest | PR #306 (#297) 巻のページ表を RAM に持ち越してページ要求ごとの開き直しをやめる
+- 更新: [[archive-reading]], [[backend]], [[extraction-cache]], [[cover-thumbnails]], [[volume-split]], [[recurring-review-findings]](行番号のみ)
+- 備考: #297。ページ名と読み出しに要る目次(zip の `ZipInfo`・7z / rar の目次)を `MemoryCache` に置き、2 回目以降は中央ディレクトリの読み直し・フォルダの列挙・`7z l` をやめる。zip はローカルヘッダから読む(store / deflate / bzip2 / lzma、CRC 検証つき)。版(サイズ・mtime)が変わったときと展開キャッシュが消えたときは捨てる。合成データのベンチ(256MiB)でページ送りは cbz 12.6 → 10.8 ms、zip の中の zip 16.2 → 10.8 ms、7z の中の zip 15.2 → 10.2 ms(同じページ)。ページ本体は RAM に置かない方針は維持。
