@@ -127,6 +127,9 @@ def _read_local_entry(fp: BinaryIO, info: zipfile.ZipInfo, limit: int) -> bytes:
         raise ArchiveError("zip のローカルヘッダの印が合わない")
     name_len, extra_len = fields[-2], fields[-1]
     fp.seek(name_len + extra_len, 1)
+    # 宣言された圧縮サイズをそのまま読むので、細工した目次でメモリを使い切らないよう展開後の上限に対して余裕を持たせる
+    if info.compress_size > limit + limit // 100 + 64 * 1024:
+        raise LimitExceeded(f"エントリの圧縮サイズが上限に対して大きすぎる({info.compress_size} バイト)")
     raw = fp.read(info.compress_size)
     if len(raw) != info.compress_size:
         raise ArchiveError(f"zip のエントリが途中で切れている({len(raw)} != {info.compress_size} バイト)")

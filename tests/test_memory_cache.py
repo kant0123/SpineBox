@@ -205,6 +205,15 @@ def test_cached_zip_reader_rejects_crc_mismatch(tmp_path):
         ZipReader.from_cache_state(state).read_entry(entry, LIMITS)
 
 
+def test_cached_zip_reader_refuses_a_huge_compressed_size(tmp_path):
+    path = write_zip(tmp_path / "a.zip", [("001.jpg", page_bytes("x") * 10)])
+    with ZipReader(path) as r:
+        state, entry = r.cache_state(), r.raw_entries()[0]
+    state[1][0].compress_size = 10**9  # 目次だけが巨大な圧縮サイズを主張する
+    with pytest.raises(LimitExceeded):
+        ZipReader.from_cache_state(state).read_entry(entry, ExtractionLimits(max_entry_bytes=1000))
+
+
 @pytest.mark.parametrize("method", [zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA])
 def test_decompress_stops_at_the_limit_even_if_the_size_lies(method):
     # 宣言サイズが嘘でも、上限を超えて展開しきらない(超えたら LimitExceeded と言う)
