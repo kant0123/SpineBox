@@ -538,3 +538,16 @@ push 前に確かめること:
 実例:
 
 - PR #237 — `CLAUDE.md` のラップアップ報告 — 「上のワークフロー」と「worktree は prune 済みか」を、agy レビューで指摘された
+
+### 結果に含めない対象を、短絡評価の既定値で含めてしまう
+
+「見つからない・見えない対象は結果に含めない」オプションがあるのに、対象の有無を `row is not None and ...` の短絡評価で確かめ、例外の経路(除外)を通さずに既定の False を結果へ入れてしまう。キーの有無で件数を数える呼び出し側では、除外したはずの対象が数えられる。
+
+push 前に確かめること:
+
+- 「結果に含めない」オプションがある関数で、対象が無い・読めない場合がすべて同じ経路(例外・`continue`)を通るか
+- 存在しない ID・行が無い ID を渡したテストが、オプションの両方にあるか
+
+実例:
+
+- PR #303 — `spinebox/thumbs.py:181 are_built()` — `row is not None and self.store.contains(...)` が `row is None` のとき `_key()` の例外を飛ばし、`include_unavailable=False` でも `{vid: False}` を返した(存在しない id で再現し、`raise VolumeNotFound(vid)` に修正)

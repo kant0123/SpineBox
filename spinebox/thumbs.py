@@ -193,7 +193,9 @@ class Thumbnails:
         for vid in volume_ids:
             row = rows.get(vid)
             try:
-                out[vid] = row is not None and self.store.contains(self._key(row, roots))
+                if row is None:
+                    raise VolumeNotFound(vid)
+                out[vid] = self.store.contains(self._key(row, roots))
             except (VolumeNotFound, VolumeOffline):
                 if include_unavailable:
                     out[vid] = False

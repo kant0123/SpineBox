@@ -369,5 +369,7 @@ def test_stats_does_not_query_a_volume_row_per_work(env):
         assert len(volume_selects) == 1
         # 見えない巻(見つからない id)は False で、例外にならない
         assert thumbs.are_built(conn, [999999]) == {999999: False}
+        # カタログ用(include_unavailable=False)は見つからない巻を結果に含めない
+        assert thumbs.are_built(conn, [999999], include_unavailable=False) == {}
     finally:
         conn.close()
