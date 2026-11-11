@@ -106,7 +106,10 @@ def _decompress(raw: bytes, method: int, limit: int) -> bytes:
         # 上限で出力を打ち切ったか(zlib は unconsumed_tail、bz2 / lzma は needs_input)、入力が途中で切れているか
         if getattr(decompressor, "unconsumed_tail", b"") or getattr(decompressor, "needs_input", True) is False:
             raise LimitExceeded(f"エントリの展開サイズが上限を超える(> {limit} バイト)")
-        raise ArchiveError("圧縮データが途中で切れている")
+        # LZMA(FORMAT_RAW) は EOS マーカーの無いアーカイブがあり、その場合 eof は常に False になる。
+        # 中央ディレクトリのサイズと CRC で完全性を確かめるので、LZMA だけは eof を要求しない
+        if method != zipfile.ZIP_LZMA:
+            raise ArchiveError("圧縮データが途中で切れている")
     return data
 
 
@@ -214,10 +217,9 @@ class ZipReader(ArchiveReader):
                 data = _read_local_entry(fp, info, max_bytes)
         except LimitExceeded:
             raise
-        except ArchiveError:
-            raise
-        except NotImplementedError:
-            # 未対応の圧縮方式だけは zipfile に任せる(中央ディレクトリを読み直すが、読めるものは読む)
+        except (ArchiveError, NotImplementedError):
+            # 未対応の圧縮方式、あるいは SFX のようにスタブが付いてローカルヘッダの位置が
+            # ずれている場合など、直接読みでは失敗しても中央ディレクトリ経由なら読めることがある
             with ZipReader(self._path) as full:
                 return full.copy_entry(entry, dest, max_bytes)
         except (OSError, EOFError, ValueError) as e:
