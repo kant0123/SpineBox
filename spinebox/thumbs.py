@@ -107,9 +107,19 @@ class Thumbnails:
         self.library = library
         self.store = store
 
-    def _key(self, row) -> str:
+    def _key(self, row, roots: dict[str, bool] | None = None) -> str:
+        """表紙のキー。roots は「ルートのパス → 見えるか」の辞書で、多数の巻をまとめて見るときに
+        root_is_accessible(is_dir + scandir)をルートごとに 1 回にする。"""
         root = Path(row["root_path"])
-        if is_offline(row) or not root_is_accessible(root):
+        if is_offline(row):
+            raise VolumeOffline(row["id"])
+        if roots is None:
+            accessible = root_is_accessible(root)
+        else:
+            if row["root_path"] not in roots:
+                roots[row["root_path"]] = root_is_accessible(root)
+            accessible = roots[row["root_path"]]
+        if not accessible:
             raise VolumeOffline(row["id"])
         try:
             st = resolve_source_path(root, row["rel_path"]).stat()
@@ -163,25 +173,32 @@ class Thumbnails:
             raise ThumbnailUnavailable("EPUB の表紙を画像として読めません")
         return thumb
 
-    def has(self, conn: sqlite3.Connection, volume_id: int) -> bool:
-        """作成済みか(元が変わっていれば作成済みではない)。"""
-        return self.store.read(self._key(get_volume_row(conn, volume_id))) is not None
-
     def is_built(self, conn: sqlite3.Connection, volume_id: int) -> bool:
-        """has() と同じ判定を、表紙を読まずに行う(管理の統計で全作品を見る用。最後に使った順も変えない)。"""
+        """作成済みか(元が変わっていれば作成済みではない)。表紙を読まず、最後に使った順も変えない。
+        管理の統計・カタログ・表紙の補完で全作品を見る用。"""
         return self.store.contains(self._key(get_volume_row(conn, volume_id)))
 
-    def are_built(self, conn: sqlite3.Connection, volume_ids: list[int]) -> dict[int, bool]:
+    def are_built(self, conn: sqlite3.Connection, volume_ids: list[int], *,
+                  include_unavailable: bool = True) -> dict[int, bool]:
         """is_built() を多数の巻にまとめて行う(巻の行は IN でまとめて引き、巻ごとの SELECT を発行しない)。
-        見えない・オフライン・見つからない巻は False。"""
+        ルートが見えるかの確認(is_dir + scandir)もルートごとに 1 回だけ行う。
+
+        見えない・オフライン・見つからない巻は、include_unavailable が真なら False
+        (表紙を出せないので統計は「表紙なし」に数える)、偽なら結果に含めない
+        (カタログの「表紙なし」。表紙を作るジョブもその巻を飛ばすので数えない)。
+        """
         rows = get_volume_rows(conn, volume_ids)
+        roots: dict[str, bool] = {}
         out: dict[int, bool] = {}
         for vid in volume_ids:
             row = rows.get(vid)
             try:
-                out[vid] = row is not None and self.store.contains(self._key(row))
+                if row is None:
+                    raise VolumeNotFound(vid)
+                out[vid] = self.store.contains(self._key(row, roots))
             except (VolumeNotFound, VolumeOffline):
-                out[vid] = False
+                if include_unavailable:
+                    out[vid] = False
         return out
 
     def build(self, conn: sqlite3.Connection, volume_ids: list[int],
@@ -192,7 +209,7 @@ class Thumbnails:
             if progress:
                 progress(done, summary.total)
             try:
-                if self.has(conn, volume_id):
+                if self.is_built(conn, volume_id):
                     summary.existing += 1
                     continue
                 self.get(conn, volume_id, extract=True)

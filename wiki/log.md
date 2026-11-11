@@ -621,3 +621,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #301 (#295) 再スキャンが遅い(画像フォルダの巻を毎回 1 枚ずつ stat していた)
 - 更新: [[backend]], [[novel-reader]], [[organize]], [[data-jobs]], [[volume-split]], [[recurring-review-findings]](scanner.py の行番号のみ)
 - 備考: #295。`os.walk` を `DirEntry` を持ち回す `scandir` の再帰 `_walk()` に替え、画像のサイズを列挙で得た情報から取る。画像フォルダの巻は合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が同じなら書かない。拡張子の判定は名前 1 つにつき 1 回。ジャンクション・`onerror`・missing 化・断片フォルダの判定は変えていない。
+
+## [2026-11-11] ingest | PR #303 (#298) データ管理タブが表紙の JPEG を読まずに「表紙なし」を数える
+- 更新: [[cover-thumbnails]], [[recurring-review-findings]]
+- 備考: #298。`GET /api/jobs/catalog` の「表紙なし」が作品ごとに `Thumbnails.has()` で表紙の JPEG を読み、`ExtractionCache` の LRU の順を書き換えていた。`are_built()`(`contains()`。巻の行は IN でまとめて引く)に変え、`build()` の作成済み確認も `is_built()` にした。`has()` は削除。`are_built()` はルートの確認(is_dir + scandir)もルートごとに 1 回にした。カタログは見えない・オフラインの巻を数えない(統計は数える)挙動を維持するため `include_unavailable=False`。カタログの `works.list_works()` の全組み立ては #294 の範囲。
