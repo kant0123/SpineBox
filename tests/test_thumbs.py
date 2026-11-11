@@ -186,10 +186,11 @@ def test_7z_outer_is_pending_without_starting_7zip(make_settings, tmp_path):
     client = TestClient(create_app(make_settings(lib, sevenzip_path=str(fake)), frontend_dist=None))
     client.post("/api/scan")
     vid = volume_id(client, "Solid v01")
+    assert client.get(f"/api/volumes/{vid}").status_code == 200  # ページ表を作る(7z l が走る)
     log.write_text("")
     r = client.get(f"/api/volumes/{vid}/thumbnail")
     assert r.status_code == 404 and r.json()["pending"] is True
-    assert log.read_text() == ""  # 7-Zip を起動していない
+    assert log.read_text() == ""  # ページ表があっても、一覧の表紙で 7-Zip を起動しない
 
 
 def test_offline_root_is_409_and_keeps_the_cover(env, lib):

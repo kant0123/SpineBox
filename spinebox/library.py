@@ -207,6 +207,8 @@ class Library:
                 # 同じ巻への並行した最初の要求(フロントは前後を先読みする)で、開き直しを重ねない
                 with self._table_lock(key):
                     table = self._cached_page_table(key, version, st)
+                    if table is not None and not extract and not table.readable_without_extraction():
+                        table = None  # 上の判定をロックの中でもやり直す(取れた表が 7-Zip を要ることがある)
                     if table is None:
                         opened, table = self._open_volume(conn, stack, row, path, version, st, extract)
                         self._remember_page_table(key, table)

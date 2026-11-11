@@ -453,6 +453,28 @@ def test_folder_page_table_avoids_listing_the_folder_again(make_client, tmp_path
     assert calls == []  # 2 回目以降はフォルダを列挙しない
 
 
+def test_extract_false_does_not_use_a_page_table_that_needs_extraction(make_client, tmp_path, monkeypatch):
+    files = _pages(3)
+    write_zip(tmp_path / "lib" / "v01.cbz", files)
+    c, _ = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (vol,) = c.get("/api/volumes").json()
+    vid = vol["id"]
+    assert c.get(f"/api/volumes/{vid}").status_code == 200  # ページ表を作る
+    # 7z を含む表に見せかける(ロックの中で取り直した表にも判定が要る)
+    monkeypatch.setattr(library_mod._PageTable, "readable_without_extraction", lambda self: False)
+    used = []
+    real = ZipReader.from_cache_state
+
+    def counted(cls, state):
+        used.append(state)
+        return real(state)
+
+    monkeypatch.setattr(ZipReader, "from_cache_state", classmethod(counted))
+    c.get(f"/api/volumes/{vid}/thumbnail")  # 開き直して表紙を作る(このデータは画像でないので 404 でよい)
+    assert used == []  # 使えないページ表は使わない(7-Zip の起動が要る巻なら NeedsExtraction)
+
+
 def test_page_table_is_dropped_when_the_file_changes(make_client, tmp_path):
     old = _pages(3)
     path = write_zip(tmp_path / "lib" / "v01.cbz", old)
