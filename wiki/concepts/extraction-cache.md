@@ -8,7 +8,7 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
 # 展開キャッシュと RAM 層
 
 内側アーカイブ(アーカイブの中のアーカイブ)の巻を開いたときだけ、内側アーカイブを丸ごと `data_dir/cache/` に取り出す。
-入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:558 _expand`(入れ子の各段を再帰で開く)。
+入口は `spinebox/cache.py:45 ExtractionCache`、使う側は `spinebox/library.py:566 _expand`(入れ子の各段を再帰で開く)。
 
 ## 内容
 
