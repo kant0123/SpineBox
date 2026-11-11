@@ -1631,6 +1631,7 @@ _VOLUME_SELECT = """SELECT v.id, v.title, v.page_count, v.format, v.number_kind,
        pv.title AS parent_title, s.rel_path, s.offline AS source_offline, r.online AS root_online, p.page, p.finished,
        wv.work_id, wv.source AS a_source, wv.manual AS a_manual, wv.confidence AS a_confidence,
        wv.evidence AS a_evidence"""
+_VOLUME_FROM_ID = LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v.id "
 _VOLUME_FROM = (LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v.id"
                 " LEFT JOIN reading_progress p ON p.volume_id = v.id ")
 
@@ -1724,15 +1725,27 @@ def next_volume(conn: sqlite3.Connection, volume_id: int) -> dict | None:
             "offline": nxt["offline"]}
 
 
-def _work_rows(c) -> dict[int, dict]:
-    """生きている作品の項目・別名。"""
+def _select_in(c, sql: str, col: str, ids, joiner: str = "WHERE", tail: str = ""):
+    """sql に `col IN (ids)` の絞り込みを足して引く(500 件ずつ)。ids が None なら絞らず全件。
+    1 件・数件のために全作品・全巻を読まないための入口(#294)。"""
+    if ids is None:
+        yield from c.execute(sql + tail)
+        return
+    ids = sorted(set(ids))
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        yield from c.execute(f"{sql} {joiner} {col} IN ({','.join('?' * len(chunk))}){tail}", chunk)
+
+
+def _work_rows(c, ids=None) -> dict[int, dict]:
+    """生きている作品の項目・別名。ids を渡すと、その作品だけ(渡した id のうち生きているもの)。"""
     works: dict[int, dict] = {}
-    for r in c.execute("SELECT id FROM works WHERE merged_into IS NULL"):
+    for r in _select_in(c, "SELECT id FROM works WHERE merged_into IS NULL", "id", ids, joiner="AND"):
         works[r["id"]] = {"id": r["id"], "title": "", "title_source": SOURCE_FILENAME, "title_manual": False,
                           "title_confidence": None, "title_evidence": None, "author": None,
                           "author_source": None, "author_manual": False, "author_confidence": None,
                           "aliases": [], "fields": {}}
-    for r in c.execute("SELECT * FROM work_fields"):
+    for r in _select_in(c, "SELECT * FROM work_fields", "work_id", None if ids is None else list(works)):
         w = works.get(r["work_id"])
         if w is None or r["field"] in RETIRED_FIELDS:
             continue
@@ -1747,7 +1760,8 @@ def _work_rows(c) -> dict[int, dict]:
             w[f"{key}_confidence"] = r["confidence"]
             if key == "title":
                 w["title_evidence"] = json.loads(r["evidence"]) if r["evidence"] else None
-    for r in c.execute("SELECT * FROM work_aliases WHERE dismissed_at IS NULL ORDER BY id"):
+    for r in _select_in(c, "SELECT * FROM work_aliases WHERE dismissed_at IS NULL", "work_id",
+                        None if ids is None else list(works), joiner="AND", tail=" ORDER BY id"):
         w = works.get(r["work_id"])
         if w is not None:
             w["aliases"].append({"id": r["id"], "alias": r["alias"], "source": r["source"], "manual": bool(r["manual"]),
@@ -1756,22 +1770,34 @@ def _work_rows(c) -> dict[int, dict]:
     return works
 
 
-def _volume_meta(c) -> dict[int, dict]:
+def _volume_meta(c, volume_ids=None) -> dict[int, dict]:
     meta: dict[int, dict] = defaultdict(dict)
-    for r in c.execute("SELECT * FROM volume_fields"):
+    for r in _select_in(c, "SELECT * FROM volume_fields", "volume_id", volume_ids):
         ev = json.loads(r["evidence"]) if r["evidence"] else {}
         meta[r["volume_id"]][r["field"]] = {"value": r["value"], "source": r["source"], "manual": bool(r["manual"]),
                                             "confidence": r["confidence"], "from": ev.get("source"), "url": ev.get("url")}
     return meta
 
 
-def _listed_volumes(c, with_meta: bool = False, root_id: int | None = None) -> dict[int, list[dict]]:
-    """作品 id → 一覧に見えている巻。root_id を渡すと、その蔵書ルートの巻だけ(蔵書の切り替え #85)。"""
-    dups = candidate_counts(c)
-    meta = _volume_meta(c) if with_meta else None
-    by_work: dict[int, list[dict]] = defaultdict(list)
+def _listed_volumes(c, with_meta: bool = False, root_id: int | None = None,
+                    work_ids=None, with_dups: bool = True) -> dict[int, list[dict]]:
+    """作品 id → 一覧に見えている巻。root_id を渡すと、その蔵書ルートの巻だけ(蔵書の切り替え #85)。
+    work_ids を渡すと、その作品の巻だけを引く(重複の印・書誌もその巻の分だけ。`work_volumes_work` 索引。#294)。"""
     where, params = _root_condition(root_id)
-    for r in c.execute(_VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE + where, params):
+    sql = _VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE + where
+    if work_ids is None:
+        rows = c.execute(sql, params).fetchall()
+    else:
+        ids = sorted(set(work_ids))
+        rows = []
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            rows += c.execute(f"{sql} AND wv.work_id IN ({','.join('?' * len(chunk))})", params + tuple(chunk)).fetchall()
+    scope = None if work_ids is None else [r["id"] for r in rows]
+    dups = candidate_counts(c, scope) if with_dups else {}
+    meta = _volume_meta(c, scope) if with_meta else None
+    by_work: dict[int, list[dict]] = defaultdict(list)
+    for r in rows:
         by_work[r["work_id"]].append(_volume_json(r, dups, meta))
     return by_work
 
@@ -1965,6 +1991,31 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
     return {"works": shown, "total": len(out), "facets": facets, "unassigned": total - assigned}
 
 
+def listed_work_ids(conn: sqlite3.Connection, root_id: int | None = None) -> list[int]:
+    """list_works() が返す作品の id(一覧に見えている巻を持つ生きた作品)を、作品名順(自然順 → id)で返す。
+
+    作品の項目・別名・巻の全部を組み立てずに、id だけが欲しい用途(ファセットの数え・取得の対象)向け(#294)。
+    """
+    where, params = _root_condition(root_id)
+    rows = conn.execute(
+        "SELECT w.id, (SELECT value FROM work_fields f WHERE f.work_id = w.id AND f.field = ?) AS title "
+        "FROM works w WHERE w.merged_into IS NULL AND w.id IN (SELECT wv.work_id " + _VOLUME_FROM_ID
+        + LISTED_VOLUMES_WHERE + where + ")", (FIELD_TITLE,) + params).fetchall()
+    return [r["id"] for r in sorted(rows, key=lambda r: (natural_key(r["title"] or ""), r["id"]))]
+
+
+def cover_volume_ids(conn: sqlite3.Connection, root_id: int | None = None) -> list[int]:
+    """list_works() の各作品の cover_volume_id(無い作品は除く)を、作品の一覧と同じ並びで返す(#294)。
+    作品の項目・別名・重複の印・書誌を組み立てず、巻の行だけから表紙の巻を選ぶ。"""
+    vols = _listed_volumes(conn, root_id=root_id, with_dups=False)
+    out = []
+    for wid in listed_work_ids(conn, root_id):
+        cid = cover_volume_id(vols.get(wid, []))
+        if cid is not None:
+            out.append(cid)
+    return out
+
+
 def _brief(w: dict, vols: list[dict]) -> dict:
     ordered = sorted(vols, key=lambda v: ((v["volume_number"] or {}).get("start", 10 ** 9), natural_key(v["title"])))
     return {
@@ -2010,14 +2061,16 @@ def list_proposals(conn: sqlite3.Connection, status: str = "open", q: str | None
     wanted = {"open": ("open",), "dismissed": ("dismissed",), "applied": ("auto", "approved")}.get(status)
     if wanted is None:
         raise InvalidValue("status は open / dismissed / applied")
-    works = _work_rows(conn)
-    vols = _listed_volumes(conn)
     roots = _roots(conn)
     marks = ",".join("?" * len(wanted))
     words = search.terms(q) if status != "applied" else []
+    rows = conn.execute(f"SELECT * FROM work_merge_proposals WHERE status IN ({marks}) ORDER BY confidence DESC, id",
+                        wanted).fetchall()
+    needed = {roots.get(r[k], r[k]) for r in rows for k in ("work_a", "work_b")}
+    works = _work_rows(conn, needed)  # 提案に出る作品だけ引く(全作品・全巻は読まない。#294)
+    vols = _listed_volumes(conn, work_ids=needed)
     out = []
-    for r in conn.execute(f"SELECT * FROM work_merge_proposals WHERE status IN ({marks}) ORDER BY confidence DESC, id",
-                          wanted):
+    for r in rows:
         a, b = roots.get(r["work_a"], r["work_a"]), roots.get(r["work_b"], r["work_b"])
         if status == "applied":
             if a == b and a in vols:
@@ -2096,20 +2149,28 @@ def open_proposal_count(conn: sqlite3.Connection) -> int:
 
 
 def get_works(conn: sqlite3.Connection, work_ids: list[int], sources: tuple[str, ...] = ()) -> list[dict]:
-    """作品の詳細を、渡した順にまとめて返す。全作品の項目・全巻・提案・連携は作品の数によらず 1 回ずつ引く
-    (確認の画面は確認待ちの作品を全部並べるので、1 作品ずつ引くと作品の数 × 蔵書全体になる。#291)。"""
-    works = _work_rows(conn)
+    """作品の詳細を、渡した順にまとめて返す。項目・巻・提案・連携は、渡した作品(と提案の相手)の分を
+    作品の数によらず 1 回ずつ引く(確認の画面は確認待ちの作品を全部並べるので、1 作品ずつ引くと作品の数 × 蔵書全体になる。#291)。
+    蔵書全体は読まない: 1 作品の詳細は蔵書の大きさによらない(#294)。"""
+    wanted = set(work_ids)
+    marked = {r[0] for r in conn.execute("SELECT volume_id FROM bookmarks WHERE volume_id IS NOT NULL")}
+    roots = _roots(conn)
+    # 提案の相手の作品(名前・巻の見本を出す)だけ足して引く。全作品・全巻は読まない(#294)
+    proposal_rows = conn.execute("SELECT * FROM work_merge_proposals WHERE status IN ('open', 'auto', 'approved') "
+                                 "ORDER BY confidence DESC, id").fetchall()
+    needed = set(wanted)
+    for r in proposal_rows:
+        a, b = roots.get(r["work_a"], r["work_a"]), roots.get(r["work_b"], r["work_b"])
+        if r["status"] == "open" and a != b and (a in wanted or b in wanted):
+            needed.update((a, b))
+    works = _work_rows(conn, needed)
     for wid in work_ids:
         if wid not in works:
             raise WorkNotFound(wid)
-    wanted = set(work_ids)
-    all_vols = _listed_volumes(conn, with_meta=True)
-    marked = {r[0] for r in conn.execute("SELECT volume_id FROM bookmarks WHERE volume_id IS NOT NULL")}
-    roots = _roots(conn)
+    all_vols = _listed_volumes(conn, with_meta=True, work_ids=needed)
     proposals: dict[int, list[dict]] = defaultdict(list)
     merges: dict[int, list[dict]] = defaultdict(list)
-    for r in conn.execute("SELECT * FROM work_merge_proposals WHERE status IN ('open', 'auto', 'approved') "
-                          "ORDER BY confidence DESC, id"):
+    for r in proposal_rows:
         a, b = roots.get(r["work_a"], r["work_a"]), roots.get(r["work_b"], r["work_b"])
         if r["status"] == "open":
             if a != b and (a in wanted or b in wanted):

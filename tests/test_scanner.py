@@ -1,3 +1,4 @@
+import os
 import zipfile
 
 import pytest
@@ -261,3 +262,65 @@ def test_chapter_folders_inside_a_volume_folder_do_not_get_volume_numbers(conn, 
     assert numbers["DLRAW.AC_Sakuhin v06s/Raw Chapter 171/"] == (None, None, None)
     assert numbers["DLRAW.AC_Sakuhin v07s/"] == ("volume", 7, 7)
     assert numbers["01-04/"] == ("volume", 1, 4)  # 外側が無ければ従来どおり
+
+
+def _image_folder_lib(tmp_path):
+    lib = tmp_path / "lib"
+    folder = lib / "Title 01"
+    folder.mkdir(parents=True)
+    for i in range(3):
+        (folder / f"{i:03d}.jpg").write_bytes(page_bytes(f"p{i}"))
+    return lib, folder
+
+
+def test_unchanged_image_folder_is_not_stat_per_image_nor_rewritten(conn, tmp_path, make_settings, monkeypatch):
+    lib, folder = _image_folder_lib(tmp_path)
+    settings = make_settings(lib)
+    scan(conn, settings)
+    before = conn.execute("SELECT scanned_at FROM sources WHERE rel_path = 'Title 01'").fetchone()[0]
+    stated = []
+    real = os.stat
+
+    def counting_stat(p, *a, **kw):
+        if str(p).lower().endswith(".jpg"):
+            stated.append(str(p))
+        return real(p, *a, **kw)
+
+    monkeypatch.setattr(os, "stat", counting_stat)
+    writes = []
+    conn.set_trace_callback(lambda sql: writes.append(sql) if sql.lstrip().upper().startswith(("UPDATE", "INSERT")) else None)
+    scan(conn, settings)
+    conn.set_trace_callback(None)
+    assert stated == []  # 画像 1 枚ごとの stat をしない
+    assert not [w for w in writes if "volumes" in w or "SET size" in w]  # 変化が無ければ巻・ソースを書かない
+    assert conn.execute("SELECT scanned_at FROM sources WHERE rel_path = 'Title 01'").fetchone()[0] == before
+
+
+def test_image_folder_changes_are_still_detected(conn, tmp_path, make_settings):
+    lib, folder = _image_folder_lib(tmp_path)
+    settings = make_settings(lib)
+    scan(conn, settings)
+    assert volumes(conn)[("Title 01", None, "")]["page_count"] == 3
+    (folder / "003.jpg").write_bytes(page_bytes("added"))  # 追加
+    scan(conn, settings)
+    assert volumes(conn)[("Title 01", None, "")]["page_count"] == 4
+    (folder / "003.jpg").unlink()  # 削除
+    scan(conn, settings)
+    assert volumes(conn)[("Title 01", None, "")]["page_count"] == 3
+    st = (folder / "000.jpg").stat()
+    (folder / "000.jpg").write_bytes(page_bytes("replaced with a longer body" * 10))  # 差し替え(サイズが変わる)
+    os.utime(folder, ns=(st.st_atime_ns, st.st_mtime_ns))  # フォルダの mtime は動かさない
+    before = conn.execute("SELECT size FROM sources WHERE rel_path = 'Title 01'").fetchone()[0]
+    scan(conn, settings)
+    assert conn.execute("SELECT size FROM sources WHERE rel_path = 'Title 01'").fetchone()[0] != before
+
+
+def test_recheck_rewrites_unchanged_image_folder(conn, tmp_path, make_settings):
+    lib, _ = _image_folder_lib(tmp_path)
+    settings = make_settings(lib)
+    scan(conn, settings)
+    conn.execute("UPDATE volumes SET title = '手で書き換えた'")  # 食い違いを仕込む(同じサイズ・mtime・枚数のまま)
+    scan(conn, settings)
+    assert volumes(conn)[("Title 01", None, "")]["title"] == "手で書き換えた"  # 通常は読み飛ばす
+    Scanner(conn, settings, recheck=True).scan()
+    assert volumes(conn)[("Title 01", None, "")]["title"] == "Title 01"

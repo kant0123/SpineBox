@@ -609,3 +609,14 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #299 fix: 作品の編集・候補の選択が遅い(名寄せの名前解析を毎回やり直していた)
 - 更新: [[work-grouping]], [[backend]]
 - 備考: #293。`naming.py` の名前解析の純関数(戻り値は frozen / tuple)を `lru_cache` で包み、同期の間に同じ名前を何万回も解析しないようにした。`PATCH /api/works/{id}` は `title` を変えたときだけ全作品の名寄せを回し、他の項目は `linking.apply_work` だけで済ませる。`naming.py` の行番号参照を直した。
+## [2026-11-11] ingest | #294 作品の詳細・巻を開く・提案・ブックマークが蔵書全体を読むのをやめる
+- 更新: [[backend]], [[volume-split]], [[metadata-linking]], [[work-search]], [[recurring-review-findings]]
+- 備考: #294。作品・巻・書誌・重複の印・食い違いの読み出しを id で絞れるようにし、`get_work()` 0.30 秒 → 1.3 ms、`list_proposals()` 0.26 秒 → 2.8 ms、`list_bookmarks()` 0.10 秒 → 1.2 ms(本番 DB の写し 1,141 作品)。ファセット・取得・表紙の作成は `listed_work_ids()` / `cover_volume_ids()` で一覧を組み立てない。統計・カタログとメモリへの保持(案 2)は未着手。
+
+## [2026-11-11] ingest | fix: 読み取りの API が毎回書き込みロックを取っていた(#296)
+- 更新: [[backend]]
+- 備考: 内側アーカイブの巻のページ要求ごとの `scan_issues` の DELETE+INSERT と、作品ページ・フォロー一覧ごとの `resolve_merged()` の `BEGIN IMMEDIATE` を、変化があるときだけにした。別接続が書き込み中のページ要求が待たない再現(ロック待ちそのもの)は実測していない。
+
+## [2026-11-11] ingest | PR #301 (#295) 再スキャンが遅い(画像フォルダの巻を毎回 1 枚ずつ stat していた)
+- 更新: [[backend]], [[novel-reader]], [[organize]], [[data-jobs]], [[volume-split]], [[recurring-review-findings]](scanner.py の行番号のみ)
+- 備考: #295。`os.walk` を `DirEntry` を持ち回す `scandir` の再帰 `_walk()` に替え、画像のサイズを列挙で得た情報から取る。画像フォルダの巻は合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が同じなら書かない。拡張子の判定は名前 1 つにつき 1 回。ジャンクション・`onerror`・missing 化・断片フォルダの判定は変えていない。

@@ -101,12 +101,16 @@ def list_bookmarks(conn: sqlite3.Connection, sort: str = "added") -> dict:
     """
     if sort not in SORTS:
         raise InvalidSort(f"未対応の並び順: {sort}")
-    rows = works._work_rows(conn)
     roots = works._roots(conn)
     items: list[dict] = []
     work_rows = conn.execute("SELECT id, work_id, created_at FROM bookmarks WHERE work_id IS NOT NULL").fetchall()
+    volume_rows = conn.execute(_VOLUME_SQL).fetchall()
+    # 印のある作品・巻の作品だけ引く(印が無ければ全作品を読まない。#294)
+    needed = {roots.get(b["work_id"], b["work_id"]) for b in work_rows}
+    needed |= {roots.get(r["work_id"], r["work_id"]) for r in volume_rows if r["work_id"] is not None}
+    rows = works._work_rows(conn, needed)
     if work_rows:
-        vols = works._listed_volumes(conn)
+        vols = works._listed_volumes(conn, work_ids=needed)
         for b in work_rows:
             wid = roots.get(b["work_id"], b["work_id"])
             w = rows.get(wid)
@@ -114,7 +118,7 @@ def list_bookmarks(conn: sqlite3.Connection, sort: str = "added") -> dict:
                 continue
             items.append({"kind": "work", "created_at": b["created_at"], "_id": b["id"], "_sort": w["title"],
                           "work": works._summary(w, vols.get(wid, []), 0)})
-    for r in conn.execute(_VOLUME_SQL):
+    for r in volume_rows:
         wid = roots.get(r["work_id"], r["work_id"]) if r["work_id"] is not None else None
         work_title = rows[wid]["title"] if wid in rows else None
         number = None

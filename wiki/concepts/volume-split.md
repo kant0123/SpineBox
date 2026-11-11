@@ -16,7 +16,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 - 入口: `spinebox/naming.py:159 parse_number()`。結果は `NumberCandidate(kind, start, end, evidence)`。kind は `volume` / `episode`
 - **保存場所は `volumes` の `number_kind` / `number_start` / `number_end` / `number_evidence`**(`spinebox/db.py:40 MIGRATIONS` の 2 番)。
-  スキャンが切り出す巻は `spinebox/scanner.py:661 _replace_volumes()` が、子の巻は `spinebox/analysis.py:63 register_units()` が書く。
+  スキャンが切り出す巻は `spinebox/scanner.py:723 _replace_volumes()` が、子の巻は `spinebox/analysis.py:63 register_units()` が書く。
   後続の重複検出はここを読む(作品の同一性は持っていないので、それは別に要る)
 - 名前は**候補**であって確定ではない(CLAUDE.md の不変条件)。ここで「確定」は作らない。API でも `volume_number` という候補として返す
 - 拾わないもの: 印の無い単独の数字(`DLRAW.TO_001.jpg` の 001)、`全3巻`、語の途中の `v`(`Dev01`)、年・日付らしい範囲。
@@ -38,7 +38,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
   単位の名前(フォルダ名・アーカイブ名)はスキャンの切り出しと同じく `fix_mojibake()` で文字化けを直す(#257。前は直さず、化けた名前が子の巻・作品名になっていた)
 - **単位が 2 つ以上のときだけ分解する。** 1 つなら親がそのまま 1 巻(子は作らない。前に作った子は missing にする)
 - 子の巻の場所は (親と同じ `source_id`・`container_path`) + `inner_path`(親の内側アーカイブから単位のあるアーカイブまでの名前の JSON 配列)+
-  `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:357 _open_unit()`
+  `entry_prefix`(そのアーカイブ内のフォルダ)。開くのは `spinebox/library.py:361 _open_unit()`
 - **親は「まとめ」として残す。** 開けば今までどおり全ページを読める。一覧(`LISTED_VOLUMES_WHERE`)は見えている子を持つ親を出さず、子を親の位置に並べる
 - 解析する契機: (1) 内側アーカイブの巻を開いたとき(`GET /api/volumes/{id}`。取り出しは済んでいるので追加の展開は無い)、
   (2) 明示操作 `POST /api/volumes/{id}/analyze`(一覧の「中の巻を調べる」)、(3) 設定 `background_analysis = true` のときの裏の少しずつ解析(ほかのジョブが動いていないときだけ。[[data-jobs]])、(4) データ管理の「中の巻を調べる」(未解析を全部)
@@ -65,7 +65,7 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 
 ### 食い違い
 
-`spinebox/analysis.py:214 compute_findings()`。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
+`spinebox/analysis.py:214 compute_findings()`(`source_ids` を渡すとそのソースの巻だけ読む。1 巻を開くときはこちら。#294)。DB に保存せず、一覧・詳細のたびに巻番号の列から導出する(巻番号が正なので、食い違いを別に持つと古くなる)。
 
 - `volume`: 分解した親の名前の範囲 ⇔ 子の巻番号。親と各子に付ける
 - `source`: 外側アーカイブ(スキャンのソース)の名前の範囲 ⇔ その中の巻(分解済みなら子、未解析の内側アーカイブはその名前の範囲)。

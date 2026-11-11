@@ -1185,3 +1185,72 @@ def test_get_works_does_not_query_per_work(make_env):
     assert len(ids) == 5 and many == one, (one, many)
     with pytest.raises(works.WorkNotFound):
         works.get_works(db.connect(settings.db_path), [ids[0], 999999])
+
+
+def _vm_steps(conn, fn) -> int:
+    """fn を走らせる間に SQLite が実行した命令数(読んだ行数に比例する)。"""
+    n = [0]
+
+    def tick():
+        n[0] += 1
+        return 0
+
+    conn.set_progress_handler(tick, 100)
+    try:
+        fn()
+    finally:
+        conn.set_progress_handler(None, 0)
+    return n[0] * 100
+
+
+def test_one_work_detail_does_not_read_the_whole_library(make_env, tmp_path):
+    """1 作品の詳細・1 巻の食い違い・提案・印の一覧が読む行数は、蔵書の大きさに比例しない(#294)。"""
+    from spinebox.analysis import compute_findings
+    from spinebox import bookmarks
+    lib, settings, client = make_env([f"Small{i} 第01巻.cbz" for i in range(3)])
+    ws = by_title(client)
+    wid = ws["Small0"]["id"]
+    volume = vid(client, "Small0 第01巻")
+    add_open_proposal(settings, ws["Small0"]["id"], ws["Small1"]["id"])
+    conn = db.connect(settings.db_path)
+    source_id = conn.execute("SELECT source_id FROM volumes WHERE id = ?", (volume,)).fetchone()[0]
+
+    def measure():
+        return (_vm_steps(conn, lambda: works.get_work(conn, wid)),
+                _vm_steps(conn, lambda: compute_findings(conn, [source_id])),
+                _vm_steps(conn, lambda: works.list_proposals(conn, "open")),
+                _vm_steps(conn, lambda: bookmarks.list_bookmarks(conn)))
+
+    try:
+        small = measure()
+        for i in range(120):
+            cbz(lib, f"Large{i} 第01巻.cbz")
+            cbz(lib, f"Large{i} 第02巻.cbz")
+        assert client.post("/api/scan").status_code == 200
+        assert len(client.get("/api/works").json()["works"]) > 100
+        large = measure()
+        # 同じ作品の詳細は同じ結果(絞り込みは結果を変えない)
+        assert works.get_work(conn, wid)["title"] == "Small0"
+        full = compute_findings(conn)
+        assert compute_findings(conn, [source_id]).get(volume, []) == full.get(volume, [])
+    finally:
+        conn.close()
+    for name, a, b in zip(("get_work", "findings", "proposals", "bookmarks"), small, large):
+        assert b <= a * 1.5 + 2000, (name, small, large)
+
+
+def test_light_work_listings_match_list_works(make_env):
+    """作品の id・表紙の巻だけ欲しい用途(ファセット・取得・表紙の作成)は、一覧を組み立てずに同じ結果を出す(#294)。"""
+    _, settings, client = make_env(REVIEW_FILES)
+    conn = db.connect(settings.db_path)
+    try:
+        listing = works.list_works(conn)["works"]
+        assert len(listing) == 5
+        assert works.listed_work_ids(conn) == [w["id"] for w in listing]
+        assert works.cover_volume_ids(conn) == [w["cover_volume_id"] for w in listing if w["cover_volume_id"] is not None]
+        root = conn.execute("SELECT id FROM library_roots LIMIT 1").fetchone()[0]
+        scoped = works.list_works(conn, root_id=root)["works"]
+        assert works.listed_work_ids(conn, root) == [w["id"] for w in scoped]
+        assert works.listed_work_ids(conn, 999999) == [] and works.cover_volume_ids(conn, 999999) == []
+    finally:
+        conn.close()

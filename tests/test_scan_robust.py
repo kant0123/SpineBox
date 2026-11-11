@@ -194,7 +194,7 @@ def test_walk_aborting_midway_does_not_mark_unvisited_sources_missing(conn, tmp_
     good(lib / "sub", "b.cbz")
     settings = make_settings(lib)
     scan(conn, settings)
-    real_walk = os.walk
+    real_walk = scanner._walk
 
     def broken_walk(top, *a, **k):
         it = real_walk(top, *a, **k)
@@ -202,7 +202,7 @@ def test_walk_aborting_midway_does_not_mark_unvisited_sources_missing(conn, tmp_
         raise RuntimeError("走査が途中で落ちた")
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(scanner.os, "walk", broken_walk)
+        mp.setattr(scanner, "_walk", broken_walk)
         result = scan(conn, settings)
     assert titles(conn) == ["a", "b"]  # sub/b.cbz を見ていないだけで、無くなったことにはしない
     assert any("RuntimeError" in i["reason"] for i in result.issues)

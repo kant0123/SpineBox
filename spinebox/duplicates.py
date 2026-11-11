@@ -388,16 +388,45 @@ def dismiss(conn: sqlite3.Connection, candidate_id: int, *, restore: bool = Fals
             raise CandidateNotFound(candidate_id)
 
 
-def candidate_counts(conn: sqlite3.Connection) -> dict[int, int]:
+def candidate_counts(conn: sqlite3.Connection, volume_ids=None) -> dict[int, int]:
     """巻ごとの、両方が一覧に見えており却下されていない候補の数(一覧の印用)。
 
     画面(`GET /api/duplicates`)は一覧に見えている巻どうしの組だけを出すので、印もそれに揃える。
     片方が見えなくなった(missing・整理済み)組を数えると、開いても何も出ない印が残る。
+    volume_ids を渡すと、その巻の分だけ数える(1 作品の詳細のために全巻を読まない。#294)。
     """
+    if volume_ids is not None:
+        return _scoped_candidate_counts(conn, volume_ids)
     listed = {r[0] for r in conn.execute("SELECT v.id " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE)}
     counts: dict[int, int] = defaultdict(int)
     for r in conn.execute("SELECT volume_a, volume_b FROM duplicate_candidates WHERE dismissed_at IS NULL"):
         if r["volume_a"] in listed and r["volume_b"] in listed:
             counts[r["volume_a"]] += 1
             counts[r["volume_b"]] += 1
+    return dict(counts)
+
+
+def _scoped_candidate_counts(conn: sqlite3.Connection, volume_ids) -> dict[int, int]:
+    wanted = sorted(set(volume_ids))
+    pairs: set[tuple[int, int]] = set()
+    for i in range(0, len(wanted), 250):
+        chunk = wanted[i:i + 250]
+        marks = ",".join("?" * len(chunk))
+        for r in conn.execute("SELECT volume_a, volume_b FROM duplicate_candidates WHERE dismissed_at IS NULL "
+                              f"AND (volume_a IN ({marks}) OR volume_b IN ({marks}))", chunk + chunk):
+            pairs.add((r["volume_a"], r["volume_b"]))
+    involved = sorted({v for pair in pairs for v in pair})
+    listed: set[int] = set()
+    for i in range(0, len(involved), 500):
+        chunk = involved[i:i + 500]
+        listed.update(r[0] for r in conn.execute(
+            "SELECT v.id " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE
+            + f" AND v.id IN ({','.join('?' * len(chunk))})", chunk))
+    mine = set(wanted)
+    counts: dict[int, int] = defaultdict(int)
+    for a, b in pairs:
+        if a in listed and b in listed:
+            for v in (a, b):
+                if v in mine:
+                    counts[v] += 1
     return dict(counts)
