@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-10
+updated: 2026-11-11
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -29,7 +29,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/novel/NovelReader.tsx:61 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
-| `frontend/src/review/Review.tsx:16 Review()` | 確認(`#/review/<tab>`。#207)。タブは公開DBの候補(`links`、`frontend/src/review/ReviewLinks.tsx:71 ReviewLinks()`)・統合の提案(`WorkProposals` の `embedded`)・重複の候補(`Duplicates` の `embedded`)。件数はサイドバーの「確認」のバッジと共通の `frontend/src/review/reviewCounts.tsx:14 ReviewCountsProvider()`(`GET /api/review/counts`) |
+| `frontend/src/review/Review.tsx:16 Review()` | 確認(`#/review/<tab>`。#207)。タブは公開DBの候補(`links`、`frontend/src/review/ReviewLinks.tsx:75 ReviewLinks()`)・統合の提案(`WorkProposals` の `embedded`)・重複の候補(`Duplicates` の `embedded`)。件数はサイドバーの「確認」のバッジと共通の `frontend/src/review/reviewCounts.tsx:14 ReviewCountsProvider()`(`GET /api/review/counts`) |
 | `frontend/src/duplicates/Duplicates.tsx:100 Duplicates()` | 重複候補の画面(確認の重複の候補タブ。旧 `#/duplicates` も同じタブを開く)。2 巻を並べて表紙・ページ数・巻番号・根拠・一致ページの例を見比べ、「重複ではない」で却下 / 「候補に戻す」。調べている間は `pollMs` ごとに取り直す |
 | `frontend/src/organize/Organize.tsx:156 OrganizePlan()` | CBZ 化のプレビュー → 実行(`#/organize/<巻 id>`、テンプレートの名前は `#/organize/<巻 id>/template`)。作品単位の改名・移動は `WorkOrganize()`(`#/works/<id>/organize`)、履歴と元に戻すは `OrganizeHistory()`(`#/organize`) |
 | `frontend/src/works/Works.tsx:128 Works()` | 作品の一覧(`#/works`。カードは表紙・作品名・著者/出版社と、読書中の作品のみ表紙右上に重ねる「読書中」バッジ(#270)、確認待ちの通知ドット `frontend/src/works/ReviewPending.tsx:29 NotifyDot()`(#210)。上に検索欄・「絞り込み」・常時表示の「並び順」選択(#273。[[work-search]])。取得・表紙・名寄せの操作は管理のデータ管理タブに集約(#102))。カードはタイトル一覧 `frontend/src/works/WorkTitles.tsx:18 WorkTitles()` へ。作品の管理ページ `frontend/src/works/WorkPage.tsx:52 WorkPage()`(`#/works/<id>`: 作品名・著者・種別・出版社・ジャンル・タグの手動編集と「自動に戻す」、別名、公開 DB の連携 `frontend/src/works/WorkLinks.tsx:138 WorkLinks()`、統合の根拠、巻の枠・欠け、巻の書誌 `frontend/src/works/VolumeMeta.tsx:13 VolumeMeta()`、巻の付け替え・手動統合)は、タイトル一覧の「作品を管理」から。利用元の表示は `frontend/src/works/Credits.tsx:6 Credits()`、提案 `frontend/src/works/WorkProposals.tsx:140 WorkProposals()`(カード 1 件は `ProposalCard()`、表示の整形は `frontend/src/works/proposalView.ts`)(確認の統合の提案タブ。旧 `#/works/proposals`・`#/admin/proposals` も同じタブを開く)。(「作品 / 巻」の切り替えは廃止) |
@@ -168,10 +168,16 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   カードはタイトル一覧へ開くので、案内 `frontend/src/works/ReviewPending.tsx:37 ReviewPendingNotice()` は作品ページとタイトル一覧の両方の上部に出し、種類ごとに `#/review/proposals` / `#/review` へリンクする。
   #207 で作品ページの「公開データベース」節に置いた 1 行は、同じリンクが 2 つ並ぶので上部の案内へまとめて外した。重複の候補は巻単位で `GET /api/works` に作品ごとの数が無いので、ドットの対象にしていない
 - **公開DBの候補タブは、作品ページを開かずにその場で選ぶ(#207)。** 1 作品 1 枠で表紙・作品名・巻数と、確認待ちの取得元だけの `WorkLinks` を出す(連携済み・該当なしは作品ページで見る)。
-  選び終えた作品は一覧から消さず「確認済み」に畳む(詰めると直後のタップが次の作品のボタンに当たる)。押したボタンが消えるので、次の確認待ちの見出し(最後ならその行の見出し)へフォーカスを移す。
-  NDL を選ぶと保留だった取得元が保存済みの応答で決まるので、その間は「反映しています…」を出す
+  選び終えた作品は一覧から消さず「確認済み」に畳む(詰めると直後のタップが次の作品のボタンに当たる)。押したボタンが消えるので、次の確認待ちの見出し(最後ならその行の見出し)へフォーカスを移す
 - **候補の選択は作品をまたいで 1 件ずつ順に流し、結果は最新の一覧へ入れる(#254)。** 続けて押すと、反映中に押した作品の結果で先の作品が確認待ちに戻っていた
-  (押した時点の一覧を閉じ込めたまま書き戻していた)。待っている作品には「順番待ち…」を出す。選び終えたら次の確認待ちの作品へスクロールする(`prefers-reduced-motion` では動きなし)
+  (押した時点の一覧を閉じ込めたまま書き戻していた)
+- **候補を押したら反映を待たずに画面を進める(#309)。** #254 の列は反映の順序だけを守り、画面は反映が終わるまで「反映しています…」のまま止まって、次の作品へのスクロールも反映の後だった
+  (本番では 1 件の反映に秒単位かかる)。押した時点で選択(`picks`。行の鍵 → 取得元 → 選んだ候補)を持ち、確認待ちの取得元をすべて選んだ行はその場で畳んで次へスクロールし、
+  反映は裏の列で流す(`frontend/src/review/ReviewLinks.tsx:132 pick()`)。畳んだ行は「反映待ち」→「反映しています…」→「確認済み」。種別の保留(`kind_unresolved`)の取得元は NDL の選択で解けるので、選ぶのを待たずに畳む
+  (解けなければ反映の結果で行が開き直る)。失敗した作品は確認待ちへ戻して理由を出し、上部の件数に「反映できなかった作品が N 件」を添える(畳んだ行で失敗しても、最後に選んだ後のスクロールが開いている行へ戻る)。
+  送る作品 id は押した時点ではなく送る時点の一覧から引く(先の反映で統合されて id が変わりうる)。列はメモリにしか無いので、反映待ちのままページを閉じた選択は送られず、確認待ちのまま残る(次に開けば選び直せる)
+- **選んだ取得元は「選んだ 1 件」だけを出し、ほかの候補と「どれでもない」を消す(#309)。** 候補は選択肢から 1 つ選ぶ操作なのに、押した後も反映が終わるまでほかの候補が並んだままで、
+  何を選んだか・まだ押せるのかが分からなかった。作品ページの連携(`WorkPage`)は従来どおり反映を待つ(`WorkLinks` に `onPick` を渡したときだけ呼び出し側へ任せる)
 - **候補は行全体を「これを採用」の押せる範囲にし、先頭に漫画・小説のタグを出す(#254)。** 小さいボタンが押しにくいという要望。ボタンの `::after` を行いっぱいに広げる形で、
   ボタン自体は 1 つのまま(行を `<button>` にすると中の「出典を開く」リンクが入れ子の操作になる)。リンクは `z-index` で上に出して押せるようにした。作品ページの連携の候補も同じ部品
 - **件数のバッジの読み上げ用の文字(`.sr-only`)はバッジの中に留める(`.count-badge` を `position: relative`)。** 外に出ると横に流れるタブの列の外にはみ出し、
@@ -257,6 +263,8 @@ npm run build      # frontend/dist
   全体の同期を依頼 → 「実行中: ライブラリ全体を同期(段 2/5: 中の巻を調べる 1 / 3)」の 1 行、タスクセンターの履歴、`#/organize` が整理タブ(整理と履歴)を開くこと、横スクロール 0 を確認した。`npm test` 185 件・`npm run build` が通った
 - #207 で確認の画面(`#/review`)を足し、統合の提案・重複の候補を移した。モック API の 1280px(ライト・ダーク)と 375px で、公開DBの候補の「これを採用」→ 確認済みに畳まれる・サイドバーの件数が 3 → 2、
   旧 `#/admin/proposals`・`#/duplicates` の振り替え、375px の引き出しの件数、横スクロール 0 を確認した。375px のタブの横ずれ(上の `.sr-only`)はこの確認で見つけた。`npm test` 182 件・`npm run build` が通った
+- #309 で公開DBの候補を「押したらすぐ次へ」にした。モック API の 1280px(ダーク)と 375px で、採用 → 行が畳まれ「すべて確認しました。」・採用ボタンが 0 個・横スクロール 0 を確認した。
+  モックは反映が一瞬で終わり確認待ちの作品も 1 つなので、反映待ちの表示・取得元が複数の作品の「選択済み」の見た目・失敗で戻る動きは `frontend/src/review/Review.test.tsx` でだけ確かめている
 - #210 で作品カードの確認待ちを通知ドットにし、作品ページ・タイトル一覧に確認のタブへの案内を足した。モック API の 1280px(ダーク)と 375px(ライト・ダーク)で、ドットの位置と読み上げ名、案内のリンクから `#/review/proposals` へ移ること、横スクロール 0 を確認した。`npm test` 190 件・`npm run build` が通った(当時は Node 26 の手元で組み込みの `localStorage` が jsdom と衝突したため `NODE_OPTIONS=--no-experimental-webstorage` を付けていた。#130 で `src/test/setup.ts` により解消済み。CI は Node 22)
 - #161 で作品カードの高さを中身に合わせた。`.work-grid` の `grid-auto-rows: 1fr` は、グリッドの高さが
   不定のとき全行を一覧で一番高いカードの高さに揃えるため、バッジの少ない作品ほど内側の下に空白が残っていた

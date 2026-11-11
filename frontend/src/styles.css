@@ -1364,6 +1364,8 @@ button.bookmark-button.dark.on { color: #ffd166; border-color: #ffd166; }
 .review-work.done .work-cover { width: 32px; }
 .review-work.done h2 { font-size: 1rem; }
 .review-work .link-list { margin-top: 12px; }
+/* 選んだ候補(#309)。反映を待たずに「選んだ 1 件」だけを出す。枠と面で選択済みを示し、文字のバッジも添える(色だけに頼らない) */
+.link-card.link-picked .link-candidate { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 12px; background: var(--accent-subtle); }
 /* 作品ごとの確認待ち(#210)。カードでは表紙の左上に通知ドットを重ねる。--warn は白・--bg 上で 3:1 以上。
    表紙の画像の上でも見分けられるよう --card の縁を付ける。何が待っているかは読み上げ名とツールチップで伝える */
 .notify-dot {

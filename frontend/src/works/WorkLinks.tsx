@@ -52,16 +52,39 @@ function Candidate({ c, action, selectable }: { c: LinkCandidate; action?: React
   );
 }
 
-function LinkCard({ l, busy, run, workId, onWork }: { l: WorkLink; busy: boolean; run: Run; workId: number; onWork: (w: WorkDetail) => void }) {
+/** 候補を選ぶ(sourceId が null なら「どれでもない」)。選んだ後の作品を返す */
+export async function chooseLink(workId: number, source: string, sourceId: string | null): Promise<WorkDetail> {
+  const chosen = await api.chooseLink(workId, source as SourceName, sourceId);
+  // 種別が決まって保留が解けた取得元は、保存済みの応答で連携し直す(新しい問い合わせは出ない)
+  const held = chosen.links.some((x) => x.hold === "kind_unresolved") && chosen.kind !== null;
+  return held ? await api.fetchWorkMetadata(workId) : chosen;
+}
+
+/** 選んだ候補(null は「どれでもない」)。取得元の名前で引く。反映を待たずに画面へ出すためのもの(#309) */
+export type LinkPicks = Record<string, string | null>;
+type OnPick = (source: string, sourceId: string | null) => void;
+
+function LinkCard({ l, busy, run, workId, onWork, picks, onPick }: {
+  l: WorkLink; busy: boolean; run: Run; workId: number; onWork: (w: WorkDetail) => void; picks?: LinkPicks; onPick?: OnPick;
+}) {
+  // onPick があれば反映を呼び出し側に任せる(確認の画面は待たずに次へ進む。#309)
   const choose = (sourceId: string | null) =>
-    run(async () => {
-      const chosen = await api.chooseLink(workId, l.source as SourceName, sourceId);
-      // 種別が決まって保留が解けた取得元は、保存済みの応答で連携し直す(新しい問い合わせは出ない)
-      const held = chosen.links.some((x) => x.hold === "kind_unresolved") && chosen.kind !== null;
-      onWork(held ? await api.fetchWorkMetadata(workId) : chosen);
-    });
+    onPick ? onPick(l.source, sourceId) : run(async () => onWork(await chooseLink(workId, l.source, sourceId)));
   const reset = () => run(async () => onWork(await api.resetLink(workId, l.source as SourceName)));
   const others = l.candidates.filter((c) => c.source_id !== l.source_id);
+  if (picks && l.source in picks) {
+    // 選んだ後は、選んだ 1 件だけを出す(ほかの候補は押せない。選択肢から 1 つ選ぶ操作。#309)
+    const picked = l.candidates.find((c) => c.source_id === picks[l.source]);
+    return (
+      <li className="link-card link-picked" aria-label={`${dbName(l.source)}との連携`}>
+        <div className="link-head">
+          <strong>{l.label || dbName(l.source)}</strong>
+          <span className="badge quiet">選択済み(反映待ち)</span>
+        </div>
+        {picked ? <Candidate c={picked} /> : <p className="volume-meta">「どれでもない」を選びました。</p>}
+      </li>
+    );
+  }
   return (
     <li className={`link-card link-${l.status ?? "unfetched"}`} aria-label={`${dbName(l.source)}との連携`}>
       <div className="link-head">
@@ -135,7 +158,9 @@ function LinkCard({ l, busy, run, workId, onWork }: { l: WorkLink; busy: boolean
 }
 
 /** 公開データベースとの連携(取得元ごと): 状態・失敗の理由・候補の確認 */
-export function WorkLinks({ work, busy, run, onWork }: { work: WorkDetail; busy: boolean; run: Run; onWork: (w: WorkDetail) => void }) {
+export function WorkLinks({ work, busy, run, onWork, picks, onPick }: {
+  work: WorkDetail; busy: boolean; run: Run; onWork: (w: WorkDetail) => void; picks?: LinkPicks; onPick?: OnPick;
+}) {
   if (work.links.length === 0) {
     return <p className="muted">公開データベースの取得元が設定で有効になっていません。</p>;
   }
@@ -143,7 +168,7 @@ export function WorkLinks({ work, busy, run, onWork }: { work: WorkDetail; busy:
     <>
       <ul className="link-list">
         {work.links.map((l) => (
-          <LinkCard key={l.source} l={l} busy={busy} run={run} workId={work.id} onWork={onWork} />
+          <LinkCard key={l.source} l={l} busy={busy} run={run} workId={work.id} onWork={onWork} picks={picks} onPick={onPick} />
         ))}
       </ul>
       <p className="muted">公開データベースの値は、空欄だけを埋めます。手で直した項目は上書きしません。確信度の低い候補は、選ぶまで反映しません。</p>
