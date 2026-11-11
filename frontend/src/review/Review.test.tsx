@@ -101,49 +101,99 @@ describe("確認", () => {
   });
 });
 
-describe("公開DBの候補を続けて選ぶ(#254)", () => {
-  it("反映は 1 件ずつ順に流れ、先に終わった作品の結果を巻き戻さない。次の作品へスクロールする", async () => {
+describe("公開DBの候補を続けて選ぶ(#254, #309)", () => {
+  type Listed = { id: number; title: string; link_pending: number; links: { source: string; status: string; hold: string | null }[] };
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  /** 確認待ちの取得元が 1 つだけの作品を 2 つ並べ、choose の応答を手で進める */
+  async function setup(opts: { fail?: boolean; twoSources?: boolean } = {}) {
     const { ReviewLinks } = await import("./ReviewLinks");
-    const listed = JSON.parse(backend.handle("GET", "/api/review/links").body as string).works;
-    const first = listed[0];
+    const listed: Listed = JSON.parse(backend.handle("GET", "/api/review/links").body as string).works[0];
+    const link = { ...listed.links.find((l) => l.status === "pending")!, hold: null };
+    const links = opts.twoSources ? [link, { ...structuredClone(link), source: "anilist" }] : [link];
+    const first = { ...listed, links };
     const second = { ...structuredClone(first), id: 9001, title: "別の漫画" };
-    const doneOf = (w: typeof first) => ({ ...w, link_pending: 0, links: [] });
+    const doneOf = (w: Listed) => ({ ...w, link_pending: 0, links: [] });
     const waiting: { url: string; resolve: () => void }[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-      if (url.endsWith("/api/review/links")) {
-        return new Response(JSON.stringify({ works: [first, second] }), { headers: { "Content-Type": "application/json" } });
-      }
+      if (url.endsWith("/api/review/links")) return json({ works: [first, second] });
       const m = url.match(/\/api\/works\/(\d+)\/links\/\w+\/choose$/);
       if (m) {
         const w = Number(m[1]) === second.id ? second : first;
         await new Promise<void>((resolve) => waiting.push({ url, resolve }));
-        return new Response(JSON.stringify(doneOf(w)), { headers: { "Content-Type": "application/json" } });
+        return opts.fail ? json({ detail: "取得元が応答しません" }, 500) : json(doneOf(w));
       }
       const r = backend.handle(init?.method ?? "GET", url, init?.body as string | undefined);
       return new Response(r.body, { status: r.status, headers: { "Content-Type": r.contentType } });
     });
     const scrolled: Element[] = [];
     Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this); };
-
     render(<ReviewLinks onChanged={() => {}} />);
     const itemOf = async (title: string) => (await screen.findByRole("heading", { level: 2, name: title })).closest("li")!;
-    const one = await itemOf(first.title);
-    const two = await itemOf("別の漫画");
-    fireEvent.click(within(one).getAllByRole("button", { name: /を採用/ })[0]);
-    fireEvent.click(within(two).getAllByRole("button", { name: /を採用/ })[0]);
-    expect(await within(two).findByText(/順番待ち/)).toBeTruthy();
-    await waitFor(() => expect(waiting.length).toBe(1)); // 2 件目は 1 件目が終わるまで送らない
+    return { one: await itemOf(first.title), two: await itemOf("別の漫画"), first, waiting, scrolled };
+  }
+  const adopt = (el: HTMLElement) => within(el).queryAllByRole("button", { name: /を採用/ });
+
+  it("押したらすぐ畳んで次の作品へ進み、反映は裏で 1 件ずつ順に流れる。先に終わった作品の結果を巻き戻さない", async () => {
+    const { one, two, first, waiting, scrolled } = await setup();
+    fireEvent.click(adopt(one)[0]);
+    // 反映を待たずに畳み、候補は押せなくなり、次の作品へスクロールする
+    expect(adopt(one)).toEqual([]);
+    expect(within(one).getByText(/反映/)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("残り 1 作品(反映待ち 1 作品)");
+    await waitFor(() => expect(scrolled).toContain(two));
+    expect(waiting.length).toBe(1);
+
+    fireEvent.click(adopt(two)[0]);
+    expect(adopt(two)).toEqual([]);
+    expect(within(two).getByText("反映待ち")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("すべて選びました");
+    await act(async () => {});
+    expect(waiting.length).toBe(1); // 2 件目は 1 件目が終わるまで送らない
     expect(waiting[0].url).toContain(`/api/works/${first.id}/`);
 
     await act(async () => waiting[0].resolve());
     await waitFor(() => expect(within(one).getByText("確認済み")).toBeTruthy());
-    await waitFor(() => expect(scrolled).toContain(two)); // 次の確認待ちの作品へスクロール
     await waitFor(() => expect(waiting.length).toBe(2));
     await act(async () => waiting[1].resolve());
     await waitFor(() => expect(within(two).getByText("確認済み")).toBeTruthy());
     // 後の反映で先の作品が確認待ちに戻らない
     expect(within(one).getByText("確認済み")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe("すべて確認しました。");
+  });
+
+  it("取得元が複数あるとき、選んだ取得元は選んだ 1 件だけになり、残りの取得元を選ぶまで畳まない", async () => {
+    const { one, waiting, scrolled } = await setup({ twoSources: true });
+    const cards = () => within(one).getAllByRole("listitem");
+    const total = adopt(one).length;
+    const inFirst = adopt(cards()[0]).length;
+    expect(inFirst).toBeGreaterThan(1); // 候補が複数ある取得元
+    fireEvent.click(adopt(cards()[0])[0]);
+    expect(adopt(cards()[0])).toEqual([]);
+    expect(within(cards()[0]).queryByRole("button", { name: "どれでもない" })).toBeNull();
+    expect(within(cards()[0]).getByText("選択済み(反映待ち)")).toBeTruthy();
+    expect(adopt(one).length).toBe(total - inFirst);
+    expect(screen.getByRole("status").textContent).toBe("残り 2 作品");
+    await act(async () => {});
+    expect(scrolled).toEqual([]);
+
+    fireEvent.click(within(cards()[1]).getByRole("button", { name: "どれでもない" }));
+    expect(adopt(one)).toEqual([]);
+    expect(screen.getByRole("status").textContent).toBe("残り 1 作品(反映待ち 1 作品)");
+    await act(async () => {});
+    expect(waiting.length).toBe(1); // 同じ作品の 2 つ目も順に送る
+  });
+
+  it("反映に失敗した作品は確認待ちへ戻り、理由を出す", async () => {
+    const { one, waiting } = await setup({ fail: true });
+    const total = adopt(one).length;
+    fireEvent.click(adopt(one)[0]);
+    expect(adopt(one)).toEqual([]);
+    await waitFor(() => expect(waiting.length).toBe(1));
+    await act(async () => waiting[0].resolve());
+    expect((await within(one).findByRole("alert")).textContent).toBe("取得元が応答しません");
+    expect(adopt(one).length).toBe(total);
+    expect(screen.getByRole("status").textContent).toBe("残り 2 作品 反映できなかった作品が 1 件あります。");
   });
 
   it("候補には漫画・小説のタグが付き、採用のボタンは大きい", async () => {
