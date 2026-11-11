@@ -371,3 +371,18 @@ def test_ndl_query_is_the_normal_linking_query(env_factory):
     env.check()
     q = parse_qs(urlparse(str(env.net.requests[0].url)).query)
     assert q["title"] == [KAKU] and q["cnt"] == ["100"]
+
+
+def test_resolve_merged_takes_no_write_lock_when_nothing_to_move(env_factory):
+    """移すものが無いとき、読み取りの API から呼ばれる resolve_merged は書き込みのトランザクションを取らない(#296)。"""
+    env = env_factory("kaku", kaku_files(1, 2, 3, 4))
+    env.follow(env.work_id())
+    conn = db.connect(env.settings.db_path)
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    try:
+        follows.resolve_merged(conn)
+    finally:
+        conn.set_trace_callback(None)
+        conn.close()
+    assert not [s for s in statements if s.startswith("BEGIN")], statements
