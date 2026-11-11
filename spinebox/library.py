@@ -295,6 +295,14 @@ class Library:
                 return page.read_bytes()
 
             return OpenVolume(volume_id, names, table.version, read)
+        # 内側アーカイブの展開キャッシュは、開いている間ずっと使う。pin しないと別の要求の LRU 退避で
+        # 消され、読んでいる途中で FileNotFoundError になる(通常の _extract と同じ扱い)
+        for _, _, p in table.states:
+            if p.parent == self.cache.directory:
+                try:
+                    stack.enter_context(self.cache.use_existing(p.stem))
+                except NotCached as e:
+                    raise VolumeUnreadable(f"展開キャッシュが見つかりません: {p.name}") from e
         readers = [stack.enter_context(cls.from_cache_state(state)) for cls, state, _ in table.states]
         pages = [(readers[sid], entry, key) for sid, entry, key in table.pages]
 

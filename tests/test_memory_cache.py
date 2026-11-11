@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from archives7z import make_7z, rar5_bytes
 from conftest import page_bytes, snapshot, write_zip, zip_bytes
+from spinebox import db
 from spinebox import library as library_mod
 from spinebox.app import create_app
 from spinebox.archive import ArchiveError, LimitExceeded
@@ -513,6 +514,34 @@ def test_page_table_is_rebuilt_when_the_extracted_inner_archive_is_gone(make_cli
     for cached in list(c.app.state.cache.directory.iterdir()):
         cached.unlink()
     assert c.get(f"/api/volumes/{child['id']}/pages/1").content == files[1][1]  # 取り出し直して読む
+
+
+def test_page_table_pins_the_extracted_inner_archive_while_open(make_client, tmp_path):
+    files = _pages(3)
+    inner_set = zip_bytes([
+        ("v01.zip", zip_bytes(files)),
+        ("v02.zip", zip_bytes(_pages(2))),
+    ])
+    write_zip(tmp_path / "lib" / "outer.zip", [("set v01-02.zip", inner_set)])
+    c, settings = make_client(tmp_path / "lib")
+    c.post("/api/scan")
+    (outer,) = c.get("/api/volumes").json()
+    c.get(f"/api/volumes/{outer['id']}")  # 内側の巻を子として登録する
+    child = next(v for v in c.get("/api/volumes").json()
+                 if v["parent_id"] == outer["id"] and v["title"] == "v01")
+    assert c.get(f"/api/volumes/{child['id']}/pages/0").content == files[0][1]  # ページ表を作る
+
+    cache = c.app.state.cache
+    lib = library_mod.Library(settings, cache, c.app.state.memory)
+    conn = db.connect(settings.db_path)
+    try:
+        with lib.open(conn, child["id"]) as vol:  # 2 回目はページ表から開く
+            assert vol.page_names == [name for name, _ in files]
+            assert cache._pins  # noqa: SLF001 (開いている間は内側アーカイブの展開キャッシュを消させない)
+            assert vol.read_page(1) == files[1][1]
+        assert cache._pins == {}  # noqa: SLF001 (閉じたら pin を外す)
+    finally:
+        conn.close()
 
 
 def test_concurrent_requests_share_one_extraction(make_client, tmp_path, batching_zip):

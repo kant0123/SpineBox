@@ -32,7 +32,8 @@ related: [overview, backend, archive-reading, volume-split, duplicate-detection,
   巻の行・ルートの確認・元ファイルの stat(版の確認)だけでページを読める。zip は中央ディレクトリの `ZipInfo`、7z / rar は目次を持ち越し、
   `Library.open()` が `ZipReader.from_cache_state()` / `SevenZipReader.from_cache_state()` でリーダーを作り直す([[archive-reading]])。
   キーは巻 id・パス・版(サイズ・mtime)・kind / format・`container_path` / `entry_prefix` / `inner_path`・各上限・`sevenzip_path`。
-  版が変わったときと、内側アーカイブの展開キャッシュが消えたときに捨てる。PDF と状態を持てないリーダーは対象外(毎回開く)。
+  版が変わったときと、内側アーカイブの展開キャッシュが消えたときに捨てる。開いている間は内側アーカイブの展開キャッシュを
+  `ExtractionCache.use_existing()` で使用中にして、別の要求の退避で消されないようにする。PDF と状態を持てないリーダーは対象外(毎回開く)。
   同じ巻への並行した最初の要求はロックで 1 回にまとめる。ページ画像そのものは置かない(下の「検討して採らなかった選択肢」)
 - **7z / rar のページは、要求されたページから先を 1 回の 7-Zip 起動でまとめて取り出して RAM に置く**
   (`spinebox/archive/sevenzip.py SevenZipReader.read_entries()`。出力を目次のサイズで切り分け、CRC で照合する。[[archive-reading]])。
