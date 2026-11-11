@@ -27,9 +27,13 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import PurePosixPath
 
 from .mojibake import fix_mojibake, looks_garbled
+
+# 名前の解析は純関数(戻り値は frozen / tuple)。1 回の同期で同じ名前を何万回も解析するため結果を置く(#293)。
+_CACHE_SIZE = 65536
 
 # 名前の末尾から外す拡張子(`Vol.1` の `.1` を拡張子として落とさないため、知っているものだけ)
 _KNOWN_EXTS = frozenset({
@@ -106,6 +110,7 @@ class NumberCandidate:
         return {"kind": self.kind, "start": self.start, "end": self.end, "evidence": self.evidence}
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def strip_known_ext(name: str) -> str:
     base = PurePosixPath(name.replace("\\", "/").rstrip("/")).name
     suffix = PurePosixPath(base).suffix
@@ -150,6 +155,7 @@ def _find_number(text: str) -> tuple[NumberCandidate, tuple[int, int]] | None:
     return None
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def parse_number(name: str) -> NumberCandidate | None:
     """名前(パスなら最後の要素)から巻・話の番号の候補を 1 つ返す。見つからなければ None。"""
     name, _ = fix_mojibake(name)
@@ -259,6 +265,7 @@ class WorkName:
         return {"title": self.title, "authors": list(self.authors), "parts": [list(p) for p in self.parts]}
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def normalize_title(text: str) -> str:
     """作品名の突き合わせ用の形。NFKC・大小文字・カタカナ/ひらがな・空白や記号の違いを無くす。
 
@@ -297,6 +304,7 @@ _JUNK_NUMBERED = re.compile(rf"^(?:{'|'.join(sorted(set(_JUNK_SUFFIX_WORDS)))})\
 _NUMBER_WITH_MARK = re.compile(r"^\d{1,4}[a-z]{1,2}$")
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def is_junk_name(norm: str) -> bool:
     """作品名として使えない、中身の無い名前(正規化後)か。"""
     return (
@@ -329,6 +337,7 @@ def _without_distributor(name: str) -> str:
     return text
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def is_chapter_label(name: str) -> bool:
     """巻の中の章・話・特別編の見出し(`第4話 …` `第100部分:…` `chap 038` `特別編:…`)か。"""
     return bool(_CHAPTER_LABEL.match(_without_distributor(name)))
@@ -341,6 +350,7 @@ _FRAGMENT_NAMES = frozenset(normalize_title(x) for x in (
 _FRAGMENT_COVER = re.compile(r"^\d{0,4}(?:covers?|表紙)$")
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def is_fragment_name(name: str) -> bool:
     """目次・表紙・広告など、本の断片を表す名前か(1 文字だけの名前 `c` `❺` も含む)。"""
     norm = normalize_title(_without_distributor(name))
@@ -370,6 +380,7 @@ def _has_kana_or_kanji(text: str) -> bool:
     return any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text)
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def parse_work_name(name: str) -> WorkName | None:
     """名前(パスなら最後の要素)から作品名・著者の候補を取り出す。作品名と読める部分が無ければ None。"""
     name, _ = fix_mojibake(name)
@@ -509,6 +520,7 @@ class TrailingNumber:
     evidence: str   # 名前の中で当たった部分(`01` `(3)`)
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def trailing_number(name: str) -> TrailingNumber | None:
     """`作品名 01` `作品名(3)` の末尾の番号の候補。巻番号と決めるのは呼ぶ側。
 

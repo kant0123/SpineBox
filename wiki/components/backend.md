@@ -32,7 +32,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/scanner.py:808 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:178 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻)。2 回目以降は RAM 層のページ表から読み、書庫を開き直さない(#297。[[extraction-cache]]) |
 | `spinebox/library.py:91 _PageTable` | 同じ版の巻のページ表(RAM 層)。ページ名と、zip の `ZipInfo` / 7z の目次・リーダーの作り直し方を持つ。元ファイルの版が変わったときと展開キャッシュが消えたときに捨てる |
-| `spinebox/library.py:577 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:153 parse_number`([[volume-split]]) |
+| `spinebox/library.py:577 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:159 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
 | `spinebox/linking.py:364 fetch_work()` / `spinebox/linking.py:689 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
 | `spinebox/follows.py:115 check_work()` | フォロー([[follow]])。続刊・欠けを調べる。一覧は `list_follows()` / `list_releases()`(DB だけ)、ジョブ・定期実行の入口は `check_many()` |
