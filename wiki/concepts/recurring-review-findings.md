@@ -117,7 +117,7 @@ push 前に確かめること:
 - PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
 - PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 - PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
-- PR #219 — `spinebox/scanner.py:636 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
+- PR #219 — `spinebox/scanner.py:698 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
 - PR #219 — `spinebox/organize/organizer.py:1022 _plan_range_cbz()` — 計画全体の `problems` と同じ名前の変数を PDF 検査の戻り値受け取りに使ったため、前段で拾った未解析アーカイブ等の問題リストが上書きされて消失した(agy レビューの WARNING。`pdf_probs` にリネームして修正)
 - PR #219 — `spinebox/app.py:499 get_volume` / `spinebox/thumbs.py:131 get` / `spinebox/library.py:143 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(agy レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
 - PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(agy レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
@@ -489,6 +489,7 @@ push 前に確かめること:
 
 - PR #213 — `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(agy レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
 - PR #216 — `wiki/log.md` — スクリプトによる文字列の一括置換(`replace`)で、最新エントリだけでなく過去の PR (#159, #160, #164, #174, #172) の更新行まで同じ文字列として置換され、同一ページへの重複リンクが混入していた(agy レビューの WARNING。過去ログを元に戻し最新エントリのみ追記する形に修正)
+- PR #302 — `wiki/log.md` — 最新エントリの「更新:」行を `sed` で書き換えたとき、同じ文面の過去の行(PR #192・#201)にも当たって履歴が変わった(agy レビューの NITPICK。置換後に `git diff` で当たった行を数える)
 
 ### 文字化け修復の判定で、正常な別文字コードの文字列が偶然デコードされる誤爆を考えていない
 

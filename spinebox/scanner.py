@@ -32,13 +32,14 @@ from typing import Callable
 from . import db
 from .archive import (ArchiveError, LimitExceeded, UnsupportedArchive, is_archive_name, list_entries,
                       open_archive)
+from .archive.base import ARCHIVE_EXTS
 from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import is_fragment_name, parse_number_in
-from .novel import FORMAT_EPUB, novel_format
+from .novel import FORMAT_EPUB, NOVEL_FORMATS
 from .mojibake import fix_mojibake
 from .novel.epub import CONTAINER as EPUB_CONTAINER, read_meta as epub_read_meta, scan_problems as epub_scan_problems
-from .pages import is_cover, is_image
+from .pages import IMAGE_TYPES, is_cover, is_image
 
 FORMAT_PDF = "pdf"
 
@@ -244,6 +245,43 @@ def archive_volume_specs(listing, archive_name: str, limits) -> tuple[list[Volum
     return specs, skipped
 
 
+def _walk(top: Path, onerror: Callable[[OSError], None]):
+    """`os.walk(top, followlinks=False)` と同じ順・同じ意味で歩き、ファイルごとの `DirEntry` も返す。
+
+    os.walk は名前しか返さないので、サイズを知るために同じファイルをもう一度 stat することになる。
+    ここでは scandir が列挙で得た DirEntry を持ち回り、`entry.stat()` を追加の I/O なしで使えるようにする(#295)。
+    `(dirpath, dirnames, filenames, entries)` を返す。dirnames は os.walk と同じく呼び出し側が刈り込める。
+    """
+    dirs: list[str] = []
+    files: list[str] = []
+    entries: dict[str, os.DirEntry] = {}
+    links: set[str] = set()
+    try:
+        with os.scandir(top) as it:
+            for entry in it:
+                try:
+                    is_dir = entry.is_dir()
+                except OSError:
+                    is_dir = False
+                if is_dir:
+                    dirs.append(entry.name)
+                    try:
+                        if entry.is_symlink():
+                            links.add(entry.name)
+                    except OSError:
+                        pass
+                else:
+                    files.append(entry.name)
+                    entries[entry.name] = entry
+    except OSError as e:
+        onerror(e)
+        return
+    yield str(top), dirs, files, entries
+    for d in dirs:  # 呼び出し側が刈り込んだ後の dirs
+        if d not in links:
+            yield from _walk(os.path.join(top, d), onerror)
+
+
 class Scanner:
     """recheck=True は、サイズ・mtime が前回と同じアーカイブ・EPUB の目次も読み直す(データ管理の「メンテナンス」)。
     元ファイルが変わっていなければ、中の巻の解析はそのまま使う。
@@ -414,28 +452,33 @@ class Scanner:
 
         excluded = self._excluded_dirs(root)
         try:
-            for dirpath, dirnames, filenames in os.walk(root, onerror=onerror, followlinks=False):
+            for dirpath, dirnames, filenames, entries in _walk(root, onerror):
                 if self._stop():
                     complete = False
                     break
                 dirnames[:] = self._walkable_dirs(dirpath, dirnames, excluded)
-                images = sorted(f for f in filenames if is_image(f))
+                exts = {name: os.path.splitext(name)[1].lower() for name in filenames}  # 拡張子は名前 1 つにつき 1 回
+                images = sorted(f for f in filenames if exts[f] in IMAGE_TYPES)
                 if images and self._is_fragment_folder(dirpath, len(images)):
                     images = []  # 理由は _is_fragment_folder が記録した
                 if images:
                     visit("folder", dirpath,
-                          lambda rel, dirpath=dirpath, images=images:
-                          self._scan_folder(root_id, root, rel, Path(dirpath), images))
+                          lambda rel, dirpath=dirpath, images=images, entries=entries:
+                          self._scan_folder(root_id, root, rel, Path(dirpath), images, entries))
                 for name in sorted(filenames):
+                    ext = exts[name]
+                    fmt = NOVEL_FORMATS.get(ext)
+                    is_archive = ext in ARCHIVE_EXTS
+                    if not (fmt or is_archive or name.lower().endswith(".pdf")):
+                        continue
                     full = os.path.join(dirpath, name)
-                    fmt = novel_format(name)
                     if fmt and fmt != FORMAT_EPUB and (reason := software_doc_reason(name, filenames)):
                         self._record_pathless(full, reason)
                         continue
                     if fmt == FORMAT_EPUB or (fmt and not images):  # 画像のあるフォルダの .txt は添え物
                         visit("archive", full,
                               lambda rel, full=full, fmt=fmt: self._scan_novel(root_id, rel, Path(full), fmt))
-                    elif is_archive_name(name):
+                    elif is_archive:
                         visit("archive", full, lambda rel, full=full: self._scan_archive(root_id, rel, Path(full)))
                     elif name.lower().endswith(".pdf"):
                         visit("archive", full, lambda rel, full=full: self._scan_pdf(root_id, rel, Path(full)))
@@ -499,7 +542,8 @@ class Scanner:
                   (kind, root_id, rel))
         return c.execute("SELECT * FROM sources WHERE root_id = ? AND rel_path = ?", (root_id, rel)).fetchone()
 
-    def _scan_folder(self, root_id: int, root: Path, rel: str, path: Path, images: list[str]) -> None:
+    def _scan_folder(self, root_id: int, root: Path, rel: str, path: Path, images: list[str],
+                     entries: dict[str, os.DirEntry] | None = None) -> None:
         try:
             st = path.stat()
         except OSError as e:
@@ -510,7 +554,9 @@ class Scanner:
         unreadable: list[Skip] = []
         for f in images:
             try:
-                size += (path / f).stat().st_size
+                # 列挙で得た情報を使う(Windows では追加のシステムコールが要らない。27 万枚を 1 枚ずつ stat しない)
+                entry = entries.get(f) if entries else None
+                size += entry.stat().st_size if entry is not None else (path / f).stat().st_size
                 readable.append(f)
             except OSError as e:  # 壊れたリンクなど。そのファイルだけ数えない
                 unreadable.append(Skip(safe_text(f), f"読めない画像: {describe_exception(e)}"))
@@ -518,6 +564,8 @@ class Scanner:
             self._source_failed(root_id, str(path), rel, "folder",
                                 "読める画像が 1 枚も無い: " + "; ".join(s.reason for s in unreadable[:3]))
             return
+        if not self.recheck and self._folder_unchanged(root_id, rel, size, st.st_mtime_ns, len(readable), readable):
+            return  # 前回から変わっていない。書かない
         # 表紙画像だけのフォルダは巻にしない(#180)
         if all(is_cover(f) for f in readable):
             with db.transaction(self.conn) as c:
@@ -535,6 +583,20 @@ class Scanner:
             self._replace_volumes(c, src["id"], [spec])
             c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                       (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+
+    def _folder_unchanged(self, root_id: int, rel: str, size: int, mtime_ns: int, count: int,
+                          readable: list[str]) -> bool:
+        """画像のフォルダの巻が前回の記録と同じか(合計サイズ・フォルダの mtime・版・枚数が一致)。"""
+        src = self.conn.execute("SELECT * FROM sources WHERE root_id = ? AND rel_path = ? AND kind = 'folder'",
+                                (root_id, rel)).fetchone()
+        if (src is None or src["missing"] or src["offline"] or src["size"] != size
+                or src["mtime_ns"] != mtime_ns or src["scan_version"] != SCAN_VERSION):
+            return False
+        vols = self.conn.execute("SELECT page_count FROM volumes WHERE source_id = ? AND parent_id IS NULL "
+                                 "AND missing = 0", (src["id"],)).fetchall()
+        if all(is_cover(f) for f in readable):
+            return not vols  # 表紙だけのフォルダは巻にしない
+        return len(vols) == 1 and vols[0]["page_count"] == count
 
     def _scan_archive(self, root_id: int, rel: str, path: Path) -> None:
         try:

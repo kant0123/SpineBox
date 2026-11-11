@@ -516,7 +516,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "parent_id": row["parent_id"],
                 "volume_number": _number(row),
                 "next_volume": works.next_volume(conn, volume_id),
-                "findings": compute_findings(conn).get(volume_id, []),
+                "findings": compute_findings(conn, [row["source_id"]]).get(volume_id, []),
             }
 
     @app.post("/api/volumes/{volume_id}/analyze")
@@ -535,7 +535,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             "analyzed": analyzed,
             "children": [{"id": r["id"], "title": r["title"], "page_count": r["page_count"],
                           "volume_number": _number(r)} for r in children],
-            "findings": compute_findings(conn).get(volume_id, []),
+            "findings": compute_findings(conn, [r[0] for r in conn.execute(
+                "SELECT source_id FROM volumes WHERE id = ?", (volume_id,))]).get(volume_id, []),
         }
 
     # --- 別スキャンの重複候補(#38) ----------------------------------------------------
@@ -650,9 +651,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         """著者・タグ・出版社などの一覧(#85 / #117): 値と、その値を持つ作品の数・スターの有無。name は author / kind / genre / tag / publisher。"""
         if name not in search.FILTER_FIELDS:
             raise HTTPException(404, f"未対応の項目: {name}")
-        listing = works.list_works(conn, root_id=root)
         return {"name": name, "values": search.facet_counts(search.field_values(conn),
-                                                             [w["id"] for w in listing["works"]], name,
+                                                             works.listed_work_ids(conn, root), name,
                                                              search.starred_facet_keys(conn, name))}
 
     @app.put("/api/works/facets/{name}/star")
@@ -789,7 +789,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         if "title" in sent and body.title is None:
             raise HTTPException(422, "作品名は null にできません")
         works.edit_fields(conn, work_id, {name: getattr(body, name) for name in works.EDITABLE_FIELDS if name in sent})
-        _sync_works(conn)  # 直した作品名が別の作品の名前と一致したら、統合の提案が出る
+        if "title" in sent:
+            _sync_works(conn)  # 直した作品名が別の作品の名前と一致したら、統合の提案が出る
+        else:
+            linking.apply_work(conn, work_id)  # 名寄せに効かない項目は、この作品の連携の反映だけ(全作品の名寄せを避ける。#293)
         return work_detail(conn, work_id)
 
     @app.post("/api/works/{work_id}/fields/{field}/reset")

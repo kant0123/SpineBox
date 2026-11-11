@@ -422,3 +422,42 @@ def test_analyze_fixes_mojibake_in_unit_titles(make_client, tmp_path):
     r = c.post(f"/api/volumes/{parent['id']}/analyze")
     assert r.status_code == 200
     assert [ch["title"] for ch in r.json()["children"]] == ["Vol2", "週刊少年サンデー 2023年09号"]
+
+
+def test_reading_pages_does_not_take_the_write_lock_once_recorded(make_settings, library):
+    """読み取りの経路は、記録する内容が前回と同じなら書き込みのトランザクションを取らない(#296)。"""
+    from spinebox.scanner import Scanner
+    settings = make_settings(library)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    lib = Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    vid = conn.execute("SELECT id FROM volumes WHERE title = 'inner1'").fetchone()[0]
+    statements: list[str] = []
+    with lib.open(conn, vid) as ov:  # 1 回目: 何も記録されていなくても、記録する内容が空なら書かない
+        ov.read_page(0)
+    conn.set_trace_callback(statements.append)
+    try:
+        for _ in range(2):
+            with lib.open(conn, vid) as ov:
+                ov.read_page(0)
+    finally:
+        conn.set_trace_callback(None)
+    assert not [s for s in statements if s.startswith("BEGIN")], statements
+    conn.close()
+
+
+def test_a_changed_issue_list_is_still_recorded_when_opening(make_settings, library):
+    """読めなかったエントリの記録が前回と違うときは、これまでどおり置き換える(#296)。"""
+    from spinebox.scanner import Scanner
+    settings = make_settings(library)
+    conn = db.open_db(settings.db_path)
+    Scanner(conn, settings).scan()
+    lib = Library(settings, ExtractionCache(settings.cache_dir, settings.cache_limit_bytes))
+    row = conn.execute("SELECT id, source_id, container_path FROM volumes WHERE title = 'inner1'").fetchone()
+    with db.transaction(conn):
+        conn.execute("INSERT INTO scan_issues (source_id, container_path, entry_name, reason, recorded_at) "
+                     "VALUES (?, ?, 'stale.zip', '古い記録', ?)", (row["source_id"], row["container_path"], db.now()))
+    with lib.open(conn, row["id"]):
+        pass
+    assert conn.execute("SELECT COUNT(*) FROM scan_issues WHERE entry_name = 'stale.zip'").fetchone()[0] == 0
+    conn.close()

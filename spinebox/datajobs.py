@@ -201,7 +201,7 @@ class DataJobs:
         ctx.step("公開データベースの取得")
         quick = ids is None
         if ids is None:
-            ids = ([w["id"] for w in works.list_works(c)["works"]] if all_works else self.work_ids_needing_fetch(c))
+            ids = works.listed_work_ids(c) if all_works else self.work_ids_needing_fetch(c)
         if not ids:
             return {"works": 0, "sources": {}}
         service = self.metadata_service(c)
@@ -246,7 +246,7 @@ class DataJobs:
         return {"works": len(ids), "statuses": counts}
 
     def thumbnail_targets(self, c) -> list[int]:
-        return [w["cover_volume_id"] for w in works.list_works(c)["works"] if w["cover_volume_id"] is not None]
+        return works.cover_volume_ids(c)
 
     def _thumbnails(self, ctx: JobContext, c) -> dict:
         ctx.step("表紙の作成")

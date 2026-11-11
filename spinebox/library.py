@@ -350,8 +350,12 @@ class Library:
         container = row["container_path"]
         issues: list[Skip] = []
         pages = self._expand(stack, outer, self._container_entry(row, listing), root_key, 1, (), issues, extract)
-        with db.transaction(conn) as c:
-            record_issues(c, row["source_id"], container, issues)
+        # 前回の記録と同じなら書かない(ページごとに呼ばれるので、毎回書くとジョブの書き込みロックの後ろに並ぶ。#296)
+        recorded = conn.execute("SELECT entry_name, reason FROM scan_issues WHERE source_id = ? AND container_path IS ?",
+                                (row["source_id"], container)).fetchall()
+        if sorted((r["entry_name"], r["reason"]) for r in recorded) != sorted((s.entry_name, s.reason) for s in issues):
+            with db.transaction(conn) as c:
+                record_issues(c, row["source_id"], container, issues)
         return pages
 
     def _open_unit(self, stack, row, root_key: str, outer, listing, extract: bool = True):
