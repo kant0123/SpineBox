@@ -97,6 +97,20 @@ class ArchiveReader(abc.ABC):
         """
         return None
 
+    # ページ表から開き直すときに 7-Zip などの外部コマンドの起動が要るか(`open(extract=False)` の判定に使う)
+    cache_requires_external = False
+
+    def cache_state(self):
+        """中央ディレクトリを読み直さずに同じリーダーを作り直すための状態(対応しているリーダーだけ)。
+
+        `spinebox/library.py` が巻のページ表を RAM に置くのに使う。None ならページ表を持ち越さない。
+        """
+        return None
+
+    def cache_size(self) -> int:
+        """`cache_state()` を RAM に置くときの大きさの見積もり(バイト)。"""
+        return 0
+
 
 @dataclass
 class Listing:

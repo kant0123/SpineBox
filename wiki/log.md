@@ -625,3 +625,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | PR #303 (#298) データ管理タブが表紙の JPEG を読まずに「表紙なし」を数える
 - 更新: [[cover-thumbnails]], [[recurring-review-findings]]
 - 備考: #298。`GET /api/jobs/catalog` の「表紙なし」が作品ごとに `Thumbnails.has()` で表紙の JPEG を読み、`ExtractionCache` の LRU の順を書き換えていた。`are_built()`(`contains()`。巻の行は IN でまとめて引く)に変え、`build()` の作成済み確認も `is_built()` にした。`has()` は削除。`are_built()` はルートの確認(is_dir + scandir)もルートごとに 1 回にした。カタログは見えない・オフラインの巻を数えない(統計は数える)挙動を維持するため `include_unavailable=False`。カタログの `works.list_works()` の全組み立ては #294 の範囲。
+
+## [2026-11-11] ingest | PR #306 (#297) 巻のページ表を RAM に持ち越してページ要求ごとの開き直しをやめる
+- 更新: [[archive-reading]], [[backend]], [[extraction-cache]], [[cover-thumbnails]], [[volume-split]], [[recurring-review-findings]](行番号のみ)
+- 備考: #297。ページ名と読み出しに要る目次(zip の `ZipInfo`・7z / rar の目次)を `MemoryCache` に置き、2 回目以降は中央ディレクトリの読み直し・フォルダの列挙・`7z l` をやめる。zip はローカルヘッダから読む(store / deflate / bzip2 / lzma、CRC 検証つき)。版(サイズ・mtime)が変わったときと展開キャッシュが消えたときは捨てる。開いている間は内側アーカイブの展開キャッシュを使用中にして退避させない。合成データのベンチ(256MiB)でページ送りは cbz 12.6 → 10.8 ms、zip の中の zip 16.2 → 10.8 ms、7z の中の zip 15.2 → 10.2 ms(同じページ)。ページ本体は RAM に置かない方針は維持。

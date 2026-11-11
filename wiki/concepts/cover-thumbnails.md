@@ -30,7 +30,7 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
   巻の行を IN でまとめて引き、ルートが見えるかの確認(`root_is_accessible`)もルートごとに 1 回にする。
   見えない・オフライン・元ファイルが無い巻は、統計は「表紙なし」に数え、カタログは数えない(表紙を作るジョブも飛ばす)
 - **一覧から呼ばれる `GET /api/volumes/{id}/thumbnail` は、取り出し・7-Zip の起動が要らない巻だけその場で作る。**
-  `Library.open(extract=False)`(`spinebox/library.py:143 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
+  `Library.open(extract=False)`(`spinebox/library.py:178 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
   `NeedsExtraction` で、何も展開せずに 404 `{"pending": true}`(`Cache-Control: no-store`)を返す。テキスト小説・表紙の指定が無い EPUB・1 ページ目が画像でない巻は 404 `{"pending": false}`
 - **入れ子の巻の表紙ができる経路は 2 つ。** 巻を読むために開いた後(展開キャッシュに残っていれば次の一覧で作れる)と、明示操作の
