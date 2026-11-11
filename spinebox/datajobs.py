@@ -377,14 +377,9 @@ class DataJobs:
         return out
 
     def _count_missing_covers(self, c, work_list: list[dict]) -> int:
-        n = 0
-        for w in work_list:
-            vid = w["cover_volume_id"]
-            if vid is None:
-                continue
-            try:
-                if not self.thumbs.has(c, vid):
-                    n += 1
-            except Exception:  # noqa: BLE001 (オフライン・見つからない巻は数えない)
-                continue
-        return n
+        """表紙の巻があるのに、まだ表紙が作られていない作品を数える。
+        表紙の JPEG は読まない(読むと容量上限の LRU の順が変わる)。巻の行は IN でまとめて引く。
+        見えない・オフライン・元ファイルが無い巻は数えない(表紙を作るジョブもその巻を飛ばすため)。"""
+        cover_ids = [w["cover_volume_id"] for w in work_list if w["cover_volume_id"] is not None]
+        built = self.thumbs.are_built(c, cover_ids, include_unavailable=False)
+        return sum(1 for vid in cover_ids if built.get(vid) is False)

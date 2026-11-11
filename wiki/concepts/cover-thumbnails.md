@@ -23,6 +23,12 @@ related: [overview, frontend, backend, extraction-cache, work-grouping, volume-s
 - **置き場は `data_dir/thumbs/`。** 展開キャッシュと同じ `ExtractionCache`(キーの sha256 の名前・LRU)を別のディレクトリと上限
   (`thumb_cache_limit_bytes`、既定 256 MiB)で使う。キーは作り方の版・大きさ・元ファイルのパス・サイズ・mtime・巻の位置
   (`container_path` / `inner_path` / `entry_prefix`)。元が変われば別のキーになり、古いものは LRU で消える。消えてもよいもの
+- **作成済みかの判定は `Thumbnails.is_built()` / `are_built()`(`spinebox/thumbs.py`)。** 置き場のキーがあるかを
+  `ExtractionCache.contains()` で見るだけで、JPEG を読まない・mtime も変えない(最後に使った順を保つ)。中身を読むと
+  `use_existing()` の `_touch()` が全表紙の順を「今」にし、容量上限で消す LRU が意味を失う。管理の統計・
+  データ管理タブの「表紙なし」の件数(#298)・「表紙のみ補完」の作成済み確認はこちらを使い、`are_built()` は
+  巻の行を IN でまとめて引き、ルートが見えるかの確認(`root_is_accessible`)もルートごとに 1 回にする。
+  見えない・オフライン・元ファイルが無い巻は、統計は「表紙なし」に数え、カタログは数えない(表紙を作るジョブも飛ばす)
 - **一覧から呼ばれる `GET /api/volumes/{id}/thumbnail` は、取り出し・7-Zip の起動が要らない巻だけその場で作る。**
   `Library.open(extract=False)`(`spinebox/library.py:178 open()`)で開ける巻 = フォルダの巻、外側が zip の中の画像を直接読む巻、
   展開キャッシュに取り出し済みの内側 zip の巻。それ以外(外側が 7z / rar、未取り出しの内側アーカイブ、取り出し済みでも 7z / rar の内側)は
