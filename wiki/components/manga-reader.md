@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 漫画(画像)の巻のリーダー(#136)。表示・ページ送り・見開き・ズーム・しおりは外部ライブラリ manga-viewer(MIT)に任せ、読書位置のサーバー保存と「続きから読む」の結線、しおりのサーバー保存(整理・巻への分解での引き継ぎ)、巻のブックマーク・次巻のボタンを足す。GitHub のコミットに固定した理由、見開きの切替を廃止した経緯、却下した代替案
-updated: 2026-11-10
+updated: 2026-11-14
 related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 ---
 

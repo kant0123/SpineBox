@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: フォロー(#87)。Peach のフォローを「フォローした作品の続刊・欠けを公開 DB で調べて知らせる」に読み替えた理由(本の入手はしない)、国立国会図書館サーチの連携した組だけで数える取得の方針、確認済みの持ち方、組み込み口(#85 のサイドバー・管理のタブ、#83 のジョブ)
-updated: 2026-11-10
+updated: 2026-11-14
 related: [metadata-linking, metadata-clients, metadata-sources, work-grouping, backend, frontend, overview, data-jobs]
 ---
 

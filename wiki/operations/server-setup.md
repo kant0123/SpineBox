@@ -1,7 +1,7 @@
 ---
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
-updated: 2026-11-10
+updated: 2026-11-14
 related: [overview, backend, frontend, archive-reading, extraction-cache]
 ---
 
