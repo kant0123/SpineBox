@@ -147,7 +147,7 @@ AniList / MangaUpdates(#278 で置き換える前)のジャンル・タグは英
 
 - [[follow]] は NDL の連携だけを短い有効期限で取り直し(`fetch_work(..., sources=("ndl",))`)、連携した組の巻ごとの書誌から蔵書に無い巻番号を数える。連携の規則は変えずに乗っている
 
-- 確認待ち(`pending`)の作品は、作品ページのほか確認の画面(`#/review`。#207)でまとめて選べる。一覧は `GET /api/review/links`(`spinebox/app.py:706 review_links()`)で、選ぶ API は作品ページと同じ([[frontend]])
+- 確認待ち(`pending`)の作品は、作品ページのほか確認の画面(`#/review`。#207)でまとめて選べる。一覧は `GET /api/review/links`(`spinebox/app.py:784 review_links()`)で、選ぶ API は作品ページと同じ([[frontend]])
 
 ## 却下した案
 
