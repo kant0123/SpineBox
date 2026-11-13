@@ -464,6 +464,20 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 18: 蔵書のグループ(#313)。サイドバーで切り替える「蔵書」はグループで、蔵書フォルダ(library_roots)を
+    #     複数まとめる。sources・整理・受け入れはフォルダ単位のまま。受け入れフォルダと、外した(enabled = 0)
+    #     フォルダは group_id が NULL。既存のフォルダの割り当ては起動時に行う(spinebox/libraries.py
+    #     ensure_root_groups。フォルダ名の切り出しと名前の重なりの処理が SQL では書けないため)
+    [
+        """
+        CREATE TABLE library_groups (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL
+        )
+        """,
+        "ALTER TABLE library_roots ADD COLUMN group_id INTEGER REFERENCES library_groups(id)",
+    ],
 ]
 
 

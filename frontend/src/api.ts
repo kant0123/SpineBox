@@ -324,8 +324,8 @@ export interface WorkQuery {
   read_later?: boolean;
   /** 並び順(#273。省略・title は作品名順) */
   sort?: WorkSort;
-  /** 蔵書の切り替え(#85。LibraryRoot の id)。その蔵書ルートの巻だけで一覧を作る */
-  root?: string;
+  /** 蔵書の切り替え(#85。LibraryGroup の id)。その蔵書のフォルダの巻だけで一覧を作る */
+  library?: string;
 }
 
 export interface WorkList {
@@ -885,15 +885,33 @@ async function errorDetail(res: Response): Promise<string | undefined> {
   }
 }
 
-/** 蔵書ルート(サイドバーの蔵書の切り替え #85) */
-export interface LibraryRoot {
+/** 蔵書フォルダ(蔵書に入れたサーバー機のフォルダ。#313) */
+export interface LibraryFolder {
   id: number;
-  /** 最後のフォルダ名 */
-  name: string;
   /** サーバー機のパス */
   path: string;
   online: boolean;
   volume_count: number;
+}
+
+/** 蔵書(サイドバーの蔵書の切り替え #85)。蔵書フォルダをいくつでも入れられるグループ(#313) */
+export interface LibraryGroup {
+  id: number;
+  name: string;
+  /** フォルダが 1 つでも見えていれば true(フォルダが無ければ true) */
+  online: boolean;
+  /** 全フォルダの、一覧に見えている巻の数 */
+  volume_count: number;
+  folders: LibraryFolder[];
+}
+
+/** サーバー機のフォルダの一覧(蔵書フォルダを選ぶ画面。GET /api/fs/folders) */
+export interface ServerFolders {
+  /** 今のフォルダ(ドライブの一覧なら "") */
+  path: string;
+  /** 1 つ上(ドライブの一覧へ戻るなら ""、一覧そのものでは null) */
+  parent: string | null;
+  folders: { name: string; path: string }[];
 }
 
 /** 著者・タグ・出版社などの一覧の 1 行 */
@@ -919,7 +937,7 @@ export interface CacheUsage {
 
 /** 管理の統計タブ(GET /api/stats) */
 export interface LibraryStats {
-  root_id: number | null;
+  library_id: number | null;
   works: {
     total: number; manga: number; novel: number; doujinshi: number; kind_unknown: number;
     finished: number; reading: number; unread: number;
@@ -949,7 +967,8 @@ export interface ServerSettings {
 }
 
 const vid = (id: VolumeId) => encodeURIComponent(String(id));
-const rootQuery = (root?: string | null) => (root ? `?root=${encodeURIComponent(root)}` : "");
+const libraryQuery = (library?: string | null) => (library ? `?library=${encodeURIComponent(library)}` : "");
+const JSON_HEADERS = { "Content-Type": "application/json" };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -961,12 +980,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  listVolumes: (root?: string | null) => request<VolumeSummary[]>(`/api/volumes${rootQuery(root)}`),
-  /** 蔵書の切り替えの候補(受け入れフォルダを除く蔵書ルート) */
-  listLibraries: () => request<LibraryRoot[]>("/api/libraries"),
+  listVolumes: (library?: string | null) => request<VolumeSummary[]>(`/api/volumes${libraryQuery(library)}`),
+  /** 蔵書と、その蔵書フォルダ(蔵書の切り替えの候補・蔵書の管理) */
+  listLibraries: () => request<LibraryGroup[]>("/api/libraries"),
+  createLibraryGroup: (name: string) =>
+    request<LibraryGroup>("/api/library-groups", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name }) }),
+  renameLibraryGroup: (id: number, name: string) =>
+    request<LibraryGroup>(`/api/library-groups/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ name }) }),
+  /** フォルダの無い蔵書を消す(フォルダが残っていれば 409) */
+  deleteLibraryGroup: (id: number) => request<null>(`/api/library-groups/${id}`, { method: "DELETE" }),
+  /** 蔵書フォルダを足す。groupId が null なのは蔵書が 1 つも無いときだけ(「デフォルト」ができる)。足した先の蔵書が返る */
+  addLibraryFolder: (path: string, groupId: number | null) =>
+    request<LibraryGroup>("/api/library-folders", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(groupId === null ? { path } : { path, group_id: groupId }),
+    }),
+  moveLibraryFolder: (id: number, groupId: number) =>
+    request<LibraryGroup>(`/api/library-folders/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ group_id: groupId }) }),
+  /** 蔵書フォルダを外す(本・読書の記録は消えない) */
+  removeLibraryFolder: (id: number) => request<null>(`/api/library-folders/${id}`, { method: "DELETE" }),
+  /** サーバー機の path の直下のフォルダ(path が空ならドライブの一覧) */
+  serverFolders: (path: string) => request<ServerFolders>(`/api/fs/folders?path=${encodeURIComponent(path)}`),
   /** 著者・タグ・出版社などの値と作品数 */
-  listFacet: (name: WorkFilterName, root?: string | null) =>
-    request<{ name: WorkFilterName; values: FacetValue[] }>(`/api/works/facets/${name}${rootQuery(root)}`),
+  listFacet: (name: WorkFilterName, library?: string | null) =>
+    request<{ name: WorkFilterName; values: FacetValue[] }>(`/api/works/facets/${name}${libraryQuery(library)}`),
   /** 著者・タグ・出版社などの値にスターを付ける / 外す(#117) */
   setFacetStar: (name: WorkFilterName, value: string, starred: boolean) =>
     request<FacetStarState>(`/api/works/facets/${name}/star`, {
@@ -974,7 +1012,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value, starred }),
     }),
-  stats: (root?: string | null) => request<LibraryStats>(`/api/stats${rootQuery(root)}`),
+  stats: (library?: string | null) => request<LibraryStats>(`/api/stats${libraryQuery(library)}`),
   serverSettings: () => request<ServerSettings>("/api/settings"),
   getVolume: (id: VolumeId) => request<VolumeDetail>(`/api/volumes/${vid(id)}`),
   scan: () => request<ScanResult>("/api/scan", { method: "POST" }),

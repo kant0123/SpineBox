@@ -88,11 +88,15 @@ def test_inbox_dirs_setting(tmp_path):
                         "inbox_dirs": [{"path": str(inbox), "library": str(lib2)}]}, tmp_path)
     assert s.inboxes[0].library == lib2 and s.inbox_for(str(inbox)) is s.inboxes[0] and s.inbox_for(lib) is None
     assert parse_settings({}, tmp_path).inboxes == ()
+    # 書庫は設定の library_roots に無くてもよい(蔵書フォルダは DB が正で、画面から足せる。#313。
+    # DB に無い書庫は同期・承認のときに「まだスキャンされていません」になる)
+    s = parse_settings({"library_roots": [str(lib)], "inbox_dirs": [{"path": str(inbox), "library": str(lib2)}]},
+                       tmp_path)
+    assert s.inboxes == (InboxSetting(inbox, lib2),)
 
 
 @pytest.mark.parametrize("data, message", [
     ({"library_roots": ["lib", "lib2"], "inbox_dirs": ["inbox"]}, "書庫.*決まりません"),
-    ({"library_roots": ["lib"], "inbox_dirs": [{"path": "inbox", "library": "other"}]}, "library_roots のどれか"),
     ({"library_roots": ["lib"], "inbox_dirs": [{"path": "lib/inbox"}]}, "重ねられません"),
     ({"library_roots": ["lib/books"], "inbox_dirs": ["lib"]}, "重ねられません"),
     ({"library_roots": ["lib"], "inbox_dirs": ["lib"]}, "重ねられません"),

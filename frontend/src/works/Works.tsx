@@ -142,7 +142,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const load = useCallback(async (q: WorkQuery, s: WorkSort) => {
     const mine = ++seq.current;
     try {
-      const list = await api.listWorks({ ...q, sort: s, ...JSON.parse(fixedKey), ...(root ? { root } : {}) });
+      const list = await api.listWorks({ ...q, sort: s, ...JSON.parse(fixedKey), ...(root ? { library: root } : {}) });
       if (mine !== seq.current) return; // 後から出した検索の結果を古い結果で上書きしない
       setData(list);
       setError(null);
@@ -285,7 +285,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       {data && data.works.length === 0 && filtering && data.total > 0 && (
         <p className="muted">条件に合う作品がありません。語を短くするか、絞り込みを外してください。</p>
       )}
-      {data && data.total === 0 && !root && <p className="muted">作品がありません。蔵書フォルダを設定してスキャンしてください。</p>}
+      {data && data.total === 0 && !root && <p className="muted">作品がありません。管理の「蔵書」で蔵書フォルダを追加して、スキャンしてください。</p>}
       {data && data.total === 0 && root && <p className="muted">この蔵書には作品がありません。</p>}
       {data && data.total > 0 && data.works.length === 0 && !filtering && scope.by !== "all" && (
         <p className="muted">この条件の作品はありません。</p>

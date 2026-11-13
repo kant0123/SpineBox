@@ -637,3 +637,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-11] ingest | fix (#310) 作品カードのタイトルのマーキーが動かない
 - 更新: [[frontend]]
 - 備考: overflow-wrap:anywhere で内側 span が親幅に縮んでいた。width:max-content で解消。動きを減らす設定では全文を折り返して見せる。
+
+## [2026-11-14] ingest | #313 蔵書をグループ化し、複数フォルダを画面から登録できるようにする
+- 更新: [[backend]], [[frontend]], [[inbox]]
+- 備考: 蔵書(サイドバーの本・同人)を `library_groups` にし、蔵書フォルダ(`library_roots`)を複数入れられるようにした(マイグレーション 18)。蔵書フォルダの正を設定から DB へ移し(設定は取り込み元)、管理に「蔵書」タブを足した。`CLAUDE.md`・`.agent/rules/spinebox-invariants.md` の「ルートフォルダは設定で持つ」と `config.example.toml`・`README.md` を合わせて直した。絞り込みのクエリは `root` → `library`。受け入れの書庫の検証を設定の読み込みから同期・承認へ移した。

@@ -169,14 +169,27 @@ def test_volume_removed_from_archive_is_marked_missing(conn, library, make_setti
     assert volumes(conn, include_missing=True)[("multi.zip", None, "Vol2/")]["missing"] == 1
 
 
-def test_root_removed_from_config_is_kept_but_hidden(conn, library, tmp_path, make_settings):
+def test_root_removed_from_config_stays_in_the_library(conn, library, tmp_path, make_settings):
+    """蔵書フォルダは DB が正(#313): 設定は DB に無いパスを足すだけで、設定から消してもフォルダは外れない。"""
     scan(conn, make_settings(library))
     other = tmp_path / "other"
     other.mkdir()
-    result = scan(conn, make_settings(other))
-    assert result.volumes == 0
+    assert scan(conn, make_settings(other)).volumes == 7
+    enabled = [r["path"] for r in conn.execute("SELECT path FROM library_roots WHERE enabled = 1 ORDER BY id")]
+    assert enabled == [str(library), str(other)]
+    assert scan(conn, make_settings()).volumes == 7
+
+
+def test_root_removed_on_screen_is_hidden_and_not_revived_by_config(conn, library, make_settings):
+    """画面で外したフォルダは、設定に残っていても戻さない。行・巻は消さない。"""
+    from spinebox import libraries
+    settings = make_settings(library)
+    scan(conn, settings)
+    root_id = conn.execute("SELECT id FROM library_roots").fetchone()[0]
+    libraries.remove_folder(conn, root_id)
+    assert scan(conn, settings).volumes == 0
     assert conn.execute("SELECT COUNT(*) FROM volumes").fetchone()[0] == 7
-    assert scan(conn, make_settings(library, other)).volumes == 7
+    assert conn.execute("SELECT enabled, group_id FROM library_roots").fetchone()[:] == (0, None)
 
 
 def test_resolve_source_path_rejects_escape(tmp_path):

@@ -43,7 +43,7 @@ Windows のサーバー機に常駐させ、LAN 内の別の端末からブラ�
 ### 初回
 
 1. Python 3.12・Node.js・Git・7-Zip を入れ、このリポジトリを置く
-2. `config.example.toml` を `config.local.toml` にコピーして、蔵書フォルダ(`library_roots`)・待ち受け(`host` に
+2. `config.example.toml` を `config.local.toml` にコピーして、蔵書フォルダの取り込み元(`library_roots`。あとから画面の管理「蔵書」で足し引きできる)・待ち受け(`host` に
    サーバー機の LAN アドレス)・7-Zip のパス(`sevenzip_path`)などを書く
 3. 依存を入れてフロントをビルドする
 

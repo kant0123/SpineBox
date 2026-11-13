@@ -79,7 +79,7 @@ export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTh
   return (
     <aside className="sidebar" id={id} aria-label="サイドバー">
       <div className="sidebar-top">
-        <label className="library-switch" title={current ? current.path : "すべての蔵書"}>
+        <label className="library-switch" title={current ? current.folders.map((f) => f.path).join("\n") || current.name : "すべての蔵書"}>
           <span className="sidebar-icon"><Icon name="library" /></span>
           <span className="sr-only">蔵書</span>
           <select className="sidebar-label" aria-label="蔵書" value={root ?? ""} onChange={(e) => setRoot(e.target.value || null)}>

@@ -144,7 +144,7 @@ export function createMockWorks(
       bookmarked: marked("volume", Number(v.id)),
     };
   };
-  /** root を渡すと、その蔵書ルートの巻だけ */
+  /** root(蔵書 = グループの id)を渡すと、その蔵書の巻だけ */
   const volumesOf = (w: MockWork, root: string | null = null) =>
     w.volumeIds.filter((id) => !root || String(rootOf(id)) === root).map(volJson).filter((v): v is WorkVolume => v !== null);
 
@@ -287,7 +287,7 @@ export function createMockWorks(
   /** GET /api/works の検索・絞り込み(バックエンドと同じ規則の簡易版: 語は AND、項目は値の一致) */
   function listWorks(query: string): Res {
     const params = new URLSearchParams(query);
-    const root = params.get("root");
+    const root = params.get("library");
     const laterOnly = params.get("read_later") === "1";
     const sort = (params.get("sort")?.trim() || "title") as WorkSort;
     if (!VALID_SORTS.includes(sort)) return res(422, { detail: `未対応の並び順: ${sort}` });
@@ -508,7 +508,7 @@ export function createMockWorks(
     if (!path.startsWith("/api/works") && !/^\/api\/volumes\/\d+\/metadata/.test(path)) return null;
     if (method === "GET" && path === "/api/works") return listWorks(query);
     const facet = path.match(/^\/api\/works\/facets\/([a-z]+)$/);
-    if (facet && method === "GET") return facetValues(facet[1], new URLSearchParams(query).get("root"));
+    if (facet && method === "GET") return facetValues(facet[1], new URLSearchParams(query).get("library"));
     const facetStar = path.match(/^\/api\/works\/facets\/([a-z]+)\/star$/);
     if (facetStar && method === "PUT") {
       const name = facetStar[1];

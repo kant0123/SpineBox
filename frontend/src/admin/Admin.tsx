@@ -1,14 +1,16 @@
-// 管理(#85)。Peach の管理と同じく、統計・好み・データ管理・フォロー管理・タスクセンターをタブで分ける。
+// 管理(#85)。Peach の管理と同じく、統計・好み・データ管理・フォロー管理・タスクセンターをタブで分ける。蔵書(#313)は SpineBox で足したタブ。
 // タブは #/admin/<tab> で直接開ける(統計は #/admin)。
 import { useEffect, useRef, type ComponentType } from "react";
 import { adminHref, type AdminTab } from "../route";
 import { DataPanel, FollowsPanel, OrganizePanel, TasksPanel } from "./panels";
+import { Libraries } from "./Libraries";
 import { Preferences } from "./Preferences";
 import { Stats } from "./Stats";
 
 export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   stats: "統計",
   preferences: "好み",
+  libraries: "蔵書",
   data: "スキャンと補完",
   organize: "整理",
   follows: "フォロー管理",
@@ -22,6 +24,7 @@ export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
 const PANELS: Record<AdminTab, ComponentType> = {
   stats: Stats,
   preferences: Preferences,
+  libraries: Libraries,
   data: DataPanel,
   organize: OrganizePanel,
   follows: FollowsPanel,

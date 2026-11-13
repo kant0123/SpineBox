@@ -1248,8 +1248,9 @@ def test_light_work_listings_match_list_works(make_env):
         assert len(listing) == 5
         assert works.listed_work_ids(conn) == [w["id"] for w in listing]
         assert works.cover_volume_ids(conn) == [w["cover_volume_id"] for w in listing if w["cover_volume_id"] is not None]
-        root = conn.execute("SELECT id FROM library_roots LIMIT 1").fetchone()[0]
-        scoped = works.list_works(conn, root_id=root)["works"]
+        root = conn.execute("SELECT group_id FROM library_roots LIMIT 1").fetchone()[0]
+        scoped = works.list_works(conn, library_id=root)["works"]
+        assert len(scoped) == 5
         assert works.listed_work_ids(conn, root) == [w["id"] for w in scoped]
         assert works.listed_work_ids(conn, 999999) == [] and works.cover_volume_ids(conn, 999999) == []
     finally:

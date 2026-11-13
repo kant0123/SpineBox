@@ -1230,6 +1230,31 @@ a.stat-body .stat-label { color: var(--accent); text-decoration: underline; font
   .prefs-server { grid-template-columns: auto 1fr; gap: 6px 16px; }
   .prefs-server dt { margin-top: 0; }
 }
+/* 蔵書の管理(#313)。蔵書ごとの節に、蔵書フォルダの行(パス・巻数・移す・外す)を並べる。
+   375px ではパスの下に操作を回り込ませる。入力欄の枠は共通の入力欄の指定(gray-600 相当)のまま */
+.libraries-admin { max-width: 800px; }
+.libraries-lead { margin: 0 0 8px; }
+.libraries-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.library-group-count { margin-left: 8px; font-size: 1rem; font-weight: 400; color: var(--muted); }
+.library-folders { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 10px; }
+.library-folder {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; justify-content: space-between;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; min-width: 0;
+}
+.library-folder-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 220px; }
+.library-folder-path { font-weight: 700; overflow-wrap: anywhere; }
+.library-folder-meta { font-size: 0.875rem; }
+.library-folder-actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.library-folder-move { display: grid; gap: 4px; }
+.library-folder-move label { font-size: 0.875rem; font-weight: 700; }
+.library-folder-move select { flex: 1 1 8em; min-width: 0; }
+.library-group-actions, .library-form-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.library-form-actions { justify-content: flex-end; }
+.library-form {
+  margin: 0 0 12px; padding: 4px 16px 12px;
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: 12px;
+}
+.library-field-error { margin: 0; color: var(--error); font-size: 1rem; font-weight: 700; }
 /* フォロー(#87) */
 .follow-card-head, .follow-entry { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .follow-releases { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
