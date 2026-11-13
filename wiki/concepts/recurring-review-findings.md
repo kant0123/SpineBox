@@ -322,6 +322,7 @@ push 前に確かめること:
 実例:
 
 - PR #91 — `spinebox/organize/organizer.py range_path()` — 範囲のパスを `manga/SUB` と打つと `is_dir()` は通るのに `Manga/Sub/...` と前方一致せず、計画が空になった。区切りごとにディスク上の綴りへ直す `_disk_case()` を足した
+- PR #315 — `spinebox/libraries.py _import_config_roots()` — 設定の `library_roots` を生の文字列で `INSERT OR IGNORE` しており、画面で足した実ディスクの綴り(`D:\Books`)と設定の綴り(`d:books`)が UNIQUE をすり抜けて二重登録された(別グループになり巻が二重に数えられる)。`_path_key()`(正規化キー)で既存行と突き合わせるようにした
 
 ### 既存のクラス・関数の役割を、コードを確かめずに文書に書く
 

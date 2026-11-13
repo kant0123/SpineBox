@@ -89,6 +89,19 @@ def test_sync_is_idempotent_and_writes_nothing_the_second_time(conn, dirs, make_
     assert [g["name"] for g in libraries.list_groups(conn)] == ["本", "本 (2)"]
 
 
+@pytest.mark.skipif(os.name != "nt", reason="パスの大文字小文字を区別しないのは Windows だけ")
+def test_config_root_spelled_in_another_case_does_not_register_twice(conn, dirs, make_settings):
+    """画面で足したフォルダ(実ディスクの綴り)を、設定が別の大文字小文字で書いていても二重登録しない。"""
+    a, _, _ = dirs
+    libraries.sync(conn, make_settings())
+    with db.transaction(conn) as c:
+        c.execute("INSERT INTO library_roots (path) VALUES (?)", (str(a),))
+    libraries.sync(conn, make_settings(type(a)(str(a).swapcase())))
+    rows = conn.execute("SELECT path FROM library_roots WHERE inbox = 0").fetchall()
+    assert len(rows) == 1
+    assert len(libraries.list_groups(conn)) == 1
+
+
 def test_startup_imports_config_roots_before_any_scan(dirs, make_settings):
     a, _, c = dirs
     client = client_for(make_settings(a, c))

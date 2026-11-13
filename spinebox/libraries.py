@@ -70,13 +70,20 @@ def _insert_group(c: sqlite3.Connection, name: str) -> int:
 
 def _import_config_roots(c: sqlite3.Connection, settings: Settings) -> None:
     inbox_keys = {_path_key(i.path) for i in settings.inboxes}
+    # 突き合わせは大文字小文字・区切りを正規化したキーで行う(SQLite の UNIQUE は完全一致のため、
+    # 画面で足した実ディスクの綴りと設定の綴りが違うと同じフォルダが二重に登録される)
+    by_key = {_path_key(r["path"]): r for r in c.execute("SELECT id, path, inbox FROM library_roots")}
     for p in settings.library_roots:
         path = str(Path(p))
-        c.execute("INSERT OR IGNORE INTO library_roots (path) VALUES (?)", (path,))
+        key = _path_key(path)
+        existing = by_key.get(key)
+        if existing is None:
+            cur = c.execute("INSERT INTO library_roots (path) VALUES (?)", (path,))
+            by_key[key] = {"id": cur.lastrowid, "path": path, "inbox": 0}
         # 受け入れフォルダだったパスを設定で蔵書へ付け替えた場合だけ、蔵書として有効にする
         # (受け入れフォルダは設定が正で、設定から外すと enabled = 0 のまま残る)
-        if _path_key(path) not in inbox_keys:
-            c.execute("UPDATE library_roots SET inbox = 0, enabled = 1 WHERE path = ? AND inbox = 1", (path,))
+        elif existing["inbox"] and key not in inbox_keys:
+            c.execute("UPDATE library_roots SET inbox = 0, enabled = 1 WHERE id = ?", (existing["id"],))
 
 
 def _ensure_root_groups(c: sqlite3.Connection) -> None:
