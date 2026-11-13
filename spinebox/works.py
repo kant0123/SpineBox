@@ -1779,11 +1779,11 @@ def _volume_meta(c, volume_ids=None) -> dict[int, dict]:
     return meta
 
 
-def _listed_volumes(c, with_meta: bool = False, root_id: int | None = None,
+def _listed_volumes(c, with_meta: bool = False, library_id: int | None = None,
                     work_ids=None, with_dups: bool = True) -> dict[int, list[dict]]:
-    """作品 id → 一覧に見えている巻。root_id を渡すと、その蔵書ルートの巻だけ(蔵書の切り替え #85)。
+    """作品 id → 一覧に見えている巻。library_id を渡すと、その蔵書のフォルダの巻だけ(蔵書の切り替え #85)。
     work_ids を渡すと、その作品の巻だけを引く(重複の印・書誌もその巻の分だけ。`work_volumes_work` 索引。#294)。"""
-    where, params = _root_condition(root_id)
+    where, params = _library_condition(library_id)
     sql = _VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE + where
     if work_ids is None:
         rows = c.execute(sql, params).fetchall()
@@ -1802,9 +1802,9 @@ def _listed_volumes(c, with_meta: bool = False, root_id: int | None = None,
     return by_work
 
 
-def _root_condition(root_id: int | None) -> tuple[str, tuple]:
+def _library_condition(library_id: int | None) -> tuple[str, tuple]:
     """一覧に見えている巻の条件(LISTED_VOLUMES_WHERE)に足す、蔵書ルートの絞り込み。"""
-    return ("", ()) if root_id is None else (" AND r.id = ?", (root_id,))
+    return ("", ()) if library_id is None else (" AND r.group_id = ?", (library_id,))
 
 
 def _open_proposal_counts(c) -> dict[int, int]:
@@ -1873,10 +1873,10 @@ def _pad_released(text: str | None) -> str:
     return "-".join(parts)
 
 
-def _sort_dates(c: sqlite3.Connection, root_id: int | None) -> tuple[dict[int, str], dict[int, str], dict[int, str]]:
+def _sort_dates(c: sqlite3.Connection, library_id: int | None) -> tuple[dict[int, str], dict[int, str], dict[int, str]]:
     """作品 id → (最新の読書日時, 最新の追加日時, 最新の発売日(pad 済み))。
-    見えている巻(root_id 指定時はその蔵書ルートの巻だけ)から集計し、発売日は公開 DB 連携(work_links.item.released)も見る。"""
-    where, params = _root_condition(root_id)
+    見えている巻(library_id 指定時はその蔵書のフォルダの巻だけ)から集計し、発売日は公開 DB 連携(work_links.item.released)も見る。"""
+    where, params = _library_condition(library_id)
     read_at: dict[int, str] = {}
     added_at: dict[int, str] = {}
     for r in c.execute(
@@ -1911,14 +1911,14 @@ def _sort_dates(c: sqlite3.Connection, root_id: int | None) -> tuple[dict[int, s
     return read_at, added_at, released_at
 
 
-def _sort_works(items: list[dict], sort: str, c: sqlite3.Connection, root_id: int | None) -> None:
+def _sort_works(items: list[dict], sort: str, c: sqlite3.Connection, library_id: int | None) -> None:
     if sort == "title":
         items.sort(key=lambda s: (natural_key(s["title"]), s["id"]))
         return
     if sort == "random":
         random.shuffle(items)
         return
-    read_at, added_at, released_at = _sort_dates(c, root_id)
+    read_at, added_at, released_at = _sort_dates(c, library_id)
     if sort == "recent_read":
         items.sort(key=lambda s: (s["id"] not in read_at, _desc_text(read_at.get(s["id"], "")),
                                   natural_key(s["title"]), s["id"]))
@@ -1937,13 +1937,13 @@ def _sort_works(items: list[dict], sort: str, c: sqlite3.Connection, root_id: in
 
 
 def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str, str | None] | None = None,
-               root_id: int | None = None, read_later_only: bool = False, sort: str | None = None) -> dict:
+               library_id: int | None = None, read_later_only: bool = False, sort: str | None = None) -> dict:
     """見えている巻を持つ作品の一覧と、作品に割り当てられていない巻の数。
 
     q は全文検索の語(空白区切りで AND)、filters は author / kind / genre / tag / publisher / status(読書状態)の絞り込み。
     read_later_only は後で読む(#173)を付けた作品だけにする。
     sort は並び順(#273。WORK_SORTS。省略・空は title)。
-    root_id は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・読書状態などもそのルートの巻で数える。
+    library_id は蔵書の切り替え(#85): その蔵書に巻がある作品だけにし、巻数・読書状態などもその蔵書の巻で数える。
     total は絞る前の作品数(蔵書の切り替えの後)、facets は絞り込みの候補(同じく絞る前の作品から作る)。
     """
     sort_key = (sort or "").strip() or "title"
@@ -1960,7 +1960,7 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
     hits = search.match_ids(conn, q)
     values = search.field_values(conn)
     works = _work_rows(conn)
-    vols = _listed_volumes(conn, root_id=root_id)
+    vols = _listed_volumes(conn, library_id=library_id)
     opens = _open_proposal_counts(conn)
     pending_links = {r["work_id"]: r["n"] for r in conn.execute(
         "SELECT work_id, COUNT(*) AS n FROM work_links WHERE status = 'pending' GROUP BY work_id")}
@@ -1979,8 +1979,8 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
         s["merged"] = wid in merged_roots
         s["read_later"] = wid in later_ids
         out.append(s)
-    _sort_works(out, sort_key, conn, root_id)
-    where, params = _root_condition(root_id)
+    _sort_works(out, sort_key, conn, library_id)
+    where, params = _library_condition(library_id)
     total = conn.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + where, params).fetchone()[0]
     assigned = sum(len(v) for v in vols.values())
     facets = search.facets(values, [s["id"] for s in out])
@@ -1991,12 +1991,12 @@ def list_works(conn: sqlite3.Connection, q: str | None = None, filters: dict[str
     return {"works": shown, "total": len(out), "facets": facets, "unassigned": total - assigned}
 
 
-def listed_work_ids(conn: sqlite3.Connection, root_id: int | None = None) -> list[int]:
+def listed_work_ids(conn: sqlite3.Connection, library_id: int | None = None) -> list[int]:
     """list_works() が返す作品の id(一覧に見えている巻を持つ生きた作品)を、作品名順(自然順 → id)で返す。
 
     作品の項目・別名・巻の全部を組み立てずに、id だけが欲しい用途(ファセットの数え・取得の対象)向け(#294)。
     """
-    where, params = _root_condition(root_id)
+    where, params = _library_condition(library_id)
     rows = conn.execute(
         "SELECT w.id, (SELECT value FROM work_fields f WHERE f.work_id = w.id AND f.field = ?) AS title "
         "FROM works w WHERE w.merged_into IS NULL AND w.id IN (SELECT wv.work_id " + _VOLUME_FROM_ID
@@ -2004,12 +2004,12 @@ def listed_work_ids(conn: sqlite3.Connection, root_id: int | None = None) -> lis
     return [r["id"] for r in sorted(rows, key=lambda r: (natural_key(r["title"] or ""), r["id"]))]
 
 
-def cover_volume_ids(conn: sqlite3.Connection, root_id: int | None = None) -> list[int]:
+def cover_volume_ids(conn: sqlite3.Connection, library_id: int | None = None) -> list[int]:
     """list_works() の各作品の cover_volume_id(無い作品は除く)を、作品の一覧と同じ並びで返す(#294)。
     作品の項目・別名・重複の印・書誌を組み立てず、巻の行だけから表紙の巻を選ぶ。"""
-    vols = _listed_volumes(conn, root_id=root_id, with_dups=False)
+    vols = _listed_volumes(conn, library_id=library_id, with_dups=False)
     out = []
-    for wid in listed_work_ids(conn, root_id):
+    for wid in listed_work_ids(conn, library_id):
         cid = cover_volume_id(vols.get(wid, []))
         if cid is not None:
             out.append(cid)

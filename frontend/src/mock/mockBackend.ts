@@ -149,6 +149,16 @@ function splitChildren(parent: MockVolume): MockVolume[] {
   return [child(100 + parent.id * 10 + 1, 1), child(100 + parent.id * 10 + 3, 3)];
 }
 
+/** サーバー機のフォルダのモック(蔵書フォルダを選ぶ画面用)。キーは区切りを `/` にしたパス */
+const MOCK_SERVER_FOLDERS: Record<string, string[]> = {
+  "D:": ["本", "同人", "追加の本"],
+  "D:/本": [],
+  "D:/同人": [],
+  "D:/追加の本": [],
+  "E:": ["漫画"],
+  "E:/漫画": [],
+};
+
 const json = (status: number, data: unknown): MockResponse => ({
   status,
   contentType: "application/json; charset=utf-8",
@@ -169,11 +179,16 @@ function pageSvg(title: string, index: number, total: number): string {
 /** 状態を持つモック。progress の保存は次の GET に反映される。 */
 export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), options: MockOptions = {}) {
   const log: { method: string; path: string; body?: unknown }[] = [];
-  // 蔵書ルート(#85 の蔵書の切り替え)。外付けドライブの巻(オフライン)だけ 2 つ目のルート
-  const roots = [
-    { id: 1, name: "本", path: "D:/本", online: true },
-    { id: 2, name: "漫画", path: "E:/漫画", online: false },
+  // 蔵書(#85 の蔵書の切り替え。#313 でフォルダのグループになった)。外付けドライブの巻(オフライン)だけ 2 つ目の蔵書。
+  // 巻はどのフォルダに入っているかを持たないので、画面から足したフォルダの巻数は 0(スキャンの前)
+  interface MockFolder { id: number; path: string; online: boolean }
+  interface MockGroup { id: number; name: string; folders: MockFolder[] }
+  const groups: MockGroup[] = [
+    { id: 1, name: "本", folders: [{ id: 1, path: "D:/本", online: true }] },
+    { id: 2, name: "漫画", folders: [{ id: 2, path: "E:/漫画", online: false }] },
   ];
+  let nextGroupId = 3;
+  let nextFolderId = 3;
   const rootOf = (volumeId: number) => (volumes.find((v) => v.id === volumeId)?.offline ? 2 : 1);
   const later = new Map<number, string>();
   const mockWorks = createMockWorks(
@@ -412,14 +427,88 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
 
     const shown = () => volumes.filter((v) => !v.hidden);
     const query = new URLSearchParams(rawPath.split("?")[1] ?? "");
-    const root = query.get("root");
+    const root = query.get("library");
     const inRoot = (v: MockVolume) => !root || String(rootOf(Number(v.id))) === root;
     if (method === "GET" && path === "/api/volumes") {
       const list: VolumeSummary[] = shown().filter(inRoot).map(({ hidden: _hidden, ...v }) => ({ ...v }));
       return json(200, list);
     }
-    if (method === "GET" && path === "/api/libraries") {
-      return json(200, roots.map((r) => ({ ...r, volume_count: shown().filter((v) => rootOf(Number(v.id)) === r.id).length })));
+    const libraries = () => groups.map((g) => {
+      const count = shown().filter((v) => rootOf(Number(v.id)) === g.id).length;
+      return {
+        id: g.id, name: g.name, online: g.folders.length === 0 || g.folders.some((f) => f.online),
+        volume_count: count, folders: g.folders.map((f, i) => ({ ...f, volume_count: i === 0 ? count : 0 })),
+      };
+    });
+    const libraryOf = (id: number) => libraries().find((g) => g.id === id)!;
+    if (method === "GET" && path === "/api/libraries") return json(200, libraries());
+    if (method === "POST" && path === "/api/library-groups") {
+      const name = String(parsed?.name ?? "").trim();
+      if (!name) return json(422, { detail: "蔵書の名前を入力してください" });
+      if (groups.some((g) => g.name === name)) return json(409, { detail: `同じ名前の蔵書があります: ${name}` });
+      groups.push({ id: nextGroupId++, name, folders: [] });
+      return json(201, libraryOf(groups[groups.length - 1].id));
+    }
+    const groupPath = path.match(/^\/api\/library-groups\/(\d+)$/);
+    if (groupPath) {
+      const g = groups.find((x) => x.id === Number(groupPath[1]));
+      if (!g) return json(404, { detail: "蔵書が見つかりません" });
+      if (method === "PATCH") {
+        const name = String(parsed?.name ?? "").trim();
+        if (!name) return json(422, { detail: "蔵書の名前を入力してください" });
+        if (groups.some((x) => x !== g && x.name === name)) return json(409, { detail: `同じ名前の蔵書があります: ${name}` });
+        g.name = name;
+        return json(200, libraryOf(g.id));
+      }
+      if (method === "DELETE") {
+        if (g.folders.length > 0) return json(409, { detail: "蔵書フォルダが残っています。先にフォルダを外すか、ほかの蔵書へ移してください" });
+        groups.splice(groups.indexOf(g), 1);
+        return json(204, null);
+      }
+    }
+    if (method === "POST" && path === "/api/library-folders") {
+      const folderPath = String(parsed?.path ?? "").trim();
+      if (!folderPath) return json(422, { detail: "フォルダのパスを入力してください" });
+      if (!/^([A-Za-z]:|\/)/.test(folderPath)) return json(422, { detail: "フォルダはサーバー機の絶対パスで指定してください(例: D:/本)" });
+      if (groups.some((g) => g.folders.some((f) => f.path === folderPath))) return json(409, { detail: `このフォルダは登録済みです: ${folderPath}` });
+      if (!MOCK_SERVER_FOLDERS[folderPath.replace(/\/+$/, "")]) {
+        return json(422, { detail: "フォルダが見つからないか、読めません(サーバー機から見えるパスか確かめてください)" });
+      }
+      let g = groups.find((x) => x.id === parsed?.group_id);
+      if (parsed?.group_id === undefined || parsed?.group_id === null) {
+        if (groups.length > 0) return json(422, { detail: "フォルダを入れる蔵書を選んでください" });
+        g = { id: nextGroupId++, name: "デフォルト", folders: [] };
+        groups.push(g);
+      } else if (!g) {
+        return json(404, { detail: "蔵書が見つかりません" });
+      }
+      g!.folders.push({ id: nextFolderId++, path: folderPath, online: true });
+      return json(201, libraryOf(g!.id));
+    }
+    const folderPathMatch = path.match(/^\/api\/library-folders\/(\d+)$/);
+    if (folderPathMatch) {
+      const from = groups.find((g) => g.folders.some((f) => f.id === Number(folderPathMatch[1])));
+      if (!from) return json(404, { detail: "蔵書フォルダが見つかりません" });
+      const folder = from.folders.find((f) => f.id === Number(folderPathMatch[1]))!;
+      if (method === "DELETE") {
+        from.folders.splice(from.folders.indexOf(folder), 1);
+        return json(204, null);
+      }
+      if (method === "PATCH") {
+        const to = groups.find((g) => g.id === parsed?.group_id);
+        if (!to) return json(404, { detail: "蔵書が見つかりません" });
+        from.folders.splice(from.folders.indexOf(folder), 1);
+        to.folders.push(folder);
+        return json(200, libraryOf(to.id));
+      }
+    }
+    if (method === "GET" && path === "/api/fs/folders") {
+      const at = (query.get("path") ?? "").replace(/\/+$/, "");
+      if (at === "") return json(200, { path: "", parent: null, folders: [{ name: "D:", path: "D:" }, { name: "E:", path: "E:" }] });
+      const names = MOCK_SERVER_FOLDERS[at];
+      if (!names) return json(404, { detail: "フォルダが見つからないか、読めません" });
+      const cut = at.lastIndexOf("/");
+      return json(200, { path: at, parent: cut < 0 ? "" : at.slice(0, cut), folders: names.map((n) => ({ name: n, path: `${at}/${n}` })) });
     }
     if (method === "GET" && path === "/api/settings") {
       return json(200, { untranslated_terms: "hide", cache_limit_bytes: 2 * 1024 ** 3, memory_cache_limit_bytes: 256 * 1024 ** 2,
@@ -432,7 +521,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       const ws = mockWorks.listed(root).map((w) => mockWorks.summary(w, root));
       const ids = new Set(vols.map((v) => String(v.id)));
       return json(200, {
-        root_id: root ? Number(root) : null,
+        library_id: root ? Number(root) : null,
         works: {
           total: ws.length, manga: ws.filter((w) => w.kind === "manga").length, novel: ws.filter((w) => w.kind === "novel").length, doujinshi: ws.filter((w) => w.kind === "doujinshi").length,
           kind_unknown: ws.filter((w) => !w.kind).length,

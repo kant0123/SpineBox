@@ -18,7 +18,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
-from . import bookmarks, db, follows, linking, page_marks, read_later, search, stats, works
+from . import bookmarks, db, follows, libraries, linking, page_marks, read_later, search, stats, works
 from .analysis import compute_findings
 from .datajobs import KIND_BY_NAME, DataJobs, Unavailable, kind_label, work_title
 from .duplicates import CandidateNotFound, candidate_counts, dismiss
@@ -80,6 +80,21 @@ class RangePlanIn(BaseModel):
     exclude_volume_ids: list[StrictInt] = Field(default_factory=list)
     include_cbz: bool = False
     delete_originals: bool = False
+
+
+class LibraryGroupIn(BaseModel):
+    """蔵書(グループ)の名前(#313)。"""
+    name: StrictStr
+
+
+class LibraryFolderIn(BaseModel):
+    """蔵書フォルダの追加。path はサーバー機の絶対パス。group_id を省けるのは蔵書が 1 つも無いときだけ。"""
+    path: StrictStr
+    group_id: StrictInt | None = None
+
+
+class LibraryFolderMoveIn(BaseModel):
+    group_id: StrictInt
 
 
 class RangeExampleIn(BaseModel):
@@ -236,6 +251,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                metadata_fetcher: HttpFetcher | None = None) -> FastAPI:
     """metadata_fetcher はテスト用の差し替え(通常はプロセス共有の fetcher を使う)。"""
     conn = db.open_db(settings.db_path)  # 起動時にマイグレーションを当てる
+    libraries.sync(conn, settings)  # 設定の蔵書フォルダを取り込み、グループの無いフォルダへ蔵書を割り当てる(#313)
     linking.configure(settings.metadata)  # 日本語での表示の方針。下の反映で、入っている英語の値も日本語になる
     _sync_works(conn)  # 作品への割り当てを取り直す(作品の機能が入る前の DB は、ここで初めて作品になる)
     try:
@@ -352,6 +368,18 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         finally:
             c.close()
 
+    @app.exception_handler(libraries.LibraryError)
+    def _library_error(request: Request, exc: libraries.LibraryError):
+        return JSONResponse({"detail": safe_text(exc)}, status_code=422)
+
+    @app.exception_handler(libraries.LibraryNotFound)
+    def _library_not_found(request: Request, exc: libraries.LibraryNotFound):
+        return JSONResponse({"detail": safe_text(exc)}, status_code=404)
+
+    @app.exception_handler(libraries.LibraryConflict)
+    def _library_conflict(request: Request, exc: libraries.LibraryConflict):
+        return JSONResponse({"detail": safe_text(exc)}, status_code=409)
+
     @app.exception_handler(VolumeNotFound)
     def _not_found(request: Request, exc: VolumeNotFound):
         return JSONResponse({"detail": "巻が見つかりません"}, status_code=404)
@@ -427,27 +455,77 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
 
     @app.get("/api/libraries")
     def list_libraries(conn: sqlite3.Connection = Depends(get_conn)):
-        """蔵書の切り替え(#85)の候補: 設定にある蔵書ルート(受け入れフォルダを除く)と、一覧に見えている巻の数。
+        """蔵書の切り替え(#85)の候補と、蔵書の管理(#313): 蔵書(グループ)と、その蔵書フォルダ・見えている巻の数。
 
-        id を /api/works・/api/volumes・/api/stats の root に渡すと、その蔵書ルートの巻だけに絞る。
-        オフラインのルートも出す(巻はオフラインとして一覧に残る)。
+        id を /api/works・/api/volumes・/api/stats の library に渡すと、その蔵書のフォルダの巻だけに絞る。
+        オフラインのフォルダも出す(巻はオフラインとして一覧に残る)。
         """
-        counts = {r[0]: r[1] for r in conn.execute(
-            "SELECT r.id, COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + " GROUP BY r.id")}
-        rows = conn.execute("SELECT id, path, online FROM library_roots WHERE enabled = 1 AND inbox = 0 ORDER BY id")
-        return [{"id": r["id"], "name": _root_name(r["path"]), "path": r["path"], "online": bool(r["online"]),
-                 "volume_count": counts.get(r["id"], 0)} for r in rows]
+        return libraries.list_groups(conn)
+
+    @app.post("/api/library-groups", status_code=201)
+    def create_library_group(body: LibraryGroupIn, conn: sqlite3.Connection = Depends(get_conn)):
+        return libraries.create_group(conn, body.name)
+
+    @app.patch("/api/library-groups/{group_id}")
+    def rename_library_group(group_id: int, body: LibraryGroupIn, conn: sqlite3.Connection = Depends(get_conn)):
+        return libraries.rename_group(conn, group_id, body.name)
+
+    @app.delete("/api/library-groups/{group_id}", status_code=204)
+    def delete_library_group(group_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """フォルダの無い蔵書を消す(フォルダが残っていれば 409)。"""
+        libraries.delete_group(conn, group_id)
+        return Response(status_code=204)
+
+    def _while_idle(fn):
+        """スキャンなどのジョブが蔵書フォルダを回っている間は、フォルダの出し入れをしない(409)。"""
+        if not scan_lock.acquire(blocking=False):
+            raise HTTPException(409, "ほかのジョブを実行中です(管理のタスクセンターで確かめ・中止できます)")
+        try:
+            return fn()
+        finally:
+            scan_lock.release()
+
+    @app.post("/api/library-folders", status_code=201)
+    def add_library_folder(body: LibraryFolderIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """蔵書フォルダを蔵書へ足す(group_id を省けるのは蔵書が 1 つも無いときだけ。「デフォルト」を作る)。
+
+        以前に外したフォルダなら巻・読書位置ごと戻る。新しいフォルダの巻は次のスキャンで現れる。
+        """
+        def run():
+            group = libraries.add_folder(conn, settings, body.path, body.group_id)
+            _sync_works(conn)  # 戻したフォルダの巻を作品へ
+            return group
+        return _while_idle(run)
+
+    @app.patch("/api/library-folders/{folder_id}")
+    def move_library_folder(folder_id: int, body: LibraryFolderMoveIn, conn: sqlite3.Connection = Depends(get_conn)):
+        return libraries.move_folder(conn, folder_id, body.group_id)
+
+    @app.delete("/api/library-folders/{folder_id}", status_code=204)
+    def remove_library_folder(folder_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """蔵書フォルダを外す(一覧から隠すだけ。巻・読書位置は消さない)。"""
+        def run():
+            libraries.remove_folder(conn, folder_id)
+            _sync_works(conn)
+        _while_idle(run)
+        return Response(status_code=204)
+
+    @app.get("/api/fs/folders")
+    def list_server_folders(path: str = ""):
+        """蔵書フォルダを選ぶ画面用: サーバー機の path の直下のフォルダ名(読むだけ。path が空ならドライブ)。"""
+        return libraries.list_folders(path)
 
     @app.get("/api/volumes")
-    def list_volumes(root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
-        """一覧に見えている巻。root は蔵書の切り替え(/api/libraries の id。知らない id なら空)。"""
+    def list_volumes(library: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+        """一覧に見えている巻。library は蔵書の切り替え(/api/libraries の id。知らない id なら空)。"""
+        root = library
         rows = conn.execute(
             """SELECT v.id, v.title, v.page_count, v.container_path, v.entry_prefix, v.inner_path, v.parent_id,
                       v.number_kind, v.number_start, v.number_end, v.number_evidence, v.analyzed_version,
                       v.format, pv.title AS parent_title, pv.entry_prefix AS parent_prefix, s.rel_path,
                       s.offline AS source_offline, r.online AS root_online, p.page, p.finished, p.position"""
             + LISTED_VOLUMES_JOIN + " LEFT JOIN reading_progress p ON p.volume_id = v.id " + LISTED_VOLUMES_WHERE
-            + ("" if root is None else " AND r.id = ?"), () if root is None else (root,)
+            + ("" if root is None else " AND r.group_id = ?"), () if root is None else (root,)
         ).fetchall()
         rows.sort(key=_list_sort_key)
         findings = compute_findings(conn)
@@ -633,26 +711,26 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/works")
     def list_works(q: str | None = None, author: str | None = None, kind: str | None = None,
                    genre: str | None = None, tag: str | None = None, publisher: str | None = None,
-                   status: str | None = None, root: int | None = None, read_later: str | None = None,
+                   status: str | None = None, library: int | None = None, read_later: str | None = None,
                    sort: str | None = None, conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
 
         q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status は絞り込み。
-        root は蔵書の切り替え(#85。/api/libraries の id。その蔵書ルートの巻だけで数える。知らない id なら空)。
+        library は蔵書の切り替え(#85。/api/libraries の id。その蔵書のフォルダの巻だけで数える。知らない id なら空)。
         read_later=1 は後で読む(#173)を付けた作品だけにする。
         sort は並び順(#273。title / recent_read / added_desc / added_asc / released_desc / released_asc / random)。
         """
         return works.list_works(conn, q, {"author": author, "kind": kind, "genre": genre, "tag": tag,
-                                          "publisher": publisher, "status": status}, root_id=root,
+                                          "publisher": publisher, "status": status}, library_id=library,
                                 read_later_only=read_later in ("1", "true", "True"), sort=sort)
 
     @app.get("/api/works/facets/{name}")
-    def list_work_facet(name: str, root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+    def list_work_facet(name: str, library: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
         """著者・タグ・出版社などの一覧(#85 / #117): 値と、その値を持つ作品の数・スターの有無。name は author / kind / genre / tag / publisher。"""
         if name not in search.FILTER_FIELDS:
             raise HTTPException(404, f"未対応の項目: {name}")
         return {"name": name, "values": search.facet_counts(search.field_values(conn),
-                                                             works.listed_work_ids(conn, root), name,
+                                                             works.listed_work_ids(conn, library), name,
                                                              search.starred_facet_keys(conn, name))}
 
     @app.put("/api/works/facets/{name}/star")
@@ -663,9 +741,9 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return search.set_facet_star(conn, name, body.value, body.starred)
 
     @app.get("/api/stats")
-    def get_stats(root: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
-        """管理の統計タブ(#85)の数値。root は蔵書の切り替え(読めなかったもの・キャッシュは絞らない)。"""
-        return stats.collect(conn, root_id=root, thumbs=thumbs, disk=cache, memory=memory, thumb_store=thumbs.store,
+    def get_stats(library: int | None = None, conn: sqlite3.Connection = Depends(get_conn)):
+        """管理の統計タブ(#85)の数値。library は蔵書の切り替え(読めなかったもの・キャッシュは絞らない)。"""
+        return stats.collect(conn, library_id=library, thumbs=thumbs, disk=cache, memory=memory, thumb_store=thumbs.store,
                              inbox_prefixes=inbox_prefixes(settings))
 
     @app.get("/api/settings")
@@ -1274,12 +1352,6 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     if frontend_dist is not None and (frontend_dist / "index.html").is_file():
         _mount_frontend(app, frontend_dist)
     return app
-
-
-def _root_name(path: str) -> str:
-    """蔵書ルートの表示名: 最後のフォルダ名(ドライブ直下なら文字列のまま)。サーバー機の Windows のパスも区切る。"""
-    name = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
-    return name or path
 
 
 def _mount_frontend(app: FastAPI, dist: Path) -> None:

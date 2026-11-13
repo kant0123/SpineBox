@@ -86,13 +86,14 @@ class FollowSettings:
 
 @dataclass(frozen=True)
 class InboxSetting:
-    """受け入れフォルダと、承認で本を入れる書庫(`library_roots` のうちの 1 つ)。"""
+    """受け入れフォルダと、承認で本を入れる書庫(蔵書フォルダのうちの 1 つ)。"""
     path: Path
     library: Path
 
 
 @dataclass(frozen=True)
 class Settings:
+    # 蔵書フォルダの取り込み元。DB に無いパスを足すだけで、蔵書フォルダの正は DB(画面から足す・外す。#313)
     library_roots: tuple[Path, ...] = ()
     # 受け入れフォルダ(`inbox_dirs`)。蔵書には数えない。同期で検出し、承認した分だけ書庫へ入れる
     inboxes: tuple[InboxSetting, ...] = ()
@@ -169,14 +170,14 @@ def _inboxes(data: dict, roots: tuple[Path, ...], base_dir: Path) -> tuple[Inbox
             raise ConfigError(f"inbox_dirs の path は空でない文字列で指定してください: {entry!r}")
         path = _resolve(base_dir, path_text)
         if library_text:
+            # 書庫は蔵書フォルダのどれか。蔵書フォルダは DB が正(画面から足せる。#313)なので、設定の
+            # library_roots に無くてもここでは拒まず、同期・承認のときに DB と突き合わせる(Intake._shelf_row)
             library = _resolve(base_dir, library_text)
-            if _path_key(library) not in {_path_key(r) for r in roots}:
-                raise ConfigError(f"inbox_dirs の library は library_roots のどれかを指定してください: {library_text!r}")
         elif len(roots) == 1:
             library = roots[0]
         else:
-            raise ConfigError(f"書庫(library)が決まりません。library_roots が複数あるので、inbox_dirs の library で"
-                              f"指定してください: {path_text!r}")
+            raise ConfigError(f"書庫(library)が決まりません。設定の library_roots が 1 つではないので、inbox_dirs の "
+                              f"library で蔵書フォルダを指定してください: {path_text!r}")
         out.append(InboxSetting(path, library))
     for i, a in enumerate(out):
         for r in roots:

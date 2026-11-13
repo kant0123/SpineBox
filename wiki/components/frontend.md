@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-11
+updated: 2026-11-14
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -20,7 +20,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | パス | 役割 |
 | --- | --- |
 | `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:74 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
-| `frontend/src/shell/libraryScope.tsx:35 LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書ルートを作品一覧・巻の一覧・著者などの一覧・統計の `root` に渡す |
+| `frontend/src/shell/libraryScope.tsx LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書(フォルダのグループ。#313)を作品一覧・巻の一覧・著者などの一覧・統計の `library` に渡す。`reload()` で取り直せる(管理の蔵書タブの変更をサイドバーへすぐ映す) |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
 | `frontend/src/admin/Admin.tsx:31 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:18 Preferences()`。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
@@ -39,9 +39,9 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:30 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:244 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
-| `frontend/src/api.ts:963 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:982 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:83 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
-| `frontend/src/mock/mockBackend.ts:170 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
+| `frontend/src/mock/mockBackend.ts:180 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
 
 ## 決めたこと(コードからは理由が読めないもの)
@@ -93,7 +93,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   要約(実行する / 競合 / 整理しない / 対象外 / そのまま)・競合の行選択・実行ボタン・実行内容・整理しない内容を 1 か所にまとめる。フォームは 800px に抑え、スマホの sticky な帯
   (約 53px)に隠れないよう `scroll-margin-top` を付ける。`<form>` にして Enter でもプレビューできる
 - **整理のフォルダー選択はモーダルにする(#149)。** 今のパスから開き、パンくず(蔵書フォルダ全体 / 途中のフォルダ)で移動する。開いたら見出しへ
-  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/organize/OrganizeFiles.tsx:666 FolderPicker`)。
+  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/shell/FolderPicker.tsx FolderPicker`。#313 で切り出した)。
   前回のパスが読めないときはエラーを出して蔵書フォルダ全体へ戻す。テンプレートの誤りはプレビューを `disabled` で塞がず、押したら該当欄へ
   フォーカスする(DADS のフォーム)。処理中(プレビュー・実行・元に戻す)だけ入力欄を `disabled` にし、`aria-busy` を付ける
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
@@ -192,7 +192,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
 | ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
 | フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86)。どちらも単独の画面をそのままサイドバーの中に出す |
-| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統計・好み・スキャンと補完・整理・フォロー管理・タスクセンター(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `data` / `organize` / `follows` / `tasks`)。統合の提案は確認へ移し、整理はデータ管理から独立させた(#207) |
+| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統計・好み・スキャンと補完・整理・フォロー管理・タスクセンター(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `libraries` / `data` / `organize` / `follows` / `tasks`。蔵書タブ #313 は SpineBox で足した)。統合の提案は確認へ移し、整理はデータ管理から独立させた(#207) |
 | (無し) | 確認(`#/review/<tab>`。#207)。サイドバーの管理の上に件数のバッジつきで置く |
 | 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
 
@@ -206,8 +206,13 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   `main.tsx` で描画の前に適用するのは、ダークで開いたときに一瞬ライトになるのと、リーダーから直接開いたときに付かないのを避けるため
 - **画面の配色・余白・タイポ・フォーム・フォーカスリングは DADS(デジタル庁デザインシステムβ版 v2.18.2)に準拠する(#112, #119, #126)。**
   リンク・テキスト・ボタンに使う `--accent`(`#1b52b8` / ダーク `#70a5ff`)・`--done`(`#197a4b` / ダーク `#5fc48d`)・`--muted`・`--warn`・`--error` は `--bg`・`--card`・`--sidebar-active` 上で 4.5:1 以上を満たし、フォームの入力欄・選択欄の枠線は `--border-strong`(`#666666` / ダーク `#8e8e98`)で 3:1 以上を満たす。`:focus-visible` は黒 4px + オフセット 2px + 黄(`#ffd43d`) 2px の二重リングに統一し、最小フォントサイズは 14px(`0.875rem`)、小ボタン(`button.small` / `button.bookmark-button`)は `::after` 疑似要素で 44×44px のタッチターゲットを確保する。入力欄に `placeholder` は使わず、サポートテキストと `aria-describedby` / `aria-invalid` で示す。ブレークポイントは `768px` の 1 つに統一する
-- **蔵書の切り替えは端末ごとに記憶し(`spinebox.library`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
-  設定からルートを外しても、端末に残った id で一覧が空になり続けないように。オフラインのルートも候補に出す(巻はオフラインとして残る)
+- **蔵書の切り替えは端末ごとに記憶し(`spinebox.libraryGroup`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
+  蔵書を消しても、端末に残った id で一覧が空になり続けないように。オフラインの蔵書も候補に出す(巻はオフラインとして残る)。
+  選ぶ単位は蔵書(グループ)で、記憶の鍵は #313 より前のフォルダ id の `spinebox.library` から替えた(同じ数字を別の意味で読まないため。初回は「すべての蔵書」になる)
+- **蔵書の管理は管理の「蔵書」タブ(#313。`frontend/src/admin/Libraries.tsx Libraries()`)。** 蔵書ごとに蔵書フォルダ(パス・巻数・オフライン)を並べ、フォルダの追加・別の蔵書へ移す・外す、蔵書の追加・名前変更・削除(フォルダの無い蔵書だけ)を行う。
+  蔵書フォルダだけは「設定は画面から変えない」の例外で、DB が正([[backend]])。開いている入力フォームは 1 つだけで、閉じると開いたボタンへフォーカスを戻す。
+  追加は「サーバー機のパスの手入力」と「フォルダーを選ぶ」(`frontend/src/shell/FolderPicker.tsx`。整理の範囲選びと共用で、辿り先は `load` で渡す)。ドライブの一覧そのものは選べない。
+  足したあとは「スキャンする」(`api.startJob("scan")`)を添える(巻が現れるのは次のスキャン。外したフォルダを足し直した場合は巻がすぐ戻る)
 - **好みタブの各項目の置き場所:** テーマ・リーダーの既定(表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。小説の文字サイズはリーダーの中で変えたものと同じ鍵)。表紙単独は次に巻を開くときから効く。見開きの切替は #136 で廃止した([[manga-reader]])。
   スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
   画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため

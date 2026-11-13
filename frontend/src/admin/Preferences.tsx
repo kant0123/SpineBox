@@ -66,7 +66,7 @@ export function Preferences() {
       </label>
 
       <h2>サーバーの設定</h2>
-      <p className="muted prefs-note">サーバー機の設定ファイル(config.toml)の値です。変えるには設定ファイルを直してサーバーを再起動してください。</p>
+      <p className="muted prefs-note">サーバー機の設定ファイル(config.toml)の値です。変えるには設定ファイルを直してサーバーを再起動してください。蔵書フォルダだけは「蔵書」タブで変えられます。</p>
       {serverError && <p className="notice warn">サーバーの設定を読み込めませんでした。</p>}
       {server && (
         <dl className="prefs-server">

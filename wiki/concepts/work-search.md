@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
-updated: 2026-11-11
+updated: 2026-11-14
 related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, overview]
 ---
 
@@ -72,7 +72,7 @@ trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Pyth
 - 絞り込みの候補(`facets`)は**絞る前**の作品の値から作る(絞ったあとで候補が消えて戻れなくならないように)。候補の無い項目は画面に出さない
 - 未対応の絞り込み名・読書状態の値は 422
 - サイドバーの著者・タグ・出版社の一覧(#85 / #117)は同じ値の分け方・正規化で、値ごとの作品数とスターの有無を返す(`spinebox/search.py:289 facet_counts()`、`spinebox/search.py:269 set_facet_star()`)。表記の揺れ(全角・半角など)は最初に出た表記にまとめ、記号だけで正規化が空になる値は元の文字列をキーに残して別の値と衝突しないようにする(`_facet_key()`)
-- 蔵書の切り替え(`root`。#85)は絞り込みより前に掛かる: その蔵書ルートの巻だけで作品を作り、`total`・`facets` もその中で数える。検索の索引は作品単位のままで、ルートでは分けない(巻の名前は全ルートぶん索引に入る)
+- 蔵書の切り替え(`library`。#85。#313 までは `root`)は絞り込みより前に掛かる: その蔵書のフォルダの巻だけで作品を作り、`total`・`facets` もその中で数える。検索の索引は作品単位のままで、ルートでは分けない(巻の名前は全ルートぶん索引に入る)
 - **並び順(`sort`。#273):** `spinebox/works.py:1914 _sort_works()` が `title`(既定・作品名の自然順)・`recent_read`(見えている巻の `reading_progress.updated_at` の最大が新しい順、未読は末尾)・`added_desc` / `added_asc`(見えている巻の `volumes.created_at` の最大が新しい順 / 古い順)・`released_desc` / `released_asc`(見えている巻の `volume_fields.released` と連携済み `work_links.item.released` を `YYYY-MM-DD` に 0 埋めした最大が新しい順 / 古い順、発売日なしは末尾)・`random`(ランダム)で並べる。同順位は作品名の自然順と id で決め、`root` 指定時はその蔵書ルートの巻だけで日時を集計する(`_sort_dates()`)。未対応の `sort` は 422
 
 ## 検討して採らなかった選択肢

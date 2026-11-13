@@ -7,7 +7,7 @@
 // 画面の構成(#149): 1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行、の 3 段に分ける。
 // パラメーターは入力欄ごとの「項目を差し込む」から入れる(最後にフォーカスした欄へ入れる規則は廃止)。
 // プレビューの結果は見出しへフォーカスとスクロールを移し、実行のボタンを 1 か所にまとめる。
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   api,
@@ -15,10 +15,10 @@ import {
   type OrganizeItemStatus,
   type OrganizeOp,
   type RangeExample,
-  type RangeFolders,
   type RangeOptions,
 } from "../api";
-import { organizeHistoryHref, organizeTemplateHref } from "../route";
+import { FolderPicker, type FolderCrumb, type FolderListing } from "../shell/FolderPicker";
+import { adminHref, organizeHistoryHref, organizeTemplateHref } from "../route";
 import { ITEM_LABELS, STATE_LABELS, originalsDeleted } from "./Organize";
 
 const STORAGE_KEY = "spinebox.organizeFiles";
@@ -659,184 +659,10 @@ function ParameterChips({
   );
 }
 
-/**
- * 範囲のフォルダーを選ぶモーダル。開いたら見出しへフォーカスし、Esc で閉じ、閉じたら開いたボタンへ戻す。
- * 背後の要素へ Tab で抜けない(focus trap)。今のパスから開き、読めなければ蔵書フォルダ全体へ戻す。
- */
-function FolderPicker({
-  rootId,
-  initialPath,
-  onPick,
-  onClose,
-}: {
-  rootId: number;
-  initialPath: string;
-  onPick: (path: string) => void;
-  onClose: () => void;
-}) {
-  const [listing, setListing] = useState<RangeFolders | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const dialog = useRef<HTMLDivElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  const requestSeq = useRef(0);
-
-  const open = useCallback(
-    async (path: string) => {
-      const seq = ++requestSeq.current;
-      setBusy(true);
-      setError(null);
-      try {
-        const next = await api.rangeFolders(rootId, path);
-        if (seq === requestSeq.current) setListing(next);
-      } catch (e) {
-        if (seq !== requestSeq.current) return;
-        const message = errorText(e, "フォルダーを読めませんでした。");
-        if (path !== "") {
-          // 前回のパスが無くなっていたら、蔵書フォルダ全体から選び直せるようにする
-          setError(`${message} 蔵書フォルダ全体を表示しています。`);
-          try {
-            const whole = await api.rangeFolders(rootId, "");
-            if (seq === requestSeq.current) setListing(whole);
-          } catch {
-            if (seq === requestSeq.current) setListing(null);
-          }
-        } else {
-          setError(message);
-          setListing(null);
-        }
-      } finally {
-        if (seq === requestSeq.current) setBusy(false);
-      }
-    },
-    [rootId],
-  );
-
-  useEffect(() => {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    void open(initialPath);
-  }, [open, initialPath]);
-
-  useEffect(() => {
-    heading.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      opener.current?.focus?.();
-    };
-  }, [onClose]);
-
-  // Tab でモーダルの外へ出さない(背後のフォームへフォーカスを移さない)
-  const trap = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab" || !dialog.current) return;
-    const items = [...dialog.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && (document.activeElement === first || document.activeElement === heading.current)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-
-  const path = listing?.path ?? initialPath;
+/** 範囲のパス(蔵書フォルダからの相対。`/` 区切り)をパンくずに分ける */
+function rangeCrumbs(path: string): FolderCrumb[] {
   const segments = path.split("/").filter(Boolean);
-  const join = (name: string) => (listing?.path ? `${listing.path}/${name}` : name);
-
-  return (
-    <div className="organize-picker-backdrop" onClick={onClose}>
-      <div
-        ref={dialog}
-        className="organize-picker"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="organize-picker-title"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={trap}
-      >
-        <h2 id="organize-picker-title" ref={heading} tabIndex={-1}>
-          フォルダーを選ぶ
-        </h2>
-        <p className="organize-hint">整理する範囲のフォルダーを開いて選びます。</p>
-        <nav aria-label="今のフォルダー">
-          <ol className="organize-breadcrumb">
-            <li>
-              {segments.length === 0 ? (
-                <span aria-current="location">蔵書フォルダ全体</span>
-              ) : (
-                <button type="button" className="link-button" onClick={() => void open("")}>
-                  蔵書フォルダ全体
-                </button>
-              )}
-            </li>
-            {segments.map((seg, i) => {
-              const sub = segments.slice(0, i + 1).join("/");
-              return (
-                <li key={sub}>
-                  <span className="organize-breadcrumb-sep" aria-hidden="true">/</span>
-                  {i === segments.length - 1 ? (
-                    <span aria-current="location">{seg}</span>
-                  ) : (
-                    <button type="button" className="link-button" onClick={() => void open(sub)}>
-                      {seg}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
-        {error && (
-          <div className="notice error" role="alert">
-            {error}
-          </div>
-        )}
-        {busy && <p className="muted" role="status">読み込み中…</p>}
-        {listing && (
-          <ul className="organize-folder-list">
-            {listing.parent !== null && (
-              <li>
-                <button type="button" className="organize-folder-item" onClick={() => void open(listing.parent!)}>
-                  <span className="organize-folder-mark" aria-hidden="true">↑</span> 1 つ上へ
-                </button>
-              </li>
-            )}
-            {listing.folders.map((name) => (
-              <li key={name}>
-                <button type="button" className="organize-folder-item" onClick={() => void open(join(name))}>
-                  <span className="organize-folder-mark" aria-hidden="true">▸</span> {name}
-                </button>
-              </li>
-            ))}
-            {listing.folders.length === 0 && <li className="organize-picker-empty">この中にフォルダーはありません</li>}
-          </ul>
-        )}
-        <div className="organize-picker-actions">
-          {listing && (
-            <button type="button" onClick={() => onPick(listing.path)}>
-              このフォルダーにする
-            </button>
-          )}
-          <button type="button" className="secondary" onClick={onClose}>
-            キャンセル
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return segments.map((label, i) => ({ label, path: segments.slice(0, i + 1).join("/") }));
 }
 
 /** データ管理ページの「整理」節の中身(見出しは置く側が付ける) */
@@ -868,6 +694,17 @@ export function OrganizeFilesSection() {
   const [examples, setExamples] = useState<RangeExample[]>([]);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
+  const loadRangeFolders = useCallback(
+    async (at: string): Promise<FolderListing> => {
+      const res = await api.rangeFolders(rootId ?? -1, at);
+      return {
+        path: res.path,
+        parent: res.parent,
+        folders: res.folders.map((name) => ({ name, path: res.path ? `${res.path}/${name}` : name })),
+      };
+    },
+    [rootId],
+  );
   const [op, setOp] = useState<OrganizeOp | null>(null);
   const [excluded, setExcluded] = useState<number[]>([]);
   const [pendingKeep, setPendingKeep] = useState<number | null>(null);
@@ -1064,7 +901,7 @@ export function OrganizeFilesSection() {
     return (
       <div className="organize-files">
         <p className="notice">
-          蔵書フォルダがありません。サーバー機の設定ファイル(config.toml)に蔵書フォルダを追加してから、もう一度開いてください。
+          蔵書フォルダがありません。管理の<a href={adminHref("libraries")}>「蔵書」タブ</a>で蔵書フォルダを追加してから、もう一度開いてください。
         </p>
       </div>
     );
@@ -1458,8 +1295,12 @@ export function OrganizeFilesSection() {
       )}
       {picker && rootId !== null && (
         <FolderPicker
-          rootId={rootId}
+          load={loadRangeFolders}
           initialPath={path}
+          topLabel="蔵書フォルダ全体"
+          hint="整理する範囲のフォルダーを開いて選びます。"
+          crumbs={rangeCrumbs}
+          allowTop
           onPick={(p) => {
             setPath(p);
             setPicker(false);

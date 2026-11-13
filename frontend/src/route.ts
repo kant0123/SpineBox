@@ -11,7 +11,7 @@ export type WorksScope =
   | { by: FacetField; value: string };
 
 /** 管理のタブ(#85。Peach の管理と同じ並び)。統合の提案は確認(#207)へ移した */
-export const ADMIN_TABS = ["stats", "preferences", "data", "organize", "follows", "tasks"] as const;
+export const ADMIN_TABS = ["stats", "preferences", "libraries", "data", "organize", "follows", "tasks"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 /** 確認(#207)のタブ: 利用者の判断を待っているもの(公開 DB の候補・統合の提案・重複の候補)を 1 か所に集める */

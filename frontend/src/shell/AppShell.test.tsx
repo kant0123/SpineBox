@@ -154,7 +154,7 @@ describe("蔵書の切り替え", () => {
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["すべての蔵書", "本(7 巻)", "漫画(オフライン)(1 巻)"]);
     fireEvent.change(select, { target: { value: "2" } });
     await waitFor(() => expect(workTitles()).toEqual(["外付けの作品"]));
-    expect(localStorage.getItem("spinebox.library")).toBe("2");
+    expect(localStorage.getItem("spinebox.libraryGroup")).toBe("2");
     // 巻の一覧も同じ蔵書で絞る
     await navigate("#/volumes");
     expect(await screen.findByText("外付けドライブの巻")).toBeTruthy();
@@ -166,14 +166,14 @@ describe("蔵書の切り替え", () => {
     await waitFor(() => expect(workTitles()).toEqual(["外付けの作品"]));
     fireEvent.change(within(sidebar()).getByLabelText("蔵書"), { target: { value: "" } });
     await waitFor(() => expect(workTitles()).toHaveLength(4));
-    expect(localStorage.getItem("spinebox.library")).toBeNull();
+    expect(localStorage.getItem("spinebox.libraryGroup")).toBeNull();
   });
 
-  it("設定から外した蔵書を覚えていたら、すべての蔵書に戻す", async () => {
-    localStorage.setItem("spinebox.library", "99");
+  it("消された蔵書を覚えていたら、すべての蔵書に戻す", async () => {
+    localStorage.setItem("spinebox.libraryGroup", "99");
     render(<App />);
     await waitFor(() => expect(workTitles()).toHaveLength(4));
-    expect(localStorage.getItem("spinebox.library")).toBeNull();
+    expect(localStorage.getItem("spinebox.libraryGroup")).toBeNull();
     expect((within(sidebar()).getByLabelText("蔵書") as HTMLSelectElement).value).toBe("");
   });
 });
@@ -297,14 +297,15 @@ describe("著者・タグ・出版社の一覧", () => {
 });
 
 describe("管理", () => {
-  it("タブが統計・好み・スキャンと補完・整理・フォロー管理・タスクセンターの順に並ぶ(統合は確認へ移した)", async () => {
+  it("タブが統計・好み・蔵書・スキャンと補完・整理・フォロー管理・タスクセンターの順に並ぶ(統合は確認へ移した)", async () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "スキャンと補完", "整理", "フォロー管理", "タスクセンター"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "蔵書", "スキャンと補完", "整理", "フォロー管理", "タスクセンター"]);
     expect(tabs.map((t) => t.getAttribute("href"))).toEqual([
       "#/admin",
       "#/admin/preferences",
+      "#/admin/libraries",
       "#/admin/data",
       "#/admin/organize",
       "#/admin/follows",

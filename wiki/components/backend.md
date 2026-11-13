@@ -1,7 +1,7 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-11
+updated: 2026-11-14
 related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -22,14 +22,15 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:235 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:250 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/app.py recover_interrupted_organize()` | 起動時(lifespan の先頭)に、実行・元に戻すの途中で止まった整理を戻す(#36。[[organize]])。失敗しても起動は止めない |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:601 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
-| `spinebox/scanner.py:416 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
-| `spinebox/scanner.py:388 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:808 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:608 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/libraries.py sync()` | 蔵書(グループ)と蔵書フォルダの管理(#313)。起動時とスキャンの前に、設定の `library_roots` のうち DB に無いパスを足し、グループの無いフォルダを「フォルダ名の蔵書」へ 1 つずつ入れる(名前が重なれば `本 (2)`)。追加・移動・外す・グループの CRUD・サーバー機のフォルダ一覧(`list_folders()`)もここ |
+| `spinebox/scanner.py:423 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:394 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:815 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
 | `spinebox/library.py:178 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻)。2 回目以降は RAM 層のページ表から読み、書庫を開き直さない(#297。[[extraction-cache]]) |
 | `spinebox/library.py:91 _PageTable` | 同じ版の巻のページ表(RAM 層)。ページ名と、zip の `ZipInfo` / 7z の目次・リーダーの作り直し方を持つ。元ファイルの版が変わったときと展開キャッシュが消えたときに捨てる |
 | `spinebox/library.py:585 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:159 parse_number`([[volume-split]]) |
@@ -53,16 +54,19 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | メソッドとパス | 返すもの |
 | --- | --- |
 | `POST /api/scan` | `{"volumes": 件数, "offline_roots": [パス...], "issues": [{"path", "container_path", "entry_name", "reason"}], "issues_total": 件数}`。件数は一覧に出る巻の数(オフラインの巻を含む。分解済みの親は数えず子を数える)。`issues` は「読めなかったもの」(`scan_issues` の現在の内容。最大 200 件で、切った分も `issues_total` には数える)。ほかのジョブ(データ管理。[[data-jobs]])が実行中・待ち中なら待たずに 409。DB が使えないなど続行できない失敗は 500 + `{"detail": "スキャンに失敗しました: 型: メッセージ"}`(トレースバックはログ) |
-| `GET /api/libraries` | 蔵書の切り替え(#85)の候補 `[{"id", "name", "path", "online", "volume_count"}]`。設定にある蔵書ルート(受け入れフォルダを除く)。`name` は最後のフォルダ名(Windows のパスも `\` で区切る)、`volume_count` は一覧に見えている巻の数。オフラインのルートも出す |
-| `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`bookmarked` は巻に印が付いているか([[bookmarks]])。`format` は `images`(ページ画像の巻)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57)。クエリ `root`(`/api/libraries` の id)でその蔵書ルートの巻だけ(知らない id なら空。#85) |
+| `GET /api/libraries` | 蔵書の切り替え(#85)の候補と蔵書の管理(#313)`[{"id", "name", "online", "volume_count", "folders": [{"id", "path", "online", "volume_count"}]}]`。蔵書(グループ。`library_groups`)と、その蔵書フォルダ(`library_roots`。受け入れフォルダ・外したものを除く)。`volume_count` は一覧に見えている巻の数。`online` はフォルダが 1 つでも見えれば真(フォルダが無ければ真)。フォルダが無い蔵書も出す |
+| `POST /api/library-groups` / `PATCH /api/library-groups/{id}` / `DELETE /api/library-groups/{id}` | 蔵書の追加(201)・名前変更・削除(204)。body `{"name"}`(前後の空白を除き 1〜100 文字)。同じ名前は 409、空・長すぎは 422、無い id は 404。**有効なフォルダが残る蔵書は削除できない(409)** |
+| `POST /api/library-folders` / `PATCH /api/library-folders/{id}` / `DELETE /api/library-folders/{id}` | 蔵書フォルダの追加(201。body `{"path", "group_id"?}`)・別の蔵書へ移す(body `{"group_id"}`)・外す(204)。追加と移動は変更後の蔵書を返す。`group_id` を省けるのは蔵書が 1 つも無いときだけ(「デフォルト」を作ってそこへ入れる。ほかは 422)。パスはサーバー機の絶対パスで、見えない・登録済み(409)・登録済み/受け入れフォルダ/整理の置き場/データの置き場と入れ子は 422。外したフォルダを足し直すと同じ行が戻る。追加・外すはスキャン等のジョブ実行中は 409 |
+| `GET /api/fs/folders?path=` | 蔵書フォルダを選ぶ画面用に、サーバー機の `path` の直下のフォルダ名 `{path, parent, folders: [{name, path}]}`(読むだけ。ファイルは返さない。自然順)。`path` が空ならドライブの一覧(Windows 以外は `/`)で `parent` は null、ドライブの親は ""。相対パスは 422、読めない・無いは 404 |
+| `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`bookmarked` は巻に印が付いているか([[bookmarks]])。`format` は `images`(ページ画像の巻)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57)。クエリ `library`(`/api/libraries` の蔵書の id)でその蔵書のフォルダの巻だけ(知らない id なら空。#85。#313 までは `root` でフォルダ 1 つの id) |
 | `GET /api/volumes/{id}` | `{"id", "title", "format", "page_count", "pages": [{"index", "name"}], "progress", "bookmarked", "parent_id", "volume_number", "next_volume", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する。小説は `pages: []` で、`sections: [{"index", "length"}]`(`length` は全体の進み具合の重み)と `encoding`(テキストの文字コード)が付く。文字コードを判定できないテキストは 422。`next_volume` は同じ作品の一覧の並び(巻・話番号の順 → 番号なしは名前順)で次の巻 `{"id", "title", "volume_number", "offline"}` か null。同じ番号の重複は飛ばし、次の番号に重複があれば並びの 1 つ目。オフラインの巻も返す(リーダーが移動せず案内するため。#113) |
 | `GET /api/volumes/{id}/sections/{index}` | 小説の区切り 1 つ `{"index", "html"}`。EPUB は無害化済み、テキストはエスケープしてから組み立てた HTML([[novel-reader]])。範囲外は 404、画像の巻は 422 |
 | `GET /api/volumes/{id}/resources/{index}` | EPUB の中の画像(manifest の JPEG / PNG / GIF / WebP だけ。SVG は返さない)。`Content-Security-Policy: default-src 'none'; sandbox` 付き |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
-| `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged", "reading_state", "kind", "publisher", "genres", "tags", "link_pending", "cover_volume_id"}], "total", "facets", "unassigned"}`。`cover_volume_id` は表紙にする巻(無ければ null。[[cover-thumbnails]])。一覧に見えている巻を持つ作品だけ(統合された側は出ない)。クエリ `q`(全文検索。空白区切りで AND)・`author` / `kind` / `genre` / `tag` / `publisher`(項目の値の一致。ジャンル・タグは `work_fields` の `genres` / `tags`)・`status`(`unread` / `reading` / `finished`)・`read_later=1`(後で読む)で絞る(組み合わせ可。未対応の `status` は 422)。`sort`(#273。省略・空は `title`)で並び順を変える: `title`(作品名の自然順)・`recent_read`(見えている巻の `reading_progress.updated_at` の最大が新しい順、未読は末尾)・`added_desc` / `added_asc`(見えている巻の `volumes.created_at` の最大が新しい順 / 古い順)・`released_desc` / `released_asc`(見えている巻の `volume_fields.released` と連携済み `work_links.item.released` を `YYYY-MM-DD` に 0 埋めした最大が新しい順 / 古い順、発売日なしは末尾)・`random`(ランダム)。未対応の `sort` は 422。`total` は絞る前の作品数、`facets` は絞る前の作品から作った絞り込みの候補 `{"author", "kind", "genre", "tag", "publisher"}`([[work-search]])。`root` は蔵書の切り替え(#85): その蔵書ルートに巻がある作品だけにし、巻数・欠け・読書状態・表紙・並び順の日時もそのルートの巻で数える(`total`・`facets`・`unassigned` も同じ) |
-| `GET /api/works/facets/{name}?root` | 著者・タグ・出版社などの一覧(#85 / #117)`{"name", "values": [{"value", "count", "starred"}]}`。`count` はその値を持つ作品の数、`starred` はスター(お気に入り)が付いているか、値の名前順。`name` は `author` / `kind` / `genre` / `tag` / `publisher`(他は 404) |
+| `GET /api/works` | `{"works": [{"id", "title", "title_source", "title_manual", "author", "author_source", "author_manual", "aliases", "volume_count", "offline_count", "finished_count", "duplicate_slots", "max_volume", "missing_volumes", "missing_episodes", "pending_proposals", "merged", "reading_state", "kind", "publisher", "genres", "tags", "link_pending", "cover_volume_id"}], "total", "facets", "unassigned"}`。`cover_volume_id` は表紙にする巻(無ければ null。[[cover-thumbnails]])。一覧に見えている巻を持つ作品だけ(統合された側は出ない)。クエリ `q`(全文検索。空白区切りで AND)・`author` / `kind` / `genre` / `tag` / `publisher`(項目の値の一致。ジャンル・タグは `work_fields` の `genres` / `tags`)・`status`(`unread` / `reading` / `finished`)・`read_later=1`(後で読む)で絞る(組み合わせ可。未対応の `status` は 422)。`sort`(#273。省略・空は `title`)で並び順を変える: `title`(作品名の自然順)・`recent_read`(見えている巻の `reading_progress.updated_at` の最大が新しい順、未読は末尾)・`added_desc` / `added_asc`(見えている巻の `volumes.created_at` の最大が新しい順 / 古い順)・`released_desc` / `released_asc`(見えている巻の `volume_fields.released` と連携済み `work_links.item.released` を `YYYY-MM-DD` に 0 埋めした最大が新しい順 / 古い順、発売日なしは末尾)・`random`(ランダム)。未対応の `sort` は 422。`total` は絞る前の作品数、`facets` は絞る前の作品から作った絞り込みの候補 `{"author", "kind", "genre", "tag", "publisher"}`([[work-search]])。`library` は蔵書の切り替え(#85。#313 までは `root`): その蔵書に巻がある作品だけにし、巻数・欠け・読書状態・表紙・並び順の日時もそのルートの巻で数える(`total`・`facets`・`unassigned` も同じ) |
+| `GET /api/works/facets/{name}?library` | 著者・タグ・出版社などの一覧(#85 / #117)`{"name", "values": [{"value", "count", "starred"}]}`。`count` はその値を持つ作品の数、`starred` はスター(お気に入り)が付いているか、値の名前順。`name` は `author` / `kind` / `genre` / `tag` / `publisher`(他は 404) |
 | `PUT /api/works/facets/{name}/star` | 著者・タグ・出版社などの値にスターを付ける / 外す(#117)。body `{"value": str, "starred": bool}` → `{"name", "value", "starred", "created_at"}`。表記の揺れは `search._facet_key()` で同じ値として扱い、付け直しても `created_at` は変えない。未対応の `name` は 404、空の `value` は 422 |
-| `GET /api/stats?root` | 管理の統計タブ(#85)`{"root_id", "works", "volumes", "pages", "unassigned_volumes", "duplicate_candidates", "scan_issues", "cache": {"disk", "memory", "thumbnails"}}`。数え方は `spinebox/stats.py`。`scan_issues` とキャッシュは `root` で絞らない |
+| `GET /api/stats?library` | 管理の統計タブ(#85)`{"library_id", "works", "volumes", "pages", "unassigned_volumes", "duplicate_candidates", "scan_issues", "cache": {"disk", "memory", "thumbnails"}}`。数え方は `spinebox/stats.py`。`scan_issues` とキャッシュは `library` で絞らない |
 | `GET /api/settings` | 好みタブに出すサーバーの設定(読み取りだけ)`{"untranslated_terms", "cache_limit_bytes", "memory_cache_limit_bytes", "metadata_sources", "metadata_background"}` |
 | `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)・`bookmarked`(作品の印。各巻にも `bookmarked`)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
 | `POST /api/works/{id}/fields/{field}/reset` | 手動の項目を自動に戻す(直す前の値、無ければ空にして公開 DB の値を入れ直す)。手動でない項目・直す前の名前が無い作品名は 409 |
@@ -119,7 +123,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   `sources.offline = 1` を立てるだけ。一覧には `offline: true` で出続け、再接続後のスキャンでそのまま戻る
 - **missing**: ルートは見えるのにソース(ファイル・フォルダ)が無い、またはアーカイブを読み直したら巻が無くなった。
   一覧から外すが行は残す。同じ相対パスに戻れば同じ巻 id に戻り、読書位置もつながる
-- **enabled = 0**: 設定の `library_roots` から外したルート。一覧から外すだけで、戻せば復活する
+- **enabled = 0**: 画面(管理の「蔵書」タブ)で外した蔵書フォルダ(`group_id` も外す)。一覧から外すだけで、行・ソース・巻・読書位置は残り、同じパスを足し直すと同じ行が有効に戻る(`spinebox/libraries.py add_folder()`)。受け入れフォルダは設定が正で、設定から外すとここに落ちる
 - **organized_op_id**: 整理処理で CBZ に置き換えた元の巻。一覧・閲覧から外すだけで、元に戻せば印が外れる([[organize]])
 - 走査中に読めなかったサブフォルダ(`os.walk` の onerror)の配下は missing にしない。一時的な権限エラーで
   大量の巻を一覧から落とさないため
@@ -145,7 +149,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **巻の切り出しでは、非コンテンツディレクトリ(`__MACOSX`・`META-INF`・`.DS_Store`)の中の画像・内側アーカイブを巻にしない。**
   表紙画像だけを含むフォルダ(すべての画像が表紙)も巻にしない。拡張子に関わらず `META-INF/container.xml` を含むアーカイブは
   EPUB 小説として扱う(`.zip` に包まれた EPUB)。いずれも `spinebox/scanner.py:196 archive_volume_specs()` /
-  `spinebox/scanner.py:601 _scan_archive()` / `spinebox/scanner.py:545 _scan_folder()` で行う
+  `spinebox/scanner.py:608 _scan_archive()` / `spinebox/scanner.py:552 _scan_folder()` で行う
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
@@ -177,6 +181,13 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 
 ## 経緯
 
+- #313 で蔵書をグループ(`library_groups`)にして、1 つの蔵書に複数のフォルダを画面から登録できるようにした。マイグレーション 18(`library_groups` と `library_roots.group_id`)。
+  - **DB が正。** それまでは設定の `library_roots` が唯一の出どころで、スキャンのたびに DB を設定へ合わせ直し、設定に無いフォルダを `enabled = 0` にしていた。画面から足したフォルダが次のスキャンで消えるので、設定は「DB に無いパスを足すだけ」の取り込み元にした(受け入れフォルダは今までどおり設定が正)。
+    設定から消してもフォルダは外れず、画面で外したフォルダは設定に残っていても戻さない。LAN の別端末から認証なしでフォルダを足し引きできる点は、利用者の判断で受け入れた(フォルダ一覧 API はフォルダ名だけで、何も書かない)
+  - **グループは `library_roots` の上に 1 段かぶせるだけ。** `sources.root_id`・整理(`organize_base`・範囲指定の `root_id`)・受け入れ(`inbox_dirs.library`)・表紙のキャッシュのキーはフォルダ単位のまま。一覧・作品・統計の絞り込みだけ `r.group_id = ?`(クエリ名は `root` → `library`)
+  - 既存のフォルダは 1 フォルダ 1 蔵書で移行(見た目は変わらない)。「デフォルト」はグループが 1 つも無いときにフォルダを足したときだけ作る。蔵書が 1 つでもあれば追加先の指定が要る(勝手に選ばない)
+  - 受け入れの書庫(`inbox_dirs.library`)は、画面から足したフォルダも指せるよう、設定の読み込みでは `library_roots` との突き合わせをやめ、同期・承認のとき DB と突き合わせる(`Intake._shelf_row()`)
+  - 追加するフォルダは、既存の蔵書フォルダ・受け入れフォルダ・整理の置き場・データの置き場と入れ子にできない(同じファイルを 2 回数える・退避したものを本として読むのを防ぐ)。スキャン等のジョブ実行中は追加・外すを 409 にする(走査中のフォルダ一覧を変えない)
 - #297 で巻のページ表を RAM 層に持ち越すようにした。zip の中央ディレクトリ・フォルダの列挙・7z の目次を 2 ページ目以降で読み直さない(`Library._PageTable`。[[extraction-cache]])
 - #136 で漫画リーダーのしおりを足した([[manga-reader]])。マイグレーション 16(`page_marks`。巻 id とページ(0 始まり)で 1 行、題は持たない)。整理では移し、巻への分解では子へ写す。蔵書がオフラインでも行は消さない
 - #117 で著者・タグ・出版社などの一覧の値ごとにスター(お気に入り)を付け外しできるようにした。マイグレーション 15(`facet_stars`。#83 のマイグレーション 14 の後ろ)。キーは `search._facet_key(name, value)` で正規化し、表記揺れのまとめと同じ単位で持つ。蔵書がオフラインになってもレコードは消さない

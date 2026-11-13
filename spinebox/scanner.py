@@ -308,17 +308,23 @@ class Scanner:
     # --- ルート -------------------------------------------------------------
 
     def _sync_roots(self, inbox: bool = False) -> list[tuple[int, Path]]:
-        """設定のルート(inbox=True なら受け入れフォルダ)を DB に合わせる。もう一方の種類の行には触れない。"""
-        configured = ([Path(i.path) for i in self.settings.inboxes] if inbox
-                      else [Path(p) for p in self.settings.library_roots])
+        """走査するルートを決める。
+
+        蔵書フォルダは DB が正(#313): 設定の `library_roots` のうち DB に無いものを足すだけで、設定から消しても
+        外さない(外すのは画面から。spinebox/libraries.py)。受け入れフォルダ(inbox=True)は設定が正で、
+        設定のとおりに DB を合わせる。もう一方の種類の行には触れない。
+        """
+        if not inbox:
+            from . import libraries  # libraries が scanner を読むので、ここで読む
+            return libraries.sync(self.conn, self.settings)
+        configured = [Path(i.path) for i in self.settings.inboxes]
         paths = [str(p) for p in configured]
-        flag = int(inbox)
         with db.transaction(self.conn) as c:
             for p in paths:
                 c.execute("INSERT OR IGNORE INTO library_roots (path) VALUES (?)", (p,))
-            # 同じパスを蔵書から受け入れへ(またはその逆に)付け替えた場合も、設定のとおりにする
-            c.executemany("UPDATE library_roots SET inbox = ? WHERE path = ?", [(flag, p) for p in paths])
-            c.execute("UPDATE library_roots SET enabled = 0 WHERE inbox = ?", (flag,))
+            # 蔵書フォルダだったパスを受け入れへ付け替えた場合も、設定のとおりにする(蔵書のグループからは外す)
+            c.executemany("UPDATE library_roots SET inbox = 1, group_id = NULL WHERE path = ?", [(p,) for p in paths])
+            c.execute("UPDATE library_roots SET enabled = 0 WHERE inbox = 1")
             c.executemany("UPDATE library_roots SET enabled = 1 WHERE path = ?", [(p,) for p in paths])
         ids = dict(self.conn.execute("SELECT path, id FROM library_roots").fetchall())
         return [(ids[str(p)], p) for p in configured]
@@ -405,7 +411,8 @@ class Scanner:
 
     def _excluded_dirs(self, root: Path) -> set[str]:
         bases = [root / DEFAULT_ORGANIZE_DIR, self.settings.organize_base(root)]
-        bases += [self.settings.organize_base(Path(r)) for r in self.settings.library_roots]
+        bases += [self.settings.organize_base(Path(r["path"])) for r in self.conn.execute(
+            "SELECT path FROM library_roots WHERE enabled = 1 AND inbox = 0")]
         return {_norm(str(b)) for b in bases}
 
     def _mark_root_offline(self, root_id: int) -> None:

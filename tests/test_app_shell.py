@@ -10,7 +10,8 @@ from PIL import Image
 from images import jpeg
 from novels import epub_bytes
 from spinebox import db
-from spinebox.app import _root_name, create_app
+from spinebox.app import create_app
+from spinebox.libraries import root_name as _root_name
 
 KAKU = "かくかくしかじか"
 OKIRAKU = "お気楽領主の楽しい領地防衛"
@@ -66,7 +67,8 @@ def test_libraries_list_roots_with_volume_counts(env):
     libs = libraries(client)
     assert set(libs) == {"漫画", "外付け"}
     assert libs["漫画"]["volume_count"] == 2 and libs["外付け"]["volume_count"] == 3
-    assert libs["漫画"]["online"] is True and libs["漫画"]["path"] == str(a)
+    assert libs["漫画"]["online"] is True and [f["path"] for f in libs["漫画"]["folders"]] == [str(a)]
+    assert libs["外付け"]["folders"][0]["volume_count"] == 3
 
 
 def test_root_filter_narrows_works_and_volumes(env):
@@ -75,22 +77,22 @@ def test_root_filter_narrows_works_and_volumes(env):
     manga, ext = libs["漫画"]["id"], libs["外付け"]["id"]
     every = client.get("/api/works").json()
     assert {w["title"] for w in every["works"]} == {KAKU, OKIRAKU, "吾輩は猫である"} and every["total"] == 3
-    only_a = client.get("/api/works", params={"root": manga}).json()
+    only_a = client.get("/api/works", params={"library": manga}).json()
     assert [w["title"] for w in only_a["works"]] == [KAKU] and only_a["total"] == 1
     # 作品の巻数・欠けはそのルートの巻で数える(1・3 巻だけ → 2 巻が欠け)
     assert only_a["works"][0]["volume_count"] == 2 and only_a["works"][0]["missing_volumes"] == [2]
     assert work(client, KAKU)["volume_count"] == 3 and work(client, KAKU)["missing_volumes"] == []
-    only_b = client.get("/api/works", params={"root": ext}).json()
+    only_b = client.get("/api/works", params={"library": ext}).json()
     assert {w["title"] for w in only_b["works"]} == {KAKU, OKIRAKU, "吾輩は猫である"}
     # 検索・絞り込みと組み合わせられる
-    assert [w["title"] for w in client.get("/api/works", params={"root": manga, "q": "お気楽"}).json()["works"]] == []
-    assert [w["title"] for w in client.get("/api/works", params={"root": ext, "q": "お気楽"}).json()["works"]] == [OKIRAKU]
+    assert [w["title"] for w in client.get("/api/works", params={"library": manga, "q": "お気楽"}).json()["works"]] == []
+    assert [w["title"] for w in client.get("/api/works", params={"library": ext, "q": "お気楽"}).json()["works"]] == [OKIRAKU]
     # 巻の一覧も絞れる
     assert len(client.get("/api/volumes").json()) == 5
-    assert sorted(v["page_count"] for v in client.get("/api/volumes", params={"root": manga}).json()) == [4, 5]
-    # 知らない id は空(設定から外したルートを端末が覚えていても壊れない)
-    assert client.get("/api/works", params={"root": 9999}).json()["works"] == []
-    assert client.get("/api/volumes", params={"root": 9999}).json() == []
+    assert sorted(v["page_count"] for v in client.get("/api/volumes", params={"library": manga}).json()) == [4, 5]
+    # 知らない id は空(消した蔵書を端末が覚えていても壊れない)
+    assert client.get("/api/works", params={"library": 9999}).json()["works"] == []
+    assert client.get("/api/volumes", params={"library": 9999}).json() == []
 
 
 def test_offline_root_stays_listed_and_filterable(env):
@@ -101,7 +103,7 @@ def test_offline_root_stays_listed_and_filterable(env):
     assert client.post("/api/scan").status_code == 200
     libs = libraries(client)
     assert libs["外付け"]["online"] is False and libs["外付け"]["volume_count"] == 3
-    vols = client.get("/api/volumes", params={"root": libs["外付け"]["id"]}).json()
+    vols = client.get("/api/volumes", params={"library": libs["外付け"]["id"]}).json()
     assert len(vols) == 3 and all(v["offline"] for v in vols)
 
 
@@ -127,7 +129,7 @@ def test_facets_count_works_per_value_and_follow_root(env):
     pubs = {v["value"]: v["count"] for v in client.get("/api/works/facets/publisher").json()["values"]}
     assert pubs == {"集英社": 1, "ホビージャパン": 1}
     manga = libraries(client)["漫画"]["id"]
-    tags_a = {v["value"]: v["count"] for v in client.get("/api/works/facets/tag", params={"root": manga}).json()["values"]}
+    tags_a = {v["value"]: v["count"] for v in client.get("/api/works/facets/tag", params={"library": manga}).json()["values"]}
     assert tags_a == {"美大": 1, "宮崎": 1}
     assert client.get("/api/works/facets/synopsis").status_code == 404
 
@@ -209,10 +211,10 @@ def test_publisher_filter_selects_works(env):
 
 # --- 統計 ------------------------------------------------------------------------------------
 
-def db_counts(settings, root_id=None):
+def db_counts(settings, library_id=None):
     """統計と突き合わせる数を、API を通さずに DB から直接数える。"""
     conn = db.connect(settings.db_path)
-    where = "" if root_id is None else f" AND s.root_id = {int(root_id)}"
+    where = "" if library_id is None else f" AND r.group_id = {int(library_id)}"
     try:
         base = """FROM volumes v JOIN sources s ON s.id = v.source_id JOIN library_roots r ON r.id = s.root_id
                   WHERE r.enabled = 1 AND r.inbox = 0 AND v.missing = 0 AND s.missing = 0
@@ -258,9 +260,9 @@ def test_stats_match_the_db(env):
     assert st["cache"]["disk"]["limit_bytes"] == settings.cache_limit_bytes
 
     manga = libraries(client)["漫画"]["id"]
-    st_a = client.get("/api/stats", params={"root": manga}).json()
+    st_a = client.get("/api/stats", params={"library": manga}).json()
     expect_a = db_counts(settings, manga)
-    assert st_a["root_id"] == manga
+    assert st_a["library_id"] == manga
     assert st_a["volumes"]["total"] == expect_a["volumes"] == 2
     assert st_a["pages"]["total"] == expect_a["pages"] == 9
     assert st_a["works"]["total"] == expect_a["works"] == 1
