@@ -24,6 +24,7 @@ from .. import works
 from ..archive.base import file_reader_available
 from ..config import InboxSetting, Settings, _path_key
 from ..naming import normalize_title
+from ..novel import FORMAT_EPUB_IMAGES
 from ..pages import natural_key
 from ..scanner import resolve_source_path, root_is_accessible
 from .organizer import OrganizeError, Organizer, fingerprint
@@ -200,12 +201,16 @@ class Intake:
         item["needs_analysis"] = needs
         if mode == "cbz":
             is_pdf = any(v["format"] == "pdf" for v in vols)
+            is_epub_img = any(v["format"] == FORMAT_EPUB_IMAGES for v in vols)
             if inspect:
                 if src["kind"] == "folder":
                     self.org._inspect_folder(source_path, problems, warnings)
                 elif is_pdf:
                     _, pdf_probs = self.org._inspect_pdf(source_path)
                     problems.extend(pdf_probs)
+                elif is_epub_img:
+                    if self.org._epub_image_pages(root, {"rel_path": rel}) is None:
+                        problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
                 else:
                     self.org._inspect_archive(source_path, vols, problems, warnings)
             elif not is_pdf and src["kind"] == "archive" and not file_reader_available(source_path, self.settings.sevenzip_path):

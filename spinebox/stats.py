@@ -14,6 +14,7 @@ import sqlite3
 from . import works
 from .cache import ExtractionCache, MemoryCache
 from .library import is_offline
+from .novel import FORMAT_EPUB_IMAGES
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, collect_issues
 from .thumbs import Thumbnails
 
@@ -30,7 +31,7 @@ def collect(conn: sqlite3.Connection, *, library_id: int | None, thumbs: Thumbna
         "SELECT v.id, v.format, v.page_count, s.offline AS source_offline, r.online AS root_online, "
         "p.page, p.finished " + LISTED_VOLUMES_JOIN + " LEFT JOIN reading_progress p ON p.volume_id = v.id "
         + LISTED_VOLUMES_WHERE + where, params).fetchall()
-    images = [r for r in rows if r["format"] is None]
+    images = [r for r in rows if r["format"] in (None, FORMAT_EPUB_IMAGES)]
     volumes = {
         "total": len(rows),
         "images": len(images),

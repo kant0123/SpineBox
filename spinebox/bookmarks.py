@@ -10,6 +10,7 @@ import sqlite3
 
 from . import db, works
 from .library import VolumeNotFound, is_offline
+from .novel import IMAGE_FORMATS
 from .pages import natural_key
 
 SORTS = ("added", "title")
@@ -133,7 +134,7 @@ def list_bookmarks(conn: sqlite3.Connection, sort: str = "added") -> dict:
         items.append({"kind": "volume", "created_at": r["created_at"], "_id": r["bookmark_id"],
                       "_sort": work_title or r["title"],
                       "volume": {"id": r["id"], "title": r["title"], "parent_title": r["parent_title"],
-                                 "format": "images" if r["format"] in (None, "pdf") else r["format"], "page_count": r["page_count"],
+                                 "format": "images" if r["format"] in IMAGE_FORMATS else r["format"], "page_count": r["page_count"],
                                  "offline": is_offline(r), "progress": progress, "volume_number": number,
                                  "work_id": wid if work_title is not None else None, "work_title": work_title}})
     if sort == "added":

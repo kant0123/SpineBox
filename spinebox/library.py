@@ -37,6 +37,8 @@ from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
 from .config import Settings
 from .mojibake import fix_mojibake
+from .novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES, IMAGE_FORMATS
+from .novel.epub import image_pages as epub_image_pages, open_book as epub_open_book
 from .pages import is_cover, is_image, natural_key, page_sort_key, sort_pages
 from .scanner import _is_non_content_path, fragment_reason, record_issues, resolve_source_path, root_is_accessible
 
@@ -185,8 +187,8 @@ class Library:
         元ファイルの版(サイズ・mtime)が変わったときと、内側アーカイブの展開キャッシュが消えたときに作り直す。
         """
         row = get_volume_row(conn, volume_id)
-        if row["format"] is not None and row["format"] != "pdf":
-            # 小説(EPUB・テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
+        if row["format"] not in (*IMAGE_FORMATS, FORMAT_EPUB):
+            # 小説(テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
             raise VolumeUnreadable("小説の巻にはページ画像がありません")
         root = Path(row["root_path"])
         if is_offline(row) or not root_is_accessible(root):
@@ -214,9 +216,14 @@ class Library:
                         self._remember_page_table(key, table)
             if opened is None:
                 opened = self._open_from_page_table(table, volume_id, stack)
-            if row["page_count"] != len(opened.page_names):
+            if row["page_count"] != len(opened.page_names) or row["format"] == FORMAT_EPUB:
                 with db.transaction(conn) as c:
-                    c.execute("UPDATE volumes SET page_count = ? WHERE id = ?", (len(opened.page_names), volume_id))
+                    c.execute("UPDATE volumes SET page_count = ?, "
+                              "format = CASE WHEN format = ? THEN ? ELSE format END WHERE id = ?",
+                              (len(opened.page_names), FORMAT_EPUB, FORMAT_EPUB_IMAGES, volume_id))
+                    if row["format"] == FORMAT_EPUB:
+                        c.execute("UPDATE reading_progress SET position = NULL WHERE volume_id = ? AND position IS NOT NULL",
+                                  (volume_id,))
             yield opened
 
     def _open_volume(self, conn, stack: ExitStack, row, path: Path, version: str, st,
@@ -247,7 +254,8 @@ class Library:
     def _page_table_key(self, row, path: Path, version: str) -> str:
         """ページ表のキー。元ファイル・巻の切り出し方・上限が変われば別キーになる。"""
         limits = self.settings.limits
-        return cache_key("pages", row["id"], str(path), version, row["kind"], row["format"],
+        fmt = FORMAT_EPUB_IMAGES if row["format"] == FORMAT_EPUB else row["format"]
+        return cache_key("pages", row["id"], str(path), version, row["kind"], fmt,
                          row["container_path"], row["entry_prefix"], row["inner_path"],
                          limits.max_depth, limits.max_entries, limits.max_total_bytes,
                          limits.max_entry_bytes, self.settings.sevenzip_path)
@@ -382,7 +390,12 @@ class Library:
             outer = stack.enter_context(open_archive(path, sevenzip_path=sevenzip))
             listing = self._list(outer, root_key)
             container = row["container_path"]
-            if container is None:
+            if row["format"] in (FORMAT_EPUB_IMAGES, FORMAT_EPUB):
+                found = epub_image_pages(outer, epub_open_book(outer, limits), limits)
+                if found is None:
+                    raise VolumeUnreadable("小説の巻にはページ画像がありません")
+                pages = [(outer, e, root_key) for _, e in found]
+            elif container is None:
                 prefix = row["entry_prefix"]
                 entries = sorted((e for e in listing.entries if e.parent == prefix and is_image(e.name)),
                                  key=lambda e: page_sort_key(e.name))

@@ -1,14 +1,15 @@
 ---
 type: component
 summary: 小説(EPUB・テキスト)の巻と縦書きリーダー。EPUB の HTML を信用しない 3 段の安全方針(サーバーの許可リスト・ブラウザの作り直し・CSP)、文字コード判定と分割、行の途中で切らないページ割り、区切り+割合の読書位置、却下した代替案
-updated: 2026-11-14
+updated: 2026-11-15
 related: [overview, backend, frontend, archive-reading, manga-reader]
 ---
 
 # 小説リーダー(EPUB・テキスト)
 
 `.epub` と `.txt` を 1 巻として登録し、縦書き(`vertical-rl`)・右から左へのページ送りで読む。
-巻の `format`(`epub` / `text`。画像の巻は NULL、API では `images`)で漫画のリーダーと切り替える。
+巻の `format`(`epub` / `text`。画像の巻は NULL / `pdf` / `epub_images`、API では `images`)で漫画のリーダーと切り替える。
+固定レイアウトの漫画 EPUB(KCC 等が出力する `.zip` を含む)のように全区切りが画像だけで本文の文字を持たない EPUB(`spinebox/novel/epub.py:230 image_pages()`)は、スキャン時(および再スキャン前に開いた時点)に `volumes.format = 'epub_images'`・`page_count = 画像枚数` として登録し、`Library.open` が spine 順のページ画像を返して漫画リーダー([[manga-reader]])で開く(#202)。
 
 ## 責務
 

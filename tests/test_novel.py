@@ -395,3 +395,37 @@ def test_epub_opf_title_ignored_when_not_japanese(make_settings, tmp_path):
     (lib / "Kaze no tani.epub").write_bytes(epub_bytes(["<p>本文</p>"], title="Wind Valley"))
     _, by_title = _scan_works(make_settings, lib)
     assert "Kaze no tani" in by_title
+
+
+def test_image_only_epub_and_kcc_zip_open_as_manga_pages(make_client, tmp_path):
+    """画像だけの EPUB(固定レイアウト漫画・KCC の .zip)は画像の巻として扱い、spine 順のページを返す(#202)。"""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    p1, p2 = PNG, PNG + b"\x00"
+    (lib / "漫画 第1巻.epub").write_bytes(epub_bytes(
+        ['<div><img src="../images/b.png"/></div>', '<div><img src="../images/a.png"/></div>'],
+        images={"images/a.png": p1, "images/b.png": p2}))
+    # KCC 等が出力する `<div style="display:none;">.</div>` つきの .zip(container.xml あり)
+    (lib / "漫画 第2巻.zip").write_bytes(epub_bytes(
+        ['<div style="display:none;">.</div><img src="../images/a.png"/>'],
+        images={"images/a.png": p1}))
+    c, settings = make_client(lib)
+    vols = scan(c)
+    v1, v2 = vols["漫画 第1巻"], vols["漫画 第2巻"]
+    assert v1["format"] == "images" and v1["page_count"] == 2
+    assert v2["format"] == "images" and v2["page_count"] == 1
+    detail = c.get(f"/api/volumes/{v1['id']}").json()
+    assert detail["format"] == "images" and detail["page_count"] == 2
+    assert [p["name"] for p in detail["pages"]] == ["b.png", "a.png"]
+    assert c.get(f"/api/volumes/{v1['id']}/pages/0").content == p2
+    assert c.get(f"/api/volumes/{v1['id']}/pages/1").content == p1
+    # 再スキャン前の DB(format='epub'・小説の読書位置 position つき)でも開いた時点で画像の巻に切り替わる
+    conn = db.connect(settings.db_path)
+    with db.transaction(conn) as cur:
+        cur.execute("UPDATE volumes SET format = 'epub' WHERE id = ?", (v2["id"],))
+        cur.execute("INSERT INTO reading_progress (volume_id, page, finished, position, updated_at) "
+                    "VALUES (?, 0, 0, 0.37, '2026-01-01T00:00:00Z')", (v2["id"],))
+    d2 = c.get(f"/api/volumes/{v2['id']}").json()
+    assert d2["format"] == "images" and len(d2["pages"]) == 1
+    assert d2["progress"] == {"page": 0, "finished": False}
+    assert by_id(c, v2["id"])["format"] == "images"

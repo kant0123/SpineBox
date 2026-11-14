@@ -23,7 +23,7 @@ from .archive import ArchiveError, open_archive
 from .cache import ExtractionCache, cache_key
 from .fingerprint import MAX_PIXELS
 from .library import Library, VolumeNotFound, VolumeOffline, get_volume_row, get_volume_rows, is_offline
-from .novel import FORMAT_EPUB
+from .novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES, IMAGE_FORMATS
 from .novel.epub import read_meta
 from .scanner import resolve_source_path, root_is_accessible
 
@@ -134,7 +134,7 @@ class Thumbnails:
         extract=False で取り出し・7-Zip が要る巻なら NeedsExtraction(何も展開しない)。
         """
         row = get_volume_row(conn, volume_id)
-        if row["format"] not in (None, FORMAT_EPUB, "pdf"):
+        if row["format"] not in (*IMAGE_FORMATS, FORMAT_EPUB):
             raise ThumbnailUnavailable("この形式の巻には表紙のページがありません")
         key = self._key(row)
         data = self.store.read(key)
@@ -145,6 +145,15 @@ class Thumbnails:
             with self.store.use(key, lambda f: f.write(thumb)):
                 pass
             return key, thumb
+        if row["format"] == FORMAT_EPUB_IMAGES:
+            try:
+                thumb = self._epub_cover(row)
+            except ThumbnailUnavailable:
+                thumb = None
+            if thumb is not None:
+                with self.store.use(key, lambda f: f.write(thumb)):
+                    pass
+                return key, thumb
         with self.library.open(conn, volume_id, extract=extract) as vol:
             if not vol.page_names:
                 raise ThumbnailUnavailable("ページがありません")

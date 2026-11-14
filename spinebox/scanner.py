@@ -36,9 +36,12 @@ from .archive.base import ARCHIVE_EXTS
 from .archive.safety import Skip, depth_problem
 from .config import DEFAULT_ORGANIZE_DIR, Settings
 from .naming import is_fragment_name, parse_number_in
-from .novel import FORMAT_EPUB, NOVEL_FORMATS
+from .novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES, NOVEL_FORMATS
 from .mojibake import fix_mojibake
-from .novel.epub import CONTAINER as EPUB_CONTAINER, read_meta as epub_read_meta, scan_problems as epub_scan_problems
+from .novel.epub import (
+    CONTAINER as EPUB_CONTAINER, image_pages as epub_image_pages, open_book as epub_open_book,
+    read_meta as epub_read_meta, scan_problems as epub_scan_problems,
+)
 from .pages import IMAGE_TYPES, is_cover, is_image
 
 FORMAT_PDF = "pdf"
@@ -56,7 +59,9 @@ log = logging.getLogger(__name__)
 # 10: 巻番号の候補から、巻のフォルダの中の印の無い章の範囲を外す(#248)
 # 11: EPUB の OPF の書誌(dc:title / creator / publisher)を読む。ファイル名が日本語でなければ dc:title を巻の名前にする(#251)
 # 12: RAR4 の化けた Unicode 名を OEM 名(cp932)で直す(#257)
-SCAN_VERSION = 13
+# 13: PDF を 1 巻として直接登録・閲覧する(#261)
+# 14: 画像だけの EPUB(固定レイアウト漫画)を format='epub_images' として小説と区別する(#202)
+SCAN_VERSION = 14
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -700,7 +705,14 @@ class Scanner:
         title = spec.title
         if meta.title and _has_japanese(meta.title) and not _has_japanese(path.stem):
             title = safe_text(meta.title)
-        return dataclasses.replace(spec, title=title, meta=info or None)
+        fmt, page_count = spec.format, spec.page_count
+        try:
+            pages = epub_image_pages(reader, epub_open_book(reader, self.settings.limits), self.settings.limits)
+        except (ArchiveError, LimitExceeded):
+            pages = None
+        if pages is not None:
+            fmt, page_count = FORMAT_EPUB_IMAGES, len(pages)
+        return dataclasses.replace(spec, title=title, page_count=page_count, format=fmt, meta=info or None)
 
     def _scan_pdf(self, root_id: int, rel: str, path: Path) -> None:
         """PDF ファイルを 1 巻として登録する。ページ数と暗号化の有無を調べる。"""
@@ -757,6 +769,9 @@ class Scanner:
                           (s.title, s.name_raw, s.name_encoding, keep, s.page_count, s.page_count, *numbers, keep, keep,
                            s.format, now,
                            existing[key]))
+                if s.format == FORMAT_EPUB_IMAGES:
+                    c.execute("UPDATE reading_progress SET position = NULL WHERE volume_id = ? AND position IS NOT NULL",
+                              (existing[key],))
             else:
                 c.execute("""INSERT INTO volumes (source_id, container_path, entry_prefix, title, name_raw,
                              name_encoding, page_count, number_kind, number_start, number_end, number_evidence,

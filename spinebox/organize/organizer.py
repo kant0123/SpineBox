@@ -38,6 +38,7 @@ from ..archive.base import file_reader_available, inner_reader_problem
 from ..cache import CacheTooLarge
 from ..config import Settings
 from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
+from ..novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES
 from ..pages import is_image, natural_key
 from ..naming import parse_number
 from ..scanner import (LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, SCAN_VERSION, Scanner, VolumeSpec, _fs_name_bytes,
@@ -246,6 +247,9 @@ class Organizer:
         elif any(v["format"] == "pdf" for v in vols):
             _, pdf_probs = self._inspect_pdf(source_path)
             problems.extend(pdf_probs)
+        elif any(v["format"] == FORMAT_EPUB_IMAGES for v in vols):
+            if self._epub_image_pages(root, {"rel_path": rel}) is None:
+                problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
         else:
             self._inspect_archive(source_path, vols, problems, warnings)
         plan["fingerprint"] = fingerprint(source_path)
@@ -1075,7 +1079,7 @@ class Organizer:
                         it.update(status=ITEM_EXCLUDED, reason="; ".join(pdf_probs))
                         continue
                     it.update(page_count=page_count, is_pdf=True)
-                elif r["format"] == "epub":
+                elif r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES):
                     # 画像だけの EPUB(漫画)は、画像を取り出して CBZ にする(#153)。文字のある EPUB・テキストは小説
                     pages = self._epub_image_pages(root, r)
                     if pages is None:
@@ -1123,7 +1127,7 @@ class Organizer:
                 try:
                     if r["format"] == "pdf":
                         problem, more = None, []  # 中身は計画で読んだ
-                    elif r["format"] == "epub":
+                    elif r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES):
                         problem, more = None, []  # 中身は計画で読んだ(画像だけの EPUB。本文の XHTML・CSS は入れない)
                     elif r["source_kind"] == "folder":
                         problem, more = self._folder_cbz_problem(r["root_id"], r["rel_path"], source_path,
@@ -1528,10 +1532,11 @@ class Organizer:
         """改名・移動の対象外の理由(1 巻 = 1 CBZ でない・オフラインなど)。対象なら None。"""
         if r["source_offline"] or not root_is_accessible(root):
             return "蔵書フォルダが今オフラインです"
-        if r["format"]:  # 小説(.epub / .txt) や PDF。改名・移動は 1 巻 = 1 CBZ のみ
+        if r["format"]:  # 小説(.epub / .txt) や PDF・画像 EPUB。改名・移動は 1 巻 = 1 CBZ のみ
             if r["format"] == "pdf":
                 return "PDF は改名・移動の対象外です(先に「CBZ に整理」を実行してください)"
-            return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
+            if r["format"] in (FORMAT_EPUB, "text"):
+                return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
         if not self._single_file(r) or not r["rel_path"].lower().endswith(".cbz"):
             return "1 巻 = 1 CBZ ではありません(先に「CBZ に整理」をテンプレートの名前で実行してください)"
         return self._missing_file(r, root)

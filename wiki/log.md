@@ -653,3 +653,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-14] ingest | PR #321 全画面を modern-web-guidance 準拠に直す(特例で Issue なし)
 - 更新: [[frontend]], [[organize]]
 - 備考: `styles.css` を `@layer`・`light-dark()`・論理プロパティ・`dvh` へ。FolderPicker と重複巻の選択を `<dialog>`、検索を `<search>`、進み具合を `<progress>` / `<meter>` に。`title` 属性と途中経過の live region を廃止。スキップリンク・`document.title`・引き出し中の `main` の `inert` を追加。サイドバーのテーマ切替は、逆が OS 設定と同じなら記憶を消す。`.claude/skills/` と `.agent/skills/` の modern-web-guidance のローカル追記(色のトークンの足し方)も直した。
+
+## [2026-11-15] ingest | (#202) 画像だけの EPUB(固定レイアウト漫画)を漫画リーダーで表示する
+- 更新: [[backend]], [[novel-reader]], [[organize]], ほか行番号のずれた [[inbox]], [[manga-reader]], [[cover-thumbnails]], [[data-jobs]], [[extraction-cache]], [[metadata-linking]], [[recurring-review-findings]], [[volume-split]], [[server-setup]](コード参照のみ)
+- 備考: #202。`epub.image_pages()` で全区切りが画像だけ(KCC が置く `<div style="display:none;">.</div>` 等を除く本文テキストが 0 文字)の EPUB / `container.xml` 入り `.zip` を `volumes.format = 'epub_images'`(`SCAN_VERSION = 14`)として小説(`format = 'epub'`)と区別し、API では `format: "images"`・spine 順のページ列として `MangaReader` で開く。再スキャン前の既存 DB(`format = 'epub'`)でも `GET /api/volumes/{id}` で開いた時点で `epub_images` に切り替え、小説用の `reading_progress.position` を消す。本番 DB の `format = 'epub'` 199 巻のうち固定レイアウト漫画 191 巻(『真の実力はギリギリまで隠していようと思う』全 8 巻を含む)が画像ページ列になり、小説・技術書 8 巻が `epub` に残ることを確かめた。
