@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MangaViewer from "@tokagemushi/manga-viewer";
 import { progressKey } from "./MangaReader";
+import { PAST_END_SETTLE_MS, watchPastEnd } from "./viewerHooks";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,6 +29,37 @@ describe("実物の manga-viewer の再開", () => {
       viewer.destroy();
       host.remove();
       localStorage.removeItem(key);
+    }
+  });
+});
+
+// 最後の画面からさらに進む操作はライブラリの内部メソッドを包んで拾う(#324)。
+// 固定したコミットを替えて内部の形が変わったら、ここで気づけるようにする
+describe("実物の manga-viewer の最後の画面", () => {
+  it("最後の画面からさらに進む操作(キー・スワイプの経路とタップの経路)を拾える", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const viewer = new MangaViewer({ container: host, pages: ["/a/0", "/a/1", "/a/2"], direction: "rtl" });
+    const inner = viewer as unknown as { _slots: unknown[]; _currentSlotIndex: number; _goNext(): void; _navigateTo(i: number): void };
+    try {
+      const onPastEnd = vi.fn();
+      let t = 0;
+      expect(watchPastEnd(viewer, onPastEnd, () => t)).toBe(true);
+      const last = inner._slots.length - 1;
+      expect(last).toBeGreaterThan(0);
+      for (let i = 0; i < last; i++) inner._goNext();
+      expect(inner._currentSlotIndex).toBe(last);
+      expect(onPastEnd).not.toHaveBeenCalled();
+      t += PAST_END_SETTLE_MS;
+      inner._goNext();
+      expect(onPastEnd).toHaveBeenCalledTimes(1);
+      inner._navigateTo(last + 1);
+      expect(onPastEnd).toHaveBeenCalledTimes(2);
+    } finally {
+      viewer.destroy();
+      host.remove();
     }
   });
 });

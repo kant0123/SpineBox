@@ -2231,3 +2231,9 @@ def kind_compatible(work_kind: str | None, candidate_kind: str | None) -> bool:
     if not work_kind or not candidate_kind or work_kind == candidate_kind:
         return True
     return work_kind == "doujinshi" and candidate_kind == "manga"
+
+
+def work_id_of(conn: sqlite3.Connection, volume_id: int) -> int | None:
+    """巻が割り当てられている作品の id(リーダーの「戻る」の行き先)。割り当てが無ければ None。"""
+    row = conn.execute("SELECT work_id FROM work_volumes WHERE volume_id = ?", (volume_id,)).fetchone()
+    return None if row is None else row["work_id"]

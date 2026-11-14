@@ -1,7 +1,7 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-14
+updated: 2026-11-15
 related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -60,7 +60,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `POST /api/library-folders` / `PATCH /api/library-folders/{id}` / `DELETE /api/library-folders/{id}` | 蔵書フォルダの追加(201。body `{"path", "group_id"?}`)・別の蔵書へ移す(body `{"group_id"}`)・外す(204)。追加と移動は変更後の蔵書を返す。`group_id` を省けるのは蔵書が 1 つも無いときだけ(「デフォルト」を作ってそこへ入れる。ほかは 422)。パスはサーバー機の絶対パスで、見えない・登録済み(409)・登録済み/受け入れフォルダ/整理の置き場/データの置き場と入れ子は 422。外したフォルダを足し直すと同じ行が戻る。追加・外すはスキャン等のジョブ実行中は 409 |
 | `GET /api/fs/folders?path=` | 蔵書フォルダを選ぶ画面用に、サーバー機の `path` の直下のフォルダ名 `{path, parent, folders: [{name, path}]}`(読むだけ。ファイルは返さない。自然順)。`path` が空ならドライブの一覧(Windows 以外は `/`)で `parent` は null、ドライブの親は ""。相対パスは 422、読めない・無いは 404 |
 | `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`bookmarked` は巻に印が付いているか([[bookmarks]])。`format` は `images`(ページ画像の巻)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57)。クエリ `library`(`/api/libraries` の蔵書の id)でその蔵書のフォルダの巻だけ(知らない id なら空。#85。#313 までは `root` でフォルダ 1 つの id) |
-| `GET /api/volumes/{id}` | `{"id", "title", "format", "page_count", "pages": [{"index", "name"}], "progress", "bookmarked", "parent_id", "volume_number", "next_volume", "findings"}`。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する。小説は `pages: []` で、`sections: [{"index", "length"}]`(`length` は全体の進み具合の重み)と `encoding`(テキストの文字コード)が付く。文字コードを判定できないテキストは 422。`next_volume` は同じ作品の一覧の並び(巻・話番号の順 → 番号なしは名前順)で次の巻 `{"id", "title", "volume_number", "offline"}` か null。同じ番号の重複は飛ばし、次の番号に重複があれば並びの 1 つ目。オフラインの巻も返す(リーダーが移動せず案内するため。#113) |
+| `GET /api/volumes/{id}` | `{"id", "title", "format", "page_count", "pages": [{"index", "name"}], "progress", "bookmarked", "parent_id", "volume_number", "work_id", "next_volume", "findings"}`。`work_id` は巻が割り当てられている作品(無ければ null。リーダーの戻る先 #324)。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する。小説は `pages: []` で、`sections: [{"index", "length"}]`(`length` は全体の進み具合の重み)と `encoding`(テキストの文字コード)が付く。文字コードを判定できないテキストは 422。`next_volume` は同じ作品の一覧の並び(巻・話番号の順 → 番号なしは名前順)で次の巻 `{"id", "title", "volume_number", "offline"}` か null。同じ番号の重複は飛ばし、次の番号に重複があれば並びの 1 つ目。オフラインの巻も返す(リーダーが移動せず案内するため。#113) |
 | `GET /api/volumes/{id}/sections/{index}` | 小説の区切り 1 つ `{"index", "html"}`。EPUB は無害化済み、テキストはエスケープしてから組み立てた HTML([[novel-reader]])。範囲外は 404、画像の巻は 422 |
 | `GET /api/volumes/{id}/resources/{index}` | EPUB の中の画像(manifest の JPEG / PNG / GIF / WebP だけ。SVG は返さない)。`Content-Security-Policy: default-src 'none'; sandbox` 付き |
 | `POST /api/volumes/{id}/analyze` | `{"id", "analyzed", "children": [{"id", "title", "page_count", "volume_number"}], "findings"}`。解析済みでも開き直す。分解の対象でない巻(フォルダ・子の巻)は `analyzed: false`。オフラインは 409 |
