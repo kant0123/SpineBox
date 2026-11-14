@@ -157,6 +157,22 @@ describe("縦書きリーダー", () => {
     expect(at().page).toBe(at().pages - 1);
   });
 
+  it("メニューの戻るは巻の作品のタイトル一覧へ(#324)。作品が無ければ一覧へ", async () => {
+    const base: VolumeDetail = {
+      id: 7, title: "x", format: "epub", page_count: 1, pages: [],
+      sections: [{ index: 0, length: mockSections()[7][0].length }], progress: null,
+    };
+    const r = render(<NovelReader id="7" detail={{ ...base, work_id: 4 }} />);
+    await ready();
+    press("Escape");
+    expect((await screen.findByRole("link", { name: "‹ 作品へ" })).getAttribute("href")).toBe("#/works/4/titles");
+    r.unmount();
+    render(<NovelReader id="7" detail={{ ...base, work_id: null }} />);
+    await ready();
+    press("Escape");
+    expect((await screen.findByRole("link", { name: "‹ 一覧へ" })).getAttribute("href")).toBe("#/");
+  });
+
   it("最終ページからさらに進むと、同じ作品の次の巻へ移る(#113)", async () => {
     window.location.hash = "";
     const v = defaultVolumes().find((x) => x.id === 7)!;

@@ -1,7 +1,7 @@
 ---
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
-updated: 2026-11-14
+updated: 2026-11-15
 related: [overview, backend, frontend, archive-reading, extraction-cache]
 ---
 
@@ -35,7 +35,7 @@ py -3.12 -m spinebox                                          # 手動で起動�
   `commit` は**プロセスが起動時に読んだ**コミット(`spinebox/buildinfo.py:14 current_commit`)で、git が使えず `.git` も読めなければ null。
   古いプロセスが生き残っていると 200 のまま古い `commit` を返すので、更新後は `commit` で反映を見分ける
 - `/read/<id>` を直接開いてもよい。バックエンドは未知のパスに `index.html` を返し(SPA fallback)、
-  フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:145 canonicalUrl`)。ルート自体はハッシュで決まるため、
+  フロントが `/#/read/<id>` に直す(`frontend/src/route.ts:147 canonicalUrl`)。ルート自体はハッシュで決まるため、
   この直しが無いと一覧が開く
 
 ### メモリ(RAM 層)の設定
