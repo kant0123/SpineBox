@@ -1,9 +1,10 @@
 // 管理の「蔵書」タブ(#313)。蔵書(サイドバーで切り替える単位)と、その蔵書フォルダ(サーバー機のフォルダ)を足す・外す・移す。
 // 蔵書フォルダは DB が正で、ここが唯一の編集口(設定ファイルの library_roots は初回の取り込み元)。
 // フォルダを外しても本・読書の記録は消えず、同じフォルダを足し直すと戻る。
+// 蔵書ごとに、公開データベースの取得元を選べる(#316。指定しなければサーバー機の設定ファイルの取得元に従う)。
 // 開いている入力フォームは 1 つだけ(塗りのボタンを 1 画面 1 つにするため)。
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, api, type LibraryFolder, type LibraryGroup } from "../api";
+import { ApiError, api, type LibraryFolder, type LibraryGroup, type ServerSettings, type SourceName } from "../api";
 import { adminHref } from "../route";
 import { FolderPicker, serverCrumbs } from "../shell/FolderPicker";
 import { useLibraryScope } from "../shell/libraryScope";
@@ -13,7 +14,16 @@ function errorText(e: unknown, fallback: string): string {
 }
 
 /** 開いている入力フォーム。group が null の add-folder は、蔵書が 1 つも無いとき(「デフォルト」を作って入れる) */
-type Editing = { kind: "add-folder"; group: number | null } | { kind: "rename"; group: number } | null;
+type Editing =
+  | { kind: "add-folder"; group: number | null }
+  | { kind: "rename"; group: number }
+  | { kind: "sources"; group: number }
+  | null;
+
+/** 取得元の並びを画面の文にする(引く順のまま)。1 つも無ければ「取得しない」 */
+function sourcesText(names: SourceName[], labels: Map<string, string>): string {
+  return names.length ? names.map((n) => labels.get(n) ?? n).join("、") : "取得しない";
+}
 
 interface Notice {
   text: string;
@@ -24,6 +34,8 @@ interface Notice {
 export function Libraries() {
   const { libraries, reload } = useLibraryScope();
   const [loadFailed, setLoadFailed] = useState(false);
+  /** 取得元の候補と、設定ファイルの既定。読めなくても蔵書の管理は続けられる(取得元を変える操作だけ出さない) */
+  const [server, setServer] = useState<ServerSettings | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -46,6 +58,12 @@ export function Libraries() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    let alive = true;
+    api.serverSettings().then((s) => { if (alive) setServer(s); }, () => undefined);
+    return () => { alive = false; };
+  }, []);
 
   const close = useCallback(() => {
     setEditing(null);
@@ -119,6 +137,7 @@ export function Libraries() {
   }
 
   const others = (g: LibraryGroup) => libraries.filter((x) => x.id !== g.id);
+  const sourceLabels = new Map((server?.metadata_all_sources ?? []).map((s) => [s.name as string, s.label]));
 
   return (
     <div className="libraries-admin" aria-busy={busy}>
@@ -166,6 +185,7 @@ export function Libraries() {
       {libraries.map((g) => {
         const adding = editing?.kind === "add-folder" && editing.group === g.id;
         const renaming = editing?.kind === "rename" && editing.group === g.id;
+        const choosing = editing?.kind === "sources" && editing.group === g.id;
         const base = `library-${g.id}`;
         return (
           <section key={g.id} className="job-section library-group" aria-labelledby={`${base}-title`}>
@@ -193,6 +213,33 @@ export function Libraries() {
                 ))}
               </ul>
             )}
+            {server && (
+              <p className="library-sources">
+                <span className="library-sources-label">公開データベースの取得元</span>
+                <span>
+                  {g.metadata_sources === null
+                    ? `既定(${sourcesText(server.metadata_default_sources, sourceLabels)})`
+                    : sourcesText(g.metadata_sources, sourceLabels)}
+                </span>
+              </p>
+            )}
+            {choosing && server && (
+              <SourcesForm
+                idPrefix={base}
+                groupName={g.name}
+                initial={g.metadata_sources}
+                all={server.metadata_all_sources}
+                defaults={server.metadata_default_sources}
+                defaultText={sourcesText(server.metadata_default_sources, sourceLabels)}
+                busy={busy}
+                onCancel={close}
+                onSubmit={async (sources) => {
+                  if (await run(() => api.setLibraryGroupSources(g.id, sources),
+                    { text: `「${g.name}」の取得元を変えました。次に作品情報を取得するときから使います(取得済みの情報は残ります)。` },
+                    "取得元を変えられませんでした。")) close();
+                }}
+              />
+            )}
             {adding && (
               <AddFolderForm
                 idPrefix={base}
@@ -217,7 +264,7 @@ export function Libraries() {
                 }}
               />
             )}
-            {!adding && !renaming && (
+            {!adding && !renaming && !choosing && (
               <div className="library-group-actions">
                 <button type="button" className="secondary" id={`${base}-add`}
                   onClick={() => openForm({ kind: "add-folder", group: g.id }, `${base}-add`)}>
@@ -227,6 +274,12 @@ export function Libraries() {
                   onClick={() => openForm({ kind: "rename", group: g.id }, `${base}-rename`)}>
                   名前を変える<span className="sr-only">(蔵書「{g.name}」)</span>
                 </button>
+                {server && (
+                  <button type="button" className="secondary" id={`${base}-sources`}
+                    onClick={() => openForm({ kind: "sources", group: g.id }, `${base}-sources`)}>
+                    取得元を変える<span className="sr-only">(蔵書「{g.name}」)</span>
+                  </button>
+                )}
                 {g.folders.length === 0 && (
                   <button type="button" className="secondary"
                     onClick={() => void run(() => api.deleteLibraryGroup(g.id),
@@ -406,6 +459,80 @@ function AddFolderForm({ idPrefix, busy, onSubmit, onCancel }: {
           onClose={closePicker}
         />
       )}
+    </form>
+  );
+}
+
+/** 蔵書の取得元を選ぶ。「既定に従う」か「この蔵書で選ぶ」(チェックを全部外すと、この蔵書では取得しない) */
+function SourcesForm({ idPrefix, groupName, initial, all, defaults, defaultText, busy, onSubmit, onCancel }: {
+  idPrefix: string;
+  groupName: string;
+  initial: SourceName[] | null;
+  all: { name: SourceName; label: string }[];
+  /** 設定の取得元。指定の無い蔵書で「この蔵書で選ぶ」に切り替えたとき、ここから選び始める */
+  defaults: SourceName[];
+  defaultText: string;
+  busy: boolean;
+  onSubmit: (sources: SourceName[] | null) => void | Promise<void>;
+  onCancel: () => void;
+}) {
+  const [custom, setCustom] = useState(initial !== null);
+  const [chosen, setChosen] = useState<Set<SourceName>>(() => new Set(initial ?? defaults));
+  const first = useRef<HTMLInputElement>(null);
+  const id = `${idPrefix}-sources-form`;
+
+  useEffect(() => {
+    first.current?.focus();
+  }, []);
+
+  const toggle = (name: SourceName, on: boolean) => {
+    setChosen((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(name);
+      else next.delete(name);
+      return next;
+    });
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void onSubmit(custom ? all.map((s) => s.name).filter((n) => chosen.has(n)) : null);
+  };
+
+  return (
+    <form className="library-form" onSubmit={submit} noValidate aria-busy={busy}>
+      <fieldset className="library-choices" aria-describedby={`${id}-hint`}>
+        <legend>公開データベースの取得元<span className="sr-only">(蔵書「{groupName}」)</span></legend>
+        <p className="organize-hint muted" id={`${id}-hint`}>
+          この蔵書の作品情報を、どの公開データベースから取るかを選びます。変えても、取得済みの情報は消えません。
+        </p>
+        <label className="library-choice">
+          <input ref={first} type="radio" name={`${id}-mode`} checked={!custom} onChange={() => setCustom(false)} />
+          <span>既定に従う(サーバー機の設定: {defaultText})</span>
+        </label>
+        <label className="library-choice">
+          <input type="radio" name={`${id}-mode`} checked={custom} onChange={() => setCustom(true)} />
+          <span>この蔵書で選ぶ</span>
+        </label>
+      </fieldset>
+      {custom && (
+        <fieldset className="library-choices library-choices-nested" aria-describedby={`${id}-sources-hint`}>
+          <legend>使う取得元</legend>
+          <p className="organize-hint muted" id={`${id}-sources-hint`}>
+            上から順に問い合わせます。1 つも選ばないと、この蔵書の作品情報は取得しません。
+          </p>
+          {all.map((s) => (
+            <label key={s.name} className="library-choice">
+              <input type="checkbox" checked={chosen.has(s.name)} onChange={(e) => toggle(s.name, e.target.checked)} />
+              <span>{s.label}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      <div className="library-form-actions">
+        <button type="button" className="link-button" onClick={onCancel}>やめる</button>
+        <button type="submit">取得元を保存する</button>
+      </div>
     </form>
   );
 }

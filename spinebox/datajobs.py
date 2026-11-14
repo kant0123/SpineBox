@@ -98,13 +98,14 @@ class DataJobs:
 
     def __init__(self, settings: Settings, library: Library, thumbs: Thumbnails,
                  metadata_service: Callable[[sqlite3.Connection], MetadataService],
-                 enabled_sources: tuple[str, ...], sync_works: Callable[..., None],
+                 default_sources: tuple[str, ...], sync_works: Callable[..., None],
                  follow_service: Callable[[sqlite3.Connection], MetadataService] | None = None):
         self.settings = settings
         self.library = library
         self.thumbs = thumbs
         self.metadata_service = metadata_service
-        self.enabled_sources = enabled_sources
+        # 設定の取得元。蔵書で指定していないときの既定(蔵書ごとの取得元 #316。作品ごとの解決は linking.work_sources)
+        self.default_sources = default_sources
         self.sync_works = sync_works
         self.follow_service = follow_service or metadata_service
 
@@ -112,10 +113,13 @@ class DataJobs:
 
     def build(self, kind: str, params: dict) -> JobFn:
         """ジョブの関数。動かせない設定なら Unavailable、知らない種類なら KeyError。"""
-        if kind in ("daily_metadata", "metadata", "metadata_thumbs", "work_metadata") and not self.enabled_sources:
-            raise Unavailable("公開データベースの取得元が設定で無効になっています")
-        if kind in ("follow_check", "background_follow") and follows.SOURCE not in self.enabled_sources:
-            raise Unavailable("国立国会図書館サーチが設定で無効になっています")
+        if kind in ("daily_metadata", "metadata", "metadata_thumbs", "work_metadata", "follow_check",
+                    "background_follow"):
+            active = self.active_sources()
+            if kind not in ("follow_check", "background_follow") and not active:
+                raise Unavailable("公開データベースの取得元が、設定でもどの蔵書でも有効になっていません")
+            if kind in ("follow_check", "background_follow") and follows.SOURCE not in active:
+                raise Unavailable("国立国会図書館サーチが、設定でもどの蔵書でも有効になっていません")
         if kind == "inbox_sync" and not self.settings.inboxes:
             raise Unavailable("受け入れフォルダが設定されていません")
         steps: dict[str, Callable[[JobContext, sqlite3.Connection], dict]] = {
@@ -192,12 +196,24 @@ class DataJobs:
                 self.sync_works(c)  # 中の巻(子)が現れた
         return out
 
+    def active_sources(self, c: sqlite3.Connection | None = None) -> tuple[str, ...]:
+        """どれかの蔵書で使う取得元(蔵書の指定は画面から変わるので、使うたびに引く)。"""
+        if c is not None:
+            return linking.active_sources(c, self.default_sources)
+        conn = db.connect(self.settings.db_path)
+        try:
+            return linking.active_sources(conn, self.default_sources)
+        finally:
+            conn.close()
+
     def work_ids_needing_fetch(self, c) -> list[int]:
-        return linking.works_needing_fetch(c, self.settings.metadata, self.enabled_sources)
+        return linking.works_needing_fetch(c, self.settings.metadata, self.default_sources,
+                                           per_work=linking.work_sources(c, self.default_sources))
 
     def _metadata(self, ctx: JobContext, c, *, all_works: bool = False, ids: list[int] | None = None) -> dict:
         """ids を渡すと(作品ページの「情報を取得」)、その作品を全取得元で調べる。渡さなければ全作品をまとめて取る
-        経路で、連携したところで残りの取得元を引かない軽い取得にする(`linking.fetch_work(quick=True)`。#288)。"""
+        経路で、連携したところで残りの取得元を引かない軽い取得にする(`linking.fetch_work(quick=True)`。#288)。
+        どちらも、引くのはその作品の蔵書の取得元だけ(#316)。"""
         ctx.step("公開データベースの取得")
         quick = ids is None
         if ids is None:
@@ -205,13 +221,15 @@ class DataJobs:
         if not ids:
             return {"works": 0, "sources": {}}
         service = self.metadata_service(c)
+        allowed = linking.work_sources(c, self.default_sources, ids)  # 1 回だけ引く(作品ごとには引かない)
         counts: dict[str, int] = {}
         fetched = 0
         try:
             for i, work_id in enumerate(ids):
                 ctx.progress(i, len(ids), work_title(c, work_id))
                 try:
-                    result = linking.fetch_work(c, service, work_id, quick=quick)
+                    result = linking.fetch_work(c, service, work_id, allowed.get(work_id, self.default_sources),
+                                                quick=quick)
                 except works.WorkNotFound:
                     if len(ids) == 1:
                         raise
@@ -240,7 +258,8 @@ class DataJobs:
         try:
             counts = follows.check_many(c, self.follow_service(c), ids,
                                         progress=lambda done, total, cur: ctx.progress(
-                                            done, total, work_title(c, cur) if cur is not None else None))
+                                            done, total, work_title(c, cur) if cur is not None else None),
+                                        default_sources=self.default_sources)
         finally:
             self.sync_works(c)  # 中止・失敗でも、取得できた連携を統合後の作品へ反映する
         return {"works": len(ids), "statuses": counts}
@@ -271,11 +290,12 @@ class DataJobs:
 
     def _full_sync(self, ctx: JobContext, c) -> dict:
         # スキャン → 中の巻 → 名寄せ →(取得元が有効なら)公開データベース → 表紙
-        ctx.plan(5 if self.enabled_sources else 4)
+        with_metadata = bool(self.active_sources(c))
+        ctx.plan(5 if with_metadata else 4)
         out = {"scan": self._scan_and_group(ctx, c, recheck=True), "analyze": self._analyze(ctx, c)}
         ctx.step("作品の名寄せ")
         out["works"] = asdict(works.sync(c))
-        if self.enabled_sources:
+        if with_metadata:
             out["metadata"] = self._metadata(ctx, c)
         out["thumbnails"] = self._thumbnails(ctx, c)
         return out
@@ -297,7 +317,8 @@ class DataJobs:
             if not ids:
                 return None
             ctx.progress(current=work_title(c, ids[0]))
-            linking.fetch_work(c, self.metadata_service(c), ids[0], quick=True)
+            linking.fetch_work(c, self.metadata_service(c), ids[0],
+                               linking.sources_of(c, self.default_sources, ids[0]), quick=True)
             self.sync_works(c)
             return {"works": 1}
         finally:
@@ -311,7 +332,7 @@ class DataJobs:
             if not ids:
                 return None
             ctx.progress(current=work_title(c, ids[0]))
-            follows.check_many(c, self.follow_service(c), ids[:1])
+            follows.check_many(c, self.follow_service(c), ids[:1], default_sources=self.default_sources)
             self.sync_works(c)
             return {"works": 1}
         finally:
@@ -329,7 +350,8 @@ class DataJobs:
 
         volumes = safely(lambda: c.execute("SELECT COUNT(*) " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE).fetchone()[0])
         work_list = safely(lambda: works.list_works(c)["works"])
-        needing = safely(lambda: len(self.work_ids_needing_fetch(c))) if self.enabled_sources else None
+        active = safely(lambda: self.active_sources(c)) or ()
+        needing = safely(lambda: len(self.work_ids_needing_fetch(c))) if active else None
         unanalyzed = safely(lambda: len(self.library.pending_analysis(c)))
         no_cover = safely(lambda: self._count_missing_covers(c, work_list or []))
         unprinted = safely(lambda: len(DuplicateScanner(c, self.library).pending(set())))
@@ -339,7 +361,7 @@ class DataJobs:
                WHERE r.inbox = 1 AND r.enabled = 1 AND s.missing = 0 AND v.missing = 0
                  AND v.organized_op_id IS NULL""").fetchone()[0]) if self.settings.inboxes else None
         n_works = len(work_list) if work_list is not None else None
-        n_follow = safely(lambda: len(follows.followed_ids(c))) if follows.SOURCE in self.enabled_sources else None
+        n_follow = safely(lambda: len(follows.followed_ids(c))) if follows.SOURCE in active else None
 
         def text(n, unit_text):
             return None if n is None else unit_text.format(n=n)

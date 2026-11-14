@@ -903,6 +903,8 @@ export interface LibraryGroup {
   /** 全フォルダの、一覧に見えている巻の数 */
   volume_count: number;
   folders: LibraryFolder[];
+  /** この蔵書で使う公開 DB の取得元(#316)。null は設定の既定に従う、[] はこの蔵書では取得しない */
+  metadata_sources: SourceName[] | null;
 }
 
 /** サーバー機のフォルダの一覧(蔵書フォルダを選ぶ画面。GET /api/fs/folders) */
@@ -962,7 +964,12 @@ export interface ServerSettings {
   untranslated_terms: "hide" | "keep" | string;
   cache_limit_bytes: number;
   memory_cache_limit_bytes: number;
+  /** どれかの蔵書で使う取得元 */
   metadata_sources: SourceName[];
+  /** 設定ファイルの取得元。蔵書で指定していないときの既定(#316) */
+  metadata_default_sources: SourceName[];
+  /** 蔵書で選べる取得元(引く順) */
+  metadata_all_sources: { name: SourceName; label: string }[];
   metadata_background: boolean;
 }
 
@@ -987,6 +994,9 @@ export const api = {
     request<LibraryGroup>("/api/library-groups", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name }) }),
   renameLibraryGroup: (id: number, name: string) =>
     request<LibraryGroup>(`/api/library-groups/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ name }) }),
+  /** 蔵書の公開 DB の取得元を決める(#316)。null は設定の既定に戻す、[] はこの蔵書では取得しない */
+  setLibraryGroupSources: (id: number, sources: SourceName[] | null) =>
+    request<LibraryGroup>(`/api/library-groups/${id}/metadata-sources`, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ sources }) }),
   /** フォルダの無い蔵書を消す(フォルダが残っていれば 409) */
   deleteLibraryGroup: (id: number) => request<null>(`/api/library-groups/${id}`, { method: "DELETE" }),
   /** 蔵書フォルダを足す。groupId が null なのは蔵書が 1 つも無いときだけ(「デフォルト」ができる)。足した先の蔵書が返る */

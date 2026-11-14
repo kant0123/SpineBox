@@ -17,7 +17,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | --- | --- |
 | `spinebox/jobs.py:149 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
 | `spinebox/datajobs.py:93 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
-| `spinebox/app.py:333 run_job_now()` / `spinebox/app.py:622 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/app.py:345 run_job_now()` / `spinebox/app.py:639 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:303 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:149 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 | `spinebox/jobs.py:111 plan()` | 複数の段のジョブの段の数。`step()` が段の番号を 1 つ進め、`step_index` / `step_count` で返す(#207) |
@@ -67,7 +67,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 - **スキャンは中止で止めたルートの「見つからないソース」を missing にしない**(最後まで見ていないので、見えなかっただけの可能性がある。
   読めないサブフォルダの配下を missing にしないのと同じ理由。[[backend]])。止めるまでに見つけた巻は名寄せまで済ませる
 - 公開 DB の取得は中止・失敗でも最後に連携の反映(`_sync_works`)を走らせ、取得できた分を統合後の作品へ入れる
-- **取得の途中の名寄せは `SYNC_EVERY`(25)作品ごと**(`spinebox/datajobs.py:198 _metadata()`。#288)。名寄せは全作品を見直すので、本番(1,102 作品)で 1 回 5.3 秒かかり、
+- **取得の途中の名寄せは `SYNC_EVERY`(25)作品ごと**(`spinebox/datajobs.py:213 _metadata()`。#288)。名寄せは全作品を見直すので、本番(1,102 作品)で 1 回 5.3 秒かかり、
   作品ごとに走らせていたときは取得時間の 17% を占めた。途中の名寄せの役目は、取得で入った別名で統合された作品を残りの取得から外すことだけで、
   外れなくてもその作品を余分に取得するだけ(最後の名寄せが連携を統合後の作品へ移す)
 - DB の書き込みは 1 件ごとのトランザクションなので、途中で止めても壊れない(テスト `tests/test_jobs.py`)。蔵書は読むだけ

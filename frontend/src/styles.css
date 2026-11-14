@@ -1255,6 +1255,15 @@ a.stat-body .stat-label { color: var(--accent); text-decoration: underline; font
   background: var(--card); border: 1px solid var(--border-strong); border-radius: 12px;
 }
 .library-field-error { margin: 0; color: var(--error); font-size: 1rem; font-weight: 700; }
+/* 蔵書ごとの取得元(#316)。現在の取得元の 1 行と、選ぶフォーム(ラジオ・チェックボックスの行は 44px 以上) */
+.library-sources { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.library-sources-label { font-weight: 700; }
+.library-choices { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; display: grid; gap: 0; }
+.library-choices legend { padding: 0; font-size: 1rem; font-weight: 700; }
+.library-choices .organize-hint { margin: 4px 0; }
+.library-choices-nested { margin: 4px 0 0 28px; }
+.library-choice { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 0; cursor: pointer; overflow-wrap: anywhere; }
+.library-choice input { flex: none; }
 /* フォロー(#87) */
 .follow-card-head, .follow-entry { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .follow-releases { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }

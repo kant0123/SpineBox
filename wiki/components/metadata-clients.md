@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
-updated: 2026-11-10
+updated: 2026-11-14
 related: [metadata-sources, metadata-linking, overview, backend, work-search, follow]
 ---
 
@@ -10,7 +10,7 @@ related: [metadata-sources, metadata-linking, overview, backend, work-search, fo
 国立国会図書館サーチ・メディア芸術データベース・Bangumi を「作品名(+著者・巻番号)で検索 → 候補の列」で引き、**正規化した項目と確からしさ(数値と根拠)**を返す。#44(GOAL.md フェーズ 3 の取得元クライアント)。
 メディア芸術データベース・Bangumi は #278(2026-11-10)で AniList・MangaUpdates を置き換えたもの。
 取得元ごとの癖・制限・採否の理由は [[metadata-sources]]。
-同人誌用に nHentai・E-Hentai も同じ形で引く(#275。既定では無効で、`[metadata] sources` に足したときだけ)。
+同人誌用に nHentai・E-Hentai も同じ形で引く(#275。既定では無効で、`[metadata] sources` に足すか、蔵書ごとの取得元(#316)で選んだときだけ)。
 
 ## 責務
 
@@ -108,6 +108,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 ## 踏むと壊れること
 
 - 取得元の追加は `SOURCE_CLASSES` と `[metadata] sources` の両方。設定に未知の名前があれば警告して飛ばす(`MetadataService.unknown`)
+- **アプリは `sources` を全取得元(`linking.SEARCH_ORDER`)にした設定で `MetadataService` を組み立てる**(`spinebox/app.py metadata_service()`。#316)。どの取得元を引くかは蔵書ごとに決まり、結線が `fetch_work(sources=...)` で絞る([[metadata-linking]])。サービスを設定の `sources` のままで作ると、設定で無効・蔵書で有効の取得元が `disabled` で返る。共有の `HttpFetcher` もこの設定で引く(別の設定を渡すと作り直され、関門がリセットされる)
 - マイグレーションの版数は #43(作品の名寄せ)と並行で足される。マージ時に衝突したら自分の要素を main の末尾の後ろへ付け替える(未リリースなので可)
 - `tests/fixtures/metadata/` は公開 API の応答そのまま(手で直さない)。取り直すときは `scripts/metadata_probe.py --record`
 

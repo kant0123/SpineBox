@@ -93,6 +93,11 @@ class LibraryFolderIn(BaseModel):
     group_id: StrictInt | None = None
 
 
+class LibrarySourcesIn(BaseModel):
+    """蔵書の公開 DB の取得元(#316)。null は設定の既定に戻す、空の配列はこの蔵書では取得しない。"""
+    sources: list[StrictStr] | None
+
+
 class LibraryFolderMoveIn(BaseModel):
     group_id: StrictInt
 
@@ -268,18 +273,24 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     # 同じロックで、ジョブの実行中は 409 にする(蔵書・DB を同時に触らない。wiki/concepts/data-jobs.md)
     scan_lock = threading.Lock()
     runner = JobRunner(settings.db_path, scan_lock)
-    enabled_sources = tuple(n for n in linking.SEARCH_ORDER if n in settings.metadata.sources)
+    # 設定の取得元は「蔵書で指定していないときの既定」(#316)。どの取得元を引くかは蔵書ごとに決まるので
+    # (linking.work_sources)、サービスは全取得元を組み立てておく(設定で無効な取得元も、蔵書で有効にすれば引ける)
+    default_sources = tuple(n for n in linking.SEARCH_ORDER if n in settings.metadata.sources)
+    service_settings = dataclasses.replace(settings.metadata, sources=linking.SEARCH_ORDER)
+
+    def active_sources(c: sqlite3.Connection) -> tuple[str, ...]:
+        return linking.active_sources(c, default_sources)
 
     def metadata_service(c: sqlite3.Connection) -> MetadataService:
-        return MetadataService(settings.metadata, c, fetcher=metadata_fetcher)
+        return MetadataService(service_settings, c, fetcher=metadata_fetcher)
 
     def follow_service(c: sqlite3.Connection) -> MetadataService:
         """続刊の確認用。保存済みの応答の有効期限だけ短くし、取得元の関門(最小間隔・429 の停止)は補完と共有する
         (設定を変えたものを渡すと共有の fetcher が作り直されるので、元の設定の共有 fetcher を明示的に渡す)。"""
-        meta = dataclasses.replace(settings.metadata, cache_ttl_days=settings.follow.response_ttl_days)
-        return MetadataService(meta, c, fetcher=metadata_fetcher or shared_fetcher(settings.metadata))
+        meta = dataclasses.replace(service_settings, cache_ttl_days=settings.follow.response_ttl_days)
+        return MetadataService(meta, c, fetcher=metadata_fetcher or shared_fetcher(service_settings))
 
-    data_jobs = DataJobs(settings, library, thumbs, metadata_service, enabled_sources, _sync_works, follow_service)
+    data_jobs = DataJobs(settings, library, thumbs, metadata_service, default_sources, _sync_works, follow_service)
 
     def background_loop(stop: threading.Event, interval: float, kind: str, fn) -> None:
         """裏の定期処理。1 回に 1 件、ほかのジョブが動いていないときだけ動き、動いたら履歴に残す。失敗しても止まらない。"""
@@ -307,11 +318,12 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             threading.Thread(target=background_loop, name="spinebox-analysis", daemon=True,
                              args=(stop, settings.background_analysis_interval, "background_analysis",
                                    data_jobs.background_analysis)).start()
-        if settings.metadata.background and enabled_sources:
+        # 取得元の有無は蔵書の指定で変わるので、起動時には見ない(対象が無ければ、裏の処理は何もしない)
+        if settings.metadata.background:
             threading.Thread(target=background_loop, name="spinebox-metadata", daemon=True,
                              args=(stop, settings.metadata.background_interval_seconds, "background_metadata",
                                    data_jobs.background_metadata)).start()
-        if settings.follow.background and follows.SOURCE in enabled_sources:
+        if settings.follow.background:
             threading.Thread(target=background_loop, name="spinebox-follow", daemon=True,
                              args=(stop, settings.follow.background_interval_seconds, "background_follow",
                                    data_jobs.background_follow)).start()
@@ -475,6 +487,11 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         """フォルダの無い蔵書を消す(フォルダが残っていれば 409)。"""
         libraries.delete_group(conn, group_id)
         return Response(status_code=204)
+
+    @app.put("/api/library-groups/{group_id}/metadata-sources")
+    def set_library_group_sources(group_id: int, body: LibrarySourcesIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """蔵書の公開 DB の取得元を決める(#316)。次の取得から効く。取得済みの連携・値は変えない。"""
+        return libraries.set_group_sources(conn, group_id, body.sources)
 
     def _while_idle(fn):
         """スキャンなどのジョブが蔵書フォルダを回っている間は、フォルダの出し入れをしない(409)。"""
@@ -703,7 +720,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     def work_detail(conn: sqlite3.Connection, work_id: int) -> dict:
-        detail = works.get_work(conn, work_id, enabled_sources)
+        detail = works.get_work(conn, work_id, linking.sources_of(conn, default_sources, work_id))
         follows.resolve_merged(conn)  # 統合で吸収された作品のフォローは吸収先へ
         detail["follow"] = follows.work_follow(conn, work_id)
         return detail
@@ -747,12 +764,18 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                              inbox_prefixes=inbox_prefixes(settings))
 
     @app.get("/api/settings")
-    def get_settings():
-        """管理の好みタブ(#85)に出すサーバー側の設定(読み取りだけ。変えるのは設定ファイル)。"""
+    def get_settings(conn: sqlite3.Connection = Depends(get_conn)):
+        """管理の好みタブ(#85)に出すサーバー側の設定(読み取りだけ。変えるのは設定ファイル)。
+
+        metadata_sources はどれかの蔵書で使う取得元、metadata_default_sources は設定の取得元(蔵書で指定していない
+        ときの既定)、metadata_all_sources は蔵書で選べる取得元(検索の順。#316)。"""
         return {"untranslated_terms": settings.metadata.untranslated_terms,
                 "cache_limit_bytes": settings.cache_limit_bytes,
                 "memory_cache_limit_bytes": settings.memory_cache_limit_bytes,
-                "metadata_sources": list(enabled_sources),
+                "metadata_sources": list(active_sources(conn)),
+                "metadata_default_sources": list(default_sources),
+                "metadata_all_sources": [{"name": n, "label": works.SOURCE_LABELS.get(n, n)}
+                                         for n in linking.SEARCH_ORDER],
                 "metadata_background": settings.metadata.background}
 
     @app.post("/api/works/refresh")
@@ -783,7 +806,9 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/review/links")
     def review_links(conn: sqlite3.Connection = Depends(get_conn)):
         """公開 DB の候補が確認待ちの作品の詳細(作品ページと同じ形)。選ぶのは POST /api/works/{id}/links/{source}/choose。"""
-        details = works.get_works(conn, works.link_pending_work_ids(conn), enabled_sources)
+        ids = works.link_pending_work_ids(conn)
+        per_work = linking.work_sources(conn, default_sources, ids)
+        details = works.get_works(conn, ids, {i: per_work.get(i, default_sources) for i in ids})
         follows.resolve_merged(conn)  # 統合で吸収された作品のフォローは吸収先へ
         for d in details:
             d["follow"] = follows.work_follow(conn, d["id"])
@@ -805,9 +830,9 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return {"work_id": work_id}
 
     @app.get("/api/works/metadata")
-    def metadata_status():
+    def metadata_status(conn: sqlite3.Connection = Depends(get_conn)):
         """データ管理の「作品情報のみ補完」(公開 DB の情報を取りに行く明示操作。旧「情報を補完」)の進み具合と、有効な取得元。"""
-        return {"state": job_state("metadata"), "sources": list(enabled_sources),
+        return {"state": job_state("metadata"), "sources": list(active_sources(conn)),
                 "background": settings.metadata.background}
 
     @app.post("/api/works/metadata/fetch")
@@ -823,7 +848,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def list_follows(conn: sqlite3.Connection = Depends(get_conn)):
         """フォロー管理: フォロー中の作品と最後に調べた日時・結果、続刊の確認の進み具合と設定。"""
         return {"follows": follows.list_follows(conn), "state": job_state("follow_check"),
-                "available": follows.SOURCE in enabled_sources, "background": settings.follow.background,
+                "available": follows.SOURCE in active_sources(conn), "background": settings.follow.background,
                 "interval_hours": settings.follow.interval_hours}
 
     @app.get("/api/follows/releases")
@@ -886,10 +911,10 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def fetch_work_metadata(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         """この作品の公開 DB の情報を取りに行く(数秒かかる)。取得元の失敗は作品の連携に理由つきで記録し、
         応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
-        if not enabled_sources:
-            raise HTTPException(409, "公開 DB の取得元が設定で無効になっています")
         if works.root_of(conn, work_id) != work_id:
             raise works.WorkNotFound(work_id)
+        if not linking.sources_of(conn, default_sources, work_id):
+            raise HTTPException(409, "この作品の蔵書では、公開 DB の取得元が有効になっていません(管理の「蔵書」タブで選べます)")
         job = run_job_now("work_metadata", {"work_id": work_id},
                           label=f"{kind_label('work_metadata')}: {work_title(conn, work_id)}")
         if job.status == "failed" and job.error and job.error.startswith("WorkNotFound"):

@@ -41,6 +41,8 @@ export interface MockOptions {
   failures?: Record<string, { status: number; detail: string }>;
   /** `GET /api/stats` を失敗させる */
   statsFailure?: boolean;
+  /** GET /api/settings を 500 にする(蔵書タブは取得元の操作だけ出さない) */
+  settingsFailure?: boolean;
   /** `POST /api/scan` の「読めなかったもの」。省略すると 2 件 */
   scanIssues?: ScanIssue[];
   /** `POST /api/scan` を失敗させる(サーバーの `detail` を画面に出す確認用) */
@@ -182,7 +184,12 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   // 蔵書(#85 の蔵書の切り替え。#313 でフォルダのグループになった)。外付けドライブの巻(オフライン)だけ 2 つ目の蔵書。
   // 巻はどのフォルダに入っているかを持たないので、画面から足したフォルダの巻数は 0(スキャンの前)
   interface MockFolder { id: number; path: string; online: boolean }
-  interface MockGroup { id: number; name: string; folders: MockFolder[] }
+  interface MockGroup { id: number; name: string; folders: MockFolder[]; metadata_sources?: string[] | null }
+  const ALL_SOURCES = [
+    { name: "ndl", label: "国立国会図書館サーチ" }, { name: "mediaarts", label: "メディア芸術データベース" },
+    { name: "bangumi", label: "Bangumi" }, { name: "ehentai", label: "E-Hentai" }, { name: "nhentai", label: "nHentai" },
+  ];
+  const DEFAULT_SOURCES = ["ndl", "mediaarts", "bangumi"];
   const groups: MockGroup[] = [
     { id: 1, name: "本", folders: [{ id: 1, path: "D:/本", online: true }] },
     { id: 2, name: "漫画", folders: [{ id: 2, path: "E:/漫画", online: false }] },
@@ -438,6 +445,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       return {
         id: g.id, name: g.name, online: g.folders.length === 0 || g.folders.some((f) => f.online),
         volume_count: count, folders: g.folders.map((f, i) => ({ ...f, volume_count: i === 0 ? count : 0 })),
+        metadata_sources: g.metadata_sources ?? null,
       };
     });
     const libraryOf = (id: number) => libraries().find((g) => g.id === id)!;
@@ -448,6 +456,20 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       if (groups.some((g) => g.name === name)) return json(409, { detail: `同じ名前の蔵書があります: ${name}` });
       groups.push({ id: nextGroupId++, name, folders: [] });
       return json(201, libraryOf(groups[groups.length - 1].id));
+    }
+    const sourcesPath = path.match(/^\/api\/library-groups\/(\d+)\/metadata-sources$/);
+    if (sourcesPath && method === "PUT") {
+      const g = groups.find((x) => x.id === Number(sourcesPath[1]));
+      if (!g) return json(404, { detail: "蔵書が見つかりません" });
+      const chosen = parsed?.sources;
+      if (chosen !== null && !(Array.isArray(chosen) && chosen.every((s: unknown) => typeof s === "string"))) {
+        return json(422, { detail: "sources は取得元の名前の配列か null で指定してください" });
+      }
+      const unknown = (chosen ?? []).filter((s: string) => !ALL_SOURCES.some((a) => a.name === s));
+      if (unknown.length) return json(422, { detail: `知らない取得元です: ${unknown.join(", ")}` });
+      // 実物と同じく、引く順に並べ直して保存する
+      g.metadata_sources = chosen === null ? null : ALL_SOURCES.map((a) => a.name).filter((n) => chosen.includes(n));
+      return json(200, libraryOf(g.id));
     }
     const groupPath = path.match(/^\/api\/library-groups\/(\d+)$/);
     if (groupPath) {
@@ -511,8 +533,12 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       return json(200, { path: at, parent: cut < 0 ? "" : at.slice(0, cut), folders: names.map((n) => ({ name: n, path: `${at}/${n}` })) });
     }
     if (method === "GET" && path === "/api/settings") {
+      if (options.settingsFailure) return json(500, { detail: "失敗" });
       return json(200, { untranslated_terms: "hide", cache_limit_bytes: 2 * 1024 ** 3, memory_cache_limit_bytes: 256 * 1024 ** 2,
-        metadata_sources: ["ndl", "mediaarts", "bangumi"], metadata_background: false });
+        metadata_sources: ALL_SOURCES.map((a) => a.name).filter((n) => groups.length === 0
+          ? DEFAULT_SOURCES.includes(n) : groups.some((g) => (g.metadata_sources ?? DEFAULT_SOURCES).includes(n))),
+        metadata_default_sources: DEFAULT_SOURCES, metadata_all_sources: ALL_SOURCES,
+        metadata_background: false });
     }
     if (method === "GET" && path === "/api/stats") {
       if (options.statsFailure) return json(500, { detail: "失敗" });

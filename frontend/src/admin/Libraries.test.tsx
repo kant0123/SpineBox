@@ -223,3 +223,99 @@ describe("サーバー機のパスのパンくず", () => {
     ]);
   });
 });
+
+describe("蔵書ごとの公開データベースの取得元(#316)", () => {
+  const sourcesOf = (name: string) =>
+    (JSON.parse(call("GET", "/api/libraries").body) as { name: string; metadata_sources: string[] | null }[])
+      .find((g) => g.name === name)!.metadata_sources;
+
+  it("指定の無い蔵書は既定(設定の取得元)を出し、フォームで選んで保存できる", async () => {
+    render(<App />);
+    const hon = await group(/^本/);
+    expect((await hon.findByText(/^既定\(/)).textContent).toBe("既定(国立国会図書館サーチ、メディア芸術データベース、Bangumi)");
+
+    const opener = hon.getByRole("button", { name: /取得元を変える/ });
+    fireEvent.click(opener);
+    const mode = screen.getByRole("group", { name: /公開データベースの取得元/ });
+    const [follow, choose] = within(mode).getAllByRole("radio") as HTMLInputElement[];
+    expect(follow.checked).toBe(true);
+    expect(document.activeElement).toBe(follow);
+    expect(mode.getAttribute("aria-describedby")).toBe("library-1-sources-form-hint");
+    expect(screen.queryByRole("group", { name: "使う取得元" })).toBeNull();  // 既定に従う間は、取得元の一覧を出さない
+    // 開いているフォームは 1 つだけ(ほかの操作のボタンは隠す)
+    expect(hon.queryByRole("button", { name: /名前を変える/ })).toBeNull();
+
+    fireEvent.click(choose);
+    const list = within(screen.getByRole("group", { name: "使う取得元" }));
+    expect(list.getAllByRole("checkbox").map((c) => c.parentElement!.textContent)).toEqual(
+      ["国立国会図書館サーチ", "メディア芸術データベース", "Bangumi", "E-Hentai", "nHentai"]);
+    // 指定の無い蔵書は、既定の取得元にチェックが入った状態から選び始める
+    expect((list.getAllByRole("checkbox") as HTMLInputElement[]).map((c) => c.checked)).toEqual([true, true, true, false, false]);
+    fireEvent.click(list.getByLabelText("nHentai"));
+    fireEvent.click(list.getByLabelText("E-Hentai"));
+    fireEvent.click(list.getByLabelText("国立国会図書館サーチ"));
+    fireEvent.click(list.getByLabelText("メディア芸術データベース"));
+    fireEvent.click(list.getByLabelText("Bangumi"));
+    fireEvent.click(screen.getByRole("button", { name: "取得元を保存する" }));
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("「本」の取得元を変えました"));
+    expect(screen.getByRole("status").textContent).toContain("取得済みの情報は残ります");
+    expect(sourcesOf("本")).toEqual(["ehentai", "nhentai"]);  // 引く順で保存される
+    expect(sourcesOf("漫画")).toBeNull();
+    const after = await group(/^本/);
+    expect(after.getByText("E-Hentai、nHentai")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "使う取得元" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(after.getByRole("button", { name: /取得元を変える/ })));
+  });
+
+  it("全部外すと「取得しない」になり、既定に戻せる。やめると何も変えない", async () => {
+    call("PUT", "/api/library-groups/1/metadata-sources", { sources: ["ndl"] });
+    render(<App />);
+    const hon = await group(/^本/);
+    expect(await hon.findByText("国立国会図書館サーチ")).toBeTruthy();
+
+    fireEvent.click(hon.getByRole("button", { name: /取得元を変える/ }));
+    const ndl = within(screen.getByRole("group", { name: "使う取得元" })).getByLabelText("国立国会図書館サーチ") as HTMLInputElement;
+    expect(ndl.checked).toBe(true);  // 今の指定が入った状態で開く
+    fireEvent.click(ndl);
+    fireEvent.click(screen.getByRole("button", { name: "やめる" }));
+    expect(sourcesOf("本")).toEqual(["ndl"]);
+
+    fireEvent.click((await group(/^本/)).getByRole("button", { name: /取得元を変える/ }));
+    fireEvent.click(within(screen.getByRole("group", { name: "使う取得元" })).getByLabelText("国立国会図書館サーチ"));
+    fireEvent.click(screen.getByRole("button", { name: "取得元を保存する" }));
+    await waitFor(() => expect(sourcesOf("本")).toEqual([]));
+    expect(await (await group(/^本/)).findByText("取得しない")).toBeTruthy();
+
+    fireEvent.click((await group(/^本/)).getByRole("button", { name: /取得元を変える/ }));
+    fireEvent.click(within(screen.getByRole("group", { name: /公開データベースの取得元/ })).getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "取得元を保存する" }));
+    await waitFor(() => expect(sourcesOf("本")).toBeNull());
+    expect(await (await group(/^本/)).findByText(/^既定\(/)).toBeTruthy();
+  });
+
+  it("保存に失敗したら理由を出し、フォームは開いたまま", async () => {
+    render(<App />);
+    const hon = await group(/^本/);
+    fireEvent.click(await hon.findByRole("button", { name: /取得元を変える/ }));
+    call("DELETE", "/api/library-folders/1");
+    call("DELETE", "/api/library-groups/1");  // 画面を開いている間に、蔵書が消えた
+    fireEvent.click(screen.getByRole("button", { name: "取得元を保存する" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("蔵書が見つかりません");
+  });
+
+  it("サーバーの設定を読めないときは、取得元の表示と操作を出さない(蔵書の管理は続けられる)", async () => {
+    backend = createMockBackend(undefined, { settingsFailure: true });
+    render(<App />);
+    const hon = await group(/^本/);
+    expect(hon.getByRole("button", { name: /名前を変える/ })).toBeTruthy();
+    expect(hon.queryByRole("button", { name: /取得元を変える/ })).toBeNull();
+    expect(hon.queryByText("公開データベースの取得元")).toBeNull();
+  });
+
+  it("モック API は知らない取得元・配列でない値を弾く", () => {
+    expect(call("PUT", "/api/library-groups/1/metadata-sources", { sources: ["anilist"] }).status).toBe(422);
+    expect(call("PUT", "/api/library-groups/1/metadata-sources", { sources: "ndl" }).status).toBe(422);
+    expect(call("PUT", "/api/library-groups/99/metadata-sources", { sources: null }).status).toBe(404);
+  });
+});

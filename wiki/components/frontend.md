@@ -39,7 +39,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/works/WorkCover.tsx:30 WorkCover()` | 作品カードの表紙。表紙が無い・404 では作品カードだけ「表紙なし」の枠(`WorkCoverPlaceholder`)を残し、高さとタイトル位置を揃える(#132。[[cover-thumbnails]])。表紙の作成は管理のデータ管理タブの「表紙のみ補完」 |
 | `frontend/src/organize/Inbox.tsx:244 Inbox()` | 受け入れの画面(`#/inbox`。[[inbox]])。同期 → 項目ごとの整理案 → 作品・番号・取り込まないの選択(選ぶたびに 250ms 待って整理案を作り直す)→ 承認 → 履歴から元に戻す。モックは `frontend/src/mock/mockInbox.ts` |
 | `frontend/src/bookmarks/Bookmarks.tsx:86 Bookmarks()` | ブックマークの一覧(`#/bookmarks`)。付け外しの `frontend/src/bookmarks/BookmarkButton.tsx:8 BookmarkButton()` は巻の一覧・作品ページにあり、漫画のリーダーではヘッダーの ★([[bookmarks]]、[[manga-reader]]) |
-| `frontend/src/api.ts:982 api` | API 契約(#14 と共有)の型と呼び出し |
+| `frontend/src/api.ts:989 api` | API 契約(#14 と共有)の型と呼び出し |
 | `frontend/src/library/Library.tsx:83 Library()` | 一覧。食い違いの説明は `FindingDetail()`、スキャン後の「読めなかったもの」は `ScanIssues()` |
 | `frontend/src/mock/mockBackend.ts:180 createMockBackend()` | モック API。`npm run dev:mock` とテストで共用。初回オープンの遅延・巻ごとの失敗・スキャンの問題と失敗を差し込める |
 | `frontend/index.html:6 link` | HTML の入口。ファビコン(`favicon.svg` / `favicon.ico` / `apple-touch-icon.png`)の `<link>` を置く |
@@ -210,6 +210,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   蔵書を消しても、端末に残った id で一覧が空になり続けないように。オフラインの蔵書も候補に出す(巻はオフラインとして残る)。
   選ぶ単位は蔵書(グループ)で、記憶の鍵は #313 より前のフォルダ id の `spinebox.library` から替えた(同じ数字を別の意味で読まないため。初回は「すべての蔵書」になる)
 - **蔵書の管理は管理の「蔵書」タブ(#313。`frontend/src/admin/Libraries.tsx Libraries()`)。** 蔵書ごとに蔵書フォルダ(パス・巻数・オフライン)を並べ、フォルダの追加・別の蔵書へ移す・外す、蔵書の追加・名前変更・削除(フォルダの無い蔵書だけ)を行う。
+- **蔵書ごとの公開データベースの取得元も「蔵書」タブで選ぶ(#316。`frontend/src/admin/Libraries.tsx SourcesForm()`)。** 蔵書ごとに今の取得元を 1 行で出し(指定が無ければ「既定(…)」)、「取得元を変える」でフォームを開く。ラジオ「既定に従う / この蔵書で選ぶ」と、選ぶときだけ出す取得元のチェックボックス。指定の無い蔵書で「この蔵書で選ぶ」に切り替えると既定の取得元にチェックが入った状態から始め、全部外すと「取得しない」。引く順は選べない(並びは引く順)。候補と既定は `GET /api/settings` から読み、読めないときは取得元の表示と操作だけ出さない(蔵書の管理は続けられる)。保存しても取得済みの情報は消えないことを通知に書く
   蔵書フォルダだけは「設定は画面から変えない」の例外で、DB が正([[backend]])。開いている入力フォームは 1 つだけで、閉じると開いたボタンへフォーカスを戻す。
   追加は「サーバー機のパスの手入力」と「フォルダーを選ぶ」(`frontend/src/shell/FolderPicker.tsx`。整理の範囲選びと共用で、辿り先は `load` で渡す)。ドライブの一覧そのものは選べない。
   足したあとは「スキャンする」(`api.startJob("scan")`)を添える(巻が現れるのは次のスキャン。外したフォルダを足し直した場合は巻がすぐ戻る)

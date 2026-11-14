@@ -13,12 +13,14 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
 
 from . import db
 from .config import Settings
+from .linking import SEARCH_ORDER, parse_group_sources
 from .organize.fs import is_within
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, root_is_accessible, safe_text
@@ -130,9 +132,12 @@ def list_groups(conn: sqlite3.Connection) -> list[dict]:
         if r["group_id"] is not None:
             folders.setdefault(r["group_id"], []).append(_folder_json(r, counts))
     out = []
-    for g in conn.execute("SELECT id, name FROM library_groups ORDER BY id"):
+    for g in conn.execute("SELECT id, name, metadata_sources FROM library_groups ORDER BY id"):
         items = folders.get(g["id"], [])
+        chosen = parse_group_sources(g["metadata_sources"])
         out.append({"id": g["id"], "name": g["name"],
+                    # 公開 DB の取得元(#316)。None は設定の既定に従う、[] はこの蔵書では取得しない
+                    "metadata_sources": None if chosen is None else list(chosen),
                     "online": not items or any(f["online"] for f in items),
                     "volume_count": sum(f["volume_count"] for f in items), "folders": items})
     return out
@@ -177,6 +182,24 @@ def rename_group(conn: sqlite3.Connection, group_id: int, name: str) -> dict:
         if c.execute("SELECT 1 FROM library_groups WHERE name = ? AND id <> ?", (name, group_id)).fetchone():
             raise LibraryConflict(f"同じ名前の蔵書があります: {name}")
         c.execute("UPDATE library_groups SET name = ? WHERE id = ? AND name <> ?", (name, group_id, name))
+    return get_group(conn, group_id)
+
+
+def set_group_sources(conn: sqlite3.Connection, group_id: int, sources: list[str] | None) -> dict:
+    """蔵書の公開 DB の取得元を決める(#316)。None は設定の既定に戻す、空の並びはこの蔵書では取得しない。
+
+    引く順は選べない(`linking.SEARCH_ORDER` の順で保存する)。取得済みの連携・反映済みの値には触らない
+    (外した取得元は、以後取り直さなくなるだけ)。
+    """
+    if sources is not None:
+        unknown = sorted({s for s in sources if s not in SEARCH_ORDER})
+        if unknown:
+            raise LibraryError("知らない取得元です: " + ", ".join(safe_text(s) for s in unknown))
+    value = None if sources is None else json.dumps([s for s in SEARCH_ORDER if s in sources])
+    with db.transaction(conn) as c:
+        _require_group(c, group_id)
+        c.execute("UPDATE library_groups SET metadata_sources = ? WHERE id = ? AND metadata_sources IS NOT ?",
+                  (value, group_id, value))
     return get_group(conn, group_id)
 
 

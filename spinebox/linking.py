@@ -714,8 +714,74 @@ def apply_all(conn: sqlite3.Connection) -> int:
 # --- 取得の対象を選ぶ(データ管理の「作品情報のみ補完」と、裏の少しずつ取得) -----------------------------------
 
 
+def _ordered(names) -> tuple[str, ...]:
+    return tuple(s for s in SEARCH_ORDER if s in names)
+
+
+def parse_group_sources(value: str | None) -> tuple[str, ...] | None:
+    """`library_groups.metadata_sources` の値。None は「設定の既定に従う」。読めない値も既定に倒す。"""
+    if value is None:
+        return None
+    try:
+        names = json.loads(value)
+    except ValueError:
+        names = None
+    if not isinstance(names, list):
+        log.warning("蔵書の取得元の指定を読めません(既定に従います): %r", value)
+        return None
+    return _ordered(names)
+
+
+def work_sources(conn: sqlite3.Connection, default: tuple[str, ...],
+                 work_ids: list[int] | None = None) -> dict[int, tuple[str, ...]]:
+    """作品 id → その作品に使う取得元(検索の順。#316)。
+
+    取得元は蔵書(`library_groups.metadata_sources`)ごとに決まる。作品の、一覧に見えている巻が入っている蔵書の
+    指定の和を取る(名寄せは蔵書をまたぐので、1 つの作品が複数の蔵書に巻を持つことがある)。指定の無い蔵書は default
+    (設定の `[metadata] sources`)。**見えている巻の無い作品は返さない**(呼び出し側は default で引く)。
+    work_ids を渡すとその作品だけ返す。問い合わせは作品の数によらず 1 回。
+    """
+    wanted = None if work_ids is None else set(work_ids)
+    sql = ("SELECT DISTINCT wv.work_id, g.metadata_sources " + LISTED_VOLUMES_JOIN
+           + " JOIN work_volumes wv ON wv.volume_id = v.id LEFT JOIN library_groups g ON g.id = r.group_id "
+           + LISTED_VOLUMES_WHERE)
+    params: tuple = ()
+    if wanted is not None and len(wanted) <= 500:
+        sql += f" AND wv.work_id IN ({','.join('?' * len(wanted))})"
+        params = tuple(sorted(wanted))
+    parsed: dict[str | None, tuple[str, ...]] = {None: _ordered(default)}
+    out: dict[int, set[str]] = defaultdict(set)
+    for r in conn.execute(sql, params):
+        if wanted is not None and r["work_id"] not in wanted:
+            continue
+        raw = r["metadata_sources"]
+        if raw not in parsed:
+            chosen = parse_group_sources(raw)
+            parsed[raw] = parsed[None] if chosen is None else chosen
+        out[r["work_id"]].update(parsed[raw])
+    return {wid: _ordered(names) for wid, names in out.items()}
+
+
+def sources_of(conn: sqlite3.Connection, default: tuple[str, ...], work_id: int) -> tuple[str, ...]:
+    """作品 1 つに使う取得元(`work_sources()` の 1 件版。見えている巻が無ければ default)。"""
+    return work_sources(conn, default, [work_id]).get(work_id, _ordered(default))
+
+
+def active_sources(conn: sqlite3.Connection, default: tuple[str, ...]) -> tuple[str, ...]:
+    """どれかの蔵書で使う取得元の和(検索の順)。蔵書が 1 つも無ければ default。「取得元が 1 つも無い」の判定用。"""
+    rows = conn.execute("SELECT metadata_sources FROM library_groups").fetchall()
+    if not rows:
+        return _ordered(default)
+    names: set[str] = set()
+    for r in rows:
+        chosen = parse_group_sources(r["metadata_sources"])
+        names.update(default if chosen is None else chosen)
+    return _ordered(names)
+
+
 def works_needing_fetch(conn: sqlite3.Connection, settings: MetadataSettings, enabled: tuple[str, ...],
-                        now: datetime | None = None) -> list[int]:
+                        now: datetime | None = None, *,
+                        per_work: dict[int, tuple[str, ...]] | None = None) -> list[int]:
     """取得が必要な作品の id。一度も取得していない作品が先、次に取得が古い順。
 
     必要: 有効な取得元に行が無い / 失敗してから retry_hours 以上 / 取得してから recheck_days 以上。
@@ -724,10 +790,13 @@ def works_needing_fetch(conn: sqlite3.Connection, settings: MetadataSettings, en
     `_settles()` の連携がある作品は、検索の順で最初のその連携だけで決める(取得してから recheck_days 以上)。
     まとめて取る `fetch_work(quick=True)` はそこで止まり、後ろの取得元は行が無い・古いままになるので、
     それを「未取得」「期限切れ」に数えると毎回対象に戻る(#288)。
+
+    per_work(`work_sources()` の結果)を渡すと、作品ごとの取得元で決める(載っていない作品は enabled。#316)。
+    蔵書の指定から外れた取得元の行は見ない(古くても取り直さない)。
     """
     now = now or datetime.now(timezone.utc)
-    sources = [s for s in SEARCH_ORDER if s in enabled]
-    if not sources:
+    default = [s for s in SEARCH_ORDER if s in enabled]
+    if not default and not per_work:
         return []
     links: dict[int, dict[str, sqlite3.Row]] = defaultdict(dict)
     for r in conn.execute("SELECT * FROM work_links"):
@@ -740,6 +809,9 @@ def works_needing_fetch(conn: sqlite3.Connection, settings: MetadataSettings, en
         wid = w["id"]
         if wid not in live:
             continue
+        sources = default if per_work is None else [s for s in SEARCH_ORDER if s in per_work.get(wid, default)]
+        if not sources:
+            continue  # この作品の蔵書では取得しない
         first = next((links[wid][s] for s in sources if _settles(links[wid].get(s))), None)
         if first is not None and first["attempted_at"] is not None:
             if now - datetime.fromisoformat(first["attempted_at"]) >= timedelta(days=settings.recheck_days):
