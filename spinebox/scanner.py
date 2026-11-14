@@ -40,7 +40,7 @@ from .novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES, NOVEL_FORMATS
 from .mojibake import fix_mojibake
 from .novel.epub import (
     CONTAINER as EPUB_CONTAINER, image_pages as epub_image_pages, open_book as epub_open_book,
-    read_meta as epub_read_meta, scan_problems as epub_scan_problems,
+    read_meta as epub_read_meta, scan_problems as epub_scan_problems, upgrade_epub_progress,
 )
 from .pages import IMAGE_TYPES, is_cover, is_image
 
@@ -102,6 +102,7 @@ class VolumeSpec:
     format: str | None = None  # 小説なら 'epub' / 'text'
     meta: dict | None = None  # EPUB の OPF から読んだ書誌 {'author': ..., 'publisher': ...}(volume_fields に入れる)
     ancestors: tuple[str, ...] = ()  # アーカイブ内の外側のフォルダ名。巻番号を読むときだけ使う(#248)
+    epub_sections: tuple[int, ...] = ()  # 画像だけの EPUB の各ページの区切り番号(epub -> epub_images の読書位置引き継ぎ用)
 
 
 def _has_japanese(text: str) -> bool:
@@ -705,14 +706,15 @@ class Scanner:
         title = spec.title
         if meta.title and _has_japanese(meta.title) and not _has_japanese(path.stem):
             title = safe_text(meta.title)
-        fmt, page_count = spec.format, spec.page_count
+        fmt, page_count, epub_sections = spec.format, spec.page_count, ()
         try:
             pages = epub_image_pages(reader, epub_open_book(reader, self.settings.limits), self.settings.limits)
         except (ArchiveError, LimitExceeded):
             pages = None
         if pages is not None:
-            fmt, page_count = FORMAT_EPUB_IMAGES, len(pages)
-        return dataclasses.replace(spec, title=title, page_count=page_count, format=fmt, meta=info or None)
+            fmt, page_count, epub_sections = FORMAT_EPUB_IMAGES, len(pages), tuple(i for i, _ in pages)
+        return dataclasses.replace(spec, title=title, page_count=page_count, format=fmt, meta=info or None,
+                                   epub_sections=epub_sections)
 
     def _scan_pdf(self, root_id: int, rel: str, path: Path) -> None:
         """PDF ファイルを 1 巻として登録する。ページ数と暗号化の有無を調べる。"""
@@ -749,8 +751,8 @@ class Scanner:
         """
         keep = int(keep_analysis)
         now = db.now()
-        existing = {(r["container_path"], r["entry_prefix"]): r["id"]
-                    for r in c.execute("""SELECT id, container_path, entry_prefix FROM volumes
+        existing = {(r["container_path"], r["entry_prefix"]): (r["id"], r["format"])
+                    for r in c.execute("""SELECT id, format, container_path, entry_prefix FROM volumes
                                           WHERE source_id = ? AND parent_id IS NULL""", (source_id,))}
         seen = set()
         for s in specs:
@@ -759,6 +761,7 @@ class Scanner:
             num = parse_number_in(s.title, s.ancestors)
             numbers = (num.kind, num.start, num.end, num.evidence) if num else (None, None, None, None)
             if key in existing:
+                vid, old_fmt = existing[key]
                 # 読み直しただけ(keep)なら、開いて数えたページ数(目次からは分からない内側アーカイブの巻)も残す
                 c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?,
                              page_count = CASE WHEN ? THEN COALESCE(?, page_count) ELSE ? END,
@@ -767,18 +770,20 @@ class Scanner:
                              analysis_error = CASE WHEN ? THEN analysis_error END, format = ?,
                              missing = 0, updated_at = ? WHERE id = ?""",
                           (s.title, s.name_raw, s.name_encoding, keep, s.page_count, s.page_count, *numbers, keep, keep,
-                           s.format, now,
-                           existing[key]))
+                           s.format, now, vid))
                 if s.format == FORMAT_EPUB_IMAGES:
-                    c.execute("UPDATE reading_progress SET position = NULL WHERE volume_id = ? AND position IS NOT NULL",
-                              (existing[key],))
+                    if old_fmt == FORMAT_EPUB:
+                        upgrade_epub_progress(c, vid, s.epub_sections)
+                    else:
+                        c.execute("UPDATE reading_progress SET position = NULL WHERE volume_id = ? AND position IS NOT NULL",
+                                  (vid,))
             else:
                 c.execute("""INSERT INTO volumes (source_id, container_path, entry_prefix, title, name_raw,
                              name_encoding, page_count, number_kind, number_start, number_end, number_evidence,
                              format, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                           (source_id, s.container_path, s.entry_prefix, s.title, s.name_raw, s.name_encoding,
                            s.page_count, *numbers, s.format, now, now))
-        for key, vid in existing.items():
+        for key, (vid, _) in existing.items():
             if key not in seen:
                 c.execute("UPDATE volumes SET missing = 1, updated_at = ? WHERE id = ?", (now, vid))
         for s in specs:

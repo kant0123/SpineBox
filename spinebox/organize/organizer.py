@@ -249,7 +249,7 @@ class Organizer:
             problems.extend(pdf_probs)
         elif any(v["format"] == FORMAT_EPUB_IMAGES for v in vols):
             if self._epub_image_pages(root, {"rel_path": rel}) is None:
-                problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
+                problems.append("EPUB のページ画像を読めません")
         else:
             self._inspect_archive(source_path, vols, problems, warnings)
         plan["fingerprint"] = fingerprint(source_path)
@@ -1083,7 +1083,9 @@ class Organizer:
                     # 画像だけの EPUB(漫画)は、画像を取り出して CBZ にする(#153)。文字のある EPUB・テキストは小説
                     pages = self._epub_image_pages(root, r)
                     if pages is None:
-                        it.update(status=ITEM_EXCLUDED, reason="小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                        reason = ("EPUB のページ画像を読めません" if r["format"] == FORMAT_EPUB_IMAGES
+                                  else "小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                        it.update(status=ITEM_EXCLUDED, reason=reason)
                         continue
                     it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages])
                     if r["format"] == FORMAT_EPUB:
@@ -2154,7 +2156,7 @@ def _progress_section_to_page(c: sqlite3.Connection, epub_id: int, cbz_id: int, 
     row = c.execute("SELECT page FROM reading_progress WHERE volume_id = ?", (epub_id,)).fetchone()
     if row is None or not sections:
         return
-    page = next((i for i, s in enumerate(sections) if s >= row["page"]), len(sections) - 1)
+    page = epub.section_to_image_page(row["page"], sections)
     c.execute("UPDATE reading_progress SET page = ?, position = NULL WHERE volume_id = ?", (page, cbz_id))
 
 

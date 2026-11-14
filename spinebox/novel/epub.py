@@ -224,7 +224,24 @@ def read_section(reader: ArchiveReader, book: EpubBook, index: int, limits: Extr
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _SKIP_BLOCKS = re.compile(r"<(head|script|style)\b.*?</\1\s*>", re.I | re.S)
 _TAG = re.compile(r"<[^>]*>", re.S)
-_IMAGE_REF = re.compile(r"<(?:img\b[^>]*?\bsrc|image\b[^>]*?\b(?:xlink:)?href)\s*=\s*[\"']([^\"']+)[\"']", re.I)
+_IMAGE_REF = re.compile(r"<(?:img\b[^>]*?(?<![\w-])src|image\b[^>]*?(?<![\w-])(?:xlink:)?href)\s*=\s*[\"']([^\"']+)[\"']", re.I)
+
+
+def section_to_image_page(section: int, sections: list[int] | tuple[int, ...]) -> int:
+    """EPUB の区切りの番号を、その区切り以降の最初の画像のページ番号へ読み替える。"""
+    if not sections:
+        return 0
+    return next((i for i, s in enumerate(sections) if s >= section), len(sections) - 1)
+
+
+def upgrade_epub_progress(c, volume_id: int, sections: list[int] | tuple[int, ...]) -> None:
+    """再スキャン前の format='epub' から format='epub_images' へ切り替わるとき、
+    読書位置の区切りの番号を画像ページ番号へ読み替え、小説用の position を消す。"""
+    row = c.execute("SELECT page FROM reading_progress WHERE volume_id = ?", (volume_id,)).fetchone()
+    if row is None:
+        return
+    page = section_to_image_page(row["page"], sections) if sections else row["page"]
+    c.execute("UPDATE reading_progress SET page = ?, position = NULL WHERE volume_id = ?", (page, volume_id))
 
 
 def image_pages(reader: ArchiveReader, book: EpubBook, limits: ExtractionLimits) -> list[tuple[int, ArchiveEntry]] | None:
@@ -233,12 +250,13 @@ def image_pages(reader: ArchiveReader, book: EpubBook, limits: ExtractionLimits)
     pages: list[tuple[int, ArchiveEntry]] = []
     for index, section in enumerate(book.sections):
         markup, name = read_section(reader, book, index, limits)
-        text = _TAG.sub("", _SKIP_BLOCKS.sub("", _COMMENT.sub("", markup)))
+        visible = _SKIP_BLOCKS.sub("", _COMMENT.sub("", markup))
+        text = _TAG.sub("", visible)
         cleaned = re.sub(r"\s+|&nbsp;|&#160;", "", text).strip(".")
         if cleaned:
             return None
         base = posixpath.dirname(name)
-        for href in _IMAGE_REF.findall(markup):
+        for href in _IMAGE_REF.findall(visible):
             target = resolve_href(base, href)
             if target is not None and target in book.resource_index:
                 pages.append((index, book.resources[book.resource_index[target]].entry))

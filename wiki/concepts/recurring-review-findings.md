@@ -89,6 +89,7 @@ push 前に確かめること:
 - PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
 - PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えてコミットを持つ作業ブランチに対する `git branch -D` が通ることも assert していなかった(agy レビューの WARNING)
 - PR #262 — `spinebox/app.py get_page` — PDF のページを中身で `image/png` と見分ける分岐を足したのに、PNG を埋めた PDF で配信する経路のテストが無かった(agy レビューの WARNING。`make_png_pdf` で足した)
+- PR #331 — `spinebox/thumbs.py Thumbnails.get()` / `spinebox/organize/intake.py Intake.evaluate()` / `spinebox/organize/organizer.py Organizer.plan()` / `spinebox/bookmarks.py list_bookmarks()` / `spinebox/stats.py collect()` — `FORMAT_EPUB_IMAGES` の表紙フォールバック・受け入れ・単体整理計画・ブックマーク・統計の各分岐を足したのに、それぞれを通るテストが無かった(agy レビューの WARNING。`tests/test_novel.py` にテストを追加)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 
@@ -126,6 +127,7 @@ push 前に確かめること:
 - PR #249 — `spinebox/works.py _same_series()` — 外側の名前との突き合わせ(`_belongs_to`)を `_extends()` に揃えた後も、系列のまとめ(`_group_keys`)は単なる前方一致のままで、ローマ字のアーカイブの中の `ゾンビ` と `ゾンビだらけの世界` が 1 系列になり統合された。同じ `_extends()` で見るようにした(agy レビューの WARNING)
 - PR #262 — `spinebox/works.py _volume_json()` / `spinebox/bookmarks.py` — PDF を画像の巻として扱うよう `app.py _format()` だけ直し、同じ `format or "images"` を書いた作品・ブックマークの組み立てを直さず、`format: "pdf"` が API に漏れて作品の表紙候補(`cover_volume_id`)から外れた(agy レビューの CRITICAL。作品一覧で再現して両方を直し、テストを足した)
 - PR #331 — `spinebox/organize/organizer.py _plan_range_cbz()` — 画像だけの EPUB をスキャン時に `format='epub_images'`(読書位置 `page` は 0 始まりの画像ページ番号)として扱うようにした際、範囲指定の CBZ 化で `r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES)` の両方に無条件で `epub_sections` を付けたため、1 区切りに複数画像がある `epub_images` の巻で CBZ 化・undo 時にページ番号が区切り番号として誤変換され、undo 時に `position = 0` が書き込まれた(agy レビューの WARNING。`r["format"] == FORMAT_EPUB` のときだけ `epub_sections` を付けるように修正し、1 区切り 2 画像のテストを足した)
+- PR #331 — `spinebox/library.py Library.open()` / `spinebox/scanner.py Scanner._replace_volumes()` — 範囲指定の CBZ 化では `format='epub'` の読書位置(区切り番号)を画像ページ番号へ換算していたのに、通常閲覧・再スキャンで `format='epub'` から `format='epub_images'` へ切り替える経路では `position = NULL` にするのみで `page` を区切り番号のまま残し、また `epub.image_pages()` ではテキスト判定でコメント・`<script>/<style>` を除いたのに画像抽出は除去前の生文字列に対して行って `data-src` も拾いうる正規表現にしていた(agy レビューの WARNING。`upgrade_epub_progress()` で区切り番号から画像ページ番号へ換算し、`image_pages()` の画像抽出も除去後の文字列と属性境界ガードに揃えてテストを足した)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
