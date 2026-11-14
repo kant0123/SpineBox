@@ -8,8 +8,10 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 
 FORMAT_EPUB = "epub"
+FORMAT_EPUB_IMAGES = "epub_images"
 FORMAT_TEXT = "text"
 NOVEL_FORMATS = {".epub": FORMAT_EPUB, ".txt": FORMAT_TEXT}
+IMAGE_FORMATS = (None, "pdf", FORMAT_EPUB_IMAGES)
 
 
 def novel_format(name: str) -> str | None:

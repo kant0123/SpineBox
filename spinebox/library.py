@@ -37,6 +37,8 @@ from .archive.safety import Skip, depth_problem, entry_limit_problem
 from .cache import CacheTooLarge, ExtractionCache, MemoryCache, NotCached, cache_key
 from .config import Settings
 from .mojibake import fix_mojibake
+from .novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES, IMAGE_FORMATS
+from .novel.epub import image_pages as epub_image_pages, open_book as epub_open_book, upgrade_epub_progress
 from .pages import is_cover, is_image, natural_key, page_sort_key, sort_pages
 from .scanner import _is_non_content_path, fragment_reason, record_issues, resolve_source_path, root_is_accessible
 
@@ -80,6 +82,7 @@ class OpenVolume:
     # 内側アーカイブの巻(親を持たないもの)を開いたときだけ: 中で見つかった巻の単位と、各ページの単位
     units: list[analysis.Unit] | None = None
     page_units: list[analysis.UnitKey] | None = None
+    epub_sections: tuple[int, ...] = ()
 
     def read_page(self, index: int) -> bytes:
         if not 0 <= index < len(self.page_names):
@@ -105,6 +108,7 @@ class _PageTable:
     units: list[analysis.Unit] | None = None
     page_units: list[analysis.UnitKey] | None = None
     size: int = 0
+    epub_sections: tuple[int, ...] = ()
 
     def sources_available(self) -> bool:
         """内側アーカイブの展開キャッシュが消えていないか。消えていたら開き直して作り直す。"""
@@ -185,8 +189,8 @@ class Library:
         元ファイルの版(サイズ・mtime)が変わったときと、内側アーカイブの展開キャッシュが消えたときに作り直す。
         """
         row = get_volume_row(conn, volume_id)
-        if row["format"] is not None and row["format"] != "pdf":
-            # 小説(EPUB・テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
+        if row["format"] not in (*IMAGE_FORMATS, FORMAT_EPUB):
+            # 小説(テキスト)はページ画像を持たない。開くのは spinebox/novel/books.py
             raise VolumeUnreadable("小説の巻にはページ画像がありません")
         root = Path(row["root_path"])
         if is_offline(row) or not root_is_accessible(root):
@@ -214,9 +218,13 @@ class Library:
                         self._remember_page_table(key, table)
             if opened is None:
                 opened = self._open_from_page_table(table, volume_id, stack)
-            if row["page_count"] != len(opened.page_names):
+            if row["page_count"] != len(opened.page_names) or row["format"] == FORMAT_EPUB:
                 with db.transaction(conn) as c:
-                    c.execute("UPDATE volumes SET page_count = ? WHERE id = ?", (len(opened.page_names), volume_id))
+                    c.execute("UPDATE volumes SET page_count = ?, "
+                              "format = CASE WHEN format = ? THEN ? ELSE format END WHERE id = ?",
+                              (len(opened.page_names), FORMAT_EPUB, FORMAT_EPUB_IMAGES, volume_id))
+                    if row["format"] == FORMAT_EPUB:
+                        upgrade_epub_progress(c, volume_id, opened.epub_sections)
             yield opened
 
     def _open_volume(self, conn, stack: ExitStack, row, path: Path, version: str, st,
@@ -247,7 +255,8 @@ class Library:
     def _page_table_key(self, row, path: Path, version: str) -> str:
         """ページ表のキー。元ファイル・巻の切り出し方・上限が変われば別キーになる。"""
         limits = self.settings.limits
-        return cache_key("pages", row["id"], str(path), version, row["kind"], row["format"],
+        fmt = FORMAT_EPUB_IMAGES if row["format"] == FORMAT_EPUB else row["format"]
+        return cache_key("pages", row["id"], str(path), version, row["kind"], fmt,
                          row["container_path"], row["entry_prefix"], row["inner_path"],
                          limits.max_depth, limits.max_entries, limits.max_total_bytes,
                          limits.max_entry_bytes, self.settings.sevenzip_path)
@@ -312,9 +321,11 @@ class Library:
             except (LimitExceeded, ArchiveError) as e:
                 raise VolumeUnreadable(str(e)) from e
 
-        return OpenVolume(volume_id, list(table.names), table.version, read, table.units, table.page_units)
+        return OpenVolume(volume_id, list(table.names), table.version, read, table.units, table.page_units,
+                          table.epub_sections)
 
-    def _page_table(self, pages, version: str, path: Path, units, page_units) -> _PageTable | None:
+    def _page_table(self, pages, version: str, path: Path, units, page_units,
+                    epub_sections: tuple[int, ...] = ()) -> _PageTable | None:
         """開いたページ列から、書庫を開き直さずに読めるページ表を作る(対応するリーダーだけ)。"""
         states: list[tuple[type, object, Path]] = []
         state_ids: dict[int, int] = {}
@@ -333,7 +344,7 @@ class Library:
             cached_pages.append((sid, entry, key))
         size += _listing_size([e for _, e, _ in pages])
         return _PageTable([e.name for _, e, _ in pages], version, "archive", path,
-                          states, cached_pages, units, page_units, size)
+                          states, cached_pages, units, page_units, size, epub_sections)
 
     def _open_pdf(self, stack: ExitStack, volume_id: int, path: Path, version: str) -> OpenVolume:
         """未整理の PDF の巻。整理の抽出(organize/pdf.py)をページ単位で流用し、元の PDF は読むだけ。
@@ -377,12 +388,19 @@ class Library:
         limits = self.settings.limits
         sevenzip = self.settings.sevenzip_path
         units = page_units = None
+        epub_sections: tuple[int, ...] = ()
         try:
             root_key = self._root_key(path)
             outer = stack.enter_context(open_archive(path, sevenzip_path=sevenzip))
             listing = self._list(outer, root_key)
             container = row["container_path"]
-            if container is None:
+            if row["format"] in (FORMAT_EPUB_IMAGES, FORMAT_EPUB):
+                found = epub_image_pages(outer, epub_open_book(outer, limits), limits)
+                if found is None:
+                    raise VolumeUnreadable("小説の巻にはページ画像がありません")
+                pages = [(outer, e, root_key) for _, e in found]
+                epub_sections = tuple(sec_idx for sec_idx, _ in found)
+            elif container is None:
                 prefix = row["entry_prefix"]
                 entries = sorted((e for e in listing.entries if e.parent == prefix and is_image(e.name)),
                                  key=lambda e: page_sort_key(e.name))
@@ -403,8 +421,9 @@ class Library:
             except (LimitExceeded, ArchiveError) as e:
                 raise VolumeUnreadable(str(e)) from e
 
-        opened = OpenVolume(row["id"], [e.name for _, e, _ in pages], version, read, units, page_units)
-        table = self._page_table(pages, version, path, units, page_units) if self.memory.enabled else None
+        opened = OpenVolume(row["id"], [e.name for _, e, _ in pages], version, read, units, page_units, epub_sections)
+        table = (self._page_table(pages, version, path, units, page_units, epub_sections)
+                 if self.memory.enabled else None)
         return opened, table
 
     def _root_key(self, path: Path) -> str:

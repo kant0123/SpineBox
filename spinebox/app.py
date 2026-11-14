@@ -28,6 +28,7 @@ from .cache import CacheTooLarge, ExtractionCache, MemoryCache
 from .config import Settings
 from .library import (Library, NeedsExtraction, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row,
                       is_analyzable, is_offline)
+from .novel import FORMAT_EPUB, IMAGE_FORMATS
 from .novel.books import Books
 from .metadata import MetadataService
 from .metadata.service import shared_fetcher
@@ -211,8 +212,8 @@ def _progress(row) -> dict | None:
 
 
 def _format(row) -> str:
-    """巻の形式。images = ページ画像の巻(漫画など)、epub / text = 小説。"""
-    return "images" if row["format"] in (None, "pdf") else row["format"]  # PDF も画像の巻として読む
+    """巻の形式。images = ページ画像の巻(漫画・PDF・画像だけの EPUB など)、epub / text = 小説。"""
+    return "images" if row["format"] in IMAGE_FORMATS else row["format"]
 
 
 def _number(row) -> dict | None:
@@ -594,27 +595,32 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     @app.get("/api/volumes/{volume_id}")
     def get_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
         row = get_volume_row(conn, volume_id)
-        if row["format"] is not None and row["format"] != "pdf":
+        if row["format"] not in (*IMAGE_FORMATS, FORMAT_EPUB):
             return _get_novel(conn, volume_id)
-        with library.open(conn, volume_id) as vol:
-            # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)
-            if library.register_analysis(conn, vol):
-                _sync_works(conn)  # 中の巻(子)が現れた
-            row = get_volume_row(conn, volume_id)
-            return {
-                "id": volume_id,
-                "title": row["title"],
-                "format": "images",
-                "page_count": len(vol.page_names),
-                "pages": [{"index": i, "name": n.rsplit("/", 1)[-1]} for i, n in enumerate(vol.page_names)],
-                "progress": _get_progress(conn, volume_id),
-                "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
-                "parent_id": row["parent_id"],
-                "volume_number": _number(row),
-                "work_id": works.work_id_of(conn, volume_id),
-                "next_volume": works.next_volume(conn, volume_id),
-                "findings": compute_findings(conn, [row["source_id"]]).get(volume_id, []),
-            }
+        try:
+            with library.open(conn, volume_id) as vol:
+                # 内側アーカイブの巻は、開いたついでに中の巻へ分解する(取り出しは済んでいるので追加の展開は無い)
+                if library.register_analysis(conn, vol):
+                    _sync_works(conn)  # 中の巻(子)が現れた
+                row = get_volume_row(conn, volume_id)
+                return {
+                    "id": volume_id,
+                    "title": row["title"],
+                    "format": "images",
+                    "page_count": len(vol.page_names),
+                    "pages": [{"index": i, "name": n.rsplit("/", 1)[-1]} for i, n in enumerate(vol.page_names)],
+                    "progress": _get_progress(conn, volume_id),
+                    "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
+                    "parent_id": row["parent_id"],
+                    "volume_number": _number(row),
+                    "work_id": works.work_id_of(conn, volume_id),
+                    "next_volume": works.next_volume(conn, volume_id),
+                    "findings": compute_findings(conn, [row["source_id"]]).get(volume_id, []),
+                }
+        except VolumeUnreadable:
+            if row["format"] != FORMAT_EPUB:
+                raise
+            return _get_novel(conn, volume_id)
 
     @app.post("/api/volumes/{volume_id}/analyze")
     def analyze_volume(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
@@ -1159,7 +1165,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         if row["page_count"] is not None and body.page >= max(row["page_count"], 1):
             raise HTTPException(422, f"page は 0〜{max(row['page_count'] - 1, 0)} で指定してください")
         # 割合は小説だけが持つ(画像の巻はページで位置が決まるので捨てる)
-        position = body.position if row["format"] not in (None, "pdf") else None
+        position = body.position if row["format"] not in IMAGE_FORMATS else None
         with db.transaction(conn) as c:
             c.execute("""INSERT INTO reading_progress (volume_id, page, finished, position, updated_at)
                          VALUES (?, ?, ?, ?, ?)

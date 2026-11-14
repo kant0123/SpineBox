@@ -200,15 +200,21 @@ def test_resolve_source_path_rejects_escape(tmp_path):
 
 
 def test_zip_containing_epub_container_is_scanned_as_novel(conn, tmp_path, make_settings):
-    from novels import epub_bytes
+    from novels import PNG, epub_bytes
 
     lib = tmp_path / "lib"
     lib.mkdir()
     (lib / "book.zip").write_bytes(epub_bytes(["<p>hello</p>"]))
+    (lib / "manga.zip").write_bytes(epub_bytes(
+        ['<div style="display:none;">.</div><img src="../images/p1.png"/>'],
+        images={"images/p1.png": PNG}))
     scan(conn, make_settings(lib))
     vols = volumes(conn)
     assert ("book.zip", None, "") in vols
     assert vols[("book.zip", None, "")]["format"] == "epub"
+    assert ("manga.zip", None, "") in vols
+    assert vols[("manga.zip", None, "")]["format"] == "epub_images"
+    assert vols[("manga.zip", None, "")]["page_count"] == 1
 
 
 def test_non_content_dirs_are_excluded_from_archive_volumes(conn, tmp_path, make_settings):

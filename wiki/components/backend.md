@@ -22,30 +22,30 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:250 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:256 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/app.py recover_interrupted_organize()` | 起動時(lifespan の先頭)に、実行・元に戻すの途中で止まった整理を戻す(#36。[[organize]])。失敗しても起動は止めない |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
-| `spinebox/scanner.py:608 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
+| `spinebox/scanner.py:614 _scan_archive` | アーカイブを巻の候補に切り出す。開き直さない条件・失敗時の扱い |
 | `spinebox/libraries.py sync()` | 蔵書(グループ)と蔵書フォルダの管理(#313)。起動時とスキャンの前に、設定の `library_roots` のうち DB に無いパスを足し、グループの無いフォルダを「フォルダ名の蔵書」へ 1 つずつ入れる(名前が重なれば `本 (2)`)。追加・移動・外す・グループの CRUD・サーバー機のフォルダ一覧(`list_folders()`)もここ |
-| `spinebox/scanner.py:423 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
-| `spinebox/scanner.py:394 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
-| `spinebox/scanner.py:815 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
-| `spinebox/library.py:178 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻)。2 回目以降は RAM 層のページ表から読み、書庫を開き直さない(#297。[[extraction-cache]]) |
-| `spinebox/library.py:91 _PageTable` | 同じ版の巻のページ表(RAM 層)。ページ名と、zip の `ZipInfo` / 7z の目次・リーダーの作り直し方を持つ。元ファイルの版が変わったときと展開キャッシュが消えたときに捨てる |
-| `spinebox/library.py:585 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:159 parse_number`([[volume-split]]) |
+| `spinebox/scanner.py:429 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
+| `spinebox/scanner.py:400 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
+| `spinebox/scanner.py:834 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/library.py:180 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻)。2 回目以降は RAM 層のページ表から読み、書庫を開き直さない(#297。[[extraction-cache]]) |
+| `spinebox/library.py:93 _PageTable` | 同じ版の巻のページ表(RAM 層)。ページ名と、zip の `ZipInfo` / 7z の目次・リーダーの作り直し方を持つ。元ファイルの版が変わったときと展開キャッシュが消えたときに捨てる |
+| `spinebox/library.py:604 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:159 parse_number`([[volume-split]]) |
 | `spinebox/duplicates.py:282 DuplicateScanner` | 重複候補。指紋は `spinebox/fingerprint.py:32 image_hash`、判定は `spinebox/duplicates.py:154 judge`、API は `spinebox/app.py` の `/api/duplicates`([[duplicate-detection]]) |
 | `spinebox/linking.py:364 fetch_work()` / `spinebox/linking.py:689 apply_work()` | 公開 DB の結線([[metadata-linking]])。取得して連携を保存する `fetch_work`(唯一ネットワークに触る)と、連携から項目・別名・巻の書誌を導く `apply_work`(DB だけ) |
 | `spinebox/follows.py:115 check_work()` | フォロー([[follow]])。続刊・欠けを調べる。一覧は `list_follows()` / `list_releases()`(DB だけ)、ジョブ・定期実行の入口は `check_many()` |
 | `spinebox/works.py:863 sync` | 作品の名寄せ。割り当て・別名・統合の提案と自動統合、手動編集・付け替え・提案の承認/却下も同じファイル。API は `spinebox/app.py` の `/api/works`([[work-grouping]]) |
 | `spinebox/search.py:130 prepare` | 作品の検索の索引(FTS5 trigram)を追いつかせる。引くのは `spinebox/search.py:156 match_ids`、作り直しは `python -m spinebox --rebuild-search`([[work-search]]) |
-| `spinebox/scanner.py:65 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
+| `spinebox/scanner.py:71 LISTED_VOLUMES_WHERE` | 一覧に出る巻の条件。スキャンの返す件数と `GET /api/volumes` で共用。受け入れフォルダの巻はここで除く(`r.inbox = 0`。[[inbox]]) |
 | `spinebox/config.py:357 load_settings` | 設定ファイルの探し方と相対パスの起点。`[metadata]`(外部メタデータ取得)は `spinebox/config.py:53 MetadataSettings` と `_metadata()` |
 | `spinebox/db.py:40 MIGRATIONS` | スキーマ。`PRAGMA user_version` の連番で末尾に足していく |
 | `spinebox/stats.py:25 collect()` | 管理の統計タブの数(#85)。数え方の決まりはファイル先頭の docstring |
 | `spinebox/jobs.py:149 JobRunner` | データ管理のジョブ。スキャン・補完・表紙などを 1 本ずつ動かし、履歴を `jobs` 表に残す。中身は `spinebox/datajobs.py:93 DataJobs`([[data-jobs]]) |
 | `spinebox/thumbs.py:105 Thumbnails` | 表紙のサムネイル。一覧からは `Library.open(extract=False)` で開ける巻だけ作る([[cover-thumbnails]]) |
-| `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻だけ([[novel-reader]]) |
+| `spinebox/novel/books.py:59 Books` | 小説(`volumes.format` が `epub` / `text`)を開く。`Library.open` はページ画像の巻(`format` が NULL / `pdf` / `epub_images`)を開く([[novel-reader]]) |
 
 ## API 契約(フロントと共有)
 
@@ -59,7 +59,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `PUT /api/library-groups/{id}/metadata-sources` | 蔵書の公開 DB の取得元(#316)。body `{"sources": [取得元の名前] \| null}`。null は設定の既定に戻す、空の配列はこの蔵書では取得しない。知らない名前は 422、蔵書が無ければ 404。引く順(`linking.SEARCH_ORDER`)に並べ直して保存し、更新後の蔵書を返す。取得済みの連携・値は変えない([[metadata-linking]]) |
 | `POST /api/library-folders` / `PATCH /api/library-folders/{id}` / `DELETE /api/library-folders/{id}` | 蔵書フォルダの追加(201。body `{"path", "group_id"?}`)・別の蔵書へ移す(body `{"group_id"}`)・外す(204)。追加と移動は変更後の蔵書を返す。`group_id` を省けるのは蔵書が 1 つも無いときだけ(「デフォルト」を作ってそこへ入れる。ほかは 422)。パスはサーバー機の絶対パスで、見えない・登録済み(409)・登録済み/受け入れフォルダ/整理の置き場/データの置き場と入れ子は 422。外したフォルダを足し直すと同じ行が戻る。追加・外すはスキャン等のジョブ実行中は 409 |
 | `GET /api/fs/folders?path=` | 蔵書フォルダを選ぶ画面用に、サーバー機の `path` の直下のフォルダ名 `{path, parent, folders: [{name, path}]}`(読むだけ。ファイルは返さない。自然順)。`path` が空ならドライブの一覧(Windows 以外は `/`)で `parent` は null、ドライブの親は ""。相対パスは 422、読めない・無いは 404 |
-| `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`bookmarked` は巻に印が付いているか([[bookmarks]])。`format` は `images`(ページ画像の巻)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57)。クエリ `library`(`/api/libraries` の蔵書の id)でその蔵書のフォルダの巻だけ(知らない id なら空。#85。#313 までは `root` でフォルダ 1 つの id) |
+| `GET /api/volumes` | `[{"id", "title", "source_name", "format", "page_count", "offline", "progress", "parent_id", "parent_title", "volume_number", "findings", "can_analyze"}]`。`page_count` は内側アーカイブの巻だと開くまで null。`progress` は `{"page", "finished"}` か null。分解済みの親は出ず、子が `parent_id` 付きで親の位置に並ぶ。`volume_number` は名前から読んだ候補 `{"kind", "start", "end", "evidence"}` か null。`findings` は巻範囲の食い違い([[volume-split]])。`can_analyze` は未解析の内側アーカイブの巻。`duplicate_count` は未却下の重複候補の数(#38)。`work_id` は割り当てた作品(統合済みなら統合先。#43)。`bookmarked` は巻に印が付いているか([[bookmarks]])。`format` は `images`(ページ画像の巻。PDF や画像だけの固定レイアウト EPUB を含む。#202 / #261)/ `epub` / `text`(小説。`page_count` は区切りの数で、開くまで null。#57)。クエリ `library`(`/api/libraries` の蔵書の id)でその蔵書のフォルダの巻だけ(知らない id なら空。#85。#313 までは `root` でフォルダ 1 つの id) |
 | `GET /api/volumes/{id}` | `{"id", "title", "format", "page_count", "pages": [{"index", "name"}], "progress", "bookmarked", "parent_id", "volume_number", "work_id", "next_volume", "findings"}`。`work_id` は巻が割り当てられている作品(無ければ null。リーダーの戻る先 #324)。内側アーカイブの巻はここで初めて取り出し、ついでに中の巻へ分解する。小説は `pages: []` で、`sections: [{"index", "length"}]`(`length` は全体の進み具合の重み)と `encoding`(テキストの文字コード)が付く。文字コードを判定できないテキストは 422。`next_volume` は同じ作品の一覧の並び(巻・話番号の順 → 番号なしは名前順)で次の巻 `{"id", "title", "volume_number", "offline"}` か null。同じ番号の重複は飛ばし、次の番号に重複があれば並びの 1 つ目。オフラインの巻も返す(リーダーが移動せず案内するため。#113) |
 | `GET /api/volumes/{id}/sections/{index}` | 小説の区切り 1 つ `{"index", "html"}`。EPUB は無害化済み、テキストはエスケープしてから組み立てた HTML([[novel-reader]])。範囲外は 404、画像の巻は 422 |
 | `GET /api/volumes/{id}/resources/{index}` | EPUB の中の画像(manifest の JPEG / PNG / GIF / WebP だけ。SVG は返さない)。`Content-Security-Policy: default-src 'none'; sandbox` 付き |
@@ -141,16 +141,16 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **スキャンは目次しか読まない。** `ZipFile.open` も 7z の取り出しも展開キャッシュも呼ばない(テスト `test_scan_never_extracts_inner_archives`、
   `test_scan_lists_7z_and_rar_without_extracting_anything`)。
   内側アーカイブのページ数を出したくなっても、スキャンで開いてはいけない(GOAL.md フェーズ 1 の完了条件)
-- **開き直さない判定はサイズ・mtime・`SCAN_VERSION`。** 巻の切り出し方を変えたら `spinebox/scanner.py:58 SCAN_VERSION` を上げる。
+- **開き直さない判定はサイズ・mtime・`SCAN_VERSION`。** 巻の切り出し方を変えたら `spinebox/scanner.py:64 SCAN_VERSION` を上げる。
   上げ忘れると既存 DB の巻は古い切り出し方のまま残る
 - **画像フォルダの巻も、合計サイズ・フォルダの mtime・枚数・`SCAN_VERSION` が前回と同じなら DB に書かない**(`recheck` のときは読み直す。#295)。
-  走査は `os.walk` ではなく `spinebox/scanner.py:248 _walk()`(`os.scandir` の再帰)で、画像のサイズは列挙で得た `DirEntry.stat()` を使う。
+  走査は `os.walk` ではなく `spinebox/scanner.py:254 _walk()`(`os.scandir` の再帰)で、画像のサイズは列挙で得た `DirEntry.stat()` を使う。
   Windows では追加のシステムコールが要らない。`os.walk` + 1 枚ずつ `stat` だった頃は、変化の無い蔵書(本番 6,211 巻)の再スキャンが
   冷えた状態で 98 秒(27 万回の `stat`)、温まった状態でも 14.7 秒かかっていた。走査の順・ジャンクション(`is_symlink` でなければ辿る)・`onerror` の意味は `os.walk` と同じ
 - **巻の切り出しでは、非コンテンツディレクトリ(`__MACOSX`・`META-INF`・`.DS_Store`)の中の画像・内側アーカイブを巻にしない。**
   表紙画像だけを含むフォルダ(すべての画像が表紙)も巻にしない。拡張子に関わらず `META-INF/container.xml` を含むアーカイブは
-  EPUB 小説として扱う(`.zip` に包まれた EPUB)。いずれも `spinebox/scanner.py:196 archive_volume_specs()` /
-  `spinebox/scanner.py:608 _scan_archive()` / `spinebox/scanner.py:552 _scan_folder()` で行う
+  EPUB 小説として扱う(`.zip` に包まれた EPUB)。いずれも `spinebox/scanner.py:202 archive_volume_specs()` /
+  `spinebox/scanner.py:614 _scan_archive()` / `spinebox/scanner.py:558 _scan_folder()` で行う
 - **読めなかったアーカイブはサイズ・mtime を記録しない。** 次のスキャンで再挑戦させるため(7-Zip が見つからないときの 7z / rar も
   毎回試す。開く前に弾くので軽い。`sevenzip_path` を直して再スキャンすれば拾える)。既存の巻もそのまま残す
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
@@ -228,7 +228,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
   `LISTED_VOLUMES_WHERE` に `organized_op_id IS NULL` を足し、一覧・スキャンの件数が整理済みの巻を数えないようにしている
 - #19 で `/healthz` と常駐・LAN 公開の運用([[server-setup]])を足した。`host` の既定は 127.0.0.1 のまま、127.0.0.1 以外にしたときは起動時に注意を出す
 - #14 で骨格を作った。zip / cbz だけを対象にした
-- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:566 _expand` は入れ子を再帰で開く。
+- #16 で 7z / rar を足した(7-Zip CLI。[[archive-reading]])。巻を開く経路 `spinebox/library.py:585 _expand` は入れ子を再帰で開く。
   実データ(`_参考/サンプル本`)で、スキャンが 10 巻を一覧に出し、キャッシュは空のまま、全巻の全ページが 200 で返ることを確かめた
 
 ## 確認の画面を蔵書の規模で遅くしない(#291)

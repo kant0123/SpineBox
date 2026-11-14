@@ -24,6 +24,7 @@ from .. import works
 from ..archive.base import file_reader_available
 from ..config import InboxSetting, Settings, _path_key
 from ..naming import normalize_title
+from ..novel import FORMAT_EPUB_IMAGES
 from ..pages import natural_key
 from ..scanner import resolve_source_path, root_is_accessible
 from .organizer import OrganizeError, Organizer, fingerprint
@@ -189,7 +190,7 @@ class Intake:
         # 取り込み方: 1 巻 = 1 つのファイル(CBZ・小説)は中身を変えずに移すだけ。それ以外は 1 巻ずつ CBZ にする
         novel = any(v["format"] in ("epub", "text") for v in vols)
         suffix = Path(rel).suffix.lower()
-        single_cbz = (src["kind"] == "archive" and suffix == ".cbz" and len(vols) == 1 and not novel
+        single_cbz = (src["kind"] == "archive" and suffix == ".cbz" and len(vols) == 1 and vols[0]["format"] is None
                       and vols[0]["container_path"] is None and vols[0]["entry_prefix"] == ""
                       and vols[0]["parent_id"] is None and vols[0]["inner_path"] is None)
         mode = "move" if (single_cbz or (novel and len(vols) == 1)) else "cbz"
@@ -200,12 +201,16 @@ class Intake:
         item["needs_analysis"] = needs
         if mode == "cbz":
             is_pdf = any(v["format"] == "pdf" for v in vols)
+            is_epub_img = any(v["format"] == FORMAT_EPUB_IMAGES for v in vols)
             if inspect:
                 if src["kind"] == "folder":
                     self.org._inspect_folder(source_path, problems, warnings)
                 elif is_pdf:
                     _, pdf_probs = self.org._inspect_pdf(source_path)
                     problems.extend(pdf_probs)
+                elif is_epub_img:
+                    if self.org._epub_image_pages(root, {"rel_path": rel}) is None:
+                        problems.append("EPUB のページ画像を読めません")
                 else:
                     self.org._inspect_archive(source_path, vols, problems, warnings)
             elif not is_pdf and src["kind"] == "archive" and not file_reader_available(source_path, self.settings.sevenzip_path):

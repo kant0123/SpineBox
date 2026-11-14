@@ -395,3 +395,117 @@ def test_epub_opf_title_ignored_when_not_japanese(make_settings, tmp_path):
     (lib / "Kaze no tani.epub").write_bytes(epub_bytes(["<p>本文</p>"], title="Wind Valley"))
     _, by_title = _scan_works(make_settings, lib)
     assert "Kaze no tani" in by_title
+
+
+def test_image_only_epub_and_kcc_zip_open_as_manga_pages(make_client, tmp_path):
+    """画像だけの EPUB(固定レイアウト漫画・KCC の .zip)は画像の巻として扱い、spine 順のページを返す(#202)。"""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    p1, p2, p3 = PNG, PNG + b"\x00", PNG + b"\x00\x00"
+    # コメントアウトされた <img> や data-src 属性は拾わず、1 区切り複数画像の spine 順を守る
+    (lib / "漫画 第1巻.epub").write_bytes(epub_bytes(
+        ['<!-- <img src="../images/c.png"/> --><div><img data-src="../images/c.png" src="../images/b.png"/>'
+         '<img src="../images/c.png"/></div>',
+         '<div><img src="../images/a.png"/></div>'],
+        images={"images/a.png": p1, "images/b.png": p2, "images/c.png": p3}))
+    # KCC 等が出力する `<div style="display:none;">.</div>` つきの .zip(container.xml あり)
+    (lib / "漫画 第2巻.zip").write_bytes(epub_bytes(
+        ['<div style="display:none;">.</div><img src="../images/a.png"/>'],
+        images={"images/a.png": p1}))
+    c, settings = make_client(lib)
+    vols = scan(c)
+    v1, v2 = vols["漫画 第1巻"], vols["漫画 第2巻"]
+    assert v1["format"] == "images" and v1["page_count"] == 3
+    assert v2["format"] == "images" and v2["page_count"] == 1
+    detail = c.get(f"/api/volumes/{v1['id']}").json()
+    assert detail["format"] == "images" and detail["page_count"] == 3
+    assert [p["name"] for p in detail["pages"]] == ["b.png", "c.png", "a.png"]
+    assert c.get(f"/api/volumes/{v1['id']}/pages/0").content == p2
+    assert c.get(f"/api/volumes/{v1['id']}/pages/1").content == p3
+    assert c.get(f"/api/volumes/{v1['id']}/pages/2").content == p1
+    # 再スキャン前の DB(format='epub'・区切り番号 page=1・小説の読書位置 position つき)から
+    # (a) 開いた時点(Library.open)で区切り 1 → 画像ページ 2 に換算され position が消える
+    conn = db.connect(settings.db_path)
+    with db.transaction(conn) as cur:
+        cur.execute("UPDATE volumes SET format = 'epub' WHERE id = ?", (v1["id"],))
+        cur.execute("INSERT OR REPLACE INTO reading_progress (volume_id, page, finished, position, updated_at) "
+                    "VALUES (?, 1, 0, 0.37, '2026-01-01T00:00:00Z')", (v1["id"],))
+    d1 = c.get(f"/api/volumes/{v1['id']}").json()
+    assert d1["format"] == "images" and d1["progress"] == {"page": 2, "finished": False}
+    assert by_id(c, v1["id"])["format"] == "images"
+    # (b) 再スキャン(Scanner._replace_volumes)でも format='epub' の区切り番号 page=1 → 画像ページ 2 に換算される
+    with db.transaction(conn) as cur:
+        cur.execute("UPDATE volumes SET format = 'epub' WHERE id = ?", (v1["id"],))
+        cur.execute("UPDATE sources SET scan_version = 13")
+        cur.execute("UPDATE reading_progress SET page = 1, position = 0.5 WHERE volume_id = ?", (v1["id"],))
+    vols_after = scan(c)
+    assert vols_after["漫画 第1巻"]["format"] == "images"
+    assert vols_after["漫画 第1巻"]["progress"] == {"page": 2, "finished": False}
+
+
+def test_image_only_epub_thumbs_bookmarks_stats_organize_and_inbox(make_settings, tmp_path):
+    """epub_images 巻の表紙(OPF 表紙と 0 ページ目フォールバック)・ブックマーク・統計・単体整理・受け入れ(#202)。"""
+    from dataclasses import replace
+    from images import jpeg, make_page
+    from spinebox.config import InboxSetting
+    lib, inbox = tmp_path / "lib", tmp_path / "inbox"
+    lib.mkdir()
+    inbox.mkdir()
+    img1, img2 = jpeg(make_page(1)), jpeg(make_page(2))
+    # OPF に cover-image がある巻と、OPF 表紙が無く 0 ページ目にフォールバックする巻
+    (lib / "漫画A 第01巻.epub").write_bytes(epub_bytes(
+        ['<div><img src="../images/p1.png"/></div>'],
+        images={"images/p1.png": img1},
+        extra=[("OEBPS/images/cover.png", img2)],
+        opf_extra_items='<item id="cov" href="images/cover.png" media-type="image/png" properties="cover-image"/>'))
+    (lib / "漫画A 第02巻.epub").write_bytes(epub_bytes(
+        ['<div><img src="../images/p2.png"/></div>'],
+        images={"images/p2.png": img1}))
+    (inbox / "漫画A 第03巻.epub").write_bytes(epub_bytes(
+        ['<div><img src="../images/p3.png"/></div>'],
+        images={"images/p3.png": img1}))
+    settings = replace(make_settings(lib), inboxes=(InboxSetting(inbox, lib),))
+    c = TestClient(create_app(settings, frontend_dist=None))
+    vols = scan(c)
+    v1, v2 = vols["漫画A 第01巻"]["id"], vols["漫画A 第02巻"]["id"]
+    # 表紙: OPF 表紙あり(v1)と 0 ページ目フォールバック(v2)の両方で縮小 JPEG サムネイルが返る
+    assert c.get(f"/api/volumes/{v1}/thumbnail").status_code == 200
+    assert c.get(f"/api/volumes/{v2}/thumbnail").status_code == 200
+    # ブックマーク一覧と統計で画像の巻として扱われる
+    assert c.put(f"/api/bookmarks/volumes/{v1}").status_code == 200
+    bms = c.get("/api/bookmarks").json()["items"]
+    assert len(bms) == 1 and bms[0]["volume"]["format"] == "images"
+    st = c.get("/api/stats").json()
+    assert st["volumes"]["images"] == 2 and st["volumes"]["novels"] == 0 and st["pages"]["total"] == 2
+    # 単体 CBZ 整理計画: 正常なら planned、破損したら「EPUB のページ画像を読めません」
+    plan_ok = c.post("/api/organize/plan", json={"volume_id": v1}).json()
+    assert plan_ok["state"] == "planned" and plan_ok["problems"] == []
+    (lib / "漫画A 第02巻.epub").write_bytes(b"corrupt")
+    plan_bad = c.post("/api/organize/plan", json={"volume_id": v2}).json()
+    assert plan_bad["state"] == "blocked" and any("EPUB のページ画像を読めません" in p for p in plan_bad["problems"])
+    # 拡張子が .cbz でも中身が EPUB(container.xml あり)なら、作品単位の改名・移動では 1 巻 = 1 CBZ ではないとして弾き、
+    # 範囲指定の CBZ 化(include_cbz=True)では conversion=True で画像だけの標準 CBZ へ変換する
+    (lib / "漫画A 第04巻.cbz").write_bytes(epub_bytes(
+        ['<div><img src="../images/p4.png"/></div>'],
+        images={"images/p4.png": img1}))
+    vols = scan(c)
+    v4 = vols["漫画A 第04巻"]["id"]
+    work_id = c.get("/api/works").json()["works"][0]["id"]
+    rename_plan = c.post("/api/organize/rename-plan", json={"work_id": work_id}).json()
+    item_v4 = next(it for it in rename_plan["items"] if it["volume_id"] == v4)
+    assert item_v4["status"] == "excluded" and "1 巻 = 1 CBZ ではありません" in item_v4["reason"]
+    root_id = c.get("/api/organize/range/options").json()["roots"][0]["id"]
+    range_plan = c.post("/api/organize/range-plan",
+                        json={"root_id": root_id, "folder_template": "{title}", "include_cbz": True}).json()
+    range_v4 = next(it for it in range_plan["items"] if it["volume_id"] == v4)
+    assert range_v4["status"] == "cbz" and range_v4["conversion"] is True
+    # 受け入れ(Inbox): 画像だけの EPUB は mode="cbz" として CBZ 化で書庫へ入る
+    assert c.post("/api/inbox/sync").status_code == 200
+    inbox_items = c.get("/api/inbox").json()["items"]
+    assert len(inbox_items) == 1 and inbox_items[0]["mode"] == "cbz"
+    preview = c.post("/api/inbox/preview", json={"items": [{"source_id": inbox_items[0]["source_id"]}]}).json()
+    p_item = preview["items"][0]
+    assert p_item["status"] == "ready" and p_item["mode"] == "cbz"
+    res = c.post("/api/inbox/approve", json={"items": [
+        {"source_id": p_item["source_id"], "expect_outputs": p_item["expect_outputs"]}]}).json()
+    assert res["results"][0]["ok"] is True

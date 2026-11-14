@@ -38,6 +38,7 @@ from ..archive.base import file_reader_available, inner_reader_problem
 from ..cache import CacheTooLarge
 from ..config import Settings
 from ..library import Library, VolumeNotFound, VolumeOffline, VolumeUnreadable, get_volume_row
+from ..novel import FORMAT_EPUB, FORMAT_EPUB_IMAGES
 from ..pages import is_image, natural_key
 from ..naming import parse_number
 from ..scanner import (LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, SCAN_VERSION, Scanner, VolumeSpec, _fs_name_bytes,
@@ -246,6 +247,9 @@ class Organizer:
         elif any(v["format"] == "pdf" for v in vols):
             _, pdf_probs = self._inspect_pdf(source_path)
             problems.extend(pdf_probs)
+        elif any(v["format"] == FORMAT_EPUB_IMAGES for v in vols):
+            if self._epub_image_pages(root, {"rel_path": rel}) is None:
+                problems.append("EPUB のページ画像を読めません")
         else:
             self._inspect_archive(source_path, vols, problems, warnings)
         plan["fingerprint"] = fingerprint(source_path)
@@ -1053,7 +1057,7 @@ class Organizer:
         folder_sources: dict[int, set[str]] = {}
         source_paths: dict[int, set[str]] = {}
         single_rows = [r for r in rows
-                       if self._single_file(r) and r["rel_path"].lower().endswith(".cbz")]
+                       if self._single_file(r) and not r["format"] and r["rel_path"].lower().endswith(".cbz")]
         single_items = self._classify_renames(single_rows, excluded_ids, self._range_ineligible, move_target,
                                               folder_sources=folder_sources, source_paths=source_paths, dedupe=False)
         for it in single_items:
@@ -1075,14 +1079,17 @@ class Organizer:
                         it.update(status=ITEM_EXCLUDED, reason="; ".join(pdf_probs))
                         continue
                     it.update(page_count=page_count, is_pdf=True)
-                elif r["format"] == "epub":
+                elif r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES):
                     # 画像だけの EPUB(漫画)は、画像を取り出して CBZ にする(#153)。文字のある EPUB・テキストは小説
                     pages = self._epub_image_pages(root, r)
                     if pages is None:
-                        it.update(status=ITEM_EXCLUDED, reason="小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                        reason = ("EPUB のページ画像を読めません" if r["format"] == FORMAT_EPUB_IMAGES
+                                  else "小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
+                        it.update(status=ITEM_EXCLUDED, reason=reason)
                         continue
-                    it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages],
-                              epub_sections=[i for i, _ in pages])
+                    it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages])
+                    if r["format"] == FORMAT_EPUB:
+                        it["epub_sections"] = [i for i, _ in pages]
                 else:
                     it.update(status=ITEM_EXCLUDED, reason="小説(テキスト)は CBZ にできません(名前は変えません)")
                     continue
@@ -1123,7 +1130,7 @@ class Organizer:
                 try:
                     if r["format"] == "pdf":
                         problem, more = None, []  # 中身は計画で読んだ
-                    elif r["format"] == "epub":
+                    elif r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES):
                         problem, more = None, []  # 中身は計画で読んだ(画像だけの EPUB。本文の XHTML・CSS は入れない)
                     elif r["source_kind"] == "folder":
                         problem, more = self._folder_cbz_problem(r["root_id"], r["rel_path"], source_path,
@@ -1528,11 +1535,12 @@ class Organizer:
         """改名・移動の対象外の理由(1 巻 = 1 CBZ でない・オフラインなど)。対象なら None。"""
         if r["source_offline"] or not root_is_accessible(root):
             return "蔵書フォルダが今オフラインです"
-        if r["format"]:  # 小説(.epub / .txt) や PDF。改名・移動は 1 巻 = 1 CBZ のみ
+        if r["format"]:  # 小説(.epub / .txt) や PDF・画像 EPUB。改名・移動は 1 巻 = 1 CBZ のみ
             if r["format"] == "pdf":
                 return "PDF は改名・移動の対象外です(先に「CBZ に整理」を実行してください)"
-            return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
-        if not self._single_file(r) or not r["rel_path"].lower().endswith(".cbz"):
+            if r["format"] in (FORMAT_EPUB, "text"):
+                return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
+        if not self._single_file(r) or r["format"] or not r["rel_path"].lower().endswith(".cbz"):
             return "1 巻 = 1 CBZ ではありません(先に「CBZ に整理」をテンプレートの名前で実行してください)"
         return self._missing_file(r, root)
 
@@ -2138,9 +2146,9 @@ def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_
     if row is None:
         return
     page = row["page"] if page_count is None else min(row["page"], max(page_count - 1, 0))
-    c.execute("""INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, ?, ?, ?)
+    c.execute("""INSERT INTO reading_progress (volume_id, page, finished, position, updated_at) VALUES (?, ?, ?, NULL, ?)
                  ON CONFLICT (volume_id) DO UPDATE SET page = excluded.page, finished = excluded.finished,
-                 updated_at = excluded.updated_at""", (to_id, page, row["finished"], db.now()))
+                 position = NULL, updated_at = excluded.updated_at""", (to_id, page, row["finished"], db.now()))
 
 
 def _progress_section_to_page(c: sqlite3.Connection, epub_id: int, cbz_id: int, sections: list[int]) -> None:
@@ -2148,7 +2156,7 @@ def _progress_section_to_page(c: sqlite3.Connection, epub_id: int, cbz_id: int, 
     row = c.execute("SELECT page FROM reading_progress WHERE volume_id = ?", (epub_id,)).fetchone()
     if row is None or not sections:
         return
-    page = next((i for i, s in enumerate(sections) if s >= row["page"]), len(sections) - 1)
+    page = epub.section_to_image_page(row["page"], sections)
     c.execute("UPDATE reading_progress SET page = ?, position = NULL WHERE volume_id = ?", (page, cbz_id))
 
 

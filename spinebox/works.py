@@ -31,6 +31,7 @@ from .library import VolumeNotFound, is_offline
 from .mojibake import looks_garbled
 from .naming import (JUNK_NAMES, WorkName, is_chapter_label, is_fragment_name, is_junk_name, normalize_title,
                      parse_number, parse_work_name, trailing_number)
+from .novel import IMAGE_FORMATS
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
 
@@ -1643,7 +1644,7 @@ def _volume_json(r, dup_counts: dict[int, int], meta: dict[int, dict] | None = N
                   "evidence": r["number_evidence"]}
     return {
         "id": r["id"], "title": r["title"], "parent_title": r["parent_title"], "page_count": r["page_count"],
-        "format": "images" if r["format"] in (None, "pdf") else r["format"], "offline": is_offline(r),
+        "format": "images" if r["format"] in IMAGE_FORMATS else r["format"], "offline": is_offline(r),
         "progress": None if r["page"] is None else {"page": r["page"], "finished": bool(r["finished"])},
         "volume_number": number, "duplicate_count": dup_counts.get(r["id"], 0),
         "assignment": {"source": r["a_source"], "manual": bool(r["a_manual"]), "confidence": r["a_confidence"],

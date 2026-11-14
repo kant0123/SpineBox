@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-14
+updated: 2026-11-15
 related: [overview]
 ---
 
@@ -89,6 +89,7 @@ push 前に確かめること:
 - PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
 - PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えてコミットを持つ作業ブランチに対する `git branch -D` が通ることも assert していなかった(agy レビューの WARNING)
 - PR #262 — `spinebox/app.py get_page` — PDF のページを中身で `image/png` と見分ける分岐を足したのに、PNG を埋めた PDF で配信する経路のテストが無かった(agy レビューの WARNING。`make_png_pdf` で足した)
+- PR #331 — `spinebox/thumbs.py Thumbnails.get()` / `spinebox/organize/intake.py Intake.evaluate()` / `spinebox/organize/organizer.py Organizer.plan()` / `spinebox/bookmarks.py list_bookmarks()` / `spinebox/stats.py collect()` — `FORMAT_EPUB_IMAGES` の表紙フォールバック・受け入れ・単体整理計画・ブックマーク・統計の各分岐を足したのに、それぞれを通るテストが無かった(agy レビューの WARNING。`tests/test_novel.py` にテストを追加)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 
@@ -117,7 +118,7 @@ push 前に確かめること:
 - PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
 - PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 - PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
-- PR #219 — `spinebox/scanner.py:705 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
+- PR #219 — `spinebox/scanner.py:717 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
 - PR #219 — `spinebox/organize/organizer.py:1022 _plan_range_cbz()` — 計画全体の `problems` と同じ名前の変数を PDF 検査の戻り値受け取りに使ったため、前段で拾った未解析アーカイブ等の問題リストが上書きされて消失した(agy レビューの WARNING。`pdf_probs` にリネームして修正)
 - PR #219 — `spinebox/app.py:577 get_volume` / `spinebox/thumbs.py:131 get` / `spinebox/library.py:178 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(agy レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
 - PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(agy レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
@@ -125,6 +126,9 @@ push 前に確かめること:
 - PR #249 — `spinebox/works.py _belongs_to()` — 巻の名前が外側の名前より長い向きには「番号・…編・区切りの後ろの副題」の検査を足したのに、外側の方が長い向きは単なる前方一致のままで、`魔法使いの嫁` のフォルダが `魔法使い 第01巻` を取り込んだ。両向きを同じ `_extends()` で見るようにした(agy レビューの WARNING)
 - PR #249 — `spinebox/works.py _same_series()` — 外側の名前との突き合わせ(`_belongs_to`)を `_extends()` に揃えた後も、系列のまとめ(`_group_keys`)は単なる前方一致のままで、ローマ字のアーカイブの中の `ゾンビ` と `ゾンビだらけの世界` が 1 系列になり統合された。同じ `_extends()` で見るようにした(agy レビューの WARNING)
 - PR #262 — `spinebox/works.py _volume_json()` / `spinebox/bookmarks.py` — PDF を画像の巻として扱うよう `app.py _format()` だけ直し、同じ `format or "images"` を書いた作品・ブックマークの組み立てを直さず、`format: "pdf"` が API に漏れて作品の表紙候補(`cover_volume_id`)から外れた(agy レビューの CRITICAL。作品一覧で再現して両方を直し、テストを足した)
+- PR #331 — `spinebox/organize/organizer.py _plan_range_cbz()` — 画像だけの EPUB をスキャン時に `format='epub_images'`(読書位置 `page` は 0 始まりの画像ページ番号)として扱うようにした際、範囲指定の CBZ 化で `r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES)` の両方に無条件で `epub_sections` を付けたため、1 区切りに複数画像がある `epub_images` の巻で CBZ 化・undo 時にページ番号が区切り番号として誤変換され、undo 時に `position = 0` が書き込まれた(agy レビューの WARNING。`r["format"] == FORMAT_EPUB` のときだけ `epub_sections` を付けるように修正し、1 区切り 2 画像のテストを足した)
+- PR #331 — `spinebox/library.py Library.open()` / `spinebox/scanner.py Scanner._replace_volumes()` — 範囲指定の CBZ 化では `format='epub'` の読書位置(区切り番号)を画像ページ番号へ換算していたのに、通常閲覧・再スキャンで `format='epub'` から `format='epub_images'` へ切り替える経路では `position = NULL` にするのみで `page` を区切り番号のまま残し、また `epub.image_pages()` ではテキスト判定でコメント・`<script>/<style>` を除いたのに画像抽出は除去前の生文字列に対して行って `data-src` も拾いうる正規表現にしていた(agy レビューの WARNING。`upgrade_epub_progress()` で区切り番号から画像ページ番号へ換算し、`image_pages()` の画像抽出も除去後の文字列と属性境界ガードに揃えてテストを足した)
+- PR #331 — `spinebox/organize/organizer.py _rename_ineligible()` / `_plan_range_cbz()` / `spinebox/organize/intake.py Intake.evaluate()` — 拡張子が `.cbz` で中身が EPUB(`container.xml` あり、`format='epub_images'` / `'epub'`)の巻について、1 巻 = 1 CBZ の判定が拡張子 `.cbz` だけ(または `not novel` だけ)を見て `r["format"]` を見ておらず、改名・移動の対象外にならず範囲指定の CBZ 化でも `conversion=False` 側に振り分けられていた(agy レビューの WARNING。`not r["format"]` を必須にして修正し、`.cbz` 拡張子の EPUB 巻のテストを足した)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
@@ -444,8 +448,8 @@ push 前に確かめること:
 
 実例:
 
-- PR #225 — `spinebox/scanner.py:58 SCAN_VERSION` — タイトル生成と巻番号抽出に文字化け修復(`fix_mojibake`)を適用したのに `SCAN_VERSION` を 7 のままにしていた(agy レビューの WARNING。8 に上げた)
-- PR #172 — `spinebox/scanner.py:58 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
+- PR #225 — `spinebox/scanner.py:64 SCAN_VERSION` — タイトル生成と巻番号抽出に文字化け修復(`fix_mojibake`)を適用したのに `SCAN_VERSION` を 7 のままにしていた(agy レビューの WARNING。8 に上げた)
+- PR #172 — `spinebox/scanner.py:64 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
 
 ### 変化が無ければ書かない処理で、条件の抜けにより毎回書く
 
@@ -552,4 +556,4 @@ push 前に確かめること:
 
 実例:
 
-- PR #303 — `spinebox/thumbs.py:181 are_built()` — `row is not None and self.store.contains(...)` が `row is None` のとき `_key()` の例外を飛ばし、`include_unavailable=False` でも `{vid: False}` を返した(存在しない id で再現し、`raise VolumeNotFound(vid)` に修正)
+- PR #303 — `spinebox/thumbs.py:190 are_built()` — `row is not None and self.store.contains(...)` が `row is None` のとき `_key()` の例外を飛ばし、`include_unavailable=False` でも `{vid: False}` を返した(存在しない id で再現し、`raise VolumeNotFound(vid)` に修正)
