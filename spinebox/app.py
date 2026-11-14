@@ -587,6 +587,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
                 "parent_id": row["parent_id"],
                 "volume_number": _number(row),
+                "work_id": works.work_id_of(conn, volume_id),
                 "next_volume": works.next_volume(conn, volume_id),
                 "findings": [],
             }
@@ -612,6 +613,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                     "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
                     "parent_id": row["parent_id"],
                     "volume_number": _number(row),
+                    "work_id": works.work_id_of(conn, volume_id),
                     "next_volume": works.next_volume(conn, volume_id),
                     "findings": compute_findings(conn, [row["source_id"]]).get(volume_id, []),
                 }

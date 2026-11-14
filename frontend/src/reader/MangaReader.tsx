@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import MangaViewer, { type HeaderButton } from "@tokagemushi/manga-viewer";
 import { api, type VolumeDetail } from "../api";
-import { libraryHref } from "../route";
+import { readerBackHref } from "../route";
 import { loadSettings } from "../settings";
 import { useTheme } from "../shell/theme";
 import { nextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
+import { enlargeSlider, watchPastEnd } from "./viewerHooks";
 
 /** しおり(ページの目印)の API。ブックマーク(巻・作品の目印 #86)とは別の機能 */
 export const PAGE_MARKS_API = "/api/page-marks";
@@ -114,18 +115,15 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
         onClick: () => void toggleBookmark(),
       },
     ];
-    // 最終ページの先へ進む代わりのボタン(#113)。次巻がオフラインなら押したときに理由を出す
+    // 次の巻へ(#113)。ヘッダーのボタンと、最後の画面からさらに進む操作(#324)の両方から。次巻がオフラインなら理由を出す
     const step = nextVolumeStep(detail);
+    const goNextVolume = () => {
+      if (!step) return;
+      if ("href" in step) window.location.hash = step.href;
+      else setNotice(step.notice);
+    };
     if (step) {
-      headerButtons.push({
-        icon: ICON_NEXT_VOLUME,
-        label: "次の巻へ",
-        className: NEXT_VOLUME_CLASS,
-        onClick: () => {
-          if ("href" in step) window.location.hash = step.href;
-          else setNotice(step.notice);
-        },
-      });
+      headerButtons.push({ icon: ICON_NEXT_VOLUME, label: "次の巻へ", className: NEXT_VOLUME_CLASS, onClick: goNextVolume });
     }
     headerButtons.push("fullscreen", "help"); // 共有・リンクコピーは LAN 内のアプリなので出さない
 
@@ -143,7 +141,7 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
       messages: MESSAGES,
       headerButtons,
       onBack: () => {
-        window.location.hash = libraryHref;
+        window.location.hash = readerBackHref(detail.work_id);
       },
       onPageChange: (current) => {
         page = Math.max(0, current - 1);
@@ -157,6 +155,9 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
     });
     ready = true;
     paintVolumeBookmark(host.shadowRoot, bookmarked);
+    enlargeSlider(host.shadowRoot);
+    // 続きから読むか選ぶ前の操作では移らない
+    watchPastEnd(viewer, () => !resumeDialogOpen() && goNextVolume());
 
     // 画面を離れる・アプリが裏に回るときは待たずに送る
     const flush = () => saver.flush();

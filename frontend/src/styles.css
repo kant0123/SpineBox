@@ -687,7 +687,28 @@ button.small::after {
 .reader-bar a { color: var(--reader-link); text-decoration: underline; white-space: nowrap; min-block-size: 44px; display: inline-flex; align-items: center; }
 .reader-title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader-page { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.reader-bar input[type="range"] { inline-size: 100%; min-block-size: 32px; accent-color: var(--reader-accent); }
+/* 区切りのスライダー。タブレットでも押せるよう、軌道 12px・つまみ 32px・押せる高さ 44px にする(#324) */
+.reader-bar input[type="range"] {
+  --slider-track: 12px; --slider-thumb: 32px;
+  appearance: none; inline-size: 100%; block-size: 44px; margin: 0; padding: 0; border: 0;
+  background: transparent; cursor: pointer;
+}
+.reader-bar input[type="range"]::-webkit-slider-runnable-track {
+  block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-track);
+}
+.reader-bar input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  inline-size: var(--slider-thumb); block-size: var(--slider-thumb);
+  margin-block-start: calc((var(--slider-track) - var(--slider-thumb)) / 2);
+  border: 0; border-radius: 50%; background: var(--reader-accent);
+}
+.reader-bar input[type="range"]::-moz-range-track {
+  block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-track);
+}
+.reader-bar input[type="range"]::-moz-range-thumb {
+  inline-size: var(--slider-thumb); block-size: var(--slider-thumb);
+  border: 0; border-radius: 50%; background: var(--reader-accent);
+}
 .reader-options { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
 .reader-options label { display: inline-flex; align-items: center; gap: 6px; min-block-size: 44px; cursor: pointer; }
 

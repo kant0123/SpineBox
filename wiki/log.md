@@ -654,6 +654,14 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]], [[organize]]
 - 備考: `styles.css` を `@layer`・`light-dark()`・論理プロパティ・`dvh` へ。FolderPicker と重複巻の選択を `<dialog>`、検索を `<search>`、進み具合を `<progress>` / `<meter>` に。`title` 属性と途中経過の live region を廃止。スキップリンク・`document.title`・引き出し中の `main` の `inert` を追加。サイドバーのテーマ切替は、逆が OS 設定と同じなら記憶を消す。`.claude/skills/` と `.agent/skills/` の modern-web-guidance のローカル追記(色のトークンの足し方)も直した。
 
+## [2026-11-15] ingest | PR #329 リーダー: スライダーを太く・戻るを作品のタイトル一覧へ・最後の画面から次の巻へ (#324)
+- 更新: [[manga-reader]], [[frontend]], [[backend]], [[server-setup]]
+- 備考: 漫画のスライダーと「最後の画面からさらに進む」は manga-viewer の外から足した(`frontend/src/reader/viewerHooks.ts`)。[[server-setup]] はコード参照の行番号だけ。
+
+## [2026-11-15] ingest | PR #330 (#325) update_spinebox.bat が Update 直後の起動確認で 90 秒タイムアウトする問題を修正
+- 更新: [[server-setup]]
+- 備考: #325。タスクスケジューラの既定 `Priority = 7`(`BELOW_NORMAL_PRIORITY_CLASS` + 低 I/O・低メモリ優先度)で起動されていたため、`npm ci` / `build` 直後の高 I/O 負荷時に `Start-ScheduledTask` からラッパー開始まで 71 秒・Python の起動時 DB 同期完了まで計 5 分超かかり 90 秒タイムアウトになっていた。`install_task.ps1` で `-Priority 4`(通常)を指定し、既存の登録タスクでも `start_spinebox.ps1` が起動時に自身の CPU・I/O・メモリ優先度を通常へ戻すようにし、`update_spinebox.ps1` の `-TimeoutSeconds` 既定値を 180 秒に延長。調査中に別件 #326 (`works.sync` + `linking.apply_all` の非冪等更新)・#328 (`install_task.ps1 -Action Status` の非管理者表示)を発見して起票。
+
 ## [2026-11-15] ingest | PR #331 (#202) 画像だけの EPUB(固定レイアウト漫画)を漫画リーダーで表示する
 - 更新: [[backend]], [[novel-reader]], [[organize]], [[recurring-review-findings]], ほか行番号のずれた [[bookmarks]], [[inbox]], [[manga-reader]], [[cover-thumbnails]], [[data-jobs]], [[extraction-cache]], [[metadata-linking]], [[volume-split]], [[work-grouping]], [[server-setup]](コード参照のみ)
 - 備考: #202。`epub.image_pages()` で全区切りが画像だけ(KCC が置く `<div style="display:none;">.</div>` 等を除く本文テキストが 0 文字)の EPUB / `container.xml` 入り `.zip` を `volumes.format = 'epub_images'`(`SCAN_VERSION = 14`)として小説(`format = 'epub'`)と区別し、API では `format: "images"`・spine 順のページ列として `MangaReader` で開く。再スキャン前の既存 DB(`format = 'epub'`)でも `GET /api/volumes/{id}` で開いた時点で `epub_images` に切り替え、小説用の `reading_progress.position` を消す。レビューで、範囲指定の CBZ 化(`_plan_range_cbz`)が `format = 'epub_images'` にも `epub_sections` を渡して読書位置のページ番号を区切り番号として二重変換する不具合を指摘され直した([[recurring-review-findings]])。本番 DB の `format = 'epub'` 199 巻のうち固定レイアウト漫画 191 巻(『真の実力はギリギリまで隠していようと思う』全 8 巻を含む)が画像ページ列になり、小説・技術書 8 巻が `epub` に残ることを確かめた。

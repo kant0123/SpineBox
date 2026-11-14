@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { api, type VolumeDetail } from "../api";
-import { libraryHref } from "../route";
+import { readerBackHref } from "../route";
 import { loadNovelSettings, saveNovelSettings } from "../settings";
 import { keyAction, swipeAction, tapAction, type Action } from "../reader/layout";
 import { volumeErrorMessage } from "../reader/loadError";
@@ -309,7 +309,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
       {menu && (
         <>
           <div className="reader-bar top">
-            <a href={libraryHref}>‹ 一覧へ</a>
+            <a href={readerBackHref(detail.work_id)}>{detail.work_id == null ? "‹ 一覧へ" : "‹ 作品へ"}</a>
             <span className="reader-title">{detail.title}</span>
             <BookmarkButton target="volume" id={id} initial={detail.bookmarked ?? false} label={detail.title} dark />
             <span className="reader-page" data-testid="page-label">

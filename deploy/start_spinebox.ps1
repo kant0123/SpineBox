@@ -74,6 +74,9 @@ function Remove-OldLogs {
 # Job のハンドルは閉じずに持ち続ける(閉じるのはプロセス終了時だけ、というのが狙い)。
 function Enable-KillChildrenOnExit {
     try {
+        # Add-Type(csc.exe)や後続の python 起動が遅くならないよう、先に CPU 優先度を通常へ戻す(#325)
+        $proc = [System.Diagnostics.Process]::GetCurrentProcess()
+        try { $proc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::Normal } catch { }
         if (-not ([System.Management.Automation.PSTypeName]'SpineBoxJob').Type) {
             Add-Type -TypeDefinition @"
 using System;
@@ -102,8 +105,19 @@ public static class SpineBoxJob
     static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint size);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("ntdll.dll")]
+    static extern int NtSetInformationProcess(IntPtr process, int infoClass, ref int info, int size);
 
     static IntPtr job = IntPtr.Zero;
+
+    // タスクスケジューラの既定(Priority 7)で起動されると CPU・I/O・メモリ優先度がすべて下げられるため、通常へ戻す(#325)
+    public static void RestoreNormalPriority(IntPtr process)
+    {
+        int io = 2;  // IoPriorityNormal (ProcessIoPriority = 33)
+        int mem = 5; // MEMORY_PRIORITY_NORMAL (ProcessPagePriority = 39)
+        NtSetInformationProcess(process, 33, ref io, 4);
+        NtSetInformationProcess(process, 39, ref mem, 4);
+    }
 
     // 成功なら空文字、失敗ならその理由を返す
     public static string KillChildrenOnExit(IntPtr process)
@@ -130,7 +144,8 @@ public static class SpineBoxJob
 }
 "@
         }
-        return [SpineBoxJob]::KillChildrenOnExit([System.Diagnostics.Process]::GetCurrentProcess().Handle)
+        try { [SpineBoxJob]::RestoreNormalPriority($proc.Handle) } catch { }
+        return [SpineBoxJob]::KillChildrenOnExit($proc.Handle)
     }
     catch {
         return $_.Exception.Message

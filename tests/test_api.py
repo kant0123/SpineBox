@@ -76,6 +76,19 @@ def test_next_volume_follows_work_order(make_client, tmp_path):
     assert c.get(f"/api/volumes/{vols['T v03']['id']}").json()["next_volume"] is None
 
 
+def test_volume_detail_carries_its_work_id(make_client, tmp_path):
+    """リーダーの「戻る」が作品のタイトル一覧へ移るための作品 id(#324)。漫画・小説の両方に付く。"""
+    lib = tmp_path / "lib"
+    write_zip(lib / "T v01.cbz", [("001.jpg", page_bytes("t1"))])
+    (lib / "S v01.txt").write_text("本文" * 50, encoding="utf-8")
+    c, _ = make_client(lib)
+    c.post("/api/scan")
+    vols = by_title(c)
+    for title in ("T v01", "S v01"):
+        assert vols[title]["work_id"] is not None
+        assert c.get(f"/api/volumes/{vols[title]['id']}").json()["work_id"] == vols[title]["work_id"]
+
+
 def test_next_volume_takes_first_duplicate_of_the_next_number(make_client, tmp_path):
     """同じ番号の重複は次の巻に数えず、次の番号に重複があれば一覧の並びの 1 つ目を返す(#113)。"""
     lib = tmp_path / "lib"

@@ -224,6 +224,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const range = createMockRange(ops, () => `op-${++opSeq}`);
   const sections = mockSections();
   /** 同じ作品の次の巻(#113)。リーダーの最終ページから進む先 */
+  const workIdOf = (vol: MockVolume) => vol.work_id ?? mockWorks.works.find((w) => w.volumeIds.includes(vol.id))?.id ?? null;
   const nextOf = (vol: MockVolume) => {
     const n = mockWorks.nextVolume(vol.id);
     return n ? { id: n.id, title: n.title, volume_number: n.volume_number, offline: n.offline } : null;
@@ -656,6 +657,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         sections: novel.map((h, i) => ({ index: i, length: h.length })),
         encoding: v.format === "text" ? "cp932" : null,
         progress: v.progress, parent_id: null, volume_number: v.volume_number, findings: [],
+        work_id: workIdOf(v),
         next_volume: nextOf(v),
         bookmarked: marks.volume.has(v.id),
       };
@@ -679,6 +681,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         progress: v.progress,
         parent_id: v.parent_id,
         volume_number: v.volume_number,
+        work_id: workIdOf(v),
         next_volume: nextOf(v),
         findings: v.findings,
         bookmarked: marks.volume.has(v.id),

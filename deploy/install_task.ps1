@@ -176,12 +176,14 @@ function Register-SpineBoxTask {
     $trigger = New-ScheduledTaskTrigger -AtStartup
     $trigger.Delay = "PT30S"   # ドライブやネットワークが揃うのを待つ
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
-        -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+        -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
+        -Priority 4   # 既定の 7(BelowNormal + 低 I/O・低メモリ優先度)だと更新直後の高負荷時に起動と DB 同期が後回しになる(#325)
 
     Write-Host "登録する内容:"
     Write-Host "  タスク名: $TaskName"
     Write-Host ("  実行ユーザー: {0}" -f $(if ($UserName) { $UserName } else { "SYSTEM" }))
     Write-Host "  トリガー: OS の起動 30 秒後(ログオン不要)"
+    Write-Host ("  優先度: {0} (通常)" -f $settings.Priority)
     Write-Host "  稼働確認の URL(設定の host / port から): $healthUrl"
     Write-Host "  実行: powershell.exe $arguments"
 
