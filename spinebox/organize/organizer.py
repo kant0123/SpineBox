@@ -1085,8 +1085,9 @@ class Organizer:
                     if pages is None:
                         it.update(status=ITEM_EXCLUDED, reason="小説(文字のある EPUB・テキスト)は CBZ にできません(名前は変えません)")
                         continue
-                    it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages],
-                              epub_sections=[i for i, _ in pages])
+                    it.update(page_count=len(pages), epub_pages=[e.name for _, e in pages])
+                    if r["format"] == FORMAT_EPUB:
+                        it["epub_sections"] = [i for i, _ in pages]
                 else:
                     it.update(status=ITEM_EXCLUDED, reason="小説(テキスト)は CBZ にできません(名前は変えません)")
                     continue
@@ -2143,9 +2144,9 @@ def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_
     if row is None:
         return
     page = row["page"] if page_count is None else min(row["page"], max(page_count - 1, 0))
-    c.execute("""INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, ?, ?, ?)
+    c.execute("""INSERT INTO reading_progress (volume_id, page, finished, position, updated_at) VALUES (?, ?, ?, NULL, ?)
                  ON CONFLICT (volume_id) DO UPDATE SET page = excluded.page, finished = excluded.finished,
-                 updated_at = excluded.updated_at""", (to_id, page, row["finished"], db.now()))
+                 position = NULL, updated_at = excluded.updated_at""", (to_id, page, row["finished"], db.now()))
 
 
 def _progress_section_to_page(c: sqlite3.Connection, epub_id: int, cbz_id: int, sections: list[int]) -> None:

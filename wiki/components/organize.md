@@ -48,18 +48,18 @@ related: [overview, backend, frontend, volume-split, duplicate-detection, work-g
 | `spinebox/organize/organizer.py:1022 _plan_range_cbz` | 範囲指定の CBZ 化もまとめて行う計画(#133)。1 巻 = 1 CBZ は改名・移動、それ以外は元(1 ファイル・フォルダ・画像だけの EPUB)の巻を CBZ 化する。勝ち負けの決め直しと、元を止める・選択待ちにする判定(#153)もここ |
 | `spinebox/organize/organizer.py:1294 _supersede_smaller_outputs` | 同じ名前の巻のうちファイル数の少ない方を整理しないにする(#143)。改名・移動側は `_classify_renames`。選び方は `_smaller_than_top` |
 | `spinebox/organize/organizer.py:87 _mark_kept_peers` | 利用者が整理しないにした巻のうち、同じ名前で残る巻がある巻に `superseded_by` を付ける(競合で別の行を選んだ結果。#153) |
-| `spinebox/organize/organizer.py:1836 _delete_trashed_originals` | 「CBZ 化した元を削除する」を選んだ操作だけ、確定・DB の記録の後でその操作の退避フォルダの中を消す(#153) |
+| `spinebox/organize/organizer.py:1842 _delete_trashed_originals` | 「CBZ 化した元を削除する」を選んだ操作だけ、確定・DB の記録の後でその操作の退避フォルダの中を消す(#153) |
 | `spinebox/novel/epub.py:230 image_pages` | 画像だけの EPUB(漫画)の spine 順のページ。文字のある区切りが 1 つでもあれば None。計画は `_epub_image_pages`、実行は `_write_epub_cbz` |
 | `spinebox/organize/pdf.py:191 write_pdf_cbz` | PDF からページ画像を抽出して CBZ を作成する。基本は無劣化抽出、回転・CMYK 補正、白紙・複数画像の合成レンダリングを行うハイブリッド方式。検査は `inspect_pdf` |
-| `spinebox/organize/organizer.py:1717 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
-| `spinebox/organize/organizer.py:1947 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
+| `spinebox/organize/organizer.py:1723 _execute_range_cbz` | 範囲指定の CBZ 化 + 改名・移動の実行。先に全 CBZ を作業場で作って検証し、改名で確定 → 元を退避 → 空フォルダ削除 → DB。失敗時は `_revert` で全部戻す |
+| `spinebox/organize/organizer.py:1953 _undo_range_cbz` | CBZ 化と改名・移動をまとめて元に戻す。作った CBZ は `trash/<操作ID>/created/` へ移し、退避した元を元の場所へ戻す |
 | `spinebox/organize/template.py:276 RangeTemplate` | 整理画面のファイル名・フォルダーテンプレート(`{title}` 記法・`[...]` の省略)。プリセット・パラメーター・パスの例は同じファイルの `PRESETS`・`PARAMETERS`・`range_examples` |
 | `spinebox/organize/cleanup.py:47 clean_stem` | ファイル名の整理(特殊記号・全角半角・文字化け)と、何を直したかの説明。文字化けの判定・修復は `spinebox/mojibake.py fix_mojibake` |
 | `spinebox/mojibake.py:59 fix_mojibake` | 複数パターンの文字コード誤読(CP437/CP850/CP1252/Latin-1 欧文誤読、CP932/EUC-JP 誤読、Shift_JIS を GBK で読んだもの、一部のバイトが置き換わった名前の語ごとの修復)の安全な検出と修復。命名解析やスキャン時のタイトルにも適用。直せない名前は `looks_garbled` で見分けて作品名にしない([[work-grouping]] #263) |
 | `frontend/src/organize/OrganizeFiles.tsx:669 OrganizeFilesSection` | 整理画面の中身。管理の整理タブ(`frontend/src/admin/panels.tsx:15 OrganizePanel()`。#207 まではデータ管理タブの下の節。[[data-jobs]])にこの部品と整理の履歴を置く。1. 対象 → 2. 名前の決め方(任意) → 3. プレビューして実行の 3 段、入力欄ごとの項目の差し込み、Esc・フォーカストラップ・フォーカス返却つきのフォルダー選択、結果の見出しへのフォーカス(#149)。結果は要約・競合の行選択・実行内容・整理しない内容のリスト(#151。`ClashGroups` / `RangeWork` / `RangeRest`)。旧 `#/data/organize`・`#/organize` は整理タブを開く(巻の一覧のヘッダーの「ファイル名の整理」は外した) |
 | `spinebox/organize/fs.py:29 same_drive` | 同じボリュームかの判定(`st_dev`)。`move_no_overwrite` は移動先があれば必ず失敗する移動 |
 | `spinebox/organize/cbz.py:48 verify_cbz` | 読み直してページ数・並び・無圧縮・各画像の sha256 を元と突き合わせる |
-| `spinebox/organize/organizer.py:2127 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークとしおり(#136。[[manga-reader]])は写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
+| `spinebox/organize/organizer.py:2133 transfer_volume_state` | 巻に紐づくユーザーの記録の写し先。手動編集メタデータを足したらここで一緒に写す。ブックマークとしおり(#136。[[manga-reader]])は写さず移す([[bookmarks]])。作品の割り当て(手動かどうかも)は `works.transfer_assignment` で写す([[work-grouping]]) |
 
 置き場は `spinebox/config.py:137 organize_base`(既定 `<蔵書ルート>/.spinebox`)。作業場が `work/<操作ID>/`、
 退避が `trash/<操作ID>/original/<元の相対パス>`、元に戻したときの作成物が `trash/<操作ID>/created/<出力の相対パス>`。
@@ -230,11 +230,11 @@ Peach の「整理」画面の読み替え。蔵書ルートと、その中の�
 
 固定レイアウトの漫画の EPUB(1 区切り = `<img>` 1 枚)を、範囲指定の CBZ 化で CBZ にする。
 
-- **判定は中身で、作品の種別では見ない。** spine の区切りを順に読み、タグ(head・script・style は中身ごと)を除いた文字が 20 文字を超える区切りが 1 つでもあれば小説として対象外
+- **判定は中身で、作品の種別では見ない。** spine の区切りを順に読み、タグ(head・script・style・コメントは中身ごと)と空白類・`.` を除いた本文の文字が 1 文字でもある区切りが 1 つでもあれば小説として対象外
   (最初の文字のある区切りで読むのをやめるので、小説の判定は速い)。EPUB の巻は種別が小説に寄りやすく、種別で絞ると漫画の EPUB が落ちる
 - ページは spine の順に、区切りの中の `<img src>`・SVG の `<image href>` の順で、manifest の画像(`IMAGE_TYPES`)だけ。本文の XHTML・CSS・nav は入れない
-- **読書位置は区切りの番号 → その区切りの最初の画像のページへ読み替え、元に戻すときはページ → 区切りの先頭へ戻す。** EPUB の巻の `page_count`(区切りの数)は書き換えない。
-  ページと区切りの対応は計画に控える(`epub_sections`)。実物(栽培チートで最強菜園 1・2 巻、216・200 ページ)で CBZ 化 → 元に戻す・削除を確かめた
+- **読書位置は、`format = 'epub_images'`(既に漫画リーダーのページ番号で記録されている巻)ならそのままページ番号を写し、再スキャン前の `format = 'epub'` の巻だけ区切りの番号 → その区切りの最初の画像のページへ読み替え、元に戻すときはページ → 区切りの先頭へ戻す。**
+  ページと区切りの対応は `format = 'epub'` のときだけ計画に控える(`epub_sections`)。実物(栽培チートで最強菜園 1・2 巻、216・200 ページ)で CBZ 化 → 元に戻す・削除を確かめた
 
 ## 受け入れ(`kind="intake"`)
 

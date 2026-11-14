@@ -982,17 +982,16 @@ def make_epub(path: Path, sections: list[str], images: dict[str, bytes]) -> Path
 
 def test_include_cbz_converts_image_only_epub_and_keeps_text_epub(env):
     root = env.root
+    # 1 つの区切りに複数の画像があっても、epub_images の読書位置(ページ番号)はそのまま保たれる
     make_epub(root / "電子" / "漫画 第1巻.epub",
-              ['<div><img src="b.jpg" alt=""/></div>', '<div><img src="a.jpg"/></div>',
-               '<svg><image xlink:href="c.jpg"/></svg>'],
+              ['<div><img src="b.jpg" alt=""/></div>',
+               '<div><img src="a.jpg"/><svg><image xlink:href="c.jpg"/></svg></div>'],
               {"a.jpg": page_bytes("e/a"), "b.jpg": page_bytes("e/b"), "c.jpg": page_bytes("e/c")})
     make_epub(root / "電子" / "小説 第1巻.epub", ["<p>本文です。" * 20 + "</p>"], {})
     Scanner(env.conn, env.settings).scan()
     works.sync(env.conn)
     old = vid_of(env, "電子/漫画 第1巻.epub")
-    with db.transaction(env.conn) as c:
-        c.execute("INSERT INTO reading_progress (volume_id, page, finished, position, updated_at) VALUES (?, 1, 0, 0.5, ?)",
-                  (old, db.now()))
+    set_progress(env, old, 2)
     before = full_snapshot(root)
     o = organizer(env)
     plan = o.plan_range(env.root_id, "電子", include_cbz=True)
@@ -1007,7 +1006,18 @@ def test_include_cbz_converts_image_only_epub_and_keeps_text_epub(env):
         assert z.namelist() == ["0001.jpg", "0002.jpg", "0003.jpg"]
         assert [z.read(n) for n in z.namelist()] == [page_bytes("e/b"), page_bytes("e/a"), page_bytes("e/c")]
     new = vid_of(env, "電子/漫画 第1巻.cbz")
-    assert progress(env, new) == 1  # 区切り 1 の最初の画像 = 2 ページ目(0 始まりで 1)
+    assert progress(env, new) == 2
     assert o.undo(plan["op_id"])["state"] == "undone"
     assert full_snapshot(root) == before
+    row = env.conn.execute("SELECT page, position FROM reading_progress WHERE volume_id = ?", (old,)).fetchone()
+    assert (row["page"], row["position"]) == (2, None)
+    # 再スキャン前の DB(format='epub'・区切り番号の進捗)からの CBZ 化は、区切り ⇔ ページで読み替える
+    with db.transaction(env.conn) as c:
+        c.execute("UPDATE volumes SET format = 'epub', page_count = 2 WHERE id = ?", (old,))
+        c.execute("UPDATE reading_progress SET page = 1, position = 0.5 WHERE volume_id = ?", (old,))
+    plan2 = o.plan_range(env.root_id, "電子", include_cbz=True)
+    assert o.execute(plan2["op_id"])["state"] == "done"
+    new2 = vid_of(env, "電子/漫画 第1巻.cbz")
+    assert progress(env, new2) == 1  # 区切り 1 の最初の画像 = 2 ページ目(0 始まりで 1)
+    assert o.undo(plan2["op_id"])["state"] == "undone"
     assert progress(env, old) == 1

@@ -125,6 +125,7 @@ push 前に確かめること:
 - PR #249 — `spinebox/works.py _belongs_to()` — 巻の名前が外側の名前より長い向きには「番号・…編・区切りの後ろの副題」の検査を足したのに、外側の方が長い向きは単なる前方一致のままで、`魔法使いの嫁` のフォルダが `魔法使い 第01巻` を取り込んだ。両向きを同じ `_extends()` で見るようにした(agy レビューの WARNING)
 - PR #249 — `spinebox/works.py _same_series()` — 外側の名前との突き合わせ(`_belongs_to`)を `_extends()` に揃えた後も、系列のまとめ(`_group_keys`)は単なる前方一致のままで、ローマ字のアーカイブの中の `ゾンビ` と `ゾンビだらけの世界` が 1 系列になり統合された。同じ `_extends()` で見るようにした(agy レビューの WARNING)
 - PR #262 — `spinebox/works.py _volume_json()` / `spinebox/bookmarks.py` — PDF を画像の巻として扱うよう `app.py _format()` だけ直し、同じ `format or "images"` を書いた作品・ブックマークの組み立てを直さず、`format: "pdf"` が API に漏れて作品の表紙候補(`cover_volume_id`)から外れた(agy レビューの CRITICAL。作品一覧で再現して両方を直し、テストを足した)
+- PR #331 — `spinebox/organize/organizer.py _plan_range_cbz()` — 画像だけの EPUB をスキャン時に `format='epub_images'`(読書位置 `page` は 0 始まりの画像ページ番号)として扱うようにした際、範囲指定の CBZ 化で `r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES)` の両方に無条件で `epub_sections` を付けたため、1 区切りに複数画像がある `epub_images` の巻で CBZ 化・undo 時にページ番号が区切り番号として誤変換され、undo 時に `position = 0` が書き込まれた(agy レビューの WARNING。`r["format"] == FORMAT_EPUB` のときだけ `epub_sections` を付けるように修正し、1 区切り 2 画像のテストを足した)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
