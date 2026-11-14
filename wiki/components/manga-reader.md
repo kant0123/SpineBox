@@ -72,7 +72,7 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 ## 落とし穴
 
 - ライブラリの UI は Shadow DOM の中で、`frontend/src/styles.css` も DADS のトークンも届かない(配色・フォーカスリング・ターゲットの大きさはライブラリのまま)。
-  DADS 準拠([[frontend]])の対象は SpineBox 側の読み込み待ち・取得失敗・通知の表示まで
+  SpineBox の画面の値([[frontend]])が効くのは SpineBox 側の読み込み待ち・取得失敗・通知の表示まで
 - jsdom には `matchMedia` が無いので、本物のライブラリを組むテスト(`realViewer.test.ts`)は `matchMedia` と `ResizeObserver` を差し替える。
   それ以外のリーダーのテストはライブラリをモックしてオプションと結線だけを見る(`Reader.test.tsx`・`App.test.tsx`)
 - ページ画像の読み込みはライブラリ任せで、横長で初めて開いた見開きは画像が来るまで数秒黒いことがある(従来の「読み込み中」の重ね表示は無い)。
