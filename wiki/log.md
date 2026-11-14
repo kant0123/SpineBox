@@ -654,6 +654,6 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[frontend]], [[organize]]
 - 備考: `styles.css` を `@layer`・`light-dark()`・論理プロパティ・`dvh` へ。FolderPicker と重複巻の選択を `<dialog>`、検索を `<search>`、進み具合を `<progress>` / `<meter>` に。`title` 属性と途中経過の live region を廃止。スキップリンク・`document.title`・引き出し中の `main` の `inert` を追加。サイドバーのテーマ切替は、逆が OS 設定と同じなら記憶を消す。`.claude/skills/` と `.agent/skills/` の modern-web-guidance のローカル追記(色のトークンの足し方)も直した。
 
-## [2026-11-15] ingest | PR #TBD (#325) update_spinebox.bat が Update 直後の起動確認で 90 秒タイムアウトする問題を修正
+## [2026-11-15] ingest | PR #330 (#325) update_spinebox.bat が Update 直後の起動確認で 90 秒タイムアウトする問題を修正
 - 更新: [[server-setup]]
 - 備考: #325。タスクスケジューラの既定 `Priority = 7`(`BELOW_NORMAL_PRIORITY_CLASS` + 低 I/O・低メモリ優先度)で起動されていたため、`npm ci` / `build` 直後の高 I/O 負荷時に `Start-ScheduledTask` からラッパー開始まで 71 秒・Python の起動時 DB 同期完了まで計 5 分超かかり 90 秒タイムアウトになっていた。`install_task.ps1` で `-Priority 4`(通常)を指定し、既存の登録タスクでも `start_spinebox.ps1` が起動時に自身の CPU・I/O・メモリ優先度を通常へ戻すようにし、`update_spinebox.ps1` の `-TimeoutSeconds` 既定値を 180 秒に延長。調査中に別件 #326 (`works.sync` + `linking.apply_all` の非冪等更新)・#328 (`install_task.ps1 -Action Status` の非管理者表示)を発見して起票。
