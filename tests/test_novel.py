@@ -495,7 +495,8 @@ def test_image_only_epub_thumbs_bookmarks_stats_organize_and_inbox(make_settings
     item_v4 = next(it for it in rename_plan["items"] if it["volume_id"] == v4)
     assert item_v4["status"] == "excluded" and "1 巻 = 1 CBZ ではありません" in item_v4["reason"]
     root_id = c.get("/api/organize/range/options").json()["roots"][0]["id"]
-    range_plan = c.post("/api/organize/range-plan", json={"root_id": root_id, "include_cbz": True}).json()
+    range_plan = c.post("/api/organize/range-plan",
+                        json={"root_id": root_id, "folder_template": "{title}", "include_cbz": True}).json()
     range_v4 = next(it for it in range_plan["items"] if it["volume_id"] == v4)
     assert range_v4["status"] == "cbz" and range_v4["conversion"] is True
     # 受け入れ(Inbox): 画像だけの EPUB は mode="cbz" として CBZ 化で書庫へ入る
