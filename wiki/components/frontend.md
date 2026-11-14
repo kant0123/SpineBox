@@ -93,9 +93,10 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   要約(実行する / 競合 / 整理しない / 対象外 / そのまま)・競合の行選択・実行ボタン・実行内容・整理しない内容を 1 か所にまとめる。フォームは 800px に抑え、スマホの sticky な帯
   (約 53px)に隠れないよう `scroll-margin-top` を付ける。`<form>` にして Enter でもプレビューできる
 - **整理のフォルダー選択はモーダルにする(#149)。** 今のパスから開き、パンくず(蔵書フォルダ全体 / 途中のフォルダ)で移動する。開いたら見出しへ
-  フォーカス、Esc で閉じ、閉じたら開いたボタンへ戻す。Tab はモーダルの中を回す(`frontend/src/shell/FolderPicker.tsx FolderPicker`。#313 で切り出した)。
+  フォーカス、Esc・外側のクリックで閉じ、閉じたら開いたボタンへ戻す。ネイティブの `<dialog>`(`showModal()`・`closedby="any"`)なので Tab の閉じ込めと背景の `inert` はブラウザ任せ。
+  `closedby` に未対応の Safari 向けに、外側のクリックで閉じる処理だけ残してある(`frontend/src/shell/FolderPicker.tsx FolderPicker`。#313 で切り出した)。
   前回のパスが読めないときはエラーを出して蔵書フォルダ全体へ戻す。テンプレートの誤りはプレビューを `disabled` で塞がず、押したら該当欄へ
-  フォーカスする(DADS のフォーム)。処理中(プレビュー・実行・元に戻す)だけ入力欄を `disabled` にし、`aria-busy` を付ける
+  フォーカスする。処理中(プレビュー・実行・元に戻す)だけ入力欄を `disabled` にし、`aria-busy` を付ける
 - **スキャンの結果は「N 巻を検出」と「読めなかったもの N 件」(開くと理由の一覧)を出す(#48)。** 件数が 0 なら出さない。
   サーバーの `issues` は最大 200 件なので、切った分は「ほか N 件は省略しました」と知らせる。スキャンが失敗したら、サーバーの `detail`
   (型とメッセージ)をそのままエラー表示に出す。固定の文言だけだと、サーバー機で何が起きたか画面から分からなかった
@@ -107,10 +108,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   一覧の判断には使わず、カードが情報過多になるためバッジから外す(欠け・オフライン・読書状態は残す。統合の提案・候補の確認待ちは #210 で通知ドットに替えた)。
   巻数は独立した行ではなく `.work-badges` の先頭のタグにし、文言を「既刊8巻(〜6巻)」(最高巻数が無ければ「既刊8巻」)にした(#185)。「既刊」は手持ち分(`GET /api/works` の `volume_count` = 見えている巻の数。`max_volume` は手持ちの最大巻番号)で、公開 DB の全巻数 `total_volumes` ではない(`WorkLinks.tsx` の候補の「全 N 巻」はそちら)。
 - **欠けの番号は多すぎるときだけ件数にする(#165)。** 作品カードのバッジと作品ページの「欠けている巻」は、欠けが
-  5 個以下なら番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は title 属性に入れ、
-  カーソルを合わせるとツールチップで出る。欠けの多い作品でカードが数行になり、一覧が読みにくくなるのを避ける。
-  DADS v2.18.2 にツールチップのコンポーネントが無いのでブラウザ標準の title を使う(件数は常に見えるので、
-  内訳は補助)。組み立ては frontend/src/works/labels.ts:40 missingLabel()。
+  5 個以下なら番号を並べ(「3・5 巻」)、6 個以上なら「12 巻」と件数だけにする。全番号は作品ページでは「内訳」の `<details>` に入れる(`title` 属性のツールチップは使わない)。欠けの多い作品でカードが数行になり、一覧が読みにくくなるのを避ける。
+  件数は常に見えるので、内訳は補助。組み立ては frontend/src/works/labels.ts:40 missingLabel()。
 - **作品カードのタイトルは 1 行で省略表示し、ホバー・フォーカス時に横スクロール(マーキー)する(#266)。** 長いタイトルでも改行でカードが縦に伸びたり改行が重なって読みにくくなるのを防ぎ、Peach と同様にカードへカーソルを合わせたとき末尾まで自動スクロールさせる。`.volume-title` の `overflow-wrap: anywhere` が inline-block を親幅へ縮めてはみ出し量が測れなくなるため、内側の span は `width: max-content` で本来の幅を保つ(#310)。`prefers-reduced-motion: reduce` ではアニメーションを止め、代わりにホバー・フォーカス中だけ全文を折り返して見せる。コードは `frontend/src/works/Works.tsx:70 WorkCard()`。
 - **作品カードのタグ(バッジ)は 1 行に収めて高さを揃える(#266)。** 欠け情報や複数バッジが複数行にまたがってカードの高さが不揃いになるのを防ぐため、`.work-badges` を 1 行(`flex-wrap: nowrap`)・最小高さ 26px に固定し、各 `.badge` に `white-space: nowrap` と省略記号(`text-overflow: ellipsis`)を適用した。
 - **作品カードに表紙を出す(#75。[[cover-thumbnails]])。** カードの横幅いっぱい(`.work-card .work-cover` で幅 100%・2:3 の縦横比・上角丸)に置き、
@@ -164,7 +163,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
   ホームの帯は「統合の提案が N 件」から「確認待ちが N 件」(3 種の合計)へ。作品ページでの公開 DB の候補の選択も残す
 - **作品ごとの確認待ちは、カードでは通知ドット 1 つ、作品ページ・タイトル一覧では確認の該当タブへのリンクにする(#210)。**
   カードの「統合の提案」「候補の確認待ち」の文字のタグは、欠け・読書状態と並んで情報過多だったので、表紙の左上に `--warn`(オレンジ)のドットを 1 つ重ねる形にまとめた。
-  色と形だけに頼らないよう、ドットは `role="img"` で「確認待ちあり(統合の提案・公開DBの候補)」を読み上げ名とツールチップに持つ。表紙の画像の上でも見分けられるよう `--card` の縁を付ける(強制カラーでは `Mark`)。
+  色と形だけに頼らないよう、ドットは `role="img"` で「確認待ちあり(統合の提案・公開DBの候補)」を読み上げ名に持つ(`title` のツールチップは付けない)。表紙の画像の上でも見分けられるよう `--card` の縁を付ける(強制カラーでは `Mark`)。
   カードはタイトル一覧へ開くので、案内 `frontend/src/works/ReviewPending.tsx:37 ReviewPendingNotice()` は作品ページとタイトル一覧の両方の上部に出し、種類ごとに `#/review/proposals` / `#/review` へリンクする。
   #207 で作品ページの「公開データベース」節に置いた 1 行は、同じリンクが 2 つ並ぶので上部の案内へまとめて外した。重複の候補は巻単位で `GET /api/works` に作品ごとの数が無いので、ドットの対象にしていない
 - **公開DBの候補タブは、作品ページを開かずにその場で選ぶ(#207)。** 1 作品 1 枠で表紙・作品名・巻数と、確認待ちの取得元だけの `WorkLinks` を出す(連携済み・該当なしは作品ページで見る)。
@@ -201,12 +200,18 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **横長では常に表示し、開閉ボタンでアイコンだけの帯(60px)にする。スマホ幅(CSS の 768px 未満)ではハンバーガーの引き出し。**
   幅の判定は CSS だけで行い、JS は「細くしたか(`spinebox.sidebar`)」と「引き出しが開いているか」だけを持つ(回転で幅が変わっても状態が食い違わない)。
   引き出しはナビを選ぶ・画面が変わる・Esc・背景のタップで閉じる
-- **ライト/ダークは CSS 変数の 2 組。** `<html data-theme>` があればそちら、無ければ `prefers-color-scheme` に従う。既定は OS に従い、
-  サイドバーの切り替えを押すと「いま効いている方の逆」を `localStorage`(`spinebox.theme`)に記憶する。OS に従うへ戻すのは好みタブから。
+- **ライト/ダークの色は `--x-light` / `--x-dark` の組で持ち、`light-dark()` が `color-scheme` に合わせて選ぶ(`frontend/src/styles.css` 先頭の `:root`)。**
+  `<html data-theme>` があればそれが `color-scheme` を決め、無ければ OS の設定(`light dark`)に従う。`light-dark()` 未対応のブラウザ向けに、
+  `@supports not (color: light-dark(…))` の中だけ `prefers-color-scheme` と `data-theme` の 2 経路を持つ(色を足すときは組と 3 か所の対応行をそろえる)。
+  既定は OS に従い、サイドバーの切り替えは「いま効いている方の逆」を `localStorage`(`spinebox.theme`)に記憶するが、逆が OS の設定と同じなら記憶を消して OS に従う
+  (modern-web-guidance の dark-mode-toggle)。`applyTheme` は `<meta name="color-scheme">` も同期する。OS に従うへ戻すのは好みタブからも行う。
   `main.tsx` で描画の前に適用するのは、ダークで開いたときに一瞬ライトになるのと、リーダーから直接開いたときに付かないのを避けるため
-- **画面の配色・余白・タイポ・フォーム・フォーカスリングの今の値は、DADS(デジタル庁デザインシステムβ版 v2.18.2)に合わせて作った(#112, #119, #126)。**
-  DADS 準拠の規約と `dads-ui` スキルは、modern-web-guidance(`.agent/skills/modern-web-guidance/`)と個別の規則で競合したため #318 で廃止した
-  (例: フォームのエラー通知に `aria-live` を使うか、`maxlength` を使うかが逆)。画面は塗り替えていないので下の値は今も `styles.css` にあり、新しく触る範囲は modern-web-guidance のガイドに従う。
+- **画面は modern-web-guidance のガイドに沿って作る(#321 で全画面を直した)。** 値(配色・寸法・フォーカスリング)は DADS β版 v2.18.2 に合わせて作った(#112, #119, #126)ものをそのまま引き継ぎ、
+  DADS 準拠の規約と `dads-ui` スキルは modern-web-guidance と個別の規則で競合したため #318 で廃止した(例: フォームのエラー通知に `aria-live` を使うか、`maxlength` を使うかが逆)。
+  `styles.css` は `@layer reset, base, components` の順で、`*` への指定は reset、要素の基本は base、画面ごとの規則は components に置く。余白・枠・最小/最大寸法は論理プロパティ、高さは `dvh`、
+  ブラウザの標準部品を使う: 重なる UI は `<dialog>`(フォルダー選択と重複巻の選択)、検索は `<search>`、進み具合は `<progress>`、キャッシュ使用率は `<meter>`、`title` のツールチップは使わない。
+  ライブリージョンは「読み込み中…」のような途中経過には付けず、失敗(`role="alert"`)と操作の結果だけにする。スキップリンク(「本文へ移動」)と画面ごとの `document.title`(「画面名 | SpineBox」)を `AppShell` が持ち、
+  768px 未満の引き出しが開いている間は `<main>` を `inert` にする。以下の値は今も `styles.css` にある。
   リンク・テキスト・ボタンに使う `--accent`(`#1b52b8` / ダーク `#70a5ff`)・`--done`(`#197a4b` / ダーク `#5fc48d`)・`--muted`・`--warn`・`--error` は `--bg`・`--card`・`--sidebar-active` 上で 4.5:1 以上を満たし、フォームの入力欄・選択欄の枠線は `--border-strong`(`#666666` / ダーク `#8e8e98`)で 3:1 以上を満たす。`:focus-visible` は黒 4px + オフセット 2px + 黄(`#ffd43d`) 2px の二重リングに統一し、最小フォントサイズは 14px(`0.875rem`)、小ボタン(`button.small` / `button.bookmark-button`)は `::after` 疑似要素で 44×44px のタッチターゲットを確保する。入力欄に `placeholder` は使わず、サポートテキストと `aria-describedby` / `aria-invalid` で示す。ブレークポイントは `768px` の 1 つに統一する
 - **蔵書の切り替えは端末ごとに記憶し(`spinebox.libraryGroup`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
   蔵書を消しても、端末に残った id で一覧が空になり続けないように。オフラインの蔵書も候補に出す(巻はオフラインとして残る)。
