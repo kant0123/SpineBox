@@ -187,6 +187,12 @@ describe("ライト/ダーク", () => {
     fireEvent.click(within(sidebar()).getByRole("button", { name: "ライトにする" }));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(loadTheme()).toBe("light");
+    // 逆(ダーク)が OS の設定と同じなら保存を外して OS に従う
+    fireEvent.click(within(sidebar()).getByRole("button", { name: "ダークにする" }));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem("spinebox.theme")).toBeNull();
+    osDark = false;
+    act(() => darkListeners.forEach((f) => f({ matches: false })));
     fireEvent.click(within(sidebar()).getByRole("button", { name: "ダークにする" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("spinebox.theme")).toBe("dark");

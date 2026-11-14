@@ -469,16 +469,12 @@ export function ClashGroups({
   const groups = clashGroupsOf(op);
   if (groups.length === 0) return null;
   return (
-    <section className="organize-clashes" aria-labelledby="organize-clashes-title">
-      <h4 id="organize-clashes-title">競合（{groups.length} 組）</h4>
+    <section className="organize-clashes">
+      <h4>競合（{groups.length} 組）</h4>
       <p className="organize-clashes-lead">
         同じ整理後の名前になる組です。残す方を 1 つ選んでください。ファイル数が多い方を既定で選んでいます。
       </p>
-      {busy && (
-        <p className="muted" role="status">
-          選び直しています…
-        </p>
-      )}
+      {busy && <p className="muted">選び直しています…</p>}
       <div className="organize-clash-list">
         {groups.map((group, index) => (
           <ClashGroup
@@ -503,8 +499,8 @@ export function RangeWork({ op, onExclude }: { op: OrganizeOp; onExclude?: (volu
   if (!move.length && !cbz.length) return null;
   const done = op.state !== "planned" && op.state !== "blocked" && op.state !== "running";
   return (
-    <section className="organize-result-work" aria-labelledby="organize-work-title">
-      <h4 id="organize-work-title">{done ? "実行した内容" : "実行する内容"}</h4>
+    <section className="organize-result-work">
+      <h4>{done ? "実行した内容" : "実行する内容"}</h4>
       {move.length > 0 && (
         <div className="organize-work-group">
           <h5>改名・移動（{move.length} 巻）</h5>
@@ -586,9 +582,9 @@ export function RangeRest({ op }: { op: OrganizeOp }) {
       <summary>整理しない内容（{summary}）</summary>
       {groups.map((g) => (
         <section key={g.key}>
-          <h5>
+          <h4>
             {g.label}（{g.items.length} 巻）
-          </h5>
+          </h4>
           <ul className="organize-result-list">
             {g.items.map((it) => (
               <RestRow key={it.volume_id} item={it} />
@@ -637,8 +633,8 @@ function ParameterChips({
   onInsert: (token: string, target: "file" | "folder") => void;
 }) {
   return (
-    <div className="organize-insert" role="group" aria-label={label}>
-      <span className="organize-insert-label">項目を差し込む</span>
+    <fieldset className="organize-insert" aria-label={label}>
+      <legend className="organize-insert-label">項目を差し込む</legend>
       <div className="organize-chips">
         {parameters.map((p) => (
           <button
@@ -648,14 +644,13 @@ function ParameterChips({
             // 押しても入力欄からカーソル(選択)を外さない
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onInsert(p.token, target)}
-            title={p.token}
             disabled={disabled}
           >
             {p.label}
           </button>
         ))}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -891,7 +886,7 @@ export function OrganizeFilesSection() {
             </button>
           </div>
         ) : (
-          <p className="muted" role="status">整理の設定を読み込んでいます…</p>
+          <p className="muted">整理の設定を読み込んでいます…</p>
         )}
       </div>
     );
@@ -956,6 +951,7 @@ export function OrganizeFilesSection() {
               <label htmlFor="organize-root">蔵書フォルダ</label>
               <select
                 id="organize-root"
+                name="root_id"
                 ref={rootRef}
                 value={rootId ?? ""}
                 onChange={(e) => {
@@ -984,9 +980,14 @@ export function OrganizeFilesSection() {
               <div className="organize-inline">
                 <input
                   id="organize-path"
+                  name="path"
                   value={path}
                   onChange={(e) => setPath(e.target.value)}
                   aria-describedby="organize-path-hint"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   disabled={busy !== null}
                 />
                 <button
@@ -1011,8 +1012,8 @@ export function OrganizeFilesSection() {
             <p className="organize-hint">
               両方とも空欄なら、今の名前を整えるだけです。拡張子は元のまま残ります。
             </p>
-            <div className="organize-presets" role="group" aria-label="よく使う設定">
-              <span className="organize-label">よく使う設定</span>
+            <fieldset className="organize-presets">
+              <legend className="organize-label">よく使う設定</legend>
               <p className="organize-hint">選ぶと、下の 2 つのテンプレートの欄に入ります。</p>
               <div className="organize-chips">
                 <button type="button" className="small secondary" onClick={() => applyTemplates("", "")} disabled={busy !== null}>
@@ -1038,16 +1039,21 @@ export function OrganizeFilesSection() {
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
 
             <div className="organize-field">
               <label htmlFor="organize-file-template">ファイル名テンプレート</label>
               <p id="organize-file-template-hint" className="organize-hint">空欄なら今の名前を整理するだけです。</p>
               <input
                 id="organize-file-template"
+                name="file_template"
                 ref={fileRef}
                 value={fileTemplate}
                 onChange={(e) => setFileTemplate(e.target.value)}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 aria-describedby={templateError ? "organize-template-error organize-file-template-hint" : "organize-file-template-hint"}
                 aria-invalid={templateError !== null || undefined}
                 disabled={busy !== null}
@@ -1080,9 +1086,14 @@ export function OrganizeFilesSection() {
                   </p>
                   <input
                     id="organize-folder-template"
+                    name="folder_template"
                     ref={folderRef}
                     value={folderTemplate}
                     onChange={(e) => setFolderTemplate(e.target.value)}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     aria-describedby={templateError ? "organize-template-error organize-folder-template-hint" : "organize-folder-template-hint"}
                     aria-invalid={templateError !== null || undefined}
                     disabled={busy !== null}
@@ -1099,7 +1110,7 @@ export function OrganizeFilesSection() {
             </details>
 
             {templateError ? (
-              <div className="notice error" role="alert">
+              <div className="notice error" role="status">
                 <span id="organize-template-error">{templateError}</span>
               </div>
             ) : (
@@ -1129,6 +1140,7 @@ export function OrganizeFilesSection() {
             <label className="organize-check" htmlFor="organize-include-cbz">
               <input
                 id="organize-include-cbz"
+                name="include_cbz"
                 type="checkbox"
                 checked={includeCbz}
                 onChange={(e) => setIncludeCbz(e.target.checked)}
@@ -1145,6 +1157,7 @@ export function OrganizeFilesSection() {
                 <label className="organize-check" htmlFor="organize-delete-originals">
                   <input
                     id="organize-delete-originals"
+                    name="delete_originals"
                     type="checkbox"
                     checked={deleteOriginals}
                     onChange={(e) => setDeleteOriginals(e.target.checked)}
@@ -1160,7 +1173,7 @@ export function OrganizeFilesSection() {
             )}
           </div>
           <div className="organize-run-actions">
-            <button type="button" onClick={preview} disabled={busy !== null} className={planned ? "secondary" : undefined}>
+            <button type="submit" disabled={busy !== null} className={planned ? "secondary" : undefined}>
               {previewLabel}
             </button>
           </div>
@@ -1189,8 +1202,9 @@ export function OrganizeFilesSection() {
           </div>
           <p className="organize-result-lead">{resultLead(op, summary)}</p>
           <ResultFacts op={op} summary={summary} />
+          {/* 結果の見出しへフォーカスを移して順に読ませるので、問題の一覧は assertive にしない */}
           {op.problems.map((p) => (
-            <div key={p} className="notice error" role="alert">
+            <div key={p} className="notice error">
               {p}
             </div>
           ))}
@@ -1232,6 +1246,7 @@ export function OrganizeFilesSection() {
               <label className="organize-check" htmlFor="organize-delete-confirm">
                 <input
                   id="organize-delete-confirm"
+                  name="delete_confirmed"
                   ref={confirmRef}
                   type="checkbox"
                   checked={deleteConfirmed}

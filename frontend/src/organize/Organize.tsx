@@ -113,8 +113,9 @@ function OpBody({ op, onExclude }: { op: OrganizeOp; onExclude?: (volumeId: numb
         ))}
         </ul>
       )}
+      {/* 履歴にも並ぶ操作の記録なので、読み込みのたびに assertive で割り込まない(通信の失敗は呼び出し側の error で出す) */}
       {op.problems.map((p) => (
-        <div key={p} className="notice error" role="alert">
+        <div key={p} className="notice error">
           {p}
         </div>
       ))}
@@ -123,11 +124,7 @@ function OpBody({ op, onExclude }: { op: OrganizeOp; onExclude?: (volumeId: numb
           {w}
         </div>
       ))}
-      {op.error && (
-        <div className="notice error" role="alert">
-          {op.error}
-        </div>
-      )}
+      {op.error && <div className="notice error">{op.error}</div>}
     </>
   );
 }

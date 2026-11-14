@@ -25,7 +25,7 @@ afterEach(() => {
 
 const sidebarOptions = () =>
   Array.from((screen.getByLabelText("蔵書", { selector: "select" }) as HTMLSelectElement).options).map((o) => o.textContent);
-const group = async (name: RegExp) => within(await screen.findByRole("region", { name }));
+const group = async (name: RegExp) => within(await screen.findByRole("article", { name }));
 const call = (method: string, path: string, body?: unknown) =>
   backend.handle(method, path, body === undefined ? undefined : JSON.stringify(body));
 
@@ -71,7 +71,7 @@ describe("蔵書の管理", () => {
     fireEvent.change(path, { target: { value: "D:/同人" } });
     fireEvent.click(screen.getByRole("button", { name: "追加する" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("「本」にフォルダを追加しました"));
-    expect(within(await screen.findByRole("region", { name: /^本/ })).getByText("D:/同人")).toBeTruthy();
+    expect(within(await screen.findByRole("article", { name: /^本/ })).getByText("D:/同人")).toBeTruthy();
     expect(screen.queryByLabelText(/追加するフォルダ/)).toBeNull();
     expect(backend.log.find((l) => l.path === "/api/library-folders")?.body).toEqual({ path: "D:/同人", group_id: 1 });
     // フォームを閉じたら、開いたボタンへフォーカスが戻る
@@ -134,8 +134,8 @@ describe("蔵書の管理", () => {
     fireEvent.change(target, { target: { value: "2" } });
     fireEvent.click(hon.getByRole("button", { name: /^移す/ }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("「漫画」へ移しました"));
-    expect(within(await screen.findByRole("region", { name: /^漫画/ })).getByText("D:/本")).toBeTruthy();
-    expect(within(screen.getByRole("region", { name: /^本/ })).getByText("フォルダがありません。")).toBeTruthy();
+    expect(within(await screen.findByRole("article", { name: /^漫画/ })).getByText("D:/本")).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: /^本/ })).getByText("フォルダがありません。")).toBeTruthy();
 
     const manga = await group(/^漫画/);
     fireEvent.click(manga.getAllByRole("button", { name: /^外す/ })[0]);
@@ -184,7 +184,7 @@ describe("蔵書の管理", () => {
     expect(localStorage.getItem("spinebox.libraryGroup")).toBe("2");
     fireEvent.click(manga.getAllByRole("button", { name: /^外す/ })[0]);
     fireEvent.click(await manga.findByRole("button", { name: /蔵書を削除/ }));
-    await waitFor(() => expect(screen.queryByRole("region", { name: /^漫画/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("article", { name: /^漫画/ })).toBeNull());
     await waitFor(() => expect(localStorage.getItem("spinebox.libraryGroup")).toBeNull());
     expect(select.value).toBe("");
   });

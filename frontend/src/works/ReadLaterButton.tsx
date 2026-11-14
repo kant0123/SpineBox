@@ -48,7 +48,6 @@ export function ReadLaterButton({
         className={`read-later-button${on ? " on" : ""}`}
         aria-pressed={on}
         aria-label={on ? `${label} の後で読むを外す` : `${label} を後で読む`}
-        title={on ? "後で読むを外す" : "後で読む"}
         disabled={busy}
         onClick={(e) => {
           e.stopPropagation();

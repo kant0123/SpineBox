@@ -42,11 +42,11 @@ export function Review({ tab }: { tab: ReviewTab }) {
           );
         })}
       </nav>
-      <section className="admin-panel" aria-label={REVIEW_TAB_LABELS[tab]}>
+      <div className="admin-panel">
         {tab === "links" && <ReviewLinks onChanged={refresh} />}
         {tab === "proposals" && <WorkProposals embedded onChanged={refresh} />}
         {tab === "duplicates" && <Duplicates embedded onChanged={refresh} />}
-      </section>
+      </div>
     </div>
   );
 }

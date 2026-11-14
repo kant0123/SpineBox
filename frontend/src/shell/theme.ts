@@ -40,6 +40,9 @@ function systemTheme(): Theme {
 export function applyTheme(choice: ThemeChoice, root: HTMLElement = document.documentElement): void {
   if (choice === "system") delete root.dataset.theme;
   else root.dataset.theme = choice;
+  // ブラウザの部品・キャンバスにも伝える(<meta name="color-scheme">。system は "light dark")
+  const meta = root.ownerDocument.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+  if (meta) meta.content = choice === "system" ? "light dark" : choice;
 }
 
 /** テーマの選択と、いま実際に効いているテーマ(OS の設定の変化にも追従する) */
@@ -85,7 +88,10 @@ export function useTheme() {
   }, []);
 
   const effective: Theme = choice === "system" ? system : choice;
-  /** サイドバーの切り替え: 今効いているものの逆を選ぶ(OS に戻すのは管理の好みタブから) */
-  const toggle = useCallback(() => choose(effective === "dark" ? "light" : "dark"), [choose, effective]);
+  /** サイドバーの切り替え: 今見えているものの逆へ。逆が OS の設定と同じなら保存を外して OS に従う(OS を固定してしまわない) */
+  const toggle = useCallback(() => {
+    const target: Theme = effective === "dark" ? "light" : "dark";
+    choose(target === system ? "system" : target);
+  }, [choose, effective, system]);
   return { choice, effective, choose, toggle };
 }

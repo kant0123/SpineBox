@@ -130,7 +130,7 @@ export function ProposalCard({ p, dismissed = false, onChanged }: { p: WorkPropo
             </button>
           </>
         )}
-        {failed && <span className="notice error">{failed}</span>}
+        {failed && <span className="notice error" role="alert">{failed}</span>}
       </div>
     </li>
   );
@@ -184,20 +184,22 @@ export function WorkProposals({ embedded = false, onChanged }: { embedded?: bool
       </p>
       <p className="muted">{PROPOSAL_RULE}</p>
       <div className="dup-toolbar">
-        <div className="dup-search">
+        <search className="dup-search">
           <label htmlFor="proposal-search-input">作品名・著者で探す</label>
           <span id="proposal-search-hint" className="muted dup-search-hint">空白で区切ると、すべてを含むものに絞ります</span>
           <input
             id="proposal-search-input"
+            name="q"
+            autoComplete="off"
             type="search"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             aria-describedby="proposal-search-hint"
             enterKeyHint="search"
           />
-        </div>
+        </search>
         <label>
-          <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />
+          <input type="checkbox" name="dismissed" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />
           却下・分けたものを表示
         </label>
       </div>

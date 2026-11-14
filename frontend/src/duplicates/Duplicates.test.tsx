@@ -82,7 +82,7 @@ describe("重複候補の画面", () => {
     render(<Duplicates pollMs={50} />);
     await screen.findByText("サンプル漫画 第01巻");
     fireEvent.click(screen.getByRole("button", { name: "重複を調べる" }));
-    expect((await screen.findByRole("status")).textContent).toMatch(/調べています/);
+    await waitFor(() => expect(document.querySelector(".notice")?.textContent).toMatch(/調べています/));
     expect((screen.getByRole("button", { name: "調べています…" }) as HTMLButtonElement).disabled).toBe(true);
     expect(await screen.findByText(/新しく指紋を作った巻 2 巻/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "重複を調べる" })).toBeTruthy();

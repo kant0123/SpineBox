@@ -130,7 +130,7 @@ export function Libraries() {
             <button type="button" className="secondary" onClick={() => void refresh()}>もう一度読み込む</button>
           </>
         ) : (
-          <p className="muted" role="status">読み込み中…</p>
+          <p className="muted">読み込み中…</p>
         )}
       </div>
     );
@@ -159,8 +159,8 @@ export function Libraries() {
       )}
 
       {libraries.length === 0 && (
-        <section className="job-section" aria-labelledby="libraries-empty-title">
-          <h2 id="libraries-empty-title">蔵書がまだありません</h2>
+        <section className="job-section">
+          <h2>蔵書がまだありません</h2>
           <p>フォルダを追加すると、「デフォルト」という蔵書を作ってそこへ入れます。名前はあとから変えられます。</p>
           {editing?.kind === "add-folder" && editing.group === null ? (
             <AddFolderForm
@@ -188,7 +188,7 @@ export function Libraries() {
         const choosing = editing?.kind === "sources" && editing.group === g.id;
         const base = `library-${g.id}`;
         return (
-          <section key={g.id} className="job-section library-group" aria-labelledby={`${base}-title`}>
+          <article key={g.id} className="job-section library-group" aria-labelledby={`${base}-title`}>
             <h2 id={`${base}-title`}>
               {g.name}
               <span className="library-group-count">({g.volume_count} 巻)</span>
@@ -289,12 +289,12 @@ export function Libraries() {
                 )}
               </div>
             )}
-          </section>
+          </article>
         );
       })}
 
-      <section className="job-section" aria-labelledby="libraries-new-title">
-        <h2 id="libraries-new-title">蔵書を追加</h2>
+      <section className="job-section">
+        <h2>蔵書を追加</h2>
         <form className="library-form" onSubmit={(e) => void addGroup(e)} noValidate>
           <div className="organize-field">
             <label htmlFor="libraries-new-name">蔵書の名前</label>
@@ -305,6 +305,8 @@ export function Libraries() {
                 id="libraries-new-name"
                 ref={newNameInput}
                 type="text"
+                name="library-name"
+                autoComplete="off"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 aria-describedby={newNameError ? "libraries-new-name-error libraries-new-name-hint" : "libraries-new-name-hint"}
@@ -360,6 +362,7 @@ function FolderRow({ folder, groupName, targets, busy, onMove, onRemove }: {
             <div className="organize-inline">
               <select
                 id={selectId}
+                name="target-library"
                 ref={select}
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
@@ -427,6 +430,7 @@ function AddFolderForm({ idPrefix, busy, onSubmit, onCancel }: {
             id={id}
             ref={input}
             type="text"
+            name="folder-path"
             value={path}
             onChange={(e) => setPath(e.target.value)}
             aria-describedby={problem ? `${id}-error ${id}-hint` : `${id}-hint`}
@@ -573,6 +577,8 @@ function RenameForm({ idPrefix, initial, busy, onSubmit, onCancel }: {
           id={id}
           ref={input}
           type="text"
+          name="library-name"
+          autoComplete="off"
           value={name}
           onChange={(e) => setName(e.target.value)}
           aria-describedby={problem ? `${id}-error` : undefined}

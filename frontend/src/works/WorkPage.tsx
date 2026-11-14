@@ -212,17 +212,17 @@ export function WorkPage({ id }: { id: string }) {
         >
           <label>
             作品名
-            <input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input name="title" autoComplete="off" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           {note("title")}
           <label>
             著者
-            <input value={author} onChange={(e) => setAuthor(e.target.value)} />
+            <input name="author" autoComplete="off" value={author} onChange={(e) => setAuthor(e.target.value)} />
           </label>
           {note("author", "名前からは読み取れていません")}
           <label>
             種別
-            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)}>
               <option value="">未設定</option>
               <option value="manga">{KIND_TEXT.manga}</option>
               <option value="novel">{KIND_TEXT.novel}</option>
@@ -232,17 +232,17 @@ export function WorkPage({ id }: { id: string }) {
           {note("kind")}
           <label>
             出版社
-            <input value={publisher} onChange={(e) => setPublisher(e.target.value)} />
+            <input name="publisher" autoComplete="off" value={publisher} onChange={(e) => setPublisher(e.target.value)} />
           </label>
           {note("publisher")}
           <label>
             ジャンル(「、」区切り)
-            <input value={genres} onChange={(e) => setGenres(e.target.value)} />
+            <input name="genres" autoComplete="off" value={genres} onChange={(e) => setGenres(e.target.value)} />
           </label>
           {note("genres")}
           <label>
             タグ(「、」区切り)
-            <input value={tags} onChange={(e) => setTags(e.target.value)} />
+            <input name="tags" autoComplete="off" value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
           {note("tags")}
           <button type="submit" className="small" disabled={busy || !title.trim()}>
@@ -284,16 +284,16 @@ export function WorkPage({ id }: { id: string }) {
           }}
         >
           <label htmlFor="add-alias-input" className="organize-label">別名を足す</label>
-          <input id="add-alias-input" value={alias} onChange={(e) => setAlias(e.target.value)} aria-label="別名を足す" />
+          <input id="add-alias-input" name="alias" autoComplete="off" value={alias} onChange={(e) => setAlias(e.target.value)} />
           <button type="submit" className="small" disabled={busy || !alias.trim()}>
             足す
           </button>
         </form>
       </section>
 
-      <section className="work-section" aria-label="公開データベース">
+      <section className="work-section" aria-labelledby="work-db-heading">
         <div className="section-head">
-          <h2>公開データベース</h2>
+          <h2 id="work-db-heading">公開データベース</h2>
           <button
             type="button"
             className="small"
@@ -307,8 +307,8 @@ export function WorkPage({ id }: { id: string }) {
       </section>
 
       {work.merges.length > 0 && (
-        <section className="work-section" aria-label="統合の根拠">
-          <h2>統合の根拠</h2>
+        <section className="work-section" aria-labelledby="work-merges-heading">
+          <h2 id="work-merges-heading">統合の根拠</h2>
           {work.merges.map((m) => (
             <div key={m.id} className="merge-note">
               <p>
@@ -326,8 +326,8 @@ export function WorkPage({ id }: { id: string }) {
       )}
 
       {work.proposals.length > 0 && (
-        <section className="work-section" aria-label="統合の提案">
-          <h2>統合の提案</h2>
+        <section className="work-section" aria-labelledby="work-proposals-heading">
+          <h2 id="work-proposals-heading">統合の提案</h2>
           <p className="muted">{PROPOSAL_RULE}</p>
           <ul className="dup-list">
             {work.proposals.map((p) => (
@@ -337,8 +337,8 @@ export function WorkPage({ id }: { id: string }) {
         </section>
       )}
 
-      <section className="work-section" aria-label="巻">
-        <h2>巻({work.volume_count})</h2>
+      <section className="work-section" aria-labelledby="work-volumes-heading">
+        <h2 id="work-volumes-heading">巻({work.volume_count})</h2>
         <p>
           <a className="organize-link-inline" href={workOrganizeHref(work.id)}>
             この作品をテンプレートどおりに整理
@@ -346,11 +346,17 @@ export function WorkPage({ id }: { id: string }) {
           <span className="muted">(全巻の変更前 → 変更後をプレビューしてから実行します)</span>
         </p>
         {missing.text ? (
-          <div className="notice warn" role="status" title={missing.title}>
+          <div className="notice warn">
             欠けている巻: {missing.text}
+            {missing.title && (
+              <details className="missing-detail">
+                <summary>内訳</summary>
+                {missing.title}
+              </details>
+            )}
           </div>
         ) : limited ? (
-          <div className="notice" role="status">
+          <div className="notice">
             巻番号が大きすぎるため、欠けは数えていません。
           </div>
         ) : (
@@ -386,25 +392,36 @@ export function WorkPage({ id }: { id: string }) {
 
         <div className="work-move">
           <h3>選んだ巻({ids.length})を動かす</h3>
-          <div className="work-inline">
+          <form
+            className="work-inline"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (busy || ids.length === 0) return;
+              void run(async () => {
+                const r = await api.assignVolumes(ids, null, newTitle.trim() || undefined);
+                window.location.hash = workHref(r.work_id);
+              });
+            }}
+          >
             <label htmlFor="move-new-title-input" className="organize-label">新しい作品名(省略可)</label>
-            <input id="move-new-title-input" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} aria-label="新しい作品名" />
-            <button
-              type="button"
-              className="small"
-              disabled={busy || ids.length === 0}
-              onClick={() =>
-                void run(async () => {
-                  const r = await api.assignVolumes(ids, null, newTitle.trim() || undefined);
-                  window.location.hash = workHref(r.work_id);
-                })
-              }
-            >
+            <input id="move-new-title-input" name="new_title" autoComplete="off" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+            <button type="submit" className="small" disabled={busy || ids.length === 0}>
               新しい作品に分ける
             </button>
-          </div>
-          <div className="work-inline">
-            <select value={moveTarget} onChange={(e) => setMoveTarget(e.target.value)} aria-label="移す先の作品">
+          </form>
+          <form
+            className="work-inline"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (busy || ids.length === 0 || !moveTarget) return;
+              void run(async () => {
+                await api.assignVolumes(ids, Number(moveTarget));
+                setMoveTarget("");
+                await load();
+              });
+            }}
+          >
+            <select name="move_target" value={moveTarget} onChange={(e) => setMoveTarget(e.target.value)} aria-label="移す先の作品">
               <option value="">移す先の作品を選ぶ</option>
               {others.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -412,29 +429,29 @@ export function WorkPage({ id }: { id: string }) {
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="small"
-              disabled={busy || ids.length === 0 || !moveTarget}
-              onClick={() =>
-                void run(async () => {
-                  await api.assignVolumes(ids, Number(moveTarget));
-                  setMoveTarget("");
-                  await load();
-                })
-              }
-            >
+            <button type="submit" className="small" disabled={busy || ids.length === 0 || !moveTarget}>
               この作品へ移す
             </button>
-          </div>
+          </form>
           <p className="muted">動かした巻は手動の決定になり、再スキャンや再計算で戻りません。</p>
         </div>
       </section>
 
-      <section className="work-section" aria-label="作品の統合">
-        <h2>ほかの作品を統合する</h2>
-        <div className="work-inline">
-          <select value={mergeTarget} onChange={(e) => setMergeTarget(e.target.value)} aria-label="統合する作品">
+      <section className="work-section" aria-labelledby="work-merge-heading">
+        <h2 id="work-merge-heading">ほかの作品を統合する</h2>
+        <form
+          className="work-inline"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (busy || !mergeTarget) return;
+            void run(async () => {
+              await api.mergeWorks(work.id, Number(mergeTarget));
+              setMergeTarget("");
+              await load();
+            });
+          }}
+        >
+          <select name="merge_target" value={mergeTarget} onChange={(e) => setMergeTarget(e.target.value)} aria-label="統合する作品">
             <option value="">統合する作品を選ぶ</option>
             {others.map((o) => (
               <option key={o.id} value={o.id}>
@@ -442,21 +459,10 @@ export function WorkPage({ id }: { id: string }) {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="small"
-            disabled={busy || !mergeTarget}
-            onClick={() =>
-              void run(async () => {
-                await api.mergeWorks(work.id, Number(mergeTarget));
-                setMergeTarget("");
-                await load();
-              })
-            }
-          >
+          <button type="submit" className="small" disabled={busy || !mergeTarget}>
             この作品に統合する
           </button>
-        </div>
+        </form>
       </section>
       <Credits sources={enabledSources} />
     </div>

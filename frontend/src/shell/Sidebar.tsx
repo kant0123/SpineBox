@@ -75,14 +75,12 @@ export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTh
   const { root, libraries, setRoot } = useLibraryScope();
   const active = activeNav(route);
   const { counts } = useReviewCounts();
-  const current = libraries?.find((l) => String(l.id) === root);
   return (
-    <aside className="sidebar" id={id} aria-label="サイドバー">
+    <aside className="sidebar" id={id} aria-label="サイドバー" tabIndex={-1}>
       <div className="sidebar-top">
-        <label className="library-switch" title={current ? current.folders.map((f) => f.path).join("\n") || current.name : "すべての蔵書"}>
+        <div className="library-switch">
           <span className="sidebar-icon"><Icon name="library" /></span>
-          <span className="sr-only">蔵書</span>
-          <select className="sidebar-label" aria-label="蔵書" value={root ?? ""} onChange={(e) => setRoot(e.target.value || null)}>
+          <select aria-label="蔵書" value={root ?? ""} onChange={(e) => setRoot(e.target.value || null)}>
             <option value="">すべての蔵書</option>
             {(libraries ?? []).map((l) => (
               <option key={l.id} value={String(l.id)}>
@@ -90,7 +88,7 @@ export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTh
               </option>
             ))}
           </select>
-        </label>
+        </div>
         <button type="button" className="sidebar-collapse" onClick={onToggleCollapsed}
           aria-label={collapsed ? "サイドバーを広げる" : "サイドバーを細くする"} aria-expanded={!collapsed} aria-controls={id}>
           <Icon name={collapsed ? "expand" : "collapse"} />
@@ -100,7 +98,7 @@ export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTh
         <ul>
           {NAV_ITEMS.map((item) => (
             <li key={item.key}>
-              <a href={item.href} aria-current={active === item.key ? "page" : undefined} title={item.label} onClick={onNavigate}>
+              <a href={item.href} aria-current={active === item.key ? "page" : undefined} onClick={onNavigate}>
                 <span className="sidebar-icon"><Icon name={item.icon} /></span>
                 <span className="sidebar-label">{item.label}</span>
                 {item.key === "review" && (counts?.total ?? 0) > 0 && (
@@ -116,11 +114,11 @@ export function Sidebar({ route, collapsed, onToggleCollapsed, theme, onToggleTh
       </nav>
       <div className="sidebar-bottom">
         <button type="button" className="sidebar-item" onClick={onToggleTheme}
-          aria-label={theme === "dark" ? "ライトにする" : "ダークにする"} title={theme === "dark" ? "ライトにする" : "ダークにする"}>
+          aria-label={theme === "dark" ? "ライトにする" : "ダークにする"}>
           <span className="sidebar-icon"><Icon name={theme === "dark" ? "sun" : "moon"} /></span>
           <span className="sidebar-label">{theme === "dark" ? "ライト" : "ダーク"}</span>
         </button>
-        <a className="sidebar-item" href={adminHref("preferences")} title="設定" onClick={onNavigate}
+        <a className="sidebar-item" href={adminHref("preferences")} onClick={onNavigate}
           aria-current={route.name === "admin" && route.tab === "preferences" ? "page" : undefined}>
           <span className="sidebar-icon"><Icon name="settings" /></span>
           <span className="sidebar-label">設定</span>

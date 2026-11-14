@@ -72,7 +72,7 @@ describe("巻情報の取得待ち", () => {
     useBackend({ firstOpenDelayMs: 5000 });
     render(<Reader id="5" />); // ページ数未確定(入れ子)の巻
 
-    expect(screen.getByRole("status").textContent).toContain("読み込み中");
+    expect(screen.getByText("読み込み中…")).toBeTruthy();
     expect(backLink()).toBe("#/");
     expect(screen.queryByText(/展開に数秒/)).toBeNull();
 

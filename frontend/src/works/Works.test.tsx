@@ -160,13 +160,10 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     expect(choices.map((a) => a.getAttribute("href"))).toEqual(["#/read/1", "#/read/6"]);
     expect(choices[0].textContent).toContain("サンプル漫画 第01巻");
     expect(choices[1].textContent).toContain("Sample manga v01");
-    // Tab はモーダルの中を回る(最後の「閉じる」から先頭の巻へ)
-    const close = within(dialog).getByRole("button", { name: "閉じる" });
-    close.focus();
-    fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(document.activeElement).toBe(choices[0]);
-    // Escape で閉じ、開いた行へフォーカスが戻る
-    fireEvent.keyDown(document, { key: "Escape" });
+    // モーダルにするのはブラウザの仕事(<dialog> の showModal)。Tab の閉じ込めと Esc は自前で持たない
+    expect((dialog as HTMLDialogElement).open).toBe(true);
+    // 閉じると(Esc も同じ close イベント)、開いた行へフォーカスが戻る
+    fireEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(dup);
   });
@@ -194,7 +191,8 @@ describe("作品カードの表紙(#75)", () => {
     const card = (await screen.findByText("サンプル漫画")).closest("li")!;
     const img = card.querySelector("img.work-cover") as HTMLImageElement;
     expect(img.getAttribute("src")).toMatch(/^\/api\/volumes\/\d+\/thumbnail$/);
-    expect(img.getAttribute("loading")).toBe("lazy");
+    // 先頭の数枚は最初の画面に入るので遅延させない(5 枚目以降が lazy)
+    expect(img.getAttribute("loading")).toBeNull();
     expect(img.classList.contains("loaded")).toBe(false);
     fireEvent.load(img);
     expect(img.classList.contains("loaded")).toBe(true);
@@ -386,7 +384,7 @@ describe("作品ページ", () => {
     render(<App />);
     await screen.findByText("欠けている巻: 3 巻");
     fireEvent.click(screen.getByLabelText("Sample manga v01 を選ぶ"));
-    fireEvent.change(screen.getByLabelText("新しい作品名"), { target: { value: "別スキャン" } });
+    fireEvent.change(screen.getByLabelText("新しい作品名(省略可)"), { target: { value: "別スキャン" } });
     fireEvent.click(screen.getByRole("button", { name: "新しい作品に分ける" }));
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/works\/\d+$/));
     expect(backend.log.find((l) => l.path === "/api/works/assign")!.body).toEqual({ volume_ids: [6], work_id: null, title: "別スキャン" });
@@ -568,7 +566,7 @@ describe("欠けの表示", () => {
     window.location.hash = "#/works/1";
     render(<App />);
     const notice = await screen.findByText("欠けている巻: 6 巻");
-    expect(notice.getAttribute("title")).toBe("1・2・3・4・5・6 巻");
+    expect(within(notice).getByText("1・2・3・4・5・6 巻")).toBeTruthy();
   });
 });
 
@@ -598,8 +596,7 @@ describe("作品ごとの確認待ち(#210)", () => {
     const ext = screen.getByText("外付けの作品").closest("li")!;
     expect(within(sample).queryByText("候補の確認待ち")).toBeNull();
     expect(within(ext).queryByText("統合の提案")).toBeNull();
-    const dot = within(ext).getByRole("img", { name: "確認待ちあり(統合の提案)" });
-    expect(dot.getAttribute("title")).toBe("確認待ちあり(統合の提案)");
+    within(ext).getByRole("img", { name: "確認待ちあり(統合の提案)" });
     expect(within(ext).getAllByRole("img", { name: /確認待ちあり/ })).toHaveLength(1);
   });
 
@@ -638,7 +635,6 @@ describe("作品カードのタイトルスクロールとタグ高さ(#266)", (
     const innerEl = card.querySelector(".work-card-title-inner") as HTMLElement;
     expect(titleEl).toBeTruthy();
     expect(innerEl).toBeTruthy();
-    expect(titleEl.getAttribute("title")).toBe("サンプル漫画");
 
     Object.defineProperty(titleEl, "clientWidth", { value: 100, configurable: true });
     Object.defineProperty(innerEl, "scrollWidth", { value: 200, configurable: true });

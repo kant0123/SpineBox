@@ -103,10 +103,11 @@ function RunningJob({ job, onCancel }: { job: Job; onCancel: (job: Job) => void 
         <span>{stepText(job) || "準備中…"}</span>
         {countText(job) && <span className="job-count-text">{countText(job)}</span>}
       </div>
-      {/* 総数の分からない段は「動いている」ことだけを出す(値の無い progressbar は読み上げで不定になる) */}
-      <div className="job-bar" role="progressbar" aria-label={`${job.label}の進み具合`} aria-valuemin={0} aria-valuemax={100}
-        aria-valuenow={pct ?? undefined} aria-valuetext={pct === null ? progressText(job) || "準備中" : undefined}>
-        <span className={pct === null ? "indeterminate" : undefined} style={pct === null ? undefined : { width: `${pct}%` }} />
+      {/* 総数の分からない段は value を付けない(不定の progress)。動いていることだけを出す */}
+      <div className="job-bar">
+        <progress aria-label={`${job.label}の進み具合`} max={100} value={pct ?? undefined}>
+          {pct === null ? progressText(job) || "準備中" : `${pct}%`}
+        </progress>
       </div>
       {job.current && <div className="job-current muted">{job.current}</div>}
       {job.cancellable && (
@@ -260,15 +261,15 @@ export function DataJobs({ pollMs = POLL_MS, view = "all" }: { pollMs?: number; 
       {view === "data" ? (
         // 依頼する画面では、動いているものを 1 行だけ出す(詳しい進み具合・中止はタスクセンター)
         active && (
-          <p className="job-now" role="status">
+          <p className="job-now">
             <strong>実行中:</strong> {snap!.current ? `${snap!.current.label}(${progressText(snap!.current) || "準備中…"})` : "待ち行列の処理を始めています"}
             {snap!.queue.length > 0 && `・待ち ${snap!.queue.length} 件`}
             {" "}<a href={tasksHref}>タスクセンターで見る</a>
           </p>
         )
       ) : (
-        <section className="job-section" aria-labelledby="job-running-title">
-          <h2 id="job-running-title" tabIndex={-1}>実行中</h2>
+        <section className="job-section">
+          <h2 tabIndex={-1}>実行中</h2>
           {snap?.current ? <RunningJob job={snap.current} onCancel={cancel} /> : <p className="muted">{snap ? "動いているジョブはありません。" : "読み込み中…"}</p>}
           {snap && snap.queue.length > 0 && (
             <>
@@ -293,7 +294,7 @@ export function DataJobs({ pollMs = POLL_MS, view = "all" }: { pollMs?: number; 
       {/* 先頭の見出し(いつもの更新)だけ開いて見せ、ほかは畳む。全部並べるとどれを押せばよいか迷う(#207) */}
       {view !== "tasks" && groups.map((g, i) =>
         i === 0 ? (
-          <section className="job-section" key={g} aria-label={g}>
+          <section className="job-section" key={g}>
             <h2>{g}</h2>
             {kindList(g)}
           </section>
@@ -308,8 +309,8 @@ export function DataJobs({ pollMs = POLL_MS, view = "all" }: { pollMs?: number; 
       )}
 
       {view !== "data" && (
-      <section className="job-section" aria-labelledby="job-history-title">
-        <h2 id="job-history-title">履歴</h2>
+      <section className="job-section">
+        <h2>履歴</h2>
         {snap && snap.history.length === 0 && <p className="muted">まだ何も実行していません。</p>}
         <ul className="job-history">
           {snap?.history.map((j) => <HistoryRow key={j.id} job={j} />)}

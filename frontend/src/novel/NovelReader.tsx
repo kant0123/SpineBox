@@ -257,7 +257,8 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
   const percent = Math.round(overallFraction(lengths, section, posRef.current) * 100);
 
   return (
-    <div className="reader novel">
+    <main className="reader novel">
+      <h1 className="sr-only">{detail.title}</h1>
       <div
         className="novel-stage"
         data-testid="stage"
@@ -284,7 +285,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
               height: ph,
               fontSize,
               lineHeight: LINE_HEIGHT,
-              transform: `translateX(${starts[page] ?? 0}px)`,
+              translate: `${starts[page] ?? 0}px`,
               visibility: ready ? "visible" : "hidden",
               ["--novel-page-width" as string]: `${pw}px`,
             }}
@@ -293,7 +294,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
       </div>
 
       {!ready && (
-        <div className="page-loading" role="status">
+        <div className="page-loading">
           <span className="spinner" aria-hidden="true" />
           読み込み中…
         </div>
@@ -341,6 +342,6 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
           </div>
         </>
       )}
-    </div>
+    </main>
   );
 }

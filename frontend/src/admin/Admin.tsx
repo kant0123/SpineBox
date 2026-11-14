@@ -51,9 +51,9 @@ export function Admin({ tab }: { tab: AdminTab }) {
           </a>
         ))}
       </nav>
-      <section className="admin-panel" aria-label={ADMIN_TAB_LABELS[tab]}>
+      <div className="admin-panel">
         <Panel />
-      </section>
+      </div>
     </div>
   );
 }

@@ -174,7 +174,7 @@ export function Library() {
             </>
           );
           return (
-            <li key={String(v.id)} className={`volume-card${v.offline ? " offline" : ""}`} title={v.source_name}>
+            <li key={String(v.id)} className={`volume-card${v.offline ? " offline" : ""}`}>
               {v.offline ? (
                 <div className="volume-link" aria-disabled="true">
                   {body}

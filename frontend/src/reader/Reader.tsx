@@ -10,25 +10,25 @@ export const SLOW_HINT_MS = 1500;
 
 export function LoadingMessage({ hint }: { hint: boolean }) {
   return (
-    <div className="reader">
-      <div className="reader-message" role="status">
+    <main className="reader">
+      <div className="reader-message">
         <span className="spinner" aria-hidden="true" />
         <p>読み込み中…</p>
         {hint && <p className="reader-hint">初めて開く巻は、アーカイブの展開に数秒かかることがあります。</p>}
         <a href={libraryHref}>一覧へ戻る</a>
       </div>
-    </div>
+    </main>
   );
 }
 
 export function ErrorMessage({ text }: { text: string }) {
   return (
-    <div className="reader">
+    <main className="reader">
       <div className="reader-message">
         <p role="alert">{text}</p>
         <a href={libraryHref}>一覧へ戻る</a>
       </div>
-    </div>
+    </main>
   );
 }
 

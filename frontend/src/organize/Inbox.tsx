@@ -210,17 +210,19 @@ function ItemCard({
             </select>
           </label>
           {choice.work === "new" && (
-            <label className="inbox-field">
-              作品名
+            <div className="inbox-field">
+              <label htmlFor={`inbox-title-${item.source_id}`}>作品名</label>
               <span id={`inbox-title-hint-${item.source_id}`} className="organize-hint muted">(空欄なら「{w.title}」)</span>
               <input
+                id={`inbox-title-${item.source_id}`}
+                name="new_title"
                 type="text"
                 aria-label={`${item.name} の新しい作品名`}
                 value={choice.newTitle}
                 aria-describedby={`inbox-title-hint-${item.source_id}`}
                 onChange={(e) => onChange({ ...choice, newTitle: e.target.value })}
               />
-            </label>
+            </div>
           )}
           <div className="muted">{w.reason}</div>
         </div>
@@ -394,7 +396,7 @@ export function Inbox() {
         受け入れフォルダに置いた本を「同期」で見つけ、整理案(書庫のどこに何という名前で入るか)を確かめてから、選んだものだけを書庫へ入れます。同期と整理案では何も動かしません。元は退避フォルダへ移すだけで消さず、履歴から元に戻せます。
       </p>
       {state?.inboxes.length === 0 && (
-        <div className="notice warn" role="status">
+        <div className="notice warn">
           受け入れフォルダが設定されていません。設定ファイルの <code>inbox_dirs</code> に受け入れフォルダを書いてください。
         </div>
       )}
@@ -402,7 +404,7 @@ export function Inbox() {
         <div key={b.path} className="inbox-info">
           <code>{b.path}</code> → 書庫 <code>{b.library}</code>
           {b.problems.map((p) => (
-            <div key={p} className="notice error" role="alert">
+            <div key={p} className="notice error">
               {p}
             </div>
           ))}
@@ -429,11 +431,13 @@ export function Inbox() {
       {results && (
         <ul className="inbox-results" aria-label="承認の結果">
           {results.map((r) => (
-            <li key={r.source_id} className={r.ok ? "notice" : "notice error"} role={r.ok ? "status" : "alert"}>
-              <strong>{r.item.name}</strong>:{" "}
-              {r.ok
-                ? `書庫に入れました${r.op ? `(${r.op.volumes.map((v) => v.output_rel_path).join("、")})` : ""}${r.warning ? ` — ${r.warning}` : ""}`
-                : `取り込めませんでした。受け入れフォルダに残っています — ${r.error}`}
+            <li key={r.source_id}>
+              <div className={r.ok ? "notice" : "notice error"} role={r.ok ? "status" : "alert"}>
+                <strong>{r.item.name}</strong>:{" "}
+                {r.ok
+                  ? `書庫に入れました${r.op ? `(${r.op.volumes.map((v) => v.output_rel_path).join("、")})` : ""}${r.warning ? ` — ${r.warning}` : ""}`
+                  : `取り込めませんでした。受け入れフォルダに残っています — ${r.error}`}
+              </div>
             </li>
           ))}
         </ul>
@@ -497,11 +501,7 @@ export function Inbox() {
                 </li>
               ))}
             </ul>
-            {op.error && (
-              <div className="notice error" role="alert">
-                {op.error}
-              </div>
-            )}
+            {op.error && <div className="notice error">{op.error}</div>}
             {op.state === "done" && op.op_id && (
               <div className="organize-actions">
                 <button type="button" onClick={() => undo(op.op_id!)} disabled={busy !== null}>

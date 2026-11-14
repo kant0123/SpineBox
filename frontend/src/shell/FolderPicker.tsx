@@ -1,7 +1,8 @@
 // フォルダーを選ぶモーダル(#149 で整理の画面に作り、#313 で蔵書フォルダの追加と共用にした)。
 // どこのフォルダーを辿るかは置く側が load で決める(整理は蔵書フォルダの中、蔵書の管理はサーバー機全体)。
-// 開いたら見出しへフォーカスし、Esc で閉じ、閉じたら開いたボタンへ戻す。背後の要素へ Tab で抜けない(focus trap)。
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+// ネイティブの <dialog> を showModal() で開く。背景の無効化・Tab の閉じ込め・Esc・背景のクリックで閉じる動きはブラウザに任せる。
+// 開いたら見出しへフォーカスし、閉じたら開いたボタンへ戻す。
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { ApiError } from "../api";
 
 export interface FolderListing {
@@ -40,7 +41,7 @@ export function FolderPicker({ load, initialPath, topLabel, hint, crumbs, allowT
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const dialog = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const requestSeq = useRef(0);
@@ -77,124 +78,109 @@ export function FolderPicker({ load, initialPath, topLabel, hint, crumbs, allowT
   );
 
   useEffect(() => {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     void open(initialPath);
   }, [open, initialPath]);
 
+  // 開く: 開いたボタンを覚え、モーダルとして表示し、見出しへフォーカスする。
+  // 取り除かれたときはブラウザが最上位レイヤーから外すので close() は呼ばない(close イベントで親を閉じてしまう)
   useEffect(() => {
+    const el = dialog.current;
+    if (!el) return;
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!el.open) el.showModal();
     heading.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("keydown", onKey);
       opener.current?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
-  // Tab でモーダルの外へ出さない(背後のフォームへフォーカスを移さない)
-  const trap = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab" || !dialog.current) return;
-    const items = [...dialog.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && (document.activeElement === first || document.activeElement === heading.current)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+  // closedby="any" の無いブラウザ(Safari)向け: ダイアログの外(::backdrop)のクリックで閉じる
+  const dismissOnBackdrop = (e: ReactMouseEvent<HTMLDialogElement>) => {
+    const el = e.currentTarget;
+    if ("closedBy" in HTMLDialogElement.prototype || e.target !== el) return;
+    const rect = el.getBoundingClientRect();
+    const inside =
+      rect.top <= e.clientY && e.clientY <= rect.top + rect.height && rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+    if (!inside) el.close();
   };
 
   const path = listing?.path ?? initialPath;
   const trail = crumbs(path);
 
   return (
-    <div className="organize-picker-backdrop" onClick={onClose}>
-      <div
-        ref={dialog}
-        className="organize-picker"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="organize-picker-title"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={trap}
-      >
-        <h2 id="organize-picker-title" ref={heading} tabIndex={-1}>
-          フォルダーを選ぶ
-        </h2>
-        <p className="organize-hint">{hint}</p>
-        <nav aria-label="今のフォルダー">
-          <ol className="organize-breadcrumb">
-            <li>
-              {trail.length === 0 ? (
-                <span aria-current="location">{topLabel}</span>
+    <dialog
+      ref={dialog}
+      className="organize-picker"
+      aria-labelledby="organize-picker-title"
+      {...({ closedby: "any" } as object)}
+      onClose={onClose}
+      onClick={dismissOnBackdrop}
+    >
+      <h2 id="organize-picker-title" ref={heading} tabIndex={-1}>
+        フォルダーを選ぶ
+      </h2>
+      <p className="organize-hint">{hint}</p>
+      <nav aria-label="今のフォルダー">
+        <ol className="organize-breadcrumb">
+          <li>
+            {trail.length === 0 ? (
+              <span aria-current="location">{topLabel}</span>
+            ) : (
+              <button type="button" className="link-button" onClick={() => void open("")}>
+                {topLabel}
+              </button>
+            )}
+          </li>
+          {trail.map((crumb, i) => (
+            <li key={crumb.path}>
+              <span className="organize-breadcrumb-sep" aria-hidden="true">/</span>
+              {i === trail.length - 1 ? (
+                <span aria-current="location">{crumb.label}</span>
               ) : (
-                <button type="button" className="link-button" onClick={() => void open("")}>
-                  {topLabel}
+                <button type="button" className="link-button" onClick={() => void open(crumb.path)}>
+                  {crumb.label}
                 </button>
               )}
             </li>
-            {trail.map((crumb, i) => (
-              <li key={crumb.path}>
-                <span className="organize-breadcrumb-sep" aria-hidden="true">/</span>
-                {i === trail.length - 1 ? (
-                  <span aria-current="location">{crumb.label}</span>
-                ) : (
-                  <button type="button" className="link-button" onClick={() => void open(crumb.path)}>
-                    {crumb.label}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ol>
-        </nav>
-        {error && (
-          <div className="notice error" role="alert">
-            {error}
-          </div>
-        )}
-        {busy && <p className="muted" role="status">読み込み中…</p>}
-        {listing && (
-          <ul className="organize-folder-list">
-            {listing.parent !== null && (
-              <li>
-                <button type="button" className="organize-folder-item" onClick={() => void open(listing.parent!)}>
-                  <span className="organize-folder-mark" aria-hidden="true">↑</span> 1 つ上へ
-                </button>
-              </li>
-            )}
-            {listing.folders.map((f) => (
-              <li key={f.path}>
-                <button type="button" className="organize-folder-item" onClick={() => void open(f.path)}>
-                  <span className="organize-folder-mark" aria-hidden="true">▸</span> {f.name}
-                </button>
-              </li>
-            ))}
-            {listing.folders.length === 0 && <li className="organize-picker-empty">この中にフォルダーはありません</li>}
-          </ul>
-        )}
-        <div className="organize-picker-actions">
-          {listing && (allowTop || listing.path !== "") && (
-            <button type="button" onClick={() => onPick(listing.path)}>
-              このフォルダーにする
-            </button>
-          )}
-          <button type="button" className="secondary" onClick={onClose}>
-            キャンセル
-          </button>
+          ))}
+        </ol>
+      </nav>
+      {error && (
+        <div className="notice error" role="alert">
+          {error}
         </div>
+      )}
+      {busy && <p className="muted">読み込み中…</p>}
+      {listing && (
+        <ul className="organize-folder-list">
+          {listing.parent !== null && (
+            <li>
+              <button type="button" className="organize-folder-item" onClick={() => void open(listing.parent!)}>
+                <span className="organize-folder-mark" aria-hidden="true">↑</span> 1 つ上へ
+              </button>
+            </li>
+          )}
+          {listing.folders.map((f) => (
+            <li key={f.path}>
+              <button type="button" className="organize-folder-item" onClick={() => void open(f.path)}>
+                <span className="organize-folder-mark" aria-hidden="true">▸</span> {f.name}
+              </button>
+            </li>
+          ))}
+          {listing.folders.length === 0 && <li className="organize-picker-empty">この中にフォルダーはありません</li>}
+        </ul>
+      )}
+      <div className="organize-picker-actions">
+        {listing && (allowTop || listing.path !== "") && (
+          <button type="button" onClick={() => onPick(listing.path)}>
+            このフォルダーにする
+          </button>
+        )}
+        <button type="button" className="secondary" onClick={onClose}>
+          キャンセル
+        </button>
       </div>
-    </div>
+    </dialog>
   );
 }
 

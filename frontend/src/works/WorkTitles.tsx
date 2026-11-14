@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { api, ApiError, type WorkDetail } from "../api";
 import { readHref, workHref, worksHref } from "../route";
 import { KIND_TEXT } from "./labels";
@@ -142,16 +142,7 @@ export function WorkTitles({ id }: { id: string }) {
           <h1>{work.title}</h1>
           <p className="volume-meta work-titles-meta">{meta}</p>
           <div className="work-progress">
-            <div
-              className="work-progress-bar"
-              role="progressbar"
-              aria-label="作品全体の進み具合"
-              aria-valuenow={overall.percent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <span style={{ width: `${overall.percent}%` }} />
-            </div>
+            <progress className="work-progress-bar" aria-label="作品全体の進み具合" value={overall.percent} max={100} />
             <p className="volume-meta">{overallText}</p>
           </div>
         </div>
@@ -209,83 +200,61 @@ export function WorkTitles({ id }: { id: string }) {
 
 /** 重複した巻(同じ巻番号の別スキャン)から、読む巻を選ぶモーダル(#115) */
 function DuplicatePicker({ row, opener, onClose }: { row: OwnedTitleRow; opener: HTMLElement | null; onClose: () => void }) {
-  const dialog = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
+    // モーダルにすると、フォーカスの閉じ込み・背面の不活性化・Esc で閉じるのはブラウザがやる
+    const el = dialog.current;
+    if (el && !el.open) el.showModal();
     // 閉じたら開いた行へフォーカスを戻す(キーボードで行き場を失わない)
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      opener?.focus();
-    };
-  }, [onClose, opener]);
-  // Tab でモーダルの外へ出さない(背後の行へフォーカスを移さない)
-  const trap = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab" || !dialog.current) return;
-    const items = [...dialog.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")];
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    return () => opener?.focus();
+  }, [opener]);
+  // 背景(::backdrop)を押したときは dialog 自身が押されたことになる。中身の余白ではなく外側だけで閉じる
+  const closeOnBackdrop = (e: ReactMouseEvent<HTMLDialogElement>) => {
+    if (e.target !== e.currentTarget) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    if (outside) onClose();
   };
   return (
-    <div className="title-modal-backdrop" onClick={onClose}>
-      <div
-        ref={dialog}
-        className="title-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="duplicate-heading"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={trap}
-      >
-        <h2 id="duplicate-heading">
-          {row.label} の重複({row.volumes.length} 冊)
-        </h2>
-        <p className="volume-meta">同じ巻としてまとめています。読む巻を選んでください。</p>
-        <ul className="dup-list">
-          {row.volumes.map((v) => (
-            <li key={v.id}>
-              {v.offline ? (
-                <span className="dup-choice">
-                  <span className="title-cover">
-                    <WorkCover volumeId={v.id} />
-                  </span>
-                  <span className="title-body">
-                    <span className="volume-title">{v.title}</span>
-                    <span className="volume-meta">
-                      {percentText(v)} / オフライン
-                    </span>
+    <dialog ref={dialog} className="title-modal" aria-labelledby="duplicate-heading" onClose={onClose} onClick={closeOnBackdrop}>
+      <h2 id="duplicate-heading">
+        {row.label} の重複({row.volumes.length} 冊)
+      </h2>
+      <p className="volume-meta">同じ巻としてまとめています。読む巻を選んでください。</p>
+      <ul className="dup-list">
+        {row.volumes.map((v) => (
+          <li key={v.id}>
+            {v.offline ? (
+              <span className="dup-choice">
+                <span className="title-cover">
+                  <WorkCover volumeId={v.id} />
+                </span>
+                <span className="title-body">
+                  <span className="volume-title">{v.title}</span>
+                  <span className="volume-meta">
+                    {percentText(v)} / オフライン
                   </span>
                 </span>
-              ) : (
-                <a className="dup-choice" href={readHref(v.id)}>
-                  <span className="title-cover">
-                    <WorkCover volumeId={v.id} />
+              </span>
+            ) : (
+              <a className="dup-choice" href={readHref(v.id)}>
+                <span className="title-cover">
+                  <WorkCover volumeId={v.id} />
+                </span>
+                <span className="title-body">
+                  <span className="volume-title">{v.title}</span>
+                  <span className="volume-meta">
+                    {percentText(v)} / {STATUS_TEXT[volumeStatus(v)]}
                   </span>
-                  <span className="title-body">
-                    <span className="volume-title">{v.title}</span>
-                    <span className="volume-meta">
-                      {percentText(v)} / {STATUS_TEXT[volumeStatus(v)]}
-                    </span>
-                  </span>
-                </a>
-              )}
-            </li>
-          ))}
-        </ul>
-        <button type="button" className="secondary" onClick={onClose} autoFocus>
-          閉じる
-        </button>
-      </div>
-    </div>
+                </span>
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="secondary" onClick={onClose} autoFocus>
+        閉じる
+      </button>
+    </dialog>
   );
 }

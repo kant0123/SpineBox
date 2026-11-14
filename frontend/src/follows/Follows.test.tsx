@@ -73,7 +73,7 @@ describe("フォロー", () => {
     cleanup();
     window.location.hash = "#/works/1";
     render(<App />);
-    const panel = await screen.findByRole("region", { name: "フォロー" });
+    const panel = await screen.findByRole("group", { name: "フォロー" });
     expect(within(panel).getByRole("button", { name: "フォロー中(外す)" })).toBeTruthy();
     expect(within(panel).getByText("5 巻")).toBeTruthy();
   });

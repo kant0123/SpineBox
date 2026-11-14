@@ -649,3 +649,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-14] ingest | PR #320 (#318) modern-web-guidance スキルを組み込み、DADS 準拠の規約と dads-ui スキルを廃止
 - 更新: [[frontend]], [[manga-reader]]
 - 備考: #318。`.agent/skills/modern-web-guidance/`(上流 GoogleChrome/modern-web-guidance の SKILL.md の写し + SpineBox のローカル追記。`.claude/skills/` も同じ)を追加。DADS とは個別の規則で競合した(フォームのエラー通知の `aria-live`・`maxlength` が逆)ので、利用者の指示で `dads-ui` スキル・`.agent/rules/ui-dads.md`・`CLAUDE.md` の DADS 準拠の規約を廃止し、`AGENTS.md`・`GEMINI.md`・`.github/copilot-instructions.md` も置き換えた。画面は塗り替えていない(値は `styles.css` に残る)。CLI は `DISABLE_TELEMETRY=1` で使う。
+
+## [2026-11-14] ingest | PR #321 全画面を modern-web-guidance 準拠に直す(特例で Issue なし)
+- 更新: [[frontend]], [[organize]]
+- 備考: `styles.css` を `@layer`・`light-dark()`・論理プロパティ・`dvh` へ。FolderPicker と重複巻の選択を `<dialog>`、検索を `<search>`、進み具合を `<progress>` / `<meter>` に。`title` 属性と途中経過の live region を廃止。スキップリンク・`document.title`・引き出し中の `main` の `inert` を追加。サイドバーのテーマ切替は、逆が OS 設定と同じなら記憶を消す。`.claude/skills/` と `.agent/skills/` の modern-web-guidance のローカル追記(色のトークンの足し方)も直した。

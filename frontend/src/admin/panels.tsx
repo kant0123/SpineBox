@@ -15,12 +15,12 @@ export function DataPanel() {
 export function OrganizePanel() {
   return (
     <div className="admin-section">
-      <section className="job-section" aria-labelledby="organize-files-title">
-        <h2 id="organize-files-title">ファイル名・フォルダーの整理</h2>
+      <section className="job-section">
+        <h2>ファイル名・フォルダーの整理</h2>
         <OrganizeFilesSection />
       </section>
-      <section className="job-section organize-history-section" aria-labelledby="organize-history-title">
-        <h2 id="organize-history-title">整理の履歴</h2>
+      <section className="job-section organize-history-section">
+        <h2>整理の履歴</h2>
         <OrganizeHistory embedded />
       </section>
       {/* 受け入れは利用が少なく、今後の扱いを決めていない(#207)。入口だけ残す */}

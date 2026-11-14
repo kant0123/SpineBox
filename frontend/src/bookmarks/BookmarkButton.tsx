@@ -50,7 +50,6 @@ export function BookmarkButton({
         className={`bookmark-button${on ? " on" : ""}${dark ? " dark" : ""}`}
         aria-pressed={on}
         aria-label={`${label} をブックマーク`}
-        title={on ? "ブックマークを外す" : "ブックマークする"}
         disabled={busy}
         onClick={(e) => {
           e.stopPropagation();

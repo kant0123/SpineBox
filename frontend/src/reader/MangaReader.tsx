@@ -172,13 +172,14 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
   }, [id, detail]);
 
   return (
-    <div className="reader manga-reader">
+    <main className="reader manga-reader">
+      <h1 className="sr-only">{detail.title}</h1>
       <div ref={hostRef} className="manga-host" />
       {notice && (
         <div className="reader-notice" role="status">
           {notice}
         </div>
       )}
-    </div>
+    </main>
   );
 }
