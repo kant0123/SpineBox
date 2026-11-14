@@ -128,6 +128,8 @@ export const workProposalsHref = reviewHref("proposals");
 export const workHref = (id: string | number) => `#/works/${encodeURIComponent(String(id))}`;
 /** 作品のタイトル(巻)の一覧。作品カードの行き先 */
 export const workTitlesHref = (id: string | number) => `${workHref(id)}/titles`;
+/** リーダーの「戻る」の行き先(#324)。巻の作品のタイトル一覧。作品に割り当てられていない巻はホーム */
+export const readerBackHref = (workId: number | null | undefined) => (workId == null ? libraryHref : workTitlesHref(workId));
 /** 作品の全巻をテンプレートどおりに整理(改名・移動)するプレビュー */
 export const workOrganizeHref = (id: string | number) => `${workHref(id)}/organize`;
 export const mangaHref = "#/manga";

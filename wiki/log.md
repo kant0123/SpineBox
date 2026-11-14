@@ -653,3 +653,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-14] ingest | PR #321 全画面を modern-web-guidance 準拠に直す(特例で Issue なし)
 - 更新: [[frontend]], [[organize]]
 - 備考: `styles.css` を `@layer`・`light-dark()`・論理プロパティ・`dvh` へ。FolderPicker と重複巻の選択を `<dialog>`、検索を `<search>`、進み具合を `<progress>` / `<meter>` に。`title` 属性と途中経過の live region を廃止。スキップリンク・`document.title`・引き出し中の `main` の `inert` を追加。サイドバーのテーマ切替は、逆が OS 設定と同じなら記憶を消す。`.claude/skills/` と `.agent/skills/` の modern-web-guidance のローカル追記(色のトークンの足し方)も直した。
+
+## [2026-11-15] ingest | PR #PRNUM リーダー: スライダーを太く・戻るを作品のタイトル一覧へ・最後の画面から次の巻へ (#324)
+- 更新: [[manga-reader]], [[frontend]], [[backend]], [[server-setup]]
+- 備考: 漫画のスライダーと「最後の画面からさらに進む」は manga-viewer の外から足した(`frontend/src/reader/viewerHooks.ts`)。[[server-setup]] はコード参照の行番号だけ。

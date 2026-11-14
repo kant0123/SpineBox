@@ -21,6 +21,11 @@ vi.mock("@tokagemushi/manga-viewer", () => ({
     opts: any;
     destroy = vi.fn();
     goToPage = vi.fn();
+    // 最後の画面にいる 1 画面の巻として振る舞う(最後からさらに進む操作の結線 #324 用)
+    _slots = [0];
+    _currentSlotIndex = 0;
+    _goNext() {}
+    _navigateTo(_idx: number) {}
     constructor(opts: any) {
       this.opts = opts;
       const root = (opts.container as HTMLElement).attachShadow({ mode: "open" });
@@ -176,11 +181,29 @@ describe("manga-viewer に渡す設定", () => {
     expect(opts.headerButtons!.map(nameOf)).toEqual(["back", "bookmark", "spinebox-volume-bookmark", "fullscreen", "help"]);
   });
 
-  it("戻るは一覧へ移る", async () => {
+  it("戻るは巻の作品のタイトル一覧へ移る(#324)", async () => {
     const { opts, viewer } = await opened("1");
+    const workId = JSON.parse(backend.handle("GET", "/api/volumes/1").body).work_id;
+    expect(workId).not.toBeNull();
     window.location.hash = "#/read/1";
     opts.onBack!(new Event("click"), viewer);
+    expect(window.location.hash).toBe(`#/works/${workId}/titles`);
+  });
+
+  it("作品に割り当てられていない巻の戻るは一覧へ移る", async () => {
+    useBackend();
+    const detail = JSON.parse(backend.handle("GET", "/api/volumes/1").body);
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ ...detail, work_id: null, next_volume: null })));
+    render(<Reader id="1" />);
+    await waitFor(() => expect(fake.instances).toHaveLength(1));
+    window.location.hash = "#/read/1";
+    fake.instances[0].opts.onBack(new Event("click"), fake.instances[0]);
     expect(window.location.hash).toBe("#/");
+  });
+
+  it("ページスライダーを大きくするスタイルを Shadow DOM に足す(#324)", async () => {
+    const { shadow } = await opened("1");
+    expect(shadow.querySelector("style[data-spinebox-slider]")).not.toBeNull();
   });
 
   it("アンマウントで destroy する", async () => {
@@ -188,6 +211,40 @@ describe("manga-viewer に渡す設定", () => {
     expect(viewer.destroy).not.toHaveBeenCalled();
     unmount();
     expect(viewer.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("最後の画面からさらに進む(#324)", () => {
+  const settle = () => vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000);
+  afterEach(() => vi.restoreAllMocks());
+
+  it("次巻があれば次巻のリーダーへ移る(キー・スワイプとタップの両方の経路)", async () => {
+    const { viewer } = await opened("2");
+    settle();
+    viewer._goNext();
+    expect(window.location.hash).toBe("#/read/3");
+    window.location.hash = "";
+    viewer._navigateTo(1);
+    expect(window.location.hash).toBe("#/read/3");
+  });
+
+  it("次巻が無ければ何もしない", async () => {
+    const { viewer } = await opened("3");
+    settle();
+    viewer._goNext();
+    expect(window.location.hash).toBe("");
+  });
+
+  it("続きから読むかの確認が出ている間は移らない", async () => {
+    fake.duringConstruct = (_o, root) => {
+      const d = document.createElement("div");
+      d.className = "mv-resume-dialog";
+      root.appendChild(d);
+    };
+    const { viewer } = await opened("2");
+    settle();
+    viewer._goNext();
+    expect(window.location.hash).toBe("");
   });
 });
 

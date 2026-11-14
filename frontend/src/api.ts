@@ -95,6 +95,8 @@ export interface VolumeDetail {
   progress: Progress | null;
   parent_id?: VolumeId | null;
   volume_number?: VolumeNumber | null;
+  /** 巻の作品(リーダーの「戻る」の行き先 #324)。割り当てが無ければ null */
+  work_id?: number | null;
   /** 同じ作品の次の巻。無い・作品に割り当てられていない巻は null */
   next_volume?: NextVolume | null;
   findings?: Finding[];
