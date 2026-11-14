@@ -11,7 +11,7 @@ export const FOLLOW_STATUS_TEXT: Record<FollowStatus, string> = {
   unlinked: "国立国会図書館サーチと未連携(作品ページで候補を選んでください)",
   no_numbers: "巻番号が読めないため数えられません",
   kind_mismatch: "連携した本の種別(漫画/小説)が作品と違うため数えていません",
-  disabled: "国立国会図書館サーチが無効です",
+  disabled: "この作品の蔵書では国立国会図書館サーチが無効です",
   failed: "取得できませんでした",
 };
 
@@ -224,7 +224,7 @@ export function FollowManage({ embedded = false }: { embedded?: boolean }) {
       </p>
       {data && !data.available && (
         <div className="notice warn" role="status">
-          国立国会図書館サーチが設定で無効なため、続刊を調べられません。
+          国立国会図書館サーチが設定でもどの蔵書でも有効になっていないため、続刊を調べられません(管理の「蔵書」タブで選べます)。
         </div>
       )}
       {error && (
