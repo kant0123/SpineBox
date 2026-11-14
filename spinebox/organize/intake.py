@@ -190,7 +190,7 @@ class Intake:
         # 取り込み方: 1 巻 = 1 つのファイル(CBZ・小説)は中身を変えずに移すだけ。それ以外は 1 巻ずつ CBZ にする
         novel = any(v["format"] in ("epub", "text") for v in vols)
         suffix = Path(rel).suffix.lower()
-        single_cbz = (src["kind"] == "archive" and suffix == ".cbz" and len(vols) == 1 and not novel
+        single_cbz = (src["kind"] == "archive" and suffix == ".cbz" and len(vols) == 1 and vols[0]["format"] is None
                       and vols[0]["container_path"] is None and vols[0]["entry_prefix"] == ""
                       and vols[0]["parent_id"] is None and vols[0]["inner_path"] is None)
         mode = "move" if (single_cbz or (novel and len(vols) == 1)) else "cbz"
@@ -210,7 +210,7 @@ class Intake:
                     problems.extend(pdf_probs)
                 elif is_epub_img:
                     if self.org._epub_image_pages(root, {"rel_path": rel}) is None:
-                        problems.append("小説(EPUB・テキスト)は CBZ に整理できません")
+                        problems.append("EPUB のページ画像を読めません")
                 else:
                     self.org._inspect_archive(source_path, vols, problems, warnings)
             elif not is_pdf and src["kind"] == "archive" and not file_reader_available(source_path, self.settings.sevenzip_path):

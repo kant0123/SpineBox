@@ -1057,7 +1057,7 @@ class Organizer:
         folder_sources: dict[int, set[str]] = {}
         source_paths: dict[int, set[str]] = {}
         single_rows = [r for r in rows
-                       if self._single_file(r) and r["rel_path"].lower().endswith(".cbz")]
+                       if self._single_file(r) and not r["format"] and r["rel_path"].lower().endswith(".cbz")]
         single_items = self._classify_renames(single_rows, excluded_ids, self._range_ineligible, move_target,
                                               folder_sources=folder_sources, source_paths=source_paths, dedupe=False)
         for it in single_items:
@@ -1540,7 +1540,7 @@ class Organizer:
                 return "PDF は改名・移動の対象外です(先に「CBZ に整理」を実行してください)"
             if r["format"] in (FORMAT_EPUB, "text"):
                 return "小説(EPUB・テキスト)は整理の対象外です(名前は変えません)"
-        if not self._single_file(r) or not r["rel_path"].lower().endswith(".cbz"):
+        if not self._single_file(r) or r["format"] or not r["rel_path"].lower().endswith(".cbz"):
             return "1 巻 = 1 CBZ ではありません(先に「CBZ に整理」をテンプレートの名前で実行してください)"
         return self._missing_file(r, root)
 

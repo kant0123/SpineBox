@@ -483,6 +483,21 @@ def test_image_only_epub_thumbs_bookmarks_stats_organize_and_inbox(make_settings
     (lib / "漫画A 第02巻.epub").write_bytes(b"corrupt")
     plan_bad = c.post("/api/organize/plan", json={"volume_id": v2}).json()
     assert plan_bad["state"] == "blocked" and any("EPUB のページ画像を読めません" in p for p in plan_bad["problems"])
+    # 拡張子が .cbz でも中身が EPUB(container.xml あり)なら、作品単位の改名・移動では 1 巻 = 1 CBZ ではないとして弾き、
+    # 範囲指定の CBZ 化(include_cbz=True)では conversion=True で画像だけの標準 CBZ へ変換する
+    (lib / "漫画A 第04巻.cbz").write_bytes(epub_bytes(
+        ['<div><img src="../images/p4.png"/></div>'],
+        images={"images/p4.png": img1}))
+    vols = scan(c)
+    v4 = vols["漫画A 第04巻"]["id"]
+    work_id = c.get("/api/works").json()["works"][0]["id"]
+    rename_plan = c.post("/api/organize/rename-plan", json={"work_id": work_id}).json()
+    item_v4 = next(it for it in rename_plan["items"] if it["volume_id"] == v4)
+    assert item_v4["status"] == "excluded" and "1 巻 = 1 CBZ ではありません" in item_v4["reason"]
+    root_id = c.get("/api/organize/range/options").json()["roots"][0]["id"]
+    range_plan = c.post("/api/organize/range-plan", json={"root_id": root_id, "include_cbz": True}).json()
+    range_v4 = next(it for it in range_plan["items"] if it["volume_id"] == v4)
+    assert range_v4["status"] == "cbz" and range_v4["conversion"] is True
     # 受け入れ(Inbox): 画像だけの EPUB は mode="cbz" として CBZ 化で書庫へ入る
     assert c.post("/api/inbox/sync").status_code == 200
     inbox_items = c.get("/api/inbox").json()["items"]
