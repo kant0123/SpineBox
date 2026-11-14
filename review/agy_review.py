@@ -44,8 +44,8 @@ INVARIANTS_FILE = REVIEW_DIR / "domain_invariants.json"
 WORK_DIR = REVIEW_DIR / "work"
 
 # 実装は Claude 系で行う前提なので、レビューは別系統のモデルに担当させる
-# (自分が書いたコードを自分で採点させない)。gemini-3.1-pro-high は使えなくなったため flash に変えた (#40)。
-DEFAULT_MODEL = os.environ.get("REVIEW_MODEL", "gemini-3.8-flash-high")
+# (自分が書いたコードを自分で採点させない)。gemini-3.1-pro-high は使えなくなったため flash に変え、その後 gemini-4-hydrogen-high に更新した (#40, #322)。
+DEFAULT_MODEL = os.environ.get("REVIEW_MODEL", "gemini-4-hydrogen-high")
 DEFAULT_DOMAIN = os.environ.get("REVIEW_DOMAIN", "spinebox")
 DEFAULT_TIMEOUT_MIN = 15
 # これを超える差分は 1 回のレビューで精度が落ちる。PR を分けるのが本筋。
