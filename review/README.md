@@ -119,7 +119,7 @@ LLM は CI を通った差分だけを見る。**
 ### なぜ別のモデルか
 
 実装は Claude で行う前提なので、レビューは Gemini に担当させる(自分が書いたコードを
-自分で採点させない)。既定は `gemini-3.8-flash-high`(`gemini-3.1-pro-high` は agy が exit=1 でモデル一覧を出して落ちるようになったため変更。#40)。`--model` か環境変数 `REVIEW_MODEL` で変える。
+自分で採点させない)。既定は `gemini-4-hydrogen-high`(以前は `gemini-3.8-flash-high`。`gemini-3.1-pro-high` は agy が exit=1 でモデル一覧を出して落ちるようになったため変更。#40)。`--model` か環境変数 `REVIEW_MODEL` で変える。
 
 ### なぜ 1 回の呼び出しか
 
