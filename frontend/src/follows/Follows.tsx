@@ -291,7 +291,7 @@ export function WorkFollowPanel({ workId, follow, onChanged }: { workId: number;
   };
   const releases = follow?.releases ?? [];
   return (
-    <section className="work-section follow-panel" aria-label="フォロー">
+    <div className="work-section follow-panel" role="group" aria-label="フォロー">
       <div className="dup-actions">
         <button type="button" className={followed ? "small secondary" : "small"} onClick={() => void toggle()} disabled={busy} aria-pressed={followed}>
           {followed ? "フォロー中(外す)" : "フォローする"}
@@ -311,6 +311,6 @@ export function WorkFollowPanel({ workId, follow, onChanged }: { workId: number;
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }

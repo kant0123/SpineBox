@@ -24,9 +24,7 @@ function CacheTile({ label, usage }: { label: string; usage: CacheUsage }) {
       <span className="stat-value">{formatBytes(usage.used_bytes)}</span>
       <span className="stat-note">{usage.limit_bytes > 0 ? `上限 ${formatBytes(usage.limit_bytes)}(${pct}%)` : "使わない設定"}</span>
       {usage.limit_bytes > 0 && (
-        <span className="stat-meter" role="meter" aria-label={`${label}の使用率`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-          <span style={{ width: `${pct}%` }} />
-        </span>
+        <meter className="stat-meter" aria-label={`${label}の使用率`} min={0} max={100} value={pct} />
       )}
     </div></li>
   );

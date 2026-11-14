@@ -11,6 +11,9 @@ import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
 /** 検索語の入力から一覧を引き直すまでの待ち(打鍵ごとに引かない) */
 const SEARCH_DELAY_MS = 250;
 
+/** 一覧の先頭からこの枚数の表紙は遅延させずに読む(最初の画面に入る分。残りは lazy) */
+const EAGER_COVERS = 4;
+
 const FILTER_LABELS: Record<WorkFilterName, string> = { author: "著者", kind: "種別", genre: "ジャンル", tag: "タグ", publisher: "出版社" };
 const FILTER_NAMES: WorkFilterName[] = ["author", "kind", "genre", "tag", "publisher"];
 
@@ -65,9 +68,11 @@ export function scopeTitle(scope: WorksScope): string {
 interface WorkCardProps {
   work: WorkSummary;
   onReadLaterChange?: (on: boolean) => void;
+  /** 先頭の数枚は画面の最初に見える表紙なので、遅延読み込みにしない */
+  eager?: boolean;
 }
 
-export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
+export function WorkCard({ work, onReadLaterChange, eager = false }: WorkCardProps) {
   const cardRef = useRef<HTMLLIElement>(null);
 
   const startMarquee = () => {
@@ -102,7 +107,7 @@ export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
       <div className="work-cover-wrap">
         <a className="work-link work-cover-link" href={workTitlesHref(work.id)} aria-label={work.title}>
           {work.cover_volume_id !== null ? (
-            <WorkCover volumeId={work.cover_volume_id} placeholder />
+            <WorkCover volumeId={work.cover_volume_id} placeholder eager={eager} />
           ) : (
             <WorkCoverPlaceholder />
           )}
@@ -113,10 +118,10 @@ export function WorkCard({ work, onReadLaterChange }: WorkCardProps) {
       </div>
       <a className="work-link work-text-link" href={workTitlesHref(work.id)}>
         <span className="work-text">
-          <span className="volume-title work-card-title" title={work.title}>
+          <span className="volume-title work-card-title">
             <span className="work-card-title-inner">{work.title}</span>
           </span>
-          <span className="volume-meta" title={[work.author, work.publisher].filter(Boolean).join(" ・ ") || undefined}>
+          <span className="volume-meta">
             {[work.author, work.publisher].filter(Boolean).join(" ・ ") || "\u00A0"}
           </span>
         </span>
@@ -211,16 +216,19 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
         </div>
       )}
       {pending > 0 && (
-        <div className="notice" role="status">
+        <div className="notice">
           <a href={reviewHref()}>確認待ちが {pending} 件あります</a>
           (公開データベースの候補・統合の提案・重複の候補。選ぶまで何も変えません)
         </div>
       )}
-      <form className="work-search" role="search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
+      <search>
+      <form className="work-search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
         <p id="work-search-hint" className="muted organize-hint">作品名・別名・著者で検索できます</p>
         <div className="work-search-row">
           <input
             type="search"
+            name="q"
+            autoComplete="off"
             aria-label="作品を検索"
             aria-describedby="work-search-hint"
             value={text}
@@ -235,7 +243,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           <div className="work-filters" id="work-filters">
             <label>
               読書状態
-              <select value={query.status ?? ""} onChange={(e) => setFilter("status", e.target.value)}>
+              <select name="status" value={query.status ?? ""} onChange={(e) => setFilter("status", e.target.value)}>
                 <option value="">すべて</option>
                 {(Object.keys(READING_STATE_TEXT) as ReadingState[]).map((st) => (
                   <option key={st} value={st}>{READING_STATE_TEXT[st]}</option>
@@ -245,7 +253,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
             {selectable.filter((n) => (data?.facets[n]?.length ?? 0) > 0 || query[n]).map((n) => (
               <label key={n}>
                 {FILTER_LABELS[n]}
-                <select value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
+                <select name={n} value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
                   <option value="">すべて</option>
                   {[...new Set([...(data?.facets[n] ?? []), ...(query[n] ? [query[n]!] : [])])].map((v) => (
                     <option key={v} value={v}>{n === "kind" ? KIND_TEXT[v as WorkKind] ?? v : v}</option>
@@ -256,6 +264,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
             <label className="work-filter-check">
               <input
                 type="checkbox"
+                name="read_later"
                 checked={!!query.read_later}
                 onChange={(e) => setReadLaterOnly(e.target.checked)}
               />
@@ -266,7 +275,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
         <div className="work-sort-row">
           <label className="work-sort">
             <span className="work-sort-label">並び順</span>
-            <select value={sort} onChange={(e) => changeSort(e.target.value as WorkSort)}>
+            <select name="sort" value={sort} onChange={(e) => changeSort(e.target.value as WorkSort)}>
               {WORK_SORTS.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
@@ -274,6 +283,7 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
           </label>
         </div>
       </form>
+      </search>
       {data && filtering && (
         <p className="muted work-count" role="status">
           {data.works.length} 件 / 全 {data.total} 作品
@@ -292,8 +302,8 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       )}
       {data && data.unassigned > 0 && <p className="muted">作品名を読み取れなかった巻が {data.unassigned} 巻あります。</p>}
       <ul className="work-grid">
-        {data?.works.map((w) => (
-          <WorkCard key={w.id} work={w} onReadLaterChange={onReadLaterChange} />
+        {data?.works.map((w, i) => (
+          <WorkCard key={w.id} work={w} onReadLaterChange={onReadLaterChange} eager={i < EAGER_COVERS} />
         ))}
       </ul>
       <Credits sources={sources} />

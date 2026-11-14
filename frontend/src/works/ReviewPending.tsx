@@ -25,12 +25,12 @@ export function pendingItems(w: Pending): PendingItem[] {
   return items;
 }
 
-/** 作品カードの通知ドット。色だけに頼らないよう、何が待っているかを読み上げ名とツールチップに持たせる */
+/** 作品カードの通知ドット。色だけに頼らないよう、何が待っているかを読み上げ名に持たせる */
 export function NotifyDot({ work }: { work: Pending }) {
   const items = pendingItems(work);
   if (items.length === 0) return null;
   const text = `確認待ちあり(${items.map((it) => it.label).join("・")})`;
-  return <span className="notify-dot" role="img" aria-label={text} title={text} />;
+  return <span className="notify-dot" role="img" aria-label={text} />;
 }
 
 /** 作品ページ・タイトル一覧の案内。確認待ちの種類ごとに、確認の該当タブへのリンクを並べる */

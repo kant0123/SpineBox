@@ -28,7 +28,7 @@ function Side({ v }: { v: DuplicateVolume }) {
       {v.offline ? (
         <div className="dup-cover dup-cover-missing">オフライン</div>
       ) : (
-        <img className="dup-cover" src={api.pageUrl(v.id, 0)} alt={`${v.title} の表紙`} loading="lazy" />
+        <img className="dup-cover" src={api.pageUrl(v.id, 0)} alt={`${v.title} の表紙`} loading="lazy" decoding="async" />
       )}
       <div className="dup-title">{v.title}</div>
       <dl className="dup-facts">
@@ -76,8 +76,8 @@ function Candidate({ c, onChanged }: { c: DuplicateCandidate; onChanged: () => v
           <ul>
             {c.evidence.samples.map((s, i) => (
               <li key={i}>
-                {!c.a.offline && <img src={api.pageUrl(c.a.id, s.a_page)} alt={`左 ${s.a_page + 1} ページ`} loading="lazy" />}
-                {!c.b.offline && <img src={api.pageUrl(c.b.id, s.b_page)} alt={`右 ${s.b_page + 1} ページ`} loading="lazy" />}
+                {!c.a.offline && <img src={api.pageUrl(c.a.id, s.a_page)} alt={`左 ${s.a_page + 1} ページ`} loading="lazy" decoding="async" />}
+                {!c.b.offline && <img src={api.pageUrl(c.b.id, s.b_page)} alt={`右 ${s.b_page + 1} ページ`} loading="lazy" decoding="async" />}
                 <span className="muted">
                   {s.a_page + 1} ページと {s.b_page + 1} ページ(差 {s.distance}/64)
                 </span>
@@ -173,7 +173,7 @@ export function Duplicates({ pollMs = 1500, embedded = false, onChanged }: { pol
         </label>
       </div>
       {scan && scanText(scan) && (
-        <div className={`notice${scan.error ? " error" : ""}`} role="status">
+        <div className={`notice${scan.error ? " error" : ""}`} role={scan.running ? undefined : "status"}>
           {scanText(scan)}
         </div>
       )}

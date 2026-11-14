@@ -246,7 +246,7 @@ describe("範囲指定の整理", () => {
     fireEvent.click(within(again).getByRole("button", { name: "1 つ上へ" }));
     await within(again).findByRole("button", { name: "作者A" });
     expect(again.querySelector('[aria-current="location"]')?.textContent).toBe("蔵書フォルダ全体");
-    fireEvent.keyDown(document, { key: "Escape" });
+    act(() => (again as HTMLDialogElement).close());
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await act(async () => {
@@ -268,26 +268,12 @@ describe("範囲指定の整理", () => {
     expect(dialog.querySelector('[aria-current="location"]')?.textContent).toBe("蔵書フォルダ全体");
   });
 
-  it("フォルダー選択の Tab はモーダルの中を回る", async () => {
+  it("フォルダー選択はネイティブの <dialog> をモーダルで開く", async () => {
     render(<App />);
-    const opener = await screen.findByRole("button", { name: "フォルダーを選ぶ" });
-    opener.focus();
-    fireEvent.click(opener);
-    const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
-    await within(dialog).findByRole("button", { name: "作者A" });
-    const buttons = within(dialog).getAllByRole("button");
-    const first = buttons[0];
-    const last = buttons[buttons.length - 1];
-    last.focus();
-    fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(document.activeElement).toBe(first);
-    // 開いた直後(見出し)からの逆順も、モーダルの外へ出さない
-    within(dialog).getByRole("heading", { name: "フォルダーを選ぶ" }).focus();
-    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(last);
-    first.focus();
-    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(last);
+    fireEvent.click(await screen.findByRole("button", { name: "フォルダーを選ぶ" }));
+    const dialog = (await screen.findByRole("dialog", { name: "フォルダーを選ぶ" })) as HTMLDialogElement;
+    expect(dialog.tagName).toBe("DIALOG");
+    expect(dialog.open).toBe(true);
   });
 
   it("フォルダー選択は Esc で閉じ、開いたボタンへフォーカスを戻す", async () => {
@@ -297,7 +283,7 @@ describe("範囲指定の整理", () => {
     fireEvent.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "フォルダーを選ぶ" });
     await within(dialog).findByRole("button", { name: "スキャン" });
-    fireEvent.keyDown(document, { key: "Escape" });
+    act(() => (dialog as HTMLDialogElement).close()); // Esc はブラウザが close() する
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(opener);
   });

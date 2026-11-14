@@ -78,14 +78,14 @@ export function FacetList({ field }: { field: FacetField }) {
       </header>
       {error && <div className="notice error" role="alert">{error}</div>}
       {starError && <div className="notice error" role="alert">{starError}</div>}
-      <div className="facet-toolbar">
-        <input type="search" aria-label={`${title}を絞り込む`} value={filter}
+      <search className="facet-toolbar">
+        <input type="search" name="q" autoComplete="off" aria-label={`${title}を絞り込む`} value={filter}
           onChange={(e) => setFilter(e.target.value)} />
-        <select aria-label="並び順" value={order} onChange={(e) => setOrder(e.target.value as Order)}>
+        <select name="order" aria-label="並び順" value={order} onChange={(e) => setOrder(e.target.value as Order)}>
           <option value="name">名前順</option>
           <option value="count">作品の多い順</option>
         </select>
-      </div>
+      </search>
       {values === null && !error && <p className="muted">読み込み中…</p>}
       {values && values.length === 0 && <p className="muted">{EMPTY_TEXT[field]}</p>}
       {values && values.length > 0 && shown.length === 0 && <p className="muted">合う{title}がありません。</p>}
@@ -104,7 +104,6 @@ export function FacetList({ field }: { field: FacetField }) {
                 className={`facet-star${starred ? " on" : ""}`}
                 aria-pressed={starred}
                 aria-label={`${v.value} にスターを付ける`}
-                title={starred ? "スターを外す" : "スターを付ける"}
                 onClick={() => void toggleStar(v.value, !starred)}
               >
                 <span aria-hidden="true">{starred ? "★" : "☆"}</span>

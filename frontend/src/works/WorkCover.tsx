@@ -27,7 +27,7 @@ export function landscapeClass(ar: number): string {
  * `placeholder` なら同じ大きさの枠を残す(作品カード。#132)。付けなければ何も出さない(文字だけのカードのまま)。
  * 表紙を作るのは管理のデータ管理タブ(#83)のジョブ。
  */
-export function WorkCover({ volumeId, placeholder = false }: { volumeId: number; placeholder?: boolean }) {
+export function WorkCover({ volumeId, placeholder = false, eager = false }: { volumeId: number; placeholder?: boolean; eager?: boolean }) {
   const [state, setState] = useState<"loading" | "ok" | "none">("loading");
   const [extraClass, setExtraClass] = useState("");
   const [prevId, setPrevId] = useState(volumeId);
@@ -44,7 +44,7 @@ export function WorkCover({ volumeId, placeholder = false }: { volumeId: number;
       className={`work-cover${state === "ok" ? " loaded" : ""}${extraClass ? " " + extraClass : ""}`}
       src={api.thumbnailUrl(volumeId)}
       alt=""
-      loading="lazy"
+      loading={eager ? undefined : "lazy"}
       decoding="async"
       onLoad={(e) => {
         const img = e.currentTarget;

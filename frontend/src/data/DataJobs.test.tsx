@@ -171,12 +171,12 @@ describe("進み具合の文言(#207)", () => {
     expect(screen.queryByRole("button", { name: "中止" })).toBeNull(); // 中止はタスクセンター
   });
 
-  it("タスクセンターは段と件数を分けて出し、総数の無い段は aria-valuetext で読み上げる", async () => {
+  it("タスクセンターは段と件数を分けて出し、総数の無い段は値の無い progress にする", async () => {
     render(<DataJobs pollMs={60} view="all" />);
     fireEvent.click(await screen.findByRole("button", { name: "ライブラリ全体を同期を実行" }));
     const bar = await screen.findByRole("progressbar");
-    await waitFor(() => expect(bar.getAttribute("aria-valuetext") ?? bar.getAttribute("aria-valuenow")).toBeTruthy());
+    await waitFor(() => expect(bar.hasAttribute("value") || bar.textContent).toBeTruthy());
     await screen.findByText(/^段 [2-5]\/5: /, {}, { timeout: 3000 });
-    await waitFor(() => expect(bar.getAttribute("aria-valuenow")).toBe("33"), { timeout: 3000 });
+    await waitFor(() => expect((bar as HTMLProgressElement).value).toBe(33), { timeout: 3000 });
   });
 });

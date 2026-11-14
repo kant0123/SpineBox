@@ -32,3 +32,19 @@ if (jsdomSessionStorage && (typeof globalThis.sessionStorage === "undefined" || 
     }
   }
 }
+
+// jsdom は <dialog> の showModal() / close() を実装していない。open 属性と close イベントだけ最小限に再現する。
+if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.show = function show(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement, returnValue?: string) {
+    if (!this.hasAttribute("open")) return;
+    this.removeAttribute("open");
+    if (returnValue !== undefined) this.returnValue = returnValue;
+    this.dispatchEvent(new Event("close"));
+  };
+}
