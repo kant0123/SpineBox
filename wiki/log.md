@@ -657,3 +657,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-15] ingest | PR #329 リーダー: スライダーを太く・戻るを作品のタイトル一覧へ・最後の画面から次の巻へ (#324)
 - 更新: [[manga-reader]], [[frontend]], [[backend]], [[server-setup]]
 - 備考: 漫画のスライダーと「最後の画面からさらに進む」は manga-viewer の外から足した(`frontend/src/reader/viewerHooks.ts`)。[[server-setup]] はコード参照の行番号だけ。
+
+## [2026-11-15] ingest | PR #330 (#325) update_spinebox.bat が Update 直後の起動確認で 90 秒タイムアウトする問題を修正
+- 更新: [[server-setup]]
+- 備考: #325。タスクスケジューラの既定 `Priority = 7`(`BELOW_NORMAL_PRIORITY_CLASS` + 低 I/O・低メモリ優先度)で起動されていたため、`npm ci` / `build` 直後の高 I/O 負荷時に `Start-ScheduledTask` からラッパー開始まで 71 秒・Python の起動時 DB 同期完了まで計 5 分超かかり 90 秒タイムアウトになっていた。`install_task.ps1` で `-Priority 4`(通常)を指定し、既存の登録タスクでも `start_spinebox.ps1` が起動時に自身の CPU・I/O・メモリ優先度を通常へ戻すようにし、`update_spinebox.ps1` の `-TimeoutSeconds` 既定値を 180 秒に延長。調査中に別件 #326 (`works.sync` + `linking.apply_all` の非冪等更新)・#328 (`install_task.ps1 -Action Status` の非管理者表示)を発見して起票。

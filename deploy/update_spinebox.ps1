@@ -24,8 +24,8 @@ param(
     # 設定の確認(--print-bind)と pip に使う Python。既定は py ランチャーの 3.12
     [string]$PythonPath = "py",
     [string]$PythonArguments = "-3.12",
-    # 起動後に /healthz の応答を待つ秒数
-    [int]$TimeoutSeconds = 90,
+    # 起動後に /healthz の応答を待つ秒数(タスクスケジューラの起動 + ポート確認 + 起動時 DB 同期を含む。#325)
+    [int]$TimeoutSeconds = 180,
     # テスト用: 止める・起動するを、このスクリプトに `-Action Stop / Start` で任せる(管理者・タスクの確認もしない)
     [string]$TaskRunner = "",
     [switch]$DryRun
