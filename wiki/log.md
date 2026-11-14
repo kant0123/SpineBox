@@ -645,3 +645,7 @@ grep "^## \[" wiki/log.md | tail -5
 ## [2026-11-14] ingest | PR #317 (#316) 蔵書ごとに公開 DB の取得元を指定できるようにする
 - 更新: [[metadata-linking]], [[metadata-clients]], [[metadata-sources]], [[backend]], [[frontend]], ほか行番号のずれた [[inbox]], [[manga-reader]], [[cover-thumbnails]], [[data-jobs]], [[follow]](コード参照のみ)
 - 備考: 取得元を蔵書(`library_groups.metadata_sources`。マイグレーション 19)ごとに選べるようにした。設定の `[metadata] sources` は指定の無い蔵書の既定で、設定で無効の取得元も蔵書で選べる。複数の蔵書にまたがる作品は和。指定から外した取得元の連携・値は残す。
+
+## [2026-11-14] ingest | PR #320 (#318) modern-web-guidance スキルを組み込み、DADS 準拠の規約と dads-ui スキルを廃止
+- 更新: [[frontend]], [[manga-reader]]
+- 備考: #318。`.agent/skills/modern-web-guidance/`(上流 GoogleChrome/modern-web-guidance の SKILL.md の写し + SpineBox のローカル追記。`.claude/skills/` も同じ)を追加。DADS とは個別の規則で競合した(フォームのエラー通知の `aria-live`・`maxlength` が逆)ので、利用者の指示で `dads-ui` スキル・`.agent/rules/ui-dads.md`・`CLAUDE.md` の DADS 準拠の規約を廃止し、`AGENTS.md`・`GEMINI.md`・`.github/copilot-instructions.md` も置き換えた。画面は塗り替えていない(値は `styles.css` に残る)。CLI は `DISABLE_TELEMETRY=1` で使う。

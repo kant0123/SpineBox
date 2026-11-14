@@ -44,13 +44,12 @@
 
 ## 画面(UI)の作成・変更
 
-- **`frontend/` の画面を作る・直すときは、DADS(デジタル庁デザインシステムβ版 v2.18.2)準拠とする。**
-  手順・トークン値・コンポーネント対応・検証は `.agent/skills/dads-ui/`(Claude Code は
-  `.claude/skills/dads-ui/`)に従う。スキル機構のないツールは `AGENTS.md` から入り、
-  `SKILL.md` と `references/` を直接読む。
-- 準拠の意味は見た目の流用ではなく、**値・構造・振る舞い**(コントラスト、ターゲットサイズ、
-  フォーカスリング、ARIA、読み上げ順)を仕様に合わせること。
-- 既存画面は**触る範囲だけ**準拠に寄せる。全画面の一括塗り替えはしない。
+- **`frontend/` の画面を作る・直すときは、着手時に modern-web-guidance(GoogleChrome/modern-web-guidance)で
+  該当するガイドを検索・取得し、それに沿って実装する。** 手順は `.agent/skills/modern-web-guidance/SKILL.md`
+  (Claude Code は `.claude/skills/modern-web-guidance/`)。スキル機構のないツールは `AGENTS.md` から入り、`SKILL.md` を直接読む。
+- **CLI は `DISABLE_TELEMETRY=1` を付けて実行する**(既定では検索語などが Google へ送られる)。検索語にプロジェクト固有の語を入れない。
+- 既存画面は**触る範囲だけ**ガイドに寄せる。全画面の一括塗り替えはしない(今の値は `frontend/src/styles.css` が正)。
+- DADS(デジタル庁デザインシステム)準拠の規約と `dads-ui` スキルは、modern-web-guidance と競合したため廃止した(#318)。
 
 ## エージェントの応答・作業方針
 

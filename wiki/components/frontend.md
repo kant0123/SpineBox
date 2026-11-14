@@ -204,7 +204,9 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **ライト/ダークは CSS 変数の 2 組。** `<html data-theme>` があればそちら、無ければ `prefers-color-scheme` に従う。既定は OS に従い、
   サイドバーの切り替えを押すと「いま効いている方の逆」を `localStorage`(`spinebox.theme`)に記憶する。OS に従うへ戻すのは好みタブから。
   `main.tsx` で描画の前に適用するのは、ダークで開いたときに一瞬ライトになるのと、リーダーから直接開いたときに付かないのを避けるため
-- **画面の配色・余白・タイポ・フォーム・フォーカスリングは DADS(デジタル庁デザインシステムβ版 v2.18.2)に準拠する(#112, #119, #126)。**
+- **画面の配色・余白・タイポ・フォーム・フォーカスリングの今の値は、DADS(デジタル庁デザインシステムβ版 v2.18.2)に合わせて作った(#112, #119, #126)。**
+  DADS 準拠の規約と `dads-ui` スキルは、modern-web-guidance(`.agent/skills/modern-web-guidance/`)と個別の規則で競合したため #318 で廃止した
+  (例: フォームのエラー通知に `aria-live` を使うか、`maxlength` を使うかが逆)。画面は塗り替えていないので下の値は今も `styles.css` にあり、新しく触る範囲は modern-web-guidance のガイドに従う。
   リンク・テキスト・ボタンに使う `--accent`(`#1b52b8` / ダーク `#70a5ff`)・`--done`(`#197a4b` / ダーク `#5fc48d`)・`--muted`・`--warn`・`--error` は `--bg`・`--card`・`--sidebar-active` 上で 4.5:1 以上を満たし、フォームの入力欄・選択欄の枠線は `--border-strong`(`#666666` / ダーク `#8e8e98`)で 3:1 以上を満たす。`:focus-visible` は黒 4px + オフセット 2px + 黄(`#ffd43d`) 2px の二重リングに統一し、最小フォントサイズは 14px(`0.875rem`)、小ボタン(`button.small` / `button.bookmark-button`)は `::after` 疑似要素で 44×44px のタッチターゲットを確保する。入力欄に `placeholder` は使わず、サポートテキストと `aria-describedby` / `aria-invalid` で示す。ブレークポイントは `768px` の 1 つに統一する
 - **蔵書の切り替えは端末ごとに記憶し(`spinebox.libraryGroup`)、`GET /api/libraries` に無い id を覚えていたら「すべての蔵書」に戻す。**
   蔵書を消しても、端末に残った id で一覧が空になり続けないように。オフラインの蔵書も候補に出す(巻はオフラインとして残る)。
