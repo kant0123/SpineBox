@@ -1,7 +1,7 @@
 ---
 type: operation
 summary: サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
-updated: 2026-11-14
+updated: 2026-11-15
 related: [overview, backend, frontend, archive-reading, extraction-cache]
 ---
 
@@ -76,6 +76,15 @@ Python 自体・展開途中のバッファ(1 回のまとめ取り出しは最�
   60 秒以上動いたあとなら 2 秒に戻る)。タスク側にも 1 分間隔の再試行を設定してあり、スクリプト自身が落ちても戻る。
   引数が不正(Python・設定ファイル・リポジトリが無い)なときは exit 2 で止まり、再起動ループに入らない
   (再起動しても直らないので)
+- **タスクとラッパーの優先度は通常(`Normal`)にする(#325)。** Windows タスクスケジューラは `New-ScheduledTaskSettingsSet` で
+  `-Priority` を省くと既定の `7`(`BELOW_NORMAL_PRIORITY_CLASS` + 低 I/O・低メモリ優先度)で起動する。サーバー機で
+  `update_spinebox.bat` を実行した際、`npm ci` / `build` が数万ファイルを書き換えた直後のディスク I/O と競合し、
+  `Start-ScheduledTask` から `start_spinebox.ps1` の開始まで 71 秒、Python の起動時 DB 同期完了までさらに時間を要して
+  90 秒タイムアウトになった。`deploy/install_task.ps1:156 Register-SpineBoxTask` は `-Priority 4`(通常優先度)で登録し、
+  既に `Priority = 7` で登録されたタスクを再登録しなくても `deploy/start_spinebox.ps1:75 Enable-KillChildrenOnExit` が
+  起動時に自身の CPU(`PriorityClass = Normal`)・I/O(`ProcessIoPriority = 2`)・メモリ(`ProcessPagePriority = 5`)優先度を
+  通常へ引き上げてから子プロセス(`python -m spinebox`)を起動する。`deploy/update_spinebox.ps1` の応答待ち既定値も
+  `-TimeoutSeconds 180` にしている
 - Python は登録時に絶対パスへ解決して渡す(SYSTEM は利用者の PATH を持たない)。`py` ランチャーなら
   `-PythonPath py -PythonArguments "-3.12"`。解決できない・`python -m spinebox --print-bind` が動かない Python は、
   登録前に止めて案内を出す(Windows ストアの python の別名などを登録しないため)
@@ -123,7 +132,7 @@ Start-ScheduledTask SpineBox
    `py -3.12` の `py.exe → python.exe` も両方入る。Windows 8 / Server 2012 以降はネスト Job が使えるので、
    タスクスケジューラが既に Job に入れていても割り当てられる。割り当てに失敗したら警告を `supervisor.log` に出して続ける
    (その場合は 2 段目だけが頼り)
-2. **起動のたびに、設定のポートの持ち主を調べる**(`deploy/start_spinebox.ps1:203 Resolve-PortConflict`)。
+2. **起動のたびに、設定のポートの持ち主を調べる**(`deploy/start_spinebox.ps1:217 Resolve-PortConflict`)。
    `-m spinebox` のプロセスで、親をたどっても生きている親が居ない(= 親が先に死んだ孤児)ものだけを、子孫ごと止めて
    `supervisor.log` に PID 付きで残す。**親が生きているもの(手で起動した SpineBox・別のプログラム)は止めず、
    警告だけ出して起動を試みる**(bind に失敗して通常の再起動の間隔で待つ)。`-NoReapOrphan` で、孤児も止めず記録だけにできる。
@@ -159,5 +168,6 @@ Ctrl+C など「正常な中断」では `finally` が python の木を止める
 
 | 日付 | 実施者 | 結果 |
 | --- | --- | --- |
+| 2026-11-15 | #325(サーバー機) | `update_spinebox.bat` が Update 直後に 90 秒タイムアウトした原因(タスクスケジューラ既定 `Priority = 7` による低 CPU・低 I/O・低メモリ優先度起動で `Start-ScheduledTask` からラッパー開始まで 71 秒・起動時同期まで計 5 分超)を確認。`-Priority 4` での登録、`start_spinebox.ps1` での CPU・I/O・メモリ優先度の通常化、待ち時間の 180 秒化で解消 |
 | 2026-11-01 | #23(開発機) | ラッパーを `Stop-Process -Force` しても python(`py.exe → python.exe` を含む)が残らないこと、孤児がポートを握った状態でラッパーを起動すると検出・停止して起動すること、親が生きているプロセスは止めないことを確認(自動テストと、実アプリ・`py -3.12` での手動確認)。`Stop-ScheduledTask` と `-Action Stop` の実機確認は未実施(#20) |
 | 2026-11-01 | #19(開発機) | スクリプトの構文・`-WhatIf`・引数検証・再起動ループ(python を強制終了 → 約 4 秒で再起動、`/healthz` 復帰)・`frontend/dist` の配信を確認。登録・ファイアウォール・LAN 閲覧は未実施(#20) |

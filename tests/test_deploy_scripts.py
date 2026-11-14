@@ -125,6 +125,7 @@ def test_register_whatif_prints_the_plan_and_changes_nothing(tmp_path):
     out = r.stdout.decode("cp932", "replace") + r.stdout.decode("utf-8", "replace")
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     assert name in out and "start_spinebox.ps1" in out and "-ConfigPath" in out
+    assert "優先度: 4 (通常)" in out
     assert "http://127.0.0.1:8123/healthz" in out
     after = run_ps(["-Command", f"(Get-ScheduledTask -TaskName '{name}' -ErrorAction SilentlyContinue | Measure-Object).Count"])
     assert after.stdout.decode("ascii", "replace").strip() == "0"
@@ -293,6 +294,47 @@ def test_killing_the_wrapper_also_stops_the_python_child(tmp_path):
 
 
 @needs_windows_ps
+def test_wrapper_restores_normal_cpu_io_and_memory_priority(tmp_path):
+    # タスクスケジューラの既定(Priority 7 = BelowNormal + 低 I/O・低メモリ優先度)で起動されても、
+    # start_spinebox.ps1 が通常優先度へ戻してから python を起動する(#325)
+    repo = tmp_path / "repo"
+    (repo / "spinebox").mkdir(parents=True)
+    (repo / "spinebox" / "__init__.py").write_text("", encoding="utf-8")
+    out_file = tmp_path / "prio.txt"
+    (repo / "spinebox" / "__main__.py").write_text(
+        "import ctypes, sys\n"
+        "if '--print-bind' in sys.argv:\n"
+        "    print('127.0.0.1 0'); sys.exit(0)\n"
+        "k32, ntdll = ctypes.windll.kernel32, ctypes.windll.ntdll\n"
+        "k32.GetCurrentProcess.restype = ctypes.c_void_p\n"
+        "k32.GetPriorityClass.argtypes = [ctypes.c_void_p]\n"
+        "ntdll.NtQueryInformationProcess.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]\n"
+        "h = k32.GetCurrentProcess()\n"
+        "cpu = k32.GetPriorityClass(h)\n"
+        "io, mem, ret = ctypes.c_int(-1), ctypes.c_int(-1), ctypes.c_int(0)\n"
+        "ntdll.NtQueryInformationProcess(h, 33, ctypes.byref(io), 4, ctypes.byref(ret))\n"
+        "ntdll.NtQueryInformationProcess(h, 39, ctypes.byref(mem), 4, ctypes.byref(ret))\n"
+        f"open({str(out_file)!r}, 'w', encoding='utf-8').write(f'{{cpu}} {{io.value}} {{mem.value}}')\n",
+        encoding="utf-8",
+    )
+    # 親プロセスをタスクスケジューラ既定と同じ低優先度(BELOW_NORMAL=0x4000, IoPriority=0, PagePriority=1)にして起動する
+    launcher = (
+        "$p = [System.Diagnostics.Process]::GetCurrentProcess(); "
+        "$p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal; "
+        "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; "
+        "public static class LowPrio { [DllImport(\"ntdll.dll\")] public static extern int NtSetInformationProcess(IntPtr h, int c, ref int v, int s); }'; "
+        "$io = 0; $mem = 1; "
+        "[void][LowPrio]::NtSetInformationProcess($p.Handle, 33, [ref]$io, 4); "
+        "[void][LowPrio]::NtSetInformationProcess($p.Handle, 39, [ref]$mem, 4); "
+        f"& '{DEPLOY / 'start_spinebox.ps1'}' -RepoPath '{repo}' -PythonPath '{sys.executable}' -LogDir '{tmp_path / 'logs'}' -MaxRuns 1"
+    )
+    r = run_ps(["-Command", launcher])
+    assert r.returncode == 0, both_decodings(r.stdout + r.stderr)
+    # NORMAL_PRIORITY_CLASS = 0x20 (32), IoPriorityNormal = 2, MEMORY_PRIORITY_NORMAL = 5
+    assert out_file.read_text(encoding="utf-8").strip() == "32 2 5"
+
+
+@needs_windows_ps
 def test_orphan_holding_the_port_is_stopped_before_start(tmp_path):
     # 受け入れ基準: 前回の孤児(親が既に居ない `-m spinebox`)がポートを握っていたら、検出してログに出し、止めて起動する
     repo = fake_server_repo(tmp_path)
@@ -396,8 +438,8 @@ def test_update_dry_run_shows_the_steps_and_changes_nothing(tmp_path, mode):
                 "-PythonPath", sys.executable, "-PythonArguments", "-B", "-TaskName", f"SpineBoxTest-{uuid.uuid4().hex[:8]}"])
     out = r.stdout.decode("utf-8", "replace") + r.stdout.decode("cp932", "replace")
     assert r.returncode == 0, out
-    # 0.0.0.0 で待ち受ける設定は、この機械の 127.0.0.1 で応答を確かめる
-    assert "http://127.0.0.1:8123/healthz" in out
+    # 0.0.0.0 で待ち受ける設定は、この機械の 127.0.0.1 で応答を確かめる。既定の待ち時間は 180 秒(#325)
+    assert "http://127.0.0.1:8123/healthz(最大 180 秒)" in out
     assert ("git pull" in out) == (mode == "Update")
     assert snapshot(repo) == before
 
