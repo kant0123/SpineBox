@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 公開 DB 5 つ(国立国会図書館サーチ・メディア芸術データベース・Bangumi と、同人誌用の nHentai・E-Hentai)の癖・制限・利用条件・採否の理由と、実通信で確かめた応答の違い、既定のレート制限の根拠
-updated: 2026-11-10
+updated: 2026-11-14
 related: [metadata-clients, metadata-linking, overview, backend, follow]
 ---
 
@@ -91,7 +91,7 @@ Neptune の全文検索を使わない `rdfs:label` の全件 `CONTAINS` スキ�
 
 同人誌のファイル名の書式 `(イベント) [サークル (作者)] 題名 (原作) [印]` は、両サイトの題名と同じ書式なので、
 **題名の核・サークル・作者で突き合わせて判定する**(`spinebox/metadata/doujin.py:48 parse_doujin_title()` が両側を同じ規則で読む)。
-どちらも**既定では無効**(`[metadata] sources` に足したときだけ使う)。成人向けのサイトへ蔵書の作品名を送ることになるので、利用者の明示的な選択にした。
+どちらも**既定では無効**(`[metadata] sources` に足すか、管理の「蔵書」タブでその蔵書の取得元に選んだときだけ使う。#316)。成人向けのサイトへ蔵書の作品名を送ることになるので、利用者の明示的な選択にした。
 実通信(2026-11-10、`scripts/metadata_probe.py --source nhentai --source ehentai`)で、実際の蔵書の `(C70) [バルバロッサ (東雲太郎)] Flowers (ストリートファイター)` を
 どちらも確からしさ 1.00(題名・著者・種別が一致)で特定できた。
 

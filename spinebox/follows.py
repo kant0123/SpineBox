@@ -32,7 +32,7 @@ STATUS_OK = "ok"                    # 連携した組の書誌で数えた
 STATUS_UNLINKED = "unlinked"        # 国立国会図書館サーチの連携が無い(確認待ち・該当なし)。作品ページで候補を選ぶ
 STATUS_NO_NUMBERS = "no_numbers"    # 手元の巻に巻番号が読める巻が無く、何が欠けているか数えられない
 STATUS_KIND_MISMATCH = "kind_mismatch"  # 連携した組の種別が作品の種別と違う(数えない)
-STATUS_DISABLED = "disabled"        # 国立国会図書館サーチが設定で無効
+STATUS_DISABLED = "disabled"        # 国立国会図書館サーチが無効(設定、またはこの作品の蔵書の取得元に無い)
 STATUS_FAILED = "failed"            # 取得に失敗し、前回までの連携の中身も無い
 
 
@@ -117,10 +117,12 @@ def _records(item: dict) -> dict[int, dict]:
     return out
 
 
-def check_work(conn: sqlite3.Connection, service: MetadataService, work_id: int) -> CheckResult:
+def check_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
+               sources: tuple[str, ...] | None = None) -> CheckResult:
     """フォロー中の作品 1 つの続刊・欠けを調べる。取得元の失敗は記録して返す(例外にしない)。
 
     service は続刊用の短い有効期限の設定で作ったもの(`spinebox/app.py follow_service`)。
+    sources はこの作品に使う取得元(蔵書ごとの指定 #316)。国立国会図書館サーチが入っていなければ問い合わせない。
     """
     with db.transaction(conn) as c:
         _root(c, work_id)
@@ -129,7 +131,7 @@ def check_work(conn: sqlite3.Connection, service: MetadataService, work_id: int)
         if not _owned_numbers(c, work_id):
             # 何が欠けているか数えられない。取得元にも問い合わせない
             return _finish(conn, CheckResult(work_id, STATUS_NO_NUMBERS), c)
-    if SOURCE not in service.sources:
+    if SOURCE not in service.sources or (sources is not None and SOURCE not in sources):
         return _finish(conn, CheckResult(work_id, STATUS_DISABLED))
     try:
         linking.fetch_work(conn, service, work_id, sources=(SOURCE,))
@@ -190,17 +192,21 @@ def _finish(conn, result: CheckResult, c=None) -> CheckResult:
 
 
 def check_many(conn: sqlite3.Connection, service: MetadataService, ids: list[int],
-               progress: Callable[[int, int, int | None], None] | None = None) -> dict[str, int]:
+               progress: Callable[[int, int, int | None], None] | None = None, *,
+               default_sources: tuple[str, ...] | None = None) -> dict[str, int]:
     """作品を 1 つずつ調べる(取得元の最小間隔は共有の関門が守る)。結果の状態ごとの件数を返す。
 
     明示操作「続刊を調べる」と定期実行の入口。#83 のジョブに載せるときもこれを呼ぶ(progress は done, total, 現在の作品)。
+    default_sources(設定の取得元)を渡すと、作品ごとに蔵書の取得元を引き、国立国会図書館サーチが無い作品は問い合わせない(#316)。
     """
+    per_work = None if default_sources is None else linking.work_sources(conn, default_sources, ids)
     counts: dict[str, int] = {}
     for i, work_id in enumerate(ids):
         if progress:
             progress(i, len(ids), work_id)
         try:
-            status = check_work(conn, service, work_id).status
+            allowed = None if per_work is None else per_work.get(work_id, default_sources)
+            status = check_work(conn, service, work_id, allowed).status
         except (works.WorkNotFound, NotFollowed):
             continue  # 途中で統合された・フォローを外した
         except Exception:  # noqa: BLE001 (1 作品の不具合で残りを止めない)

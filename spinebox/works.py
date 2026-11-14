@@ -2148,8 +2148,10 @@ def open_proposal_count(conn: sqlite3.Connection) -> int:
     return n
 
 
-def get_works(conn: sqlite3.Connection, work_ids: list[int], sources: tuple[str, ...] = ()) -> list[dict]:
-    """作品の詳細を、渡した順にまとめて返す。項目・巻・提案・連携は、渡した作品(と提案の相手)の分を
+def get_works(conn: sqlite3.Connection, work_ids: list[int],
+              sources: tuple[str, ...] | dict[int, tuple[str, ...]] = ()) -> list[dict]:
+    """作品の詳細を、渡した順にまとめて返す。sources は連携の欄に出す取得元(作品 id → 取得元の対応でも渡せる。
+    載っていない作品は取得元なし。蔵書ごとの取得元 #316)。項目・巻・提案・連携は、渡した作品(と提案の相手)の分を
     作品の数によらず 1 回ずつ引く(確認の画面は確認待ちの作品を全部並べるので、1 作品ずつ引くと作品の数 × 蔵書全体になる。#291)。
     蔵書全体は読まない: 1 作品の詳細は蔵書の大きさによらない(#294)。"""
     wanted = set(work_ids)
@@ -2195,7 +2197,7 @@ def get_works(conn: sqlite3.Connection, work_ids: list[int], sources: tuple[str,
         for v in vols:
             v["bookmarked"] = v["id"] in marked
         slots, unnumbered = build_slots(vols)
-        links = _links_of(link_rows.get(wid, {}), sources)
+        links = _links_of(link_rows.get(wid, {}), sources.get(wid, ()) if isinstance(sources, dict) else sources)
         out.append({
             **_summary(w, vols, len(proposals[wid]), sum(1 for x in links if x["status"] == "pending")),
             "title_confidence": w["title_confidence"], "title_evidence": w["title_evidence"],
@@ -2211,7 +2213,8 @@ def get_works(conn: sqlite3.Connection, work_ids: list[int], sources: tuple[str,
     return out
 
 
-def get_work(conn: sqlite3.Connection, work_id: int, sources: tuple[str, ...] = ()) -> dict:
+def get_work(conn: sqlite3.Connection, work_id: int,
+             sources: tuple[str, ...] | dict[int, tuple[str, ...]] = ()) -> dict:
     return get_works(conn, [work_id], sources)[0]
 
 

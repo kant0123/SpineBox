@@ -478,6 +478,11 @@ MIGRATIONS: list[list[str]] = [
         """,
         "ALTER TABLE library_roots ADD COLUMN group_id INTEGER REFERENCES library_groups(id)",
     ],
+    # 19: 蔵書ごとの公開 DB の取得元(#316)。取得元の名前の JSON 配列。NULL は「設定の [metadata] sources に従う」、
+    #     空の配列は「この蔵書では取得しない」。作品 → 取得元の解決は spinebox/linking.py work_sources()
+    [
+        "ALTER TABLE library_groups ADD COLUMN metadata_sources TEXT",
+    ],
 ]
 
 

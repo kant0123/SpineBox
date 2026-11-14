@@ -129,7 +129,8 @@ def test_group_crud(dirs, make_settings):
     client = client_for(make_settings(a))
     made = client.post("/api/library-groups", json={"name": "  同人  "})
     assert made.status_code == 201 and made.json() == {
-        "id": made.json()["id"], "name": "同人", "online": True, "volume_count": 0, "folders": []}
+        "id": made.json()["id"], "name": "同人", "metadata_sources": None, "online": True, "volume_count": 0,
+        "folders": []}
     gid = made.json()["id"]
     assert client.post("/api/library-groups", json={"name": "同人"}).status_code == 409
     assert client.post("/api/library-groups", json={"name": "   "}).status_code == 422
