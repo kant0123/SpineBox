@@ -224,10 +224,14 @@ describe("縦書きリーダー", () => {
     expect(header.classList.contains("is-hidden")).toBe(true);
     expect(footer.classList.contains("is-hidden")).toBe(true);
 
-    // メニューを開く
-    press("Escape");
+    // メニューを開く(M キーでも開閉できる)
+    press("m");
     expect(header.classList.contains("is-hidden")).toBe(false);
     expect(footer.classList.contains("is-hidden")).toBe(false);
+    press("M");
+    expect(header.classList.contains("is-hidden")).toBe(true);
+    press("Escape");
+    expect(header.classList.contains("is-hidden")).toBe(false);
 
     // 巻ブックマーク ★ のトグル
     const bmBtn = screen.getByRole("button", { name: "ブックマークに追加" });

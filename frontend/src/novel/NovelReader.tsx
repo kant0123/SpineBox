@@ -64,10 +64,11 @@ function measureColumns(el: HTMLElement): Interval[] {
   return out;
 }
 
-/** 漫画と同じ操作(← が次・→ が前)に、Space / PageDown(次)・PageUp(前)を足す */
+/** 漫画と同じ操作(← が次・→ が前)に、M(メニュー)・Space / PageDown(次)・PageUp(前)を足す */
 function novelKeyAction(key: string): Action | null {
   const a = keyAction(key);
   if (a) return a;
+  if (key === "m" || key === "M") return "menu";
   if (key === " " || key === "PageDown") return "next";
   if (key === "PageUp") return "prev";
   return null;
@@ -249,7 +250,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
         goSection(step.section, step.position);
       }
     },
-    [ready, layout, section, count, goSection],
+    [ready, layout, section, count, goSection, detail],
   );
 
   useEffect(() => {
