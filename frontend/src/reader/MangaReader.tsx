@@ -4,9 +4,9 @@ import { api, type VolumeDetail } from "../api";
 import { readerBackHref } from "../route";
 import { loadSettings } from "../settings";
 import { useTheme } from "../shell/theme";
-import { nextVolumeStep } from "./nextVolume";
+import { nextVolumeStep, prevVolumeStep, type NextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
-import { enlargeSlider, watchPastEnd } from "./viewerHooks";
+import { enlargeSlider, watchVolumeEdges } from "./viewerHooks";
 
 /** しおり(ページの目印)の API。ブックマーク(巻・作品の目印 #86)とは別の機能 */
 export const PAGE_MARKS_API = "/api/page-marks";
@@ -115,15 +115,21 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
         onClick: () => void toggleBookmark(),
       },
     ];
-    // 次の巻へ(#113)。ヘッダーのボタンと、最後の画面からさらに進む操作(#324)の両方から。次巻がオフラインなら理由を出す
-    const step = nextVolumeStep(detail);
-    const goNextVolume = () => {
+    // 次の巻・前の巻へ(#113, #324, #338)。次の巻はヘッダーのボタンと最後の画面からさらに進む操作の両方、前の巻は先頭画面からさらに戻る操作。オフラインなら理由を出す
+    const nextStep = nextVolumeStep(detail);
+    const prevStep = prevVolumeStep(detail);
+    const goVolume = (step: NextVolumeStep) => {
       if (!step) return;
       if ("href" in step) window.location.hash = step.href;
       else setNotice(step.notice);
     };
-    if (step) {
-      headerButtons.push({ icon: ICON_NEXT_VOLUME, label: "次の巻へ", className: NEXT_VOLUME_CLASS, onClick: goNextVolume });
+    if (nextStep) {
+      headerButtons.push({
+        icon: ICON_NEXT_VOLUME,
+        label: "次の巻へ",
+        className: NEXT_VOLUME_CLASS,
+        onClick: () => goVolume(nextStep),
+      });
     }
     headerButtons.push("fullscreen", "help"); // 共有・リンクコピーは LAN 内のアプリなので出さない
 
@@ -157,7 +163,10 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
     paintVolumeBookmark(host.shadowRoot, bookmarked);
     enlargeSlider(host.shadowRoot);
     // 続きから読むか選ぶ前の操作では移らない
-    watchPastEnd(viewer, () => !resumeDialogOpen() && goNextVolume());
+    watchVolumeEdges(viewer, {
+      onNext: () => !resumeDialogOpen() && goVolume(nextStep),
+      onPrev: () => !resumeDialogOpen() && goVolume(prevStep),
+    });
 
     // 画面を離れる・アプリが裏に回るときは待たずに送る
     const flush = () => saver.flush();

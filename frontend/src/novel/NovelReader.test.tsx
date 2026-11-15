@@ -200,6 +200,23 @@ describe("縦書きリーダー", () => {
     expect(window.location.hash).toBe("#/read/8");
   });
 
+  it("最初のページからさらに戻ると、同じ作品の前の巻へ移る(#338)", async () => {
+    window.location.hash = "";
+    const v = defaultVolumes().find((x) => x.id === 7)!;
+    const html = mockSections()[7];
+    const detail: VolumeDetail = {
+      id: 7, title: v.title, format: "epub", page_count: html.length, pages: [],
+      sections: html.map((h, i) => ({ index: i, length: h.length })),
+      progress: null,
+      prev_volume: { id: 6, title: "前の巻", volume_number: null, offline: false },
+    };
+    render(<NovelReader id="7" detail={detail} />);
+    await ready();
+
+    press("ArrowRight");
+    expect(window.location.hash).toBe("#/read/6");
+  });
+
   it("ヘッダーのブックマーク★・次の巻へ・全画面・ヘルプボタンが漫画ビューワー同様に動く", async () => {
     window.location.hash = "";
     const v = defaultVolumes().find((x) => x.id === 7)!;

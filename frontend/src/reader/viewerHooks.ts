@@ -50,46 +50,115 @@ export function enlargeSlider(root: ShadowRoot | null | undefined) {
 }
 
 /**
- * 最後の画面に着いてから、この時間が過ぎるまでの「さらに進む」は数えない。
- * ホイール・トラックパッドの慣性や連打で、最後のページを見る前に次の巻へ飛ばないようにする
+ * 先頭・最後の画面に着いてから、この時間が過ぎるまでの「さらに進む/戻る」は数えない。
+ * ホイール・トラックパッドの慣性や連打で、端のページを見る前に別巻へ飛ばないようにする
  */
 export const PAST_END_SETTLE_MS = 500;
 
 interface ViewerInternals {
   _goNext?: (animate?: boolean) => void;
+  _goPrev?: (animate?: boolean) => void;
   _navigateTo?: (idx: number, animate?: boolean) => void;
+  _endDrag?: () => void;
   _currentSlotIndex?: number;
   _slots?: unknown[];
+  _isDragging?: boolean;
+  _currentZoom?: number;
+  _startX?: number;
+  _currentX?: number;
+  _dragStartTime?: number;
+  _containerWidth?: number;
+  opts?: { direction?: string };
+}
+
+export interface EdgeHandlers {
+  onNext?: () => void;
+  onPrev?: () => void;
 }
 
 /**
- * 最後の画面からさらに進む操作(キー・ホイール・スワイプは `_goNext`、タップは `_navigateTo(今 + 1)`)を拾う。
- * ライブラリはこの操作を外へ渡さない(onComplete は最後の画面に着いた時点)ので、インスタンスの 2 つのメソッドを包む。
+ * 先頭・最後の画面からさらに前・次へ進む操作を拾う(#324, #338)。
+ * - キー・ホイール・ズーム中の端の引っ張り: `_goNext` / `_goPrev`
+ * - タップ: `_navigateTo(今 ± 1)`
+ * - 通常スワイプ・マウスドラッグ: `_endDrag`
+ * ライブラリはこの操作を外へ渡さない(onComplete は最後の画面に着いた時点)ので、インスタンスの 4 つのメソッドを包む。
  * 内部の形が変わっていたら何もせず false を返す(次の巻へはヘッダーのボタンで移れる)。
  */
-export function watchPastEnd(viewer: unknown, onPastEnd: () => void, now: () => number = () => Date.now()): boolean {
+export function watchVolumeEdges(
+  viewer: unknown,
+  handlers: EdgeHandlers,
+  now: () => number = () => Date.now(),
+): boolean {
   const v = viewer as ViewerInternals;
   const goNext = v._goNext;
+  const goPrev = v._goPrev;
   const navigateTo = v._navigateTo;
-  if (typeof goNext !== "function" || typeof navigateTo !== "function" || !Array.isArray(v._slots)) return false;
+  const endDrag = v._endDrag;
+  if (
+    typeof goNext !== "function"
+    || typeof goPrev !== "function"
+    || typeof navigateTo !== "function"
+    || typeof endDrag !== "function"
+    || !Array.isArray(v._slots)
+  ) {
+    return false;
+  }
 
   let arrived = now();
   const last = () => (v._slots?.length ?? 0) - 1;
+  const atStart = () => v._currentSlotIndex === 0;
   const atEnd = () => v._currentSlotIndex === last();
-  const fire = () => {
-    if (now() - arrived >= PAST_END_SETTLE_MS) onPastEnd();
+  const fire = (cb?: () => void) => {
+    if (cb && now() - arrived >= PAST_END_SETTLE_MS) cb();
   };
+
   v._navigateTo = function (this: unknown, idx: number, animate?: boolean) {
     const before = v._currentSlotIndex;
-    const past = atEnd() && idx > last();
+    const pastEnd = atEnd() && idx > last();
+    const beforeStart = atStart() && idx < 0;
     navigateTo.call(this, idx, animate);
     if (v._currentSlotIndex !== before) arrived = now();
-    if (past) fire();
+    if (pastEnd) fire(handlers.onNext);
+    else if (beforeStart) fire(handlers.onPrev);
   };
+
   v._goNext = function (this: unknown, animate?: boolean) {
     const end = atEnd();
     goNext.call(this, animate);
-    if (end) fire();
+    if (end) fire(handlers.onNext);
   };
+
+  v._goPrev = function (this: unknown, animate?: boolean) {
+    const start = atStart();
+    goPrev.call(this, animate);
+    if (start) fire(handlers.onPrev);
+  };
+
+  v._endDrag = function (this: unknown) {
+    const before = v._currentSlotIndex;
+    let edgeDir: "next" | "prev" | null = null;
+    if (v._isDragging && (v._currentZoom ?? 1) <= 1) {
+      const diff = (v._currentX ?? 0) - (v._startX ?? 0);
+      const elapsed = v._dragStartTime !== undefined ? now() - v._dragStartTime : 0;
+      const w = v._containerWidth ?? 0;
+      const threshold = w > 0 ? w * 0.15 : 30;
+      const isQuickSwipe = elapsed >= 0 && elapsed < 300 && Math.abs(diff) > 30;
+      if (diff !== 0 && (Math.abs(diff) > threshold || isQuickSwipe)) {
+        const rtl = (v.opts?.direction ?? "rtl") === "rtl";
+        const forward = rtl ? diff > 0 : diff < 0;
+        if (forward && atEnd()) edgeDir = "next";
+        else if (!forward && atStart()) edgeDir = "prev";
+      }
+    }
+    endDrag.call(this);
+    if (v._currentSlotIndex !== before) arrived = now();
+    if (edgeDir === "next") fire(handlers.onNext);
+    else if (edgeDir === "prev") fire(handlers.onPrev);
+  };
+
   return true;
+}
+
+export function watchPastEnd(viewer: unknown, onPastEnd: () => void, now: () => number = () => Date.now()): boolean {
+  return watchVolumeEdges(viewer, { onNext: onPastEnd }, now);
 }
