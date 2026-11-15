@@ -1701,32 +1701,42 @@ def build_slots(vols: list[dict]) -> tuple[list[dict], list[dict]]:
     return slots, unnumbered
 
 
-def next_volume(conn: sqlite3.Connection, volume_id: int) -> dict | None:
-    """同じ作品の一覧の並び(番号順 → 番号なしは名前順)で次の巻。
+def adjacent_volumes(conn: sqlite3.Connection, volume_id: int) -> tuple[dict | None, dict | None]:
+    """同じ作品の一覧の並び(番号順 → 番号なしは名前順)で (前の巻, 次の巻)。
 
-    同じ番号の重複は同じ巻とみなして次に数えず、次の番号に重複があればその並びの先頭を返す。
-    次の巻がオフラインでも返す(リーダーが「オフライン」と案内できるように)。作品に割り当てられていない巻は None。
+    同じ番号の重複は同じ巻とみなして飛ばし、前後番号に重複があればその並びの先頭を返す。
+    オフラインでも返す(リーダーが「オフライン」と案内できるように)。作品に割り当てられていない巻は (None, None)。
     """
     row = conn.execute("SELECT work_id FROM work_volumes WHERE volume_id = ?", (volume_id,)).fetchone()
     if row is None:
-        return None
+        return None, None
     vols = [_volume_json(r, {}) for r in conn.execute(
         _VOLUME_SELECT + _VOLUME_FROM + LISTED_VOLUMES_WHERE + " AND wv.work_id = ?", (row["work_id"],))]
     slots, unnumbered = build_slots(vols)
-    nxt = None
+    prv = nxt = None
     for i, slot in enumerate(slots):
         if any(v["id"] == volume_id for v in slot["volumes"]):
+            prv = slots[i - 1]["volumes"][0] if i > 0 else None
             nxt = slots[i + 1]["volumes"][0] if i + 1 < len(slots) else (unnumbered[0] if unnumbered else None)
             break
     else:
         for i, v in enumerate(unnumbered):
             if v["id"] == volume_id:
+                prv = unnumbered[i - 1] if i > 0 else (slots[-1]["volumes"][0] if slots else None)
                 nxt = unnumbered[i + 1] if i + 1 < len(unnumbered) else None
                 break
-    if nxt is None:
-        return None
-    return {"id": nxt["id"], "title": nxt["title"], "volume_number": nxt["volume_number"],
-            "offline": nxt["offline"]}
+
+    def _summary(v: dict | None) -> dict | None:
+        if v is None:
+            return None
+        return {"id": v["id"], "title": v["title"], "volume_number": v["volume_number"], "offline": v["offline"]}
+
+    return _summary(prv), _summary(nxt)
+
+
+def next_volume(conn: sqlite3.Connection, volume_id: int) -> dict | None:
+    """同じ作品の一覧の並び(番号順 → 番号なしは名前順)で次の巻。"""
+    return adjacent_volumes(conn, volume_id)[1]
 
 
 def _select_in(c, sql: str, col: str, ids, joiner: str = "WHERE", tail: str = ""):

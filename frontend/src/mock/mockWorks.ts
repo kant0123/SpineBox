@@ -162,10 +162,10 @@ export function createMockWorks(
   }
 
   /**
-   * 同じ作品の次の巻(#113)。同じ番号の重複は飛ばし、次の番号の並びの 1 つ目を返す。
-   * バックエンドの works.next_volume() と同じ規則(番号順 → 番号なしは名前順)。
+   * 同じ作品の前後の巻(#113)。同じ番号の重複は飛ばし、前後番号の並びの 1 つ目を返す。
+   * バックエンドの works.adjacent_volumes() と同じ規則(番号順 → 番号なしは名前順)。
    */
-  function nextVolume(id: number): WorkVolume | null {
+  function adjacentVolume(id: number, dir: 1 | -1): WorkVolume | null {
     const w = works.find((x) => x.volumeIds.includes(id));
     if (!w) return null;
     const vols = volumesOf(w);
@@ -175,15 +175,22 @@ export function createMockWorks(
     const ordered = [...numbered, ...unnumbered];
     const i = ordered.findIndex((v) => v.id === id);
     if (i < 0) return null;
+    const sameNum = (a: WorkVolume, b: WorkVolume) =>
+      !!(a.volume_number && b.volume_number
+        && a.volume_number.start === b.volume_number.start && a.volume_number.end === b.volume_number.end);
     const cur = ordered[i];
-    for (let j = i + 1; j < ordered.length; j++) {
-      const n = ordered[j];
-      if (cur.volume_number && n.volume_number
-          && cur.volume_number.start === n.volume_number.start && cur.volume_number.end === n.volume_number.end) continue;
-      return n;
+    for (let j = i + dir; j >= 0 && j < ordered.length; j += dir) {
+      if (sameNum(cur, ordered[j])) continue;
+      if (dir === -1) {
+        while (j > 0 && sameNum(ordered[j], ordered[j - 1])) j--;
+      }
+      return ordered[j];
     }
     return null;
   }
+
+  const nextVolume = (id: number) => adjacentVolume(id, 1);
+  const prevVolume = (id: number) => adjacentVolume(id, -1);
 
   const missingOf = (vols: WorkVolume[]) => {
     const have = new Set(vols.map((v) => v.volume_number?.start).filter((n): n is number => !!n));
@@ -649,5 +656,5 @@ export function createMockWorks(
     return w ? summary(w) : null;
   };
 
-  return { handle, works, proposals, summary, listed, summaryOf, nextVolume };
+  return { handle, works, proposals, summary, listed, summaryOf, nextVolume, prevVolume };
 }

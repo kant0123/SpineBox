@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MangaViewer from "@tokagemushi/manga-viewer";
 import { progressKey } from "./MangaReader";
-import { PAST_END_SETTLE_MS, watchPastEnd } from "./viewerHooks";
+import { PAST_END_SETTLE_MS, watchVolumeEdges } from "./viewerHooks";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,30 +33,56 @@ describe("実物の manga-viewer の再開", () => {
   });
 });
 
-// 最後の画面からさらに進む操作はライブラリの内部メソッドを包んで拾う(#324)。
+// 先頭・最後の画面からさらに前後へ進む操作はライブラリの内部メソッドを包んで拾う(#324, #338)。
 // 固定したコミットを替えて内部の形が変わったら、ここで気づけるようにする
-describe("実物の manga-viewer の最後の画面", () => {
-  it("最後の画面からさらに進む操作(キー・スワイプの経路とタップの経路)を拾える", () => {
+describe("実物の manga-viewer の先頭・最後の画面", () => {
+  it("先頭・最後の画面からさらに前後へ進む操作(キー・タップ・スワイプ)を拾える", () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
     vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
     const host = document.createElement("div");
     document.body.appendChild(host);
     const viewer = new MangaViewer({ container: host, pages: ["/a/0", "/a/1", "/a/2"], direction: "rtl" });
-    const inner = viewer as unknown as { _slots: unknown[]; _currentSlotIndex: number; _goNext(): void; _navigateTo(i: number): void };
+    const inner = viewer as unknown as {
+      _slots: unknown[];
+      _currentSlotIndex: number;
+      _goNext(): void;
+      _goPrev(): void;
+      _navigateTo(i: number): void;
+      _startDrag(x: number, y?: number): void;
+      _moveDrag(x: number, y?: number): void;
+      _endDrag(): void;
+    };
     try {
-      const onPastEnd = vi.fn();
-      let t = 0;
-      expect(watchPastEnd(viewer, onPastEnd, () => t)).toBe(true);
+      const onNext = vi.fn();
+      const onPrev = vi.fn();
+      let t = Date.now();
+      expect(watchVolumeEdges(viewer, { onNext, onPrev }, () => t)).toBe(true);
+
+      // 先頭(0)から前へ: キー / タップ / RTL 左スワイプ
+      t += PAST_END_SETTLE_MS;
+      inner._goPrev();
+      inner._navigateTo(-1);
+      inner._startDrag(200);
+      inner._moveDrag(100);
+      inner._endDrag();
+      expect(onPrev).toHaveBeenCalledTimes(3);
+      expect(onNext).not.toHaveBeenCalled();
+
+      // 末尾へ移動
       const last = inner._slots.length - 1;
       expect(last).toBeGreaterThan(0);
       for (let i = 0; i < last; i++) inner._goNext();
       expect(inner._currentSlotIndex).toBe(last);
-      expect(onPastEnd).not.toHaveBeenCalled();
+      expect(onNext).not.toHaveBeenCalled();
+
+      // 末尾から次へ: キー / タップ / RTL 右スワイプ
       t += PAST_END_SETTLE_MS;
       inner._goNext();
-      expect(onPastEnd).toHaveBeenCalledTimes(1);
       inner._navigateTo(last + 1);
-      expect(onPastEnd).toHaveBeenCalledTimes(2);
+      inner._startDrag(100);
+      inner._moveDrag(200);
+      inner._endDrag();
+      expect(onNext).toHaveBeenCalledTimes(3);
     } finally {
       viewer.destroy();
       host.remove();
