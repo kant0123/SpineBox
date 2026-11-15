@@ -123,6 +123,7 @@ gh pr checks <PR番号>            # local/* が pass になっていること�
 
 ```bash
 python review/agy_review.py --pr <PR番号>
+# 大きい変更のときは --model gemini-4-hydrogen-high を付ける(参照予算も自動で広がる)
 ```
 
 - APPROVE → 手順 5 へ。

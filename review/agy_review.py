@@ -44,15 +44,21 @@ INVARIANTS_FILE = REVIEW_DIR / "domain_invariants.json"
 WORK_DIR = REVIEW_DIR / "work"
 
 # 実装は Claude 系で行う前提なので、レビューは別系統のモデルに担当させる
-# (自分が書いたコードを自分で採点させない)。gemini-3.1-pro-high は使えなくなったため flash に変え、その後 gemini-4-hydrogen-high に更新した (#40, #322)。
-DEFAULT_MODEL = os.environ.get("REVIEW_MODEL", "gemini-4-hydrogen-high")
+# (自分が書いたコードを自分で採点させない)。gemini-3.1-pro-high は使えなくなったため flash に変え、
+# gemini-4-hydrogen-high (#322) を経て、通常コストとの両立のため既定を medium にした (#336)。
+DEFAULT_MODEL_NAME = "gemini-4-hydrogen-medium"
+DEFAULT_MODEL = os.environ.get("REVIEW_MODEL", DEFAULT_MODEL_NAME)
 DEFAULT_DOMAIN = os.environ.get("REVIEW_DOMAIN", "spinebox")
 DEFAULT_TIMEOUT_MIN = 15
 # これを超える差分は 1 回のレビューで精度が落ちる。PR を分けるのが本筋。
-DEFAULT_MAX_CHARS = 300_000
-# 埋め込む Wiki ページの合計文字数。ソースは埋め込まずスナップショットから読ませるので、
-# ここは設計判断を伝える分だけあればよい。
-DEFAULT_WIKI_CHARS = 60_000
+DEFAULT_MAX_CHARS = 400_000
+# 埋め込む Wiki ページの合計文字数。主要な設計判断・過去指摘台帳が予算超過で落ちにくい量。
+DEFAULT_WIKI_CHARS = 120_000
+# 大きい変更で使う上位モデルの (max_chars, wiki_chars)。--max-chars / --wiki-chars 未指定時に適用する。
+MODEL_BUDGETS = {
+    "gemini-4-hydrogen-high": (600_000, 300_000),
+    "gemini-4-hydrogen-xhigh": (600_000, 300_000),
+}
 
 # スナップショットの一時ディレクトリ。プロセスごと強制終了されると finally が走らず残るので、
 # 次回の起動時にこの接頭辞で古いものを掃除する。
@@ -726,6 +732,15 @@ def render(findings, sha, model, domain, context=None):
 # ---------------------------------------------------------------------------
 # サブコマンド
 # ---------------------------------------------------------------------------
+def resolve_budgets(model, max_chars=None, wiki_chars=None):
+    """モデルに応じた (max_chars, wiki_chars) を返す。明示指定 (None 以外) があればそちらを優先する。"""
+    default_max, default_wiki = MODEL_BUDGETS.get(model, (DEFAULT_MAX_CHARS, DEFAULT_WIKI_CHARS))
+    return (
+        default_max if max_chars is None else max_chars,
+        default_wiki if wiki_chars is None else wiki_chars,
+    )
+
+
 def cmd_review(args):
     info = pr_info(args.pr)
     pr, sha = info["number"], info["headRefOid"]
@@ -738,21 +753,22 @@ def cmd_review(args):
         return 2
     print(f"PR #{pr} `{sha[:7]}`: CI {detail}")
 
+    max_chars, wiki_chars = resolve_budgets(args.model, args.max_chars, args.wiki_chars)
     diff = gh("pr", "diff", str(pr))
     if not diff.strip():
         raise ReviewError(f"PR #{pr} の差分が空です。")
-    if len(diff) > args.max_chars:
-        raise ReviewError(f"差分が {len(diff)} 文字あり、上限 {args.max_chars} を超えています。"
+    if len(diff) > max_chars:
+        raise ReviewError(f"差分が {len(diff)} 文字あり、上限 {max_chars} を超えています。"
                           "PR を分けるか、--max-chars で上限を上げてください。")
     changed = changed_paths(diff)
 
     with snapshot_dir() as root:
         written, skipped = extract_snapshot(fetch_tarball(sha), root)
-        wiki_pages, wiki_omitted = select_wiki_pages(root, changed, args.wiki_chars)
+        wiki_pages, wiki_omitted = select_wiki_pages(root, changed, wiki_chars)
         changed_existing = [p for p in changed if (root / p).is_file()]
-        print(f"スナップショット {written} ファイル / Wiki {len(wiki_pages)} ページ"
+        print(f"スナップショット {written} ファイル / Wiki {len(wiki_pages)} ページ (上限 {wiki_chars} 文字)"
               f"{f' (予算超過で {len(wiki_omitted)} ページ除外)' if wiki_omitted else ''}")
-        print(f"agy ({args.model}) でレビュー中... 差分 {len(diff)} 文字")
+        print(f"agy ({args.model}) でレビュー中... 差分 {len(diff)} 文字 (上限 {max_chars})")
         prompt = build_prompt(diff, args.domain, root, wiki_pages, changed_existing)
         findings, raw = call_agy_with_retry(prompt, args.model, args.timeout, root)
         context = {
@@ -857,8 +873,10 @@ def main():
     p.add_argument("--domain", default=DEFAULT_DOMAIN, help=f"ドメイン不変条件 (既定: {DEFAULT_DOMAIN})")
     p.add_argument("--model", default=DEFAULT_MODEL, help=f"agy のモデル (既定: {DEFAULT_MODEL})")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_MIN, help="agy のタイムアウト (分)")
-    p.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS, help="差分の上限文字数")
-    p.add_argument("--wiki-chars", type=int, default=DEFAULT_WIKI_CHARS, help="埋め込む Wiki ページの合計文字数")
+    p.add_argument("--max-chars", type=int, default=None,
+                   help=f"差分の上限文字数 (既定: {DEFAULT_MAX_CHARS}、gemini-4-hydrogen-high 指定時は {MODEL_BUDGETS['gemini-4-hydrogen-high'][0]})")
+    p.add_argument("--wiki-chars", type=int, default=None,
+                   help=f"埋め込む Wiki ページの合計文字数 (既定: {DEFAULT_WIKI_CHARS}、gemini-4-hydrogen-high 指定時は {MODEL_BUDGETS['gemini-4-hydrogen-high'][1]})")
     p.add_argument("--no-post", action="store_true", help="PR にコメントせずローカルにだけ出力する")
     args = p.parse_args()
     try:

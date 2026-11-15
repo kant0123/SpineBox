@@ -30,7 +30,13 @@ push → CI ─緑→ agy レビュー ─APPROVE→ merge
 ```bash
 gh pr checks <PR番号> --watch
 python review/agy_review.py --pr <PR番号>
+# 大きい変更のときだけ:
+# python review/agy_review.py --pr <PR番号> --model gemini-4-hydrogen-high
 ```
+
+既定モデルは `gemini-4-hydrogen-medium`(差分上限 400,000 文字 / Wiki 予算 120,000 文字)。
+大きい変更のときだけ `--model gemini-4-hydrogen-high` を指定する(差分上限 600,000 文字 /
+Wiki 予算 300,000 文字へ自動で広がる)。
 
 スクリプトは CI が緑でなければ実行を拒否する(exit 2)。テストで落ちる差分をレビューしても
 修正で差分が変わるので無駄になるため。
