@@ -662,3 +662,17 @@ def test_startup_failure_is_classified_and_success_runs_are_ignored(monkeypatch)
                 annotations={1: [NOT_STARTED], 2: ["読まれてはいけない"]},
                 statuses=[{"context": "local/test", "state": "success"}])
     assert ar.ci_state(1, SHA)[0] is True
+
+
+# --- resolve_budgets: モデル別の参照予算 ----------------------------------------
+def test_default_model_and_budgets():
+    assert ar.DEFAULT_MODEL_NAME == "gemini-4-hydrogen-medium"
+    assert ar.resolve_budgets("gemini-4-hydrogen-medium") == (400_000, 120_000)
+    assert ar.resolve_budgets("gemini-4-hydrogen-high") == (600_000, 300_000)
+    assert ar.resolve_budgets("gemini-4-hydrogen-xhigh") == (600_000, 300_000)
+
+
+def test_resolve_budgets_respects_explicit_overrides():
+    assert ar.resolve_budgets("gemini-4-hydrogen-high", max_chars=250_000) == (250_000, 300_000)
+    assert ar.resolve_budgets("gemini-4-hydrogen-high", wiki_chars=50_000) == (600_000, 50_000)
+    assert ar.resolve_budgets("gemini-4-hydrogen-medium", max_chars=0, wiki_chars=0) == (0, 0)

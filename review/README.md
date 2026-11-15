@@ -119,7 +119,7 @@ LLM は CI を通った差分だけを見る。**
 ### なぜ別のモデルか
 
 実装は Claude で行う前提なので、レビューは Gemini に担当させる(自分が書いたコードを
-自分で採点させない)。既定は `gemini-4-hydrogen-high`(以前は `gemini-3.8-flash-high`。`gemini-3.1-pro-high` は agy が exit=1 でモデル一覧を出して落ちるようになったため変更。#40)。`--model` か環境変数 `REVIEW_MODEL` で変える。
+自分で採点させない)。既定は `gemini-4-hydrogen-medium`(以前は `gemini-3.8-flash-high` → `gemini-4-hydrogen-high`。#40, #322, #336)。大きい変更のときだけ `--model gemini-4-hydrogen-high` を指定する。`--model` か環境変数 `REVIEW_MODEL` で変える。
 
 ### なぜ 1 回の呼び出しか
 
@@ -139,8 +139,8 @@ LLM は CI を通った差分だけを見る。**
 
 | 中身 | 渡し方 | 理由 |
 | --- | --- | --- |
-| 差分 | プロンプトに埋め込む | レビュー対象そのもの |
-| 関連 Wiki ページ | プロンプトに埋め込む(`--wiki-chars` の予算内) | 設計判断は必ず見せたい。`overview.md`・差分で変更されたページ・変更ファイルを `path:line` で参照するページを選ぶ |
+| 差分 | プロンプトに埋め込む(`--max-chars` の上限まで) | レビュー対象そのもの。既定の `gemini-4-hydrogen-medium` は 400,000 文字、`--model gemini-4-hydrogen-high` 指定時は 600,000 文字 |
+| 関連 Wiki ページ | プロンプトに埋め込む(`--wiki-chars` の予算内) | 設計判断は必ず見せたい。`overview.md`・差分で変更されたページ・変更ファイルを `path:line` で参照するページを選ぶ。既定は 120,000 文字、`--model gemini-4-hydrogen-high` 指定時は 300,000 文字 |
 | ファイル全文・周辺コード | head 時点の tarball を展開し `agy --add-dir` で渡す | 何を開くかは agy に任せる。全部埋め込むとコンテキストが膨らみ精度も落ちる |
 
 プロンプトは「参考資料 → 差分 → 指示」の順に並べる(長い入力では末尾の指示の方が守られやすい)。
