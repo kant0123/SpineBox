@@ -1255,3 +1255,68 @@ def test_light_work_listings_match_list_works(make_env):
         assert works.listed_work_ids(conn, 999999) == [] and works.cover_volume_ids(conn, 999999) == []
     finally:
         conn.close()
+
+
+def test_sync_does_not_split_work_whose_title_was_replaced_by_public_db(make_env):
+    """公開 DB が末尾に番号を含むタイトルへ置き換えた作品から、毎回新作品を作って吸収し続けない(#326)。"""
+    _, settings, client = make_env(["温泉ふたりたび 2.cbz"])
+    (w,) = client.get("/api/works").json()["works"]
+    wid = w["id"]
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            c.execute(
+                "UPDATE work_fields SET value = ?, source = ?, manual = 0 WHERE work_id = ? AND field = 'title'",
+                ("温泉ふたりたび 4", works.SOURCE_PUBLIC_DB, wid),
+            )
+            c.execute(
+                "INSERT OR IGNORE INTO work_aliases (work_id, alias, norm, source, manual, confidence, created_at) "
+                "VALUES (?, ?, ?, ?, 0, 0.9, ?)",
+                (wid, "温泉ふたりたび", "温泉ふたりたび", works.SOURCE_FILENAME, db.now()),
+            )
+        before_count = conn.execute("SELECT COUNT(*) FROM works").fetchone()[0]
+        c0 = conn.total_changes
+        summary = works.sync(conn)
+        assert summary.works_created == 0
+        assert conn.total_changes == c0
+        assert conn.execute("SELECT COUNT(*) FROM works").fetchone()[0] == before_count
+    finally:
+        conn.close()
+
+
+def test_sync_is_deterministic_for_equal_length_number_variants(make_env):
+    """同じ長さで数字だけ違う巻の組でも、PYTHONHASHSEED が変わる再起動で作品名や割り当てが揺れない(#326)。"""
+    import os
+    import subprocess
+    import sys
+
+    _, settings, _ = make_env([
+        "Container/テスト作品 ~1 副題.cbz",
+        "Container/テスト作品 ~2 副題.cbz",
+    ])
+    script = (
+        "import sqlite3; from spinebox import db, works; "
+        f"c = db.connect({str(settings.db_path)!r}); "
+        "t0 = c.total_changes; works.sync(c); "
+        "print(c.total_changes - t0)"
+    )
+    for seed in ("1", "2", "42"):
+        out = subprocess.check_output(
+            [sys.executable, "-c", script],
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            text=True,
+        )
+        assert out.strip() == "0", f"PYTHONHASHSEED={seed} で不要な書き込みが発生した"
+
+
+def test_sync_does_not_rewrite_unchanged_open_proposals(make_env):
+    """確認待ちの統合提案がある状態で再同期しても、内容が変わっていなければ UPDATE しない(#326)。"""
+    _, settings, client = make_env(["ぶきような人.cbz", "ぶきような人 後編.cbz"])
+    assert len(client.get("/api/works/proposals").json()) == 1
+    conn = db.connect(settings.db_path)
+    try:
+        c0 = conn.total_changes
+        works.sync(conn)
+        assert conn.total_changes == c0
+    finally:
+        conn.close()
