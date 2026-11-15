@@ -662,7 +662,7 @@ grep "^## \[" wiki/log.md | tail -5
 - 更新: [[server-setup]]
 - 備考: #325。タスクスケジューラの既定 `Priority = 7`(`BELOW_NORMAL_PRIORITY_CLASS` + 低 I/O・低メモリ優先度)で起動されていたため、`npm ci` / `build` 直後の高 I/O 負荷時に `Start-ScheduledTask` からラッパー開始まで 71 秒・Python の起動時 DB 同期完了まで計 5 分超かかり 90 秒タイムアウトになっていた。`install_task.ps1` で `-Priority 4`(通常)を指定し、既存の登録タスクでも `start_spinebox.ps1` が起動時に自身の CPU・I/O・メモリ優先度を通常へ戻すようにし、`update_spinebox.ps1` の `-TimeoutSeconds` 既定値を 180 秒に延長。調査中に別件 #326 (`works.sync` + `linking.apply_all` の非冪等更新)・#328 (`install_task.ps1 -Action Status` の非管理者表示)を発見して起票。
 
-## [2026-11-15] ingest | PR #TBD (#326) works.sync が公開 DB 改名作品で新作品を無限作成し、数字違いの巻で毎回 UPDATE する問題を修正
+## [2026-11-15] ingest | PR #332 (#326) works.sync が公開 DB 改名作品で新作品を無限作成し、数字違いの巻で毎回 UPDATE する問題を修正
 - 更新: [[work-grouping]]
 - 備考: #326。`_leaves_numbered_work()` と付け替え先の除外判定で `title_source == 'public_db'` を除外せず、公開 DB が末尾番号付きのタイトルへ置換した作品から毎回新作品を作って統合し続けていた。また `_group_keys()` の `sorted(set(items), key=len)` と代表名選定の `min(counts, ...)` が同長・同点のときに `PYTHONHASHSEED` へ依存して入れ替わっていたためタイブレーカーを追加し、`_propose_and_merge()` の `work_merge_proposals` UPDATE も無変更時はスキップするようにして、本番 DB 写し(6,184 巻)の 2 回目同期で変更 0 件になった。
 
