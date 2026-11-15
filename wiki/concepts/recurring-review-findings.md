@@ -108,6 +108,7 @@ push 前に確かめること:
 - PR #33 — `review/gemini_review.py check_merge()` — 同じルールを hook が判定していなかった
 - PR #33 — `.agent/skills/pr-finish/SKILL.md` — PR 本文テンプレートと手順 4 の振り分けに「未確認」が無かった
 - PR #33 — `.agent/skills/gemini-review/SKILL.md` フローチャート — 未確認の CRITICAL もマージに至る経路として描いていた(この種類を台帳に足した PR 自身で再発)
+- PR #342 — `.agent/skills/gemini-review/SKILL.md` — コマンド例を `--thinking high` に直したが、直下の説明文に旧 `--model gemini-4-hydrogen-high`(API では 404)が残っていた。テンプレートの差分を取り込むときは、マージ後のファイルに旧名・旧オプションが残っていないか grep する
 - PR #35 — `wiki/concepts/recurring-review-findings.md` — 「未確認は台帳に載せない」を足したが、同じページの送り先の説明に未確認の行き先が無かった
 - PR #40 — `spinebox/duplicates.py candidate_counts()` — 画面の API は「一覧に見えている巻どうしの組」だけを出すのに、一覧の印の数は見える条件を掛けず、片方が missing になった候補を数えて「開いても何も出ない印」が残った(missing にして再現)
 - PR #47 — `.agent/rules/git-workflow.md` / `knowledge-wiki.md` — `CLAUDE.md` の写しとして足したが、Gemini レビュー・両論併記・lint はコミット後の不変条件が抜けていた(外部レビューで発覚)

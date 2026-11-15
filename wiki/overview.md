@@ -55,7 +55,6 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 - GitHub Actions は課金・上限でジョブが起動しないことがある。そのときの CI の代替は [[local-ci]]
 - 動作確認用の蔵書サンプルは `_参考/` にある(git 管理外)
 - レビューで繰り返し差し戻された誤りの種類は [[recurring-review-findings]]。着手時と push 前に読む
-- GitHub Actions が課金・上限でジョブを起動しないときの CI の代替は [[local-ci]]
 
 ## 運用
 

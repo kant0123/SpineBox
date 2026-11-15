@@ -34,8 +34,8 @@ python review/gemini_review.py --pr <PR番号>
 # python review/gemini_review.py --pr <PR番号> --thinking high
 ```
 
-既定モデルは `gemini-4-hydrogen-medium`(差分上限 400,000 文字 / Wiki 予算 120,000 文字)。
-大きい変更のときだけ `--model gemini-4-hydrogen-high` を指定する(差分上限 600,000 文字 /
+既定はモデル `gemini-4-hydrogen`・思考レベル `medium`(差分上限 400,000 文字 / Wiki 予算 120,000 文字)。
+大きい変更のときだけ `--thinking high` を指定する(差分上限 600,000 文字 /
 Wiki 予算 300,000 文字へ自動で広がる)。
 
 スクリプトは CI が緑でなければ実行を拒否する(exit 2)。テストで落ちる差分をレビューしても
