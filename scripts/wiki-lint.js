@@ -23,11 +23,11 @@ import { codeSpans, collect, isPlaceholder, parseCodeRef, parseFrontmatter, stri
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WIKI = join(ROOT, 'wiki');
 
-// frontmatter を持たない例外。カタログとログでありページではないため(CLAUDE.md の取り決め)。
-const NO_FRONTMATTER = new Set(['index', 'log']);
+// frontmatter を持たない例外。カタログでありページではないため(CLAUDE.md の取り決め)。
+const NO_FRONTMATTER = new Set(['index']);
 // 孤立ページの検査から外すページ。overview は index から辿る入口で、
 // 他ページから参照されていなくてよい(ページが 1 枚も無い初期状態でも成立させる)。
-const ORPHAN_EXEMPT = new Set(['index', 'log', 'overview']);
+const ORPHAN_EXEMPT = new Set(['index', 'overview']);
 // ディレクトリと type の対応。ここに無い場所(wiki 直下)は type の値域だけ見る。
 const DIR_TYPE = { components: 'component', concepts: 'concept', operations: 'operation' };
 const TYPES = new Set(Object.values(DIR_TYPE));
@@ -190,7 +190,7 @@ for (const page of pages.values()) {
 }
 
 // --- 4. 孤立ページ ----------------------------------------------------------
-// index.md(カタログ)と log.md(履歴)からの被リンクは数えない。そこからは必ず張られるため、
+// index.md(カタログ)からの被リンクは数えない。そこからは必ず張られるため、
 // 数えると「本文のどこからも参照されていないページ」を検出できなくなる。
 const inbound = new Map([...pages.keys()].map((name) => [name, 0]));
 for (const page of pages.values()) {
@@ -201,7 +201,7 @@ for (const page of pages.values()) {
 }
 for (const [name, count] of inbound) {
   if (!ORPHAN_EXEMPT.has(name) && count === 0) {
-    fail(pages.get(name).rel, '孤立ページ(index.md / log.md 以外のどこからも [[リンク]] されていない)');
+    fail(pages.get(name).rel, '孤立ページ(index.md 以外のどこからも [[リンク]] されていない)');
   }
 }
 
@@ -217,7 +217,8 @@ else {
 
 // --- 6. コード参照 ----------------------------------------------------------
 // 行番号だけのアンカーは編集で黙ってずれる(実運用では 13 件中 3 件がずれ、うち 1 件は関数の閉じ括弧を指していた)。
-// ファイルの実在・行の範囲・記号名の所在を突き合わせ、ズレていれば正しい行を示す。
+// ファイルと記号名の実在をエラーとして検査し、記号名が実在する場合の行番号ズレは注意止まりにする
+// (共有ファイルの上部に行を足しただけで無関係なページの行番号と updated を毎 PR で直させると、他ブランチと競合するため)。
 const fileCache = new Map();
 const readLines = (rel) => {
   if (!fileCache.has(rel)) {
@@ -242,11 +243,11 @@ for (const page of pages.values()) {
       fail(page.rel, `コード参照 ${span} のファイルが存在しない`);
       continue;
     }
-    if (line < 1 || line > lines.length) {
-      fail(page.rel, `コード参照 ${span} の行番号がファイルの行数 (${lines.length}) を超えている`);
-      continue;
-    }
     if (!anchor) {
+      if (line < 1 || line > lines.length) {
+        fail(page.rel, `コード参照 ${span} の行番号がファイルの行数 (${lines.length}) を超えている`);
+        continue;
+      }
       notes.push(`${page.rel}: コード参照 ${span} に記号名が無い(行番号だけのアンカーはずれても気づけない)`);
       continue;
     }
@@ -255,9 +256,10 @@ for (const page of pages.values()) {
     const hits = lines.flatMap((text, i) => (text.includes(needle) ? [i + 1] : []));
     if (hits.length === 0) {
       fail(page.rel, `コード参照 ${span} の記号名が ${path} に見つからない`);
-    } else if (!hits.some((hit) => Math.abs(hit - line) <= ANCHOR_SLACK)) {
-      fail(page.rel, `コード参照 ${span} の行番号がずれている(${needle} は ${hits.join(' / ')} 行目)`);
       continue;
+    }
+    if (line < 1 || line > lines.length || !hits.some((hit) => Math.abs(hit - line) <= ANCHOR_SLACK)) {
+      notes.push(`${page.rel}: コード参照 ${span} の行番号がずれている(${needle} は ${hits.join(' / ')} 行目)`);
     }
 
     // 陳腐化検知: ページを最後に触った日より後にその行が変わっていれば、記述が古い可能性がある。
@@ -265,7 +267,8 @@ for (const page of pages.values()) {
     // 「無視するもの」に変わる。直すかどうかは読んで判断する必要があり、機械には断定できない。
     const updated = page.frontmatter?.updated;
     if (typeof updated !== 'string' || isPlaceholder(updated)) continue;
-    const changed = lastCommitDateForLine(path, line);
+    const targetLine = hits.reduce((best, hit) => (Math.abs(hit - line) < Math.abs(best - line) ? hit : best), hits[0]);
+    const changed = lastCommitDateForLine(path, targetLine);
     if (changed && changed > updated) {
       notes.push(
         `${page.rel}: ${span} の周辺が ${changed} に変更されている(このページの updated は ${updated})`,

@@ -63,7 +63,7 @@ printf '%s\n' "$changed" | grep -q '^wiki/' && exit 0
 # wiki 更新が無く、かつコード/設定の変更がある場合のみ促す
 # (README.md だけ直したような PR では鳴らさない)
 if printf '%s\n' "$changed" | grep -qv -e '^README\.md$' -e '^\.gitignore$' -e '^docs/'; then
-    echo "この PR には wiki/ の更新が含まれていません。CLAUDE.md の「ナレッジ Wiki」→ Ingest に従い、影響するページと wiki/log.md を同じ PR で更新してください。更新不要と判断した場合は、その理由を PR 本文に一行書いた上で、コマンド先頭に WIKI_SKIP=1 を付けて再実行してください。" >&2
+    echo "この PR には wiki/ の更新が含まれていません。CLAUDE.md の「ナレッジ Wiki」→ Ingest に従い、影響するページを同じ PR で更新してください。更新不要と判断した場合は、その理由を PR 本文の ## Wiki 節に一行書いた上で、コマンド先頭に WIKI_SKIP=1 を付けて再実行してください。" >&2
     exit 2
 fi
 

@@ -1,4 +1,5 @@
 """scripts/ci_local.py のうち、壊れると「検査していない結果が成功として載る」部分の回帰テスト。"""
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,13 @@ import ci_local  # noqa: E402
 class Proc:
     def __init__(self, returncode=0, stdout="", stderr=""):
         self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def test_root_keeps_drive_letter():
+    """ネットワークドライブ上で ROOT を UNC に展開しない (UNC を cwd にすると node が起動できない)。"""
+    here = os.path.abspath(ci_local.__file__)
+    assert str(ci_local.ROOT).startswith("\\\\") == here.startswith("\\\\")
+    assert ci_local.ROOT == Path(here).parents[1]
 
 
 # --- jobs: 検査の中身 ------------------------------------------------------------

@@ -11,6 +11,7 @@ GitHub Actions が課金・上限で起動しないとき (注記「The job was 
 終了コード: 0 = 全ジョブ成功 / 1 = 失敗したジョブがある / 2 = 前提を満たさない (結果を載せられない)
 """
 import argparse
+import os
 import shutil
 import socket
 import subprocess
@@ -18,7 +19,9 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+# resolve() を使わない。ネットワークドライブ (G: 等) を UNC (\\host\share) に展開し、それを cwd にすると
+# node が \\?\UNC\host\package.json を読もうとして起動できない (Node 26 で再現。#63)。
+ROOT = Path(os.path.abspath(__file__)).parents[1]
 STATUS_PREFIX = "local/"  # review/agy_review.py の LOCAL_STATUS_PREFIX と揃える
 
 

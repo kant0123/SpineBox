@@ -1,7 +1,7 @@
 ---
 type: operation
 summary: Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件
-updated: 2026-11-01
+updated: 2026-11-15
 related: [overview, frontend]
 ---
 
@@ -54,6 +54,7 @@ python review/agy_review.py --pr <PR番号>  # 「ローカル CI の成功で�
 | exit 2「未コミットの変更か未追跡のファイル」 | `git status`。生成物なら `.gitignore`、作業中ならコミットする |
 | exit 2「HEAD がまだ push されていません」 | `git push` してから実行する |
 | `local/*` は pass なのに agy レビューが CI 未達と言う | Actions のチェックが「起動しなかった」以外の理由で落ちていないか(`gh run view <id>`)。実際に落ちているなら直す |
+| node が `Cannot read package config \\?\UNC\<host>\package.json` で落ちる | cwd が UNC になっている。ネットワークドライブ上では `Path.resolve()` が割り当てドライブを UNC に展開するので、`scripts/ci_local.py` の `ROOT` は `os.path.abspath` で求めている(テンプレート #63)。同じ形のコードを足さない |
 | status を載せられない(gh api の失敗) | `gh auth status`。private リポジトリへの書き込み権限があるか |
 | Actions が動くようになったら、ローカルでは通っていたテストが落ちた | 環境差。開発機(Windows)と ubuntu ランナーでは PATH 上のツール(7-Zip など)が違う。ローカル代替の期間に入ったテストは、外部ツールの有無を暗黙に前提にしていないか見直す(#34: 7z が PATH にある ubuntu で「7z 未対応」を期待するテストが落ちた) |
 

@@ -75,8 +75,6 @@ gh pr create --title "<一文>" --body "<下記テンプレート>"
 - `wiki/` に差分が無いと PreToolUse hook がブロックする。意図的なら理由を本文に書いた上で
   `WIKI_SKIP=1 gh pr create ...` で再実行する。
 
-PR 番号が決まったら、`wiki/log.md` のエントリに `PR #<番号>` を埋めて追いコミット・push する。
-
 ## 3. CI を待つ
 
 ```bash

@@ -66,7 +66,7 @@ flowchart TD
 | 局面 | スキル | 主な内容 |
 | --- | --- | --- |
 | 着手 | `worktree-start` | Wiki を読む → Issue 確保 → `origin/main` から worktree |
-| 実装後 | `wiki-ingest` | 影響ページの更新 → `log.md` 追記 → wiki-lint |
+| 実装後 | `wiki-ingest` | 影響ページの更新 → wiki-lint |
 | 完了 | `pr-finish` | push → PR → CI → (agy レビュー)→ マージ → 後始末 → Issue クローズ → 反映確認 |
 | CI 緑の後 | `agy-review`(オプション) | agy でレビュー → 差し戻しを評価 → 修正ループ / 誤検知を起票してマージ |
 | 作業中 | `file-issue` | スコープ外の問題をその場で起票(対象の判断・粒度・本文) |
