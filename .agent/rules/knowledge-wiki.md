@@ -1,12 +1,12 @@
 # ナレッジ Wiki 運用規約 (`wiki/`)
 
 > `CLAUDE.md` の「ナレッジ Wiki」節の写し。規約を変えるときは `CLAUDE.md` と同じ PR でここも直す。
-> ページ規約・frontmatter・log の書式は `wiki-ingest` スキル、健康診断は `wiki-lint` スキル、背景は `docs/wiki_workflow.md`。
+> ページ規約・frontmatter は `wiki-ingest` スキル、健康診断は `wiki-lint` スキル、背景は `docs/wiki_workflow.md`。
 
 プロジェクトの知識は `wiki/` 配下の相互リンクされた Markdown に蓄積する。Wiki は
 **常に「今どうなっているか」を表す生きた成果物**で、書くのはエージェント、読むのは人間。
 ページは `components/`(何が・どこに)/ `concepts/`(なぜ)/ `operations/`(どう動かす)に置き、
-`index.md` がカタログ、`log.md` が追記専用の時系列ログ、`overview.md` が入口。
+`index.md` がカタログ、`overview.md` が入口(時系列の履歴は `git log -- wiki/` と PR 履歴で追う。単一追記ファイル `log.md` は並列 worktree で末尾が毎回競合するため置かない)。
 
 ## 常に守ること
 
@@ -18,7 +18,7 @@
   外部サービスの癖・入口(`path/to/file.py:123 記号名()`、記号名が主)。
   シグネチャの網羅・構造の写し・コードのコピーは書かない(陳腐化した複製になる)。
 - **未実装の構想を置かない。** これから作るものの仕様は Issue 本文、実装した結果は `wiki/`、
-  いつ何をしたかは `wiki/log.md` と PR 履歴。
+  いつ何をしたかは PR 履歴と `git log`。
 - **着手前に `wiki/index.md` → 関連ページを読む**(コードを grep する前に)。作業途中に hook が `[wiki]` で
   関連ページを示したら、そのファイルを変える判断の前に読む。
 - **Wiki の更新は実装と同じ PR に同梱する。** 影響しないと判断した場合も PR 本文にその旨を一行書く。

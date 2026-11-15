@@ -22,7 +22,7 @@ Wiki 全体にまたがる大域的な一貫性は自然には保てない。** 
 | 孤立ページ・`index.md` の掲載漏れ | `scripts/wiki-lint.js` |
 | frontmatter の不備・`type` と置き場所の不一致 | `scripts/wiki-lint.js` |
 | `updated` と最終コミット日のズレ・`related` の片方向参照 | `scripts/wiki-lint.js` |
-| コード参照(`path:line 記号名`)のファイル実在・行のズレ | `scripts/wiki-lint.js` |
+| コード参照(`path:line 記号名`)のファイル・記号名の実在(行番号のズレは注意止まり) | `scripts/wiki-lint.js` |
 | 参照先コードがページより後に変更されている(注意止まり) | `scripts/wiki-lint.js` |
 | `index.md` のカタログと各ページの `summary` の食い違い | `scripts/wiki-lint.js` |
 | 矛盾するページ | エージェント |
@@ -39,8 +39,9 @@ node scripts/wiki-lint.js       # package.json があれば npm run wiki:lint
 
 - `updated` の判定は git の最終コミット日を見るので、**コミット前に走らせると古い日付で落ちる。**
 - ページを足したり `summary` を直したら `--write-index` を付けてカタログを再生成する。
-- **注意(`注意:` で始まる行)は CI を落とさないが読む。** 特に「参照先が更新されている」は、
-  そのページの記述が古くなっていないかを手順 2 で確かめる候補になる。
+- **注意(`注意:` で始まる行)は CI を落とさないが読む。** 「参照先が更新されている」は、
+  そのページの記述が古くなっていないかを手順 2 で確かめる候補になる。「コード参照 ... の行番号がずれている」も
+  この健康診断の機会にまとめて合わせてよい(直したら `updated` を触った日に更新する)。
 
 CI で回すには `.github/workflows-optional/wiki-lint.yml` を `.github/workflows/` にコピーする
 (デプロイが待つテストのワークフローには相乗りさせない)。
@@ -67,13 +68,5 @@ CI で回すには `.github/workflows-optional/wiki-lint.yml` を `.github/workf
 ## 4. 直して報告する
 
 修正はコミットを伴うので、通常の開発フロー(`worktree-start` → `pr-finish`)で行う。
-`wiki/log.md` には種別 `lint` で 1 件追記する。
-
-```markdown
-## [YYYY-MM-DD] lint | <一行要約>
-- 更新: [[page-a]]
-- 発見: [[page-b]] と [[page-c]] で〜の理由付けが食い違う(未判定・人間の判断待ち)
-```
-
-報告には、直したもの・人間の判定を待つ矛盾(両ページの該当箇所つき)・新しく書くべきページの候補を
-分けて書く。
+PR 本文の `## Wiki` 節と完了報告には、直したページ・人間の判定を待つ矛盾(両ページの該当箇所つき)・
+新しく書くべきページの候補を分けて書く。

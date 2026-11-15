@@ -42,5 +42,5 @@ jobs:
             exit 0
           fi
 
-          echo "::warning::この PR に wiki/ の更新が含まれていません。CLAUDE.md の「ナレッジ Wiki」→ Ingest に従って影響ページと wiki/log.md を更新するか、更新不要な理由を PR 本文に書いて 'wiki:skip' ラベルを付けてください。"
+          echo "::warning::この PR に wiki/ の更新が含まれていません。CLAUDE.md の「ナレッジ Wiki」→ Ingest に従って影響ページを更新するか、更新不要な理由を PR 本文の ## Wiki 節に書いて 'wiki:skip' ラベルを付けてください。"
           exit 0

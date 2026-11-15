@@ -62,8 +62,8 @@ STALE_SNAPSHOT_HOURS = 24
 # コミットされていなければ tarball に入らないが、誤ってコミットされた場合の保険。
 SECRET_NAME_PATTERNS = (".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ecdsa*", "id_ed25519*")
 SECRET_NAME_ALLOW = ("*.example", "*.sample", "*.template")
-# Wiki の中で、関連ページ選びの対象にしないもの (カタログ・ログ・雛形)。
-WIKI_SKIP = ("index.md", "log.md", "_template.md")
+# Wiki の中で、関連ページ選びの対象にしないもの (カタログ・雛形)。
+WIKI_SKIP = ("index.md", "_template.md")
 # wiki-lint.js の CODE_REF と同じ記法 (`path/to/file.py:123 記号名`)。行番号なしのパスも拾う。
 CODE_REF_RE = re.compile(r"^([\w./-]+\.[a-zA-Z0-9]{1,5})(?::\d+)?(?:\s+.+)?$")
 
