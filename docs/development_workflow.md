@@ -9,7 +9,7 @@
 - 知識の蓄積(`wiki/`)については [wiki_workflow.md](wiki_workflow.md) を参照。
   仕様は Issue に、実装後の現状は `wiki/` に置き、**Wiki 更新は機能 PR に同梱する**。
 - CI/CD の導入有無・方式はプロジェクトごとに選ぶ(下記「CI/CD の選択」参照)。
-  **SpineBox の採用構成: CI(`test`)+ `wiki-lint` + agy レビュー。CD は未導入。**
+  **SpineBox の採用構成: CI(`test`)+ `wiki-lint` + Gemini レビュー。CD は未導入。**
   本番はサーバー機 `DESKTOP-80AKMUB`(開発機とは別マシン)。アプリが動く段階で、サーバー機に
   self-hosted runner を置く CD を検討する。CD に関する節はそのための参考として残している。
 
@@ -30,7 +30,7 @@ flowchart TD
     prTests["tests (CI) が PR に対して走る"]
     wikiCheck["wiki-check (オプション) が PR に対して走る"]
     gate{"CI 緑?"}
-    review["agy レビュー (オプション)<br/>python review/agy_review.py"]
+    review["Gemini レビュー (オプション)<br/>python review/gemini_review.py"]
     verdict{"APPROVE?"}
     triage{"指摘を評価<br/>妥当な指摘がある?"}
     fp["誤検知を gemini-review に起票<br/>--triage で評価を記録"]
@@ -67,8 +67,8 @@ flowchart TD
 | --- | --- | --- |
 | 着手 | `worktree-start` | Wiki を読む → Issue 確保 → `origin/main` から worktree |
 | 実装後 | `wiki-ingest` | 影響ページの更新 → wiki-lint |
-| 完了 | `pr-finish` | push → PR → CI → (agy レビュー)→ マージ → 後始末 → Issue クローズ → 反映確認 |
-| CI 緑の後 | `agy-review`(オプション) | agy でレビュー → 差し戻しを評価 → 修正ループ / 誤検知を起票してマージ |
+| 完了 | `pr-finish` | push → PR → CI → (Gemini レビュー)→ マージ → 後始末 → Issue クローズ → 反映確認 |
+| CI 緑の後 | `gemini-review`(オプション) | Gemini でレビュー → 差し戻しを評価 → 修正ループ / 誤検知を起票してマージ |
 | 作業中 | `file-issue` | スコープ外の問題をその場で起票(対象の判断・粒度・本文) |
 | 依頼時 | `wiki-lint` | Wiki の健康診断(機械検査 → 矛盾・乖離の洗い出し) |
 
@@ -76,7 +76,7 @@ flowchart TD
 
 ```bash
 git fetch origin
-git worktree add ../<repo>-<名前> -b <branch> origin/main
+git worktree add ../SpineBox-<名前> -b <branch> origin/main
 ```
 
 - ブランチ名は `fix/xxx` / `feature/xxx` / `chore/xxx` / `docs/xxx`。
@@ -104,7 +104,7 @@ gh pr checks <PR番号> --watch             # CI を導入している場合、�
 gh pr merge <PR番号> --merge
 git push origin --delete <branch>
 cd <メインツリー>                          # worktree の中からは削除できない
-powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../<repo>-<名前> -RemoveDirs
+powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<名前>   # Windows 以外は git worktree remove
 git branch -D <branch>
 ```
 
@@ -163,10 +163,10 @@ gh api --method PUT repos/kant0123/SpineBox/branches/main/protection \
 `wiki:skip` ラベルで外したジョブは **skipped = 成功**として扱われるため、
 必須チェックにしても逃げ道は塞がらない。
 
-agy レビューはローカルで agy を動かすため CI のチェックにはならず、ブランチ保護では強制できない。
-代わりに [.claude/hooks/check_agy_review.sh](../.claude/hooks/check_agy_review.sh) が
+Gemini レビューはローカルのスクリプトから API を呼ぶため CI のチェックにはならず、ブランチ保護では強制できない。
+代わりに [.claude/hooks/check_gemini_review.sh](../.claude/hooks/check_gemini_review.sh) が
 `gh pr merge` の直前に発火し、head SHA に対するレビュー記録が PR に無ければマージを差し止める
-(詳細は下記「agy レビュー」)。hook は Claude Code を使っているときしか動かず、
+(詳細は下記「Gemini レビュー」)。hook は Claude Code を使っているときしか動かず、
 GitHub の画面から押されたマージは素通しになる。
 hook が見るのは実際に実行されるコマンドだけで、Issue や PR の本文・`grep` のパターンなど
 引数や引用符の中の文字列には反応しない(読み取りは [.claude/hooks/command_match.mjs](../.claude/hooks/command_match.mjs)。
@@ -269,11 +269,11 @@ Wiki 更新が不要な PR には `wiki:skip` ラベルを付ける。
 - ローカルでは `node scripts/wiki-lint.js`。**コミットしてから**走らせる(未コミットだと
   `updated` が古いと言われる)。
 
-### agy レビュー(オプション・既定で有効)
+### Gemini レビュー(オプション・既定で有効)
 
 CI のワークフローではなく、**CI が緑になった後にエージェントがローカルで実行する**
-([review/agy_review.py](../review/agy_review.py))。差分を agy 経由で Gemini にレビューさせ、
-結果を PR コメントに残す。手順は `agy-review` スキル、設計判断は [review/README.md](../review/README.md)。
+([review/gemini_review.py](../review/gemini_review.py))。差分を Gemini API で Gemini にレビューさせ、
+結果を PR コメントに残す。手順は `gemini-review` スキル、設計判断は [review/README.md](../review/README.md)。
 
 - **CI 緑が前提。** スクリプトは `gh pr checks` が緑でなければ実行を拒否する。
   Actions がジョブを起動しなかったチェックは、同じ head の `local/<同名>`(`scripts/ci_local.py` が載せる)の成功で代替する。
@@ -282,7 +282,7 @@ CI のワークフローではなく、**CI が緑になった後にエージェ
   push → CI → 再レビュー。すべて誤検知なら `kant0123/gemini-review` に起票し、
   `--triage` で評価を PR に記録してからマージする。
 - `gh pr merge` の hook がレビュー記録(差し戻しなら評価の記録も)を確認する。
-- 前提: `agy` がインストール・ログイン済みで、PATH に通っていること。
+- 前提: 環境変数 `GEMINI_API_KEY`(Google AI Studio で作った API キー)が設定されていること。
 - **導入直後は強制が効かない。** hook もスクリプトもメインツリーから読まれるため、導入 PR が
   メインツリーに反映されるまで(方式 B ならデプロイ完了まで)はレビューを素通しする。
   導入手順と注意点は [review/README.md](../review/README.md) の「導入するときの注意」。
@@ -312,10 +312,12 @@ GitHub Issues / Projects 連携を使う場合の補助ワークフロー。Issu
 
 | 症状 | 確認すること |
 | --- | --- |
-| `git worktree remove` が必ず失敗する | シェルの作業ディレクトリが削除対象の中にある。`../<repo>-<名前>` は **worktree の中からでも自分自身に解決する**ので、パスを見ただけでは気づけない。メインツリーに `cd` してから実行する |
-| `Permission denied` で削除できない / ジャンクション(`node_modules` 等)や未追跡ファイルでディレクトリが残る | `scripts/worktree-cleanup.ps1 -Remove ../<repo>-<名前> -RemoveDirs` を使う(ジャンクションをリンク先を辿らずに解除し、ReadOnly を外してから削除する) |
+| `git worktree remove` が必ず失敗する | シェルの作業ディレクトリが削除対象の中にある。`../SpineBox-<名前>` は **worktree の中からでも自分自身に解決する**ので、パスを見ただけでは気づけない。メインツリーに `cd` してから実行する |
+| `Permission denied` で削除できない | ディレクトリに ReadOnly 属性が付いている(クラウドストレージのミラー同期・バックアップツールが親を掴んでいる場合など)。`scripts/worktree-cleanup.ps1 -Remove <パス>` で属性を外してから git に削除させる |
+| `git worktree remove` が exit 0 なのにディレクトリが残る | worktree の中にジャンクション / シンボリックリンク(共有の `node_modules` 等)がある。git は追跡ファイルと `.git` だけ消して止まる。`scripts/worktree-cleanup.ps1 -Remove <パス>` で消す(リンク先は辿らない) |
+| `worktree-cleanup.ps1` が「なし」と言うのに worktree が残っている | `-Remove` を付けていない。引数なし・`-RemoveDirs` だけでは稼働中の worktree を対象にしない |
 | `fatal: ... is not a working tree` で `--force` も効かない | 一度削除に失敗した後の状態。手で消さず `scripts/worktree-cleanup.ps1`(引数なし)で孤立エントリを掃除する |
-| `git worktree list` に出ないディレクトリが残っている | 削除失敗の残骸。`-RemoveDirs` で消せるが**未コミットの変更ごと消える**ので中身を確認してから |
+| `git worktree list` に出ないディレクトリが残っている | 削除失敗の残骸(`.git` が消えていても、メインツリーと同じ名前の項目を持つか空なら残骸と判定する)。`-Remove <パス>` で 1 件ずつ消す。`-RemoveDirs` はすべての残骸を**未コミットの変更ごと**消すので中身を確認してから |
 
 ## トラブルシュート(CD 方式 B を採用している場合)
 

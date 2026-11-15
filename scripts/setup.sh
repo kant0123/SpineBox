@@ -135,20 +135,20 @@ if [[ "$wikilint_choice" == "y" ]]; then
     fi
 fi
 
-# --- agy レビュー ---
+# --- Gemini レビュー ---
 echo ""
-review_choice=$(ask "agy レビュー(CI 緑の後に差分を Gemini でレビュー。agy が必要)を使いますか? (y/n)" "y")
+review_choice=$(ask "Gemini レビュー(CI 緑の後に差分を Gemini でレビュー。GEMINI_API_KEY が必要)を使いますか? (y/n)" "y")
 if [[ "$review_choice" == "y" ]]; then
-    echo "  -> review/ ・agy-review スキル・merge hook を維持します。"
-    echo "     agy をインストール・ログインし、PATH に通してください。"
+    echo "  -> review/ ・gemini-review スキル・merge hook を維持します。"
+    echo "     Google AI Studio で API キーを作り、環境変数 GEMINI_API_KEY に設定してください。"
     echo "     ドメインは環境変数 REVIEW_DOMAIN で指定します"
     echo "     (general / fintech / distributed / healthcare / embedded。未設定なら general)。"
 else
-    rm -rf review .agent/skills/agy-review .claude/skills/agy-review
-    rm -f .claude/hooks/check_agy_review.sh
+    rm -rf review .agent/skills/gemini-review .claude/skills/gemini-review
+    rm -f .claude/hooks/check_gemini_review.sh
     echo "  -> review/ ・スキル・hook を削除しました。"
-    echo "     CLAUDE.md の「[オプション] agy レビュー」節、pr-finish スキルの"
-    echo "     「4. agy レビュー」手順、settings.example.json の該当 hook も削除してください。"
+    echo "     CLAUDE.md の「[オプション] Gemini レビュー」節、pr-finish スキルの"
+    echo "     「4. Gemini レビュー」手順、settings.example.json の該当 hook も削除してください。"
 fi
 
 # --- ナレッジ Wiki ---

@@ -5,7 +5,7 @@ __pycache__/
 *.pyc
 .env
 
-# agy レビューのレポート(生成物なのでコミットしない)
+# Gemini レビューのレポート(生成物なのでコミットしない)
 review/work/*
 !review/work/.gitkeep
 

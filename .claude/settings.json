@@ -5,7 +5,7 @@
       "Bash(git diff *)",
       "Bash(git log *)",
       "Bash(python -m pytest *)",
-      "Bash(python review/agy_review.py *)",
+      "Bash(python review/gemini_review.py *)",
       "Bash(node scripts/wiki-lint.js *)"
     ]
   },
@@ -20,7 +20,7 @@
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_agy_review.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_gemini_review.sh\""
           }
         ]
       },

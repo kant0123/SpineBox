@@ -132,21 +132,21 @@ if ($wikiLintChoice -eq "y") {
     }
 }
 
-# --- agy レビュー ---
+# --- Gemini レビュー ---
 Write-Host ""
-$reviewChoice = Ask "agy レビュー(CI 緑の後に差分を Gemini でレビュー。agy が必要)を使いますか? (y/n)" "y"
+$reviewChoice = Ask "Gemini レビュー(CI 緑の後に差分を Gemini でレビュー。GEMINI_API_KEY が必要)を使いますか? (y/n)" "y"
 if ($reviewChoice -eq "y") {
-    Write-Host "  -> review/ ・agy-review スキル・merge hook を維持します。"
-    Write-Host "     agy をインストール・ログインし、PATH に通してください。"
+    Write-Host "  -> review/ ・gemini-review スキル・merge hook を維持します。"
+    Write-Host "     Google AI Studio で API キーを作り、環境変数 GEMINI_API_KEY に設定してください。"
     Write-Host "     ドメインは環境変数 REVIEW_DOMAIN で指定します"
     Write-Host "     (general / fintech / distributed / healthcare / embedded。未設定なら general)。"
 } else {
-    foreach ($p in @("review", ".agent/skills/agy-review", ".claude/skills/agy-review", ".claude/hooks/check_agy_review.sh")) {
+    foreach ($p in @("review", ".agent/skills/gemini-review", ".claude/skills/gemini-review", ".claude/hooks/check_gemini_review.sh")) {
         if (Test-Path $p) { Remove-Item -Recurse -Force $p }
     }
     Write-Host "  -> review/ ・スキル・hook を削除しました。"
-    Write-Host "     CLAUDE.md の「[オプション] agy レビュー」節、pr-finish スキルの"
-    Write-Host "     「4. agy レビュー」手順、settings.example.json の該当 hook も削除してください。"
+    Write-Host "     CLAUDE.md の「[オプション] Gemini レビュー」節、pr-finish スキルの"
+    Write-Host "     「4. Gemini レビュー」手順、settings.example.json の該当 hook も削除してください。"
 }
 
 # --- ナレッジ Wiki ---

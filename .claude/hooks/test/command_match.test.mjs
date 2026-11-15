@@ -1,4 +1,4 @@
-// .claude/hooks/command_match.mjs と、それを使う check_agy_review.sh / check_wiki_updated.sh の回帰テスト (#51)。
+// .claude/hooks/command_match.mjs と、それを使う check_gemini_review.sh / check_wiki_updated.sh の回帰テスト (#51)。
 //
 //   node --test .claude/hooks/test/command_match.test.mjs
 //
@@ -59,7 +59,7 @@ describe('findInvocations: マージを実行するコマンドを見つける',
 
   const misses = [
     ['issue の本文', 'gh issue create --body "hook (gh pr merge の hook) の話"'],
-    ['grep のパターン', 'grep -n "gh pr merge" .claude/hooks/check_agy_review.sh'],
+    ['grep のパターン', 'grep -n "gh pr merge" .claude/hooks/check_gemini_review.sh'],
     ['echo の引数', 'echo gh pr merge 5'],
     ['単一引用符の中', "echo 'gh pr merge 5'"],
     ['別のサブコマンド', 'gh pr view 5'],
@@ -126,13 +126,13 @@ function git(cwd, ...args) {
   assert.equal(r.status, 0, r.stderr);
 }
 
-/** review/agy_review.py の代わりに、渡された引数を記録して決まった終了コードで終わるスクリプトを置いたリポジトリ。 */
+/** review/gemini_review.py の代わりに、渡された引数を記録して決まった終了コードで終わるスクリプトを置いたリポジトリ。 */
 function makeReviewRepo(name, exitCode) {
   const root = join(sandbox, name);
   mkdirSync(join(root, 'review'), { recursive: true });
   git(root, 'init', '-q');
   writeFileSync(
-    join(root, 'review', 'agy_review.py'),
+    join(root, 'review', 'gemini_review.py'),
     `import sys\nopen(r'${join(root, 'calls.txt').replace(/\\/g, '/')}', 'a').write(' '.join(sys.argv[1:]) + '\\n')\nsys.exit(${exitCode})\n`,
   );
   return root;
@@ -142,23 +142,23 @@ function makeReviewRepo(name, exitCode) {
 const calls = (root) =>
   existsSync(join(root, 'calls.txt')) ? readFileSync(join(root, 'calls.txt'), 'utf8').replace(/\r\n/g, '\n') : '';
 
-describe('check_agy_review.sh', () => {
+describe('check_gemini_review.sh', () => {
   test('マージしないコマンドは、本文に gh pr merge があっても通す', () => {
-    const root = makeReviewRepo('agy-through', 1);
+    const root = makeReviewRepo('gemini-through', 1);
     for (const command of [
       'gh issue create --body "hook (gh pr merge の hook) の話"',
-      'grep -n "gh pr merge" .claude/hooks/check_agy_review.sh',
+      'grep -n "gh pr merge" .claude/hooks/check_gemini_review.sh',
     ]) {
-      const r = runHook('check_agy_review.sh', command, root);
+      const r = runHook('check_gemini_review.sh', command, root);
       assert.equal(r.status, 0, r.stderr);
     }
     assert.equal(calls(root), '', '判定のスクリプトを呼んでいない');
   });
 
   test('番号の無いマージは差し止める', () => {
-    const root = makeReviewRepo('agy-no-number', 0);
+    const root = makeReviewRepo('gemini-no-number', 0);
     for (const command of ['gh pr merge --merge', 'cd x && gh pr merge', 'bash -c "gh pr merge --merge"']) {
-      const r = runHook('check_agy_review.sh', command, root);
+      const r = runHook('check_gemini_review.sh', command, root);
       assert.equal(r.status, 2, command);
       assert.match(r.stderr, /PR 番号が指定されていない/);
     }
@@ -166,31 +166,31 @@ describe('check_agy_review.sh', () => {
   });
 
   test('番号つきのマージは、その番号で判定して結果に従う', () => {
-    const ok = makeReviewRepo('agy-ok', 0);
-    assert.equal(runHook('check_agy_review.sh', 'cd ../x && gh pr merge 7 --merge', ok).status, 0);
+    const ok = makeReviewRepo('gemini-ok', 0);
+    assert.equal(runHook('check_gemini_review.sh', 'cd ../x && gh pr merge 7 --merge', ok).status, 0);
     assert.equal(calls(ok), '--check --pr 7\n');
 
-    const ng = makeReviewRepo('agy-ng', 1);
-    const r = runHook('check_agy_review.sh', 'gh pr merge "#8" --merge', ng);
+    const ng = makeReviewRepo('gemini-ng', 1);
+    const r = runHook('check_gemini_review.sh', 'gh pr merge "#8" --merge', ng);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /差し止めました/);
     assert.equal(calls(ng), '--check --pr 8\n');
   });
 
   test('マージが複数あれば、すべての番号を判定し、1 つでも通らなければ止める', () => {
-    const ok = makeReviewRepo('agy-multi', 0);
-    assert.equal(runHook('check_agy_review.sh', 'gh pr merge 5 && gh pr merge 6', ok).status, 0);
+    const ok = makeReviewRepo('gemini-multi', 0);
+    assert.equal(runHook('check_gemini_review.sh', 'gh pr merge 5 && gh pr merge 6', ok).status, 0);
     assert.equal(calls(ok), '--check --pr 5\n--check --pr 6\n');
 
-    const ng = makeReviewRepo('agy-multi-ng', 0);
-    assert.equal(runHook('check_agy_review.sh', 'gh pr merge 5 && gh pr merge', ng).status, 2);
+    const ng = makeReviewRepo('gemini-multi-ng', 0);
+    assert.equal(runHook('check_gemini_review.sh', 'gh pr merge 5 && gh pr merge', ng).status, 2);
   });
 
   test('入力が JSON でなければ、従来の部分一致で止める(フェイルクローズ)', () => {
-    const root = makeReviewRepo('agy-raw', 0);
-    const r = spawnSync(BASH, [join(HOOKS, 'check_agy_review.sh')], { input: 'gh pr merge --merge', encoding: 'utf8', cwd: root });
+    const root = makeReviewRepo('gemini-raw', 0);
+    const r = spawnSync(BASH, [join(HOOKS, 'check_gemini_review.sh')], { input: 'gh pr merge --merge', encoding: 'utf8', cwd: root });
     assert.equal(r.status, 2);
-    const r2 = spawnSync(BASH, [join(HOOKS, 'check_agy_review.sh')], { input: 'gh pr merge 9 --merge', encoding: 'utf8', cwd: root });
+    const r2 = spawnSync(BASH, [join(HOOKS, 'check_gemini_review.sh')], { input: 'gh pr merge 9 --merge', encoding: 'utf8', cwd: root });
     assert.equal(r2.status, 0);
     assert.equal(calls(root), '--check --pr 9\n');
   });
