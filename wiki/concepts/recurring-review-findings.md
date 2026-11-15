@@ -557,3 +557,15 @@ push 前に確かめること:
 実例:
 
 - PR #303 — `spinebox/thumbs.py:190 are_built()` — `row is not None and self.store.contains(...)` が `row is None` のとき `_key()` の例外を飛ばし、`include_unavailable=False` でも `{vid: False}` を返した(存在しない id で再現し、`raise VolumeNotFound(vid)` に修正)
+
+### base レイヤーのフォーカスリング(二重輪郭)を、コンポーネントの単色 outline で上書きしている
+
+`@layer base` の `:focus-visible` が黒 4px + 黄 2px の二重リングでライト/ダーク両方の背景に対するコントラストを保っているのに、新しいコンポーネント側で `outline: 2px solid var(--focus-ring)` のような黄単色を指定して上書きしてしまう。ライトモードの明るい背景上では黄色の輪郭が溶けて視認性が著しく落ちる。
+
+push 前に確かめること:
+
+- `:focus-visible` に新しい `outline` を書くとき、`@layer base` の二重リングで不足する理由があるか。不要なら書かず、書く場合もライト/ダーク両背景で 3:1 以上のコントラストが保たれているか
+
+実例:
+
+- PR #339 — `frontend/src/styles.css` 小説リーダーのボタン・スライダー — `.novel-header-btn:focus-visible` 等と `.novel-slider:focus-visible` に黄単色の `outline` を書き、ライトモードの明るいヘッダー・フッター上で視認性が落ちていた(agy レビューの WARNING。上書きを削除して `@layer base` の二重リングを使うように修正)

@@ -1243,9 +1243,6 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 }
 .novel-header-btn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
 .novel-header-btn.novel-bookmark-btn[aria-pressed="true"] { color: var(--reader-ui-accent); }
-.novel-header-btn:focus-visible, .novel-ctrl-btn:focus-visible, .novel-help-close:focus-visible {
-  outline: 2px solid var(--focus-ring); outline-offset: 2px;
-}
 
 .novel-footer {
   position: fixed; inset-block-end: 0; inset-inline: 0; z-index: 50;
@@ -1267,7 +1264,6 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
   appearance: none; inline-size: 100%; block-size: 44px; margin: 0; padding: 0; border: 0; border-radius: 0;
   background: transparent; cursor: pointer;
 }
-.novel-slider:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
 .novel-slider::-webkit-slider-runnable-track {
   block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-ui-track);
 }
