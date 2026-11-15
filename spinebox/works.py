@@ -377,7 +377,7 @@ def _group_keys(items: dict[str, list]) -> list[list[str]]:
     """系列名の鍵を同じ系列ごとにまとめる。items は 鍵 → [(巻, WorkName)](区切りの判定に作品名を使う)。"""
     titles = {k: v[0][1].title for k, v in items.items() if v}
     groups: list[list[str]] = []
-    for k in sorted(set(items), key=len):
+    for k in sorted(set(items), key=lambda k: (len(k), k)):
         for g in groups:
             if any(_same_series(k, x, titles) for x in g):
                 g.append(k)
@@ -443,7 +443,7 @@ def _container_claims(st: _State) -> dict[int, OwnName]:
                 counts: dict[str, int] = defaultdict(int)
                 for wn in names:
                     counts[wn.title] += 1
-                best = min(counts, key=lambda t: (-counts[t], len(t)))
+                best = min(counts, key=lambda t: (-counts[t], len(t), t))
                 title = next(wn for wn in names if wn.title == best)
                 if len(counts) > 1 and len({re.sub(r"\d+", "", t) for t in counts}) == 1:
                     # 名前の間の番号だけが違う(`チュートリアルが始まる前に 1 ボスキャラ…`)。番号を落とした名前を作品名にする
@@ -553,7 +553,7 @@ def _settle_claims(c, st: _State, claims: dict[int, OwnName], moved: dict[int, s
             if (f is None or f["manual"] or f["source"] != SOURCE_FILENAME or not cands
                     or parse_work_name(f["value"] or "") is not None):
                 continue
-            title = min(cands, key=lambda t: (-cands[t], len(t)))
+            title = min(cands, key=lambda t: (-cands[t], len(t), t))
             norm = normalize_title(title)
         f = c.execute("SELECT value, source, manual FROM work_fields WHERE work_id = ? AND field = ?",
                       (wid, FIELD_TITLE)).fetchone()
@@ -814,7 +814,7 @@ def _leaves_numbered_work(c, work: _Work, norm: str, want: dict | None) -> bool:
     今の作品名が `系列名 + 番号` そのもの(`作品名 01`)なら、その作品は 1 巻ぶんの残骸で、系列名は
     公開 DB の別名として持っているだけなので、系列名の作品へ移す。手で直した作品は動かさない。
     """
-    if want is None or not _numbered_variant(work.title, norm):
+    if want is None or work.title_source == SOURCE_PUBLIC_DB or not _numbered_variant(work.title, norm):
         return False
     return not _manual_involved(c, work.id)
 
@@ -976,7 +976,8 @@ def _assign_volumes(c, st: _State, summary: SyncSummary) -> None:
             _keep_container_romaji(c, st, work.id, claim)
             continue
         target = st.find_work(norm)
-        if want is not None and target is not None and _numbered_variant(st.works[target].title, norm):
+        if want is not None and target is not None and st.works[target].title_source != SOURCE_PUBLIC_DB \
+                and _numbered_variant(st.works[target].title, norm):
             target = None  # 系列名を別名で持つだけの番号付きの作品には寄せない(新しい系列名の作品を作る)
         if target is None:
             author = author_text(_authors_of(st, vid, own))
@@ -1245,8 +1246,10 @@ def _propose_and_merge(c, st: _State, summary: SyncSummary) -> None:
             # 却下・分けた組は戻さない
             if ex["status"] != "open":
                 continue
-            c.execute("""UPDATE work_merge_proposals SET work_a = ?, work_b = ?, rule = ?, confidence = ?,
-                         evidence = ? WHERE id = ?""", (a, b, cand["rule"], cand["confidence"], payload, ex["id"]))
+            if (ex["work_a"], ex["work_b"], ex["rule"], ex["confidence"], ex["evidence"]) != (
+                    a, b, cand["rule"], cand["confidence"], payload):
+                c.execute("""UPDATE work_merge_proposals SET work_a = ?, work_b = ?, rule = ?, confidence = ?,
+                             evidence = ? WHERE id = ?""", (a, b, cand["rule"], cand["confidence"], payload, ex["id"]))
             if not auto:
                 # 確認待ちの提案は根拠だけ最新にする(利用者の決定を待つ)
                 kept_open.add(ex["id"])
