@@ -36,7 +36,7 @@
   --focus-outline: #000000;
   --scrim: rgb(0 0 0 / 0.5);
   --scrim-drawer: rgb(0 0 0 / 0.45);
-  /* リーダーは常に暗い面(漫画・メニュー)と、紙色の面(小説)。ライト/ダークで切り替えない */
+  /* 漫画リーダー・読み込み面は暗い面。小説の紙色と UI は下のライト/ダーク対応トークンを使う */
   --reader-bg: #000; --reader-fg: #eee; --reader-fg-muted: #ccc;
   --reader-link: #9ec1ff; --reader-accent: #70a5ff;
   --reader-track: rgb(255 255 255 / 0.25);
@@ -1235,11 +1235,21 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 }
 .novel-header-buttons { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .novel-header-btn {
+  position: relative;
   min-inline-size: 36px; min-block-size: 36px; padding: 0; border-radius: 8px;
   background: var(--reader-btn-bg); color: var(--reader-btn-fg);
   border: 1px solid transparent;
   display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer; text-decoration: none; font-size: 14px;
+}
+.novel-header-btn::after, .novel-ctrl-btn::after, .novel-help-close::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, -50%);
+  min-inline-size: max(100%, 44px);
+  min-block-size: max(100%, 44px);
 }
 .novel-header-btn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
 .novel-header-btn.novel-bookmark-btn[aria-pressed="true"] { color: var(--reader-ui-accent); }
@@ -1255,7 +1265,7 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 }
 .novel-footer-info {
   display: flex; align-items: center; justify-content: space-between;
-  margin-block-end: 4px; font-size: 12px; font-variant-numeric: tabular-nums;
+  margin-block-end: 4px; font-size: 0.875rem; font-variant-numeric: tabular-nums;
   color: var(--reader-ui-muted);
 }
 /* 区切りのスライダー。manga-viewer + viewerHooks.ts の寸法(軌道 12px・つまみ 32px・押せる高さ 44px)に揃える */
@@ -1282,16 +1292,17 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 }
 .novel-footer-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: 8px 16px; margin-block-start: 6px; font-size: 13px;
+  gap: 8px 16px; margin-block-start: 6px; font-size: 0.875rem;
 }
 .novel-font-controls, .novel-footer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .novel-ctrl-btn {
+  position: relative;
   min-block-size: 32px; min-inline-size: 36px; padding: 4px 12px; border-radius: 8px;
   background: var(--reader-btn-bg); color: var(--reader-btn-fg); border: 1px solid transparent;
-  font-size: 13px; cursor: pointer;
+  font-size: 0.875rem; cursor: pointer;
 }
 .novel-ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.novel-encoding { color: var(--reader-ui-muted); font-size: 12px; }
+.novel-encoding { color: var(--reader-ui-muted); font-size: 0.875rem; }
 
 /* ヘルプモーダル(manga-viewer の .mv-help-overlay に統一) */
 .novel-help-dialog {
@@ -1319,6 +1330,7 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
   display: flex; align-items: center; gap: 8px;
 }
 .novel-help-close {
+  position: relative;
   min-inline-size: 36px; min-block-size: 36px; padding: 0; border-radius: 10px;
   background: var(--reader-btn-bg); border: 1px solid transparent; color: var(--reader-ui-muted);
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
@@ -1329,7 +1341,7 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 }
 .novel-help-section:last-child { margin-block-end: 0; }
 .novel-help-section-title {
-  color: var(--reader-ui-accent); font-size: 13px; font-weight: 600; margin-block-end: 10px;
+  color: var(--reader-ui-accent); font-size: 0.875rem; font-weight: 600; margin-block-end: 10px;
 }
 .novel-help-item { display: flex; align-items: flex-start; gap: 12px; margin-block-end: 10px; }
 .novel-help-item:last-child { margin-block-end: 0; }
@@ -1340,7 +1352,7 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 }
 .novel-help-item-text { flex: 1; min-inline-size: 0; }
 .novel-help-item-label { color: var(--reader-ui-fg); font-size: 14px; font-weight: 500; margin-block-end: 2px; }
-.novel-help-item-desc { color: var(--reader-ui-muted); font-size: 12px; }
+.novel-help-item-desc { color: var(--reader-ui-muted); font-size: 0.875rem; }
 
 @media (hover: hover) {
   .novel-header-btn:hover, .novel-ctrl-btn:hover:not(:disabled), .novel-help-close:hover {
@@ -1353,9 +1365,8 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
   .novel-header-btn, .novel-ctrl-btn, .novel-help-close { transition: background-color 0.2s ease, color 0.2s ease; }
 }
 @media (max-width: 767px) {
-  .novel-header-btn { min-inline-size: 32px; min-block-size: 32px; font-size: 13px; }
+  .novel-header-btn { min-inline-size: 32px; min-block-size: 32px; }
   .novel-header-btn.novel-pc-only { display: none; }
-  .novel-header-title { font-size: 13px; }
   .novel-footer {
     padding: 10px 16px 16px;
     padding-block-end: max(16px, calc(env(safe-area-inset-bottom) + 8px));

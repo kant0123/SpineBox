@@ -433,7 +433,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
       )}
 
       <header className={`novel-header${menu ? "" : " is-hidden"}`} aria-hidden={!menu} {...hiddenAttrs}>
-        <a href={readerBackHref(detail.work_id)} className="novel-header-btn" aria-label={backLabel} title={backLabel}>
+        <a href={readerBackHref(detail.work_id)} className="novel-header-btn" aria-label={backLabel}>
           <ReaderIcon path={ICON_BACK} />
         </a>
         <span className="novel-header-title">{detail.title}</span>
@@ -443,13 +443,12 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
             className="novel-header-btn novel-bookmark-btn"
             aria-label={bookmarkLabel}
             aria-pressed={bookmarked}
-            title={bookmarkLabel}
             onClick={() => void toggleBookmark()}
           >
             <ReaderIcon path={bookmarked ? ICON_STAR_ON : ICON_STAR_OFF} />
           </button>
           {nextStep && (
-            <button type="button" className="novel-header-btn" aria-label="次の巻へ" title="次の巻へ" onClick={goNextVolume}>
+            <button type="button" className="novel-header-btn" aria-label="次の巻へ" onClick={goNextVolume}>
               <ReaderIcon path={ICON_NEXT_VOLUME} />
             </button>
           )}
@@ -458,12 +457,11 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
             className="novel-header-btn novel-pc-only"
             aria-label={isFullscreen ? "全画面を終了" : "全画面"}
             aria-pressed={isFullscreen}
-            title="全画面"
             onClick={toggleFullscreen}
           >
             <ReaderIcon path={isFullscreen ? ICON_COMPRESS : ICON_EXPAND} />
           </button>
-          <button type="button" className="novel-header-btn" aria-label="ヘルプ" title="ヘルプ" onClick={openHelp}>
+          <button type="button" className="novel-header-btn" aria-label="ヘルプ" onClick={openHelp}>
             <ReaderIcon path={ICON_QUESTION} />
           </button>
         </div>
@@ -494,7 +492,6 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
               type="button"
               className="novel-ctrl-btn"
               aria-label="小さく"
-              title="文字を小さく"
               onClick={() => changeFont(-1)}
               disabled={fontSize <= FONT_SIZES[0]}
             >
@@ -504,7 +501,6 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
               type="button"
               className="novel-ctrl-btn"
               aria-label="大きく"
-              title="文字を大きく"
               onClick={() => changeFont(1)}
               disabled={fontSize >= FONT_SIZES[FONT_SIZES.length - 1]}
             >
