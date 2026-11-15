@@ -43,6 +43,22 @@
   --reader-scrim: rgb(0 0 0 / 0.75); --reader-scrim-strong: rgb(0 0 0 / 0.85);
   --reader-bar-bg: rgb(20 20 24 / 0.94);
   --reader-paper-bg: #f7f3e9; --reader-paper-fg: #222; --reader-paper-scrim: rgb(255 255 255 / 0.9);
+  /* 小説リーダーのライト/ダーク対応トークン(manga-viewer の配色に揃える) */
+  --novel-paper-bg-light: #f7f3e9; --novel-paper-bg-dark: #141416;
+  --novel-paper-fg-light: #222222; --novel-paper-fg-dark: #e8e6df;
+  --novel-paper-scrim-light: rgb(255 255 255 / 0.9); --novel-paper-scrim-dark: rgb(20 20 24 / 0.9);
+  --reader-ui-bg-light: rgb(245 245 245 / 0.98); --reader-ui-bg-dark: rgb(40 40 40 / 0.95);
+  --reader-ui-fg-light: #333333; --reader-ui-fg-dark: #ffffff;
+  --reader-ui-muted-light: rgb(0 0 0 / 0.6); --reader-ui-muted-dark: rgb(255 255 255 / 0.7);
+  --reader-btn-bg-light: rgb(0 0 0 / 0.06); --reader-btn-bg-dark: rgb(255 255 255 / 0.08);
+  --reader-btn-bg-hover-light: rgb(0 0 0 / 0.1); --reader-btn-bg-hover-dark: rgb(255 255 255 / 0.15);
+  --reader-btn-fg-light: #333333; --reader-btn-fg-dark: rgb(255 255 255 / 0.9);
+  --reader-ui-track-light: rgb(0 0 0 / 0.15); --reader-ui-track-dark: rgb(255 255 255 / 0.2);
+  --reader-ui-border-light: rgb(0 0 0 / 0.1); --reader-ui-border-dark: rgb(255 255 255 / 0.1);
+  --reader-ui-accent-light: #b45309; --reader-ui-accent-dark: #facc15;
+  --reader-help-bg-light: rgb(255 255 255 / 0.98); --reader-help-bg-dark: rgb(30 30 30 / 0.95);
+  --reader-help-section-light: rgb(0 0 0 / 0.04); --reader-help-section-dark: rgb(255 255 255 / 0.05);
+  --reader-help-icon-bg-light: rgb(250 204 21 / 0.2); --reader-help-icon-bg-dark: rgb(250 204 21 / 0.15);
   --elevation-1: 0 2px 8px 1px var(--shadow-ambient-1), 0 1px 5px 0 var(--shadow-key-1);
   --elevation-3: 0 2px 12px 2px var(--shadow-ambient-3), 0 1px 6px 0 var(--shadow-key-3);
   --sidebar-w: 220px;
@@ -79,6 +95,21 @@
     --shadow-key-3: light-dark(var(--shadow-key-3-light), var(--shadow-key-3-dark));
     --overlay-bg: light-dark(var(--overlay-bg-light), var(--overlay-bg-dark));
     --overlay-bg-hover: light-dark(var(--overlay-bg-hover-light), var(--overlay-bg-hover-dark));
+    --novel-paper-bg: light-dark(var(--novel-paper-bg-light), var(--novel-paper-bg-dark));
+    --novel-paper-fg: light-dark(var(--novel-paper-fg-light), var(--novel-paper-fg-dark));
+    --novel-paper-scrim: light-dark(var(--novel-paper-scrim-light), var(--novel-paper-scrim-dark));
+    --reader-ui-bg: light-dark(var(--reader-ui-bg-light), var(--reader-ui-bg-dark));
+    --reader-ui-fg: light-dark(var(--reader-ui-fg-light), var(--reader-ui-fg-dark));
+    --reader-ui-muted: light-dark(var(--reader-ui-muted-light), var(--reader-ui-muted-dark));
+    --reader-btn-bg: light-dark(var(--reader-btn-bg-light), var(--reader-btn-bg-dark));
+    --reader-btn-bg-hover: light-dark(var(--reader-btn-bg-hover-light), var(--reader-btn-bg-hover-dark));
+    --reader-btn-fg: light-dark(var(--reader-btn-fg-light), var(--reader-btn-fg-dark));
+    --reader-ui-track: light-dark(var(--reader-ui-track-light), var(--reader-ui-track-dark));
+    --reader-ui-border: light-dark(var(--reader-ui-border-light), var(--reader-ui-border-dark));
+    --reader-ui-accent: light-dark(var(--reader-ui-accent-light), var(--reader-ui-accent-dark));
+    --reader-help-bg: light-dark(var(--reader-help-bg-light), var(--reader-help-bg-dark));
+    --reader-help-section: light-dark(var(--reader-help-section-light), var(--reader-help-section-dark));
+    --reader-help-icon-bg: light-dark(var(--reader-help-icon-bg-light), var(--reader-help-icon-bg-dark));
   }
 }
 /* light-dark() の無いブラウザ向け。OS の設定と data-theme の 2 経路を、ここだけで切り替える */
@@ -109,6 +140,21 @@
     --shadow-key-3: var(--shadow-key-3-light);
     --overlay-bg: var(--overlay-bg-light);
     --overlay-bg-hover: var(--overlay-bg-hover-light);
+    --novel-paper-bg: var(--novel-paper-bg-light);
+    --novel-paper-fg: var(--novel-paper-fg-light);
+    --novel-paper-scrim: var(--novel-paper-scrim-light);
+    --reader-ui-bg: var(--reader-ui-bg-light);
+    --reader-ui-fg: var(--reader-ui-fg-light);
+    --reader-ui-muted: var(--reader-ui-muted-light);
+    --reader-btn-bg: var(--reader-btn-bg-light);
+    --reader-btn-bg-hover: var(--reader-btn-bg-hover-light);
+    --reader-btn-fg: var(--reader-btn-fg-light);
+    --reader-ui-track: var(--reader-ui-track-light);
+    --reader-ui-border: var(--reader-ui-border-light);
+    --reader-ui-accent: var(--reader-ui-accent-light);
+    --reader-help-bg: var(--reader-help-bg-light);
+    --reader-help-section: var(--reader-help-section-light);
+    --reader-help-icon-bg: var(--reader-help-icon-bg-light);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -137,6 +183,21 @@
       --shadow-key-3: var(--shadow-key-3-dark);
       --overlay-bg: var(--overlay-bg-dark);
       --overlay-bg-hover: var(--overlay-bg-hover-dark);
+      --novel-paper-bg: var(--novel-paper-bg-dark);
+      --novel-paper-fg: var(--novel-paper-fg-dark);
+      --novel-paper-scrim: var(--novel-paper-scrim-dark);
+      --reader-ui-bg: var(--reader-ui-bg-dark);
+      --reader-ui-fg: var(--reader-ui-fg-dark);
+      --reader-ui-muted: var(--reader-ui-muted-dark);
+      --reader-btn-bg: var(--reader-btn-bg-dark);
+      --reader-btn-bg-hover: var(--reader-btn-bg-hover-dark);
+      --reader-btn-fg: var(--reader-btn-fg-dark);
+      --reader-ui-track: var(--reader-ui-track-dark);
+      --reader-ui-border: var(--reader-ui-border-dark);
+      --reader-ui-accent: var(--reader-ui-accent-dark);
+      --reader-help-bg: var(--reader-help-bg-dark);
+      --reader-help-section: var(--reader-help-section-dark);
+      --reader-help-icon-bg: var(--reader-help-icon-bg-dark);
     }
   }
   :root[data-theme="dark"] {
@@ -165,6 +226,21 @@
     --shadow-key-3: var(--shadow-key-3-dark);
     --overlay-bg: var(--overlay-bg-dark);
     --overlay-bg-hover: var(--overlay-bg-hover-dark);
+    --novel-paper-bg: var(--novel-paper-bg-dark);
+    --novel-paper-fg: var(--novel-paper-fg-dark);
+    --novel-paper-scrim: var(--novel-paper-scrim-dark);
+    --reader-ui-bg: var(--reader-ui-bg-dark);
+    --reader-ui-fg: var(--reader-ui-fg-dark);
+    --reader-ui-muted: var(--reader-ui-muted-dark);
+    --reader-btn-bg: var(--reader-btn-bg-dark);
+    --reader-btn-bg-hover: var(--reader-btn-bg-hover-dark);
+    --reader-btn-fg: var(--reader-btn-fg-dark);
+    --reader-ui-track: var(--reader-ui-track-dark);
+    --reader-ui-border: var(--reader-ui-border-dark);
+    --reader-ui-accent: var(--reader-ui-accent-dark);
+    --reader-help-bg: var(--reader-help-bg-dark);
+    --reader-help-section: var(--reader-help-section-dark);
+    --reader-help-icon-bg: var(--reader-help-icon-bg-dark);
   }
 }
 
@@ -677,40 +753,6 @@ button.small::after {
   inline-size: fit-content; max-inline-size: calc(100% - 32px);
   background: var(--reader-scrim-strong); padding: 8px 16px; border-radius: 999px; pointer-events: none; z-index: 20;
 }
-.reader-bar {
-  position: absolute; inset-inline: 0;
-  background: var(--reader-bar-bg); padding-block: 10px; padding-inline: 16px;
-  display: flex; align-items: center; gap: 12px;
-}
-.reader-bar.top { inset-block-start: 0; padding-block-start: max(10px, env(safe-area-inset-top)); }
-.reader-bar.bottom { inset-block-end: 0; flex-direction: column; align-items: stretch; padding-block-end: max(10px, env(safe-area-inset-bottom)); }
-.reader-bar a { color: var(--reader-link); text-decoration: underline; white-space: nowrap; min-block-size: 44px; display: inline-flex; align-items: center; }
-.reader-title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reader-page { white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* 区切りのスライダー。タブレットでも押せるよう、軌道 12px・つまみ 32px・押せる高さ 44px にする(#324) */
-.reader-bar input[type="range"] {
-  --slider-track: 12px; --slider-thumb: 32px;
-  appearance: none; inline-size: 100%; block-size: 44px; margin: 0; padding: 0; border: 0;
-  background: transparent; cursor: pointer;
-}
-.reader-bar input[type="range"]::-webkit-slider-runnable-track {
-  block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-track);
-}
-.reader-bar input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  inline-size: var(--slider-thumb); block-size: var(--slider-thumb);
-  margin-block-start: calc((var(--slider-track) - var(--slider-thumb)) / 2);
-  border: 0; border-radius: 50%; background: var(--reader-accent);
-}
-.reader-bar input[type="range"]::-moz-range-track {
-  block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-track);
-}
-.reader-bar input[type="range"]::-moz-range-thumb {
-  inline-size: var(--slider-thumb); block-size: var(--slider-thumb);
-  border: 0; border-radius: 50%; background: var(--reader-accent);
-}
-.reader-options { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
-.reader-options label { display: inline-flex; align-items: center; gap: 6px; min-block-size: 44px; cursor: pointer; }
 
 /* 重複候補(#38) */
 .header-link, .back-link {
@@ -1150,8 +1192,9 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 .credits a { color: var(--accent); }
 .work-edit, .work-section, .credits { max-inline-size: 720px; }
 
-/* 小説の縦書きリーダー(#57)。本文の帯(.novel-text)を右端に置き、画面幅ずつ translateX で右から左へ送る */
-.reader.novel { background: var(--reader-paper-bg); color: var(--reader-paper-fg); }
+/* 小説の縦書きリーダー(#57, #333)。UI は manga-viewer に揃える */
+.reader.novel { background: var(--novel-paper-bg); color: var(--novel-paper-fg); }
+.reader.novel.is-pseudo-fullscreen { z-index: 9999; }
 .novel-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; touch-action: pinch-zoom; user-select: none; -webkit-user-select: none; }
 .novel-page { position: relative; overflow: hidden; }
 .novel-text {
@@ -1170,10 +1213,164 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 .novel-text .upright { text-orientation: upright; }
 .novel-text .sideways { text-orientation: sideways; }
 .novel-text .em-sesame { text-emphasis-style: sesame; -webkit-text-emphasis-style: sesame; }
-.novel .page-loading { color: var(--reader-paper-fg); background: var(--reader-paper-scrim); }
+.novel .page-loading { color: var(--novel-paper-fg); background: var(--novel-paper-scrim); }
 .novel .reader-notice { color: #fff; }
-.reader-options button { padding: 6px 12px; }
-.muted-dark { color: var(--reader-fg-muted); font-size: 0.875rem; }
+
+/* 小説リーダー ヘッダー・フッター(manga-viewer の .mv-header / .mv-footer に統一) */
+.novel-header {
+  position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  padding-block: 8px; padding-block-start: max(8px, env(safe-area-inset-top));
+  padding-inline-start: max(12px, env(safe-area-inset-left));
+  padding-inline-end: max(12px, env(safe-area-inset-right));
+  background: var(--reader-ui-bg); color: var(--reader-ui-fg);
+  border-block-end: 1px solid transparent;
+  opacity: 1;
+}
+.novel-header.is-hidden, .novel-footer.is-hidden { opacity: 0; pointer-events: none; }
+.novel-header-title {
+  flex: 1 1 auto; min-inline-size: 0; text-align: center; margin-inline: 6px;
+  font-weight: bold; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.novel-header-buttons { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.novel-header-btn {
+  min-inline-size: 36px; min-block-size: 36px; padding: 0; border-radius: 8px;
+  background: var(--reader-btn-bg); color: var(--reader-btn-fg);
+  border: 1px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; text-decoration: none; font-size: 14px;
+}
+.novel-header-btn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
+.novel-header-btn.novel-bookmark-btn[aria-pressed="true"] { color: var(--reader-ui-accent); }
+.novel-header-btn:focus-visible, .novel-ctrl-btn:focus-visible, .novel-help-close:focus-visible {
+  outline: 2px solid var(--focus-ring); outline-offset: 2px;
+}
+
+.novel-footer {
+  position: fixed; inset-block-end: 0; inset-inline: 0; z-index: 50;
+  padding-block: 8px; padding-block-end: max(8px, env(safe-area-inset-bottom));
+  padding-inline-start: max(12px, env(safe-area-inset-left));
+  padding-inline-end: max(12px, env(safe-area-inset-right));
+  background: var(--reader-ui-bg); color: var(--reader-ui-fg);
+  border-block-start: 1px solid transparent;
+  opacity: 1;
+}
+.novel-footer-info {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-block-end: 4px; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--reader-ui-muted);
+}
+/* 区切りのスライダー。manga-viewer + viewerHooks.ts の寸法(軌道 12px・つまみ 32px・押せる高さ 44px)に揃える */
+.novel-slider {
+  --slider-track: 12px; --slider-thumb: 32px;
+  appearance: none; inline-size: 100%; block-size: 44px; margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; cursor: pointer;
+}
+.novel-slider:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
+.novel-slider::-webkit-slider-runnable-track {
+  block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-ui-track);
+}
+.novel-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  inline-size: var(--slider-thumb); block-size: var(--slider-thumb);
+  margin-block-start: calc((var(--slider-track) - var(--slider-thumb)) / 2);
+  border: 0; border-radius: 50%; background: #facc15; box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+}
+.novel-slider::-moz-range-track {
+  block-size: var(--slider-track); border: 0; border-radius: 999px; background: var(--reader-ui-track);
+}
+.novel-slider::-moz-range-thumb {
+  inline-size: var(--slider-thumb); block-size: var(--slider-thumb);
+  border: 0; border-radius: 50%; background: #facc15; box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+}
+.novel-footer-controls {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px 16px; margin-block-start: 6px; font-size: 13px;
+}
+.novel-font-controls, .novel-footer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.novel-ctrl-btn {
+  min-block-size: 32px; min-inline-size: 36px; padding: 4px 12px; border-radius: 8px;
+  background: var(--reader-btn-bg); color: var(--reader-btn-fg); border: 1px solid transparent;
+  font-size: 13px; cursor: pointer;
+}
+.novel-ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.novel-encoding { color: var(--reader-ui-muted); font-size: 12px; }
+
+/* ヘルプモーダル(manga-viewer の .mv-help-overlay に統一) */
+.novel-help-dialog {
+  border: none; padding: 0; background: transparent; color: var(--reader-ui-fg);
+  max-inline-size: 400px; inline-size: calc(100% - 32px); max-block-size: 80dvh; margin: auto;
+  overflow: visible;
+}
+.novel-help-dialog::backdrop {
+  background: rgb(0 0 0 / 0.8);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.novel-help-card {
+  background: var(--reader-help-bg);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px; border: 1px solid var(--reader-ui-border);
+  max-block-size: 80dvh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.5);
+}
+.novel-help-header {
+  padding: 18px 20px; border-block-end: 1px solid var(--reader-ui-border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.novel-help-title {
+  margin: 0; color: var(--reader-ui-accent); font-size: 18px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.novel-help-close {
+  min-inline-size: 36px; min-block-size: 36px; padding: 0; border-radius: 10px;
+  background: var(--reader-btn-bg); border: 1px solid transparent; color: var(--reader-ui-muted);
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.novel-help-content { padding: 18px 20px; }
+.novel-help-section {
+  background: var(--reader-help-section); border-radius: 12px; padding: 14px; margin-block-end: 12px;
+}
+.novel-help-section:last-child { margin-block-end: 0; }
+.novel-help-section-title {
+  color: var(--reader-ui-accent); font-size: 13px; font-weight: 600; margin-block-end: 10px;
+}
+.novel-help-item { display: flex; align-items: flex-start; gap: 12px; margin-block-end: 10px; }
+.novel-help-item:last-child { margin-block-end: 0; }
+.novel-help-item-icon {
+  inline-size: 32px; block-size: 32px; border-radius: 8px;
+  background: var(--reader-help-icon-bg); color: var(--reader-ui-accent);
+  display: flex; align-items: center; justify-content: center; flex: none; font-size: 14px;
+}
+.novel-help-item-text { flex: 1; min-inline-size: 0; }
+.novel-help-item-label { color: var(--reader-ui-fg); font-size: 14px; font-weight: 500; margin-block-end: 2px; }
+.novel-help-item-desc { color: var(--reader-ui-muted); font-size: 12px; }
+
+@media (hover: hover) {
+  .novel-header-btn:hover, .novel-ctrl-btn:hover:not(:disabled), .novel-help-close:hover {
+    background: var(--reader-btn-bg-hover);
+  }
+  .novel-help-close:hover { color: var(--reader-ui-fg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .novel-header, .novel-footer { transition: opacity 0.3s ease; }
+  .novel-header-btn, .novel-ctrl-btn, .novel-help-close { transition: background-color 0.2s ease, color 0.2s ease; }
+}
+@media (max-width: 767px) {
+  .novel-header-btn { min-inline-size: 32px; min-block-size: 32px; font-size: 13px; }
+  .novel-header-btn.novel-pc-only { display: none; }
+  .novel-header-title { font-size: 13px; }
+  .novel-footer {
+    padding: 10px 16px 16px;
+    padding-block-end: max(16px, calc(env(safe-area-inset-bottom) + 8px));
+    padding-inline-start: max(16px, env(safe-area-inset-left));
+    padding-inline-end: max(16px, env(safe-area-inset-right));
+  }
+  .novel-help-card { max-block-size: 70dvh; }
+}
+@media (forced-colors: active) {
+  .novel-header-btn[aria-pressed="true"] { border-color: Highlight; color: Highlight; }
+}
 .badge.novel-badge { background: #e7f0e3; color: #1f471b; border-color: #4f7a49; }
 
 /* 受け入れ */

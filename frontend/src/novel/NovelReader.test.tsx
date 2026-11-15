@@ -165,12 +165,12 @@ describe("縦書きリーダー", () => {
     const r = render(<NovelReader id="7" detail={{ ...base, work_id: 4 }} />);
     await ready();
     press("Escape");
-    expect((await screen.findByRole("link", { name: "‹ 作品へ" })).getAttribute("href")).toBe("#/works/4/titles");
+    expect((await screen.findByRole("link", { name: "作品へ戻る" })).getAttribute("href")).toBe("#/works/4/titles");
     r.unmount();
     render(<NovelReader id="7" detail={{ ...base, work_id: null }} />);
     await ready();
     press("Escape");
-    expect((await screen.findByRole("link", { name: "‹ 一覧へ" })).getAttribute("href")).toBe("#/");
+    expect((await screen.findByRole("link", { name: "一覧へ戻る" })).getAttribute("href")).toBe("#/");
   });
 
   it("最終ページからさらに進むと、同じ作品の次の巻へ移る(#113)", async () => {
@@ -198,5 +198,89 @@ describe("縦書きリーダー", () => {
 
     press("ArrowLeft");
     expect(window.location.hash).toBe("#/read/8");
+  });
+
+  it("ヘッダーのブックマーク★・次の巻へ・全画面・ヘルプボタンが漫画ビューワー同様に動く", async () => {
+    window.location.hash = "";
+    const v = defaultVolumes().find((x) => x.id === 7)!;
+    const html = mockSections()[7];
+    const detail: VolumeDetail = {
+      id: 7,
+      title: v.title,
+      format: "epub",
+      page_count: html.length,
+      pages: [],
+      sections: html.map((h, i) => ({ index: i, length: h.length })),
+      progress: null,
+      bookmarked: false,
+      next_volume: { id: 8, title: "青空文庫のテキスト", volume_number: null, offline: false },
+    };
+    render(<NovelReader id="7" detail={detail} />);
+    await ready();
+
+    // 初期状態はメニュー非表示(is-hidden)
+    const header = document.querySelector(".novel-header")!;
+    const footer = document.querySelector(".novel-footer")!;
+    expect(header.classList.contains("is-hidden")).toBe(true);
+    expect(footer.classList.contains("is-hidden")).toBe(true);
+
+    // メニューを開く
+    press("Escape");
+    expect(header.classList.contains("is-hidden")).toBe(false);
+    expect(footer.classList.contains("is-hidden")).toBe(false);
+
+    // 巻ブックマーク ★ のトグル
+    const bmBtn = screen.getByRole("button", { name: "ブックマークに追加" });
+    expect(bmBtn.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(bmBtn);
+    await waitFor(() => expect(screen.getByRole("button", { name: "ブックマークを外す" }).getAttribute("aria-pressed")).toBe("true"));
+
+    // 全画面ボタン(PC向けボタン、押すと疑似全画面に切り替わる)
+    const fsBtn = screen.getByRole("button", { name: "全画面" });
+    fireEvent.click(fsBtn);
+    expect(screen.getByRole("button", { name: "全画面を終了" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "全画面を終了" }));
+    expect(screen.getByRole("button", { name: "全画面" }).getAttribute("aria-pressed")).toBe("false");
+
+    // ヘルプダイアログを開閉でき、開いている間は矢印キーでページ送りしない
+    const beforeHelp = at();
+    fireEvent.click(screen.getByRole("button", { name: "ヘルプ" }));
+    expect(screen.getByRole("heading", { name: "ヘルプ" })).toBeTruthy();
+    press("ArrowLeft");
+    expect(at()).toEqual(beforeHelp);
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(document.querySelector(".novel-help-dialog")?.hasAttribute("open")).toBe(false);
+
+    // 次の巻へボタン
+    fireEvent.click(screen.getByRole("button", { name: "次の巻へ" }));
+    expect(window.location.hash).toBe("#/read/8");
+  });
+
+  it("次巻がオフラインなら次の巻へボタンで理由を出し、ブックマーク更新失敗時は状態を戻す", async () => {
+    const html = mockSections()[7];
+    const detail: VolumeDetail = {
+      id: 7,
+      title: "テスト小説",
+      format: "epub",
+      page_count: html.length,
+      pages: [],
+      sections: html.map((h, i) => ({ index: i, length: h.length })),
+      progress: null,
+      bookmarked: false,
+      next_volume: { id: 9, title: "オフラインの巻", volume_number: null, offline: true },
+    };
+    render(<NovelReader id="7" detail={detail} />);
+    await ready();
+    press("Escape");
+
+    fireEvent.click(screen.getByRole("button", { name: "次の巻へ" }));
+    expect(screen.getByRole("status").textContent).toBe("次の巻「オフラインの巻」はオフラインです");
+
+    // fetch を一時的に失敗させてブックマーク変更エラーを確かめる
+    vi.stubGlobal("fetch", async () => new Response("error", { status: 500 }));
+    const bmBtn = screen.getByRole("button", { name: "ブックマークに追加" });
+    fireEvent.click(bmBtn);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("ブックマークを変更できませんでした"));
+    expect(screen.getByRole("button", { name: "ブックマークに追加" }).getAttribute("aria-pressed")).toBe("false");
   });
 });
