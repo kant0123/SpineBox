@@ -21,11 +21,20 @@ vi.mock("@tokagemushi/manga-viewer", () => ({
     opts: any;
     destroy = vi.fn();
     goToPage = vi.fn();
-    // 最後の画面にいる 1 画面の巻として振る舞う(最後からさらに進む操作の結線 #324 用)
+    // 最後の画面にいる 1 画面の巻として振る舞う(端からさらに進む/戻る操作の結線 #324, #338 用)
     _slots = [0];
     _currentSlotIndex = 0;
+    _isDragging = false;
+    _currentZoom = 1;
+    _startX = 0;
+    _currentX = 0;
+    _containerWidth = 400;
     _goNext() {}
+    _goPrev() {}
     _navigateTo(_idx: number) {}
+    _endDrag() {
+      this._isDragging = false;
+    }
     constructor(opts: any) {
       this.opts = opts;
       const root = (opts.container as HTMLElement).attachShadow({ mode: "open" });
@@ -232,6 +241,39 @@ describe("最後の画面からさらに進む(#324)", () => {
     const { viewer } = await opened("3");
     settle();
     viewer._goNext();
+    expect(window.location.hash).toBe("");
+  });
+
+  it("前巻があれば先頭からさらに戻る操作(キー・タップ・スワイプ)で前巻のリーダーへ移る(#338)", async () => {
+    const { viewer } = await opened("2"); // 1 巻は id 1 と id 6 が重複し、並びの先頭は id 6
+    settle();
+    viewer._goPrev();
+    expect(window.location.hash).toBe("#/read/6");
+    window.location.hash = "";
+    viewer._navigateTo(-1);
+    expect(window.location.hash).toBe("#/read/6");
+    window.location.hash = "";
+    viewer._isDragging = true;
+    viewer._startX = 200;
+    viewer._currentX = 100;
+    viewer._endDrag();
+    expect(window.location.hash).toBe("#/read/6");
+  });
+
+  it("最後の画面からスワイプしても次巻のリーダーへ移る(#338)", async () => {
+    const { viewer } = await opened("2");
+    settle();
+    viewer._isDragging = true;
+    viewer._startX = 100;
+    viewer._currentX = 200;
+    viewer._endDrag();
+    expect(window.location.hash).toBe("#/read/3");
+  });
+
+  it("前巻が無ければ何もしない", async () => {
+    const { viewer } = await opened("1");
+    settle();
+    viewer._goPrev();
     expect(window.location.hash).toBe("");
   });
 

@@ -223,11 +223,11 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const jobs = createMockJobs();
   const range = createMockRange(ops, () => `op-${++opSeq}`);
   const sections = mockSections();
-  /** 同じ作品の次の巻(#113)。リーダーの最終ページから進む先 */
+  /** 同じ作品の前後巻(#113)。リーダーのエッジから進む先 */
   const workIdOf = (vol: MockVolume) => vol.work_id ?? mockWorks.works.find((w) => w.volumeIds.includes(vol.id))?.id ?? null;
-  const nextOf = (vol: MockVolume) => {
-    const n = mockWorks.nextVolume(vol.id);
-    return n ? { id: n.id, title: n.title, volume_number: n.volume_number, offline: n.offline } : null;
+  const adjacentOf = (vol: MockVolume, dir: "prev" | "next") => {
+    const target = dir === "next" ? mockWorks.nextVolume(vol.id) : mockWorks.prevVolume(vol.id);
+    return target ? { id: target.id, title: target.title, volume_number: target.volume_number, offline: target.offline } : null;
   };
 
   // テンプレートどおりの改名・移動(作品 1 だけ)。巻 1 と 6 は同じ名前になる衝突、3 は 1 巻 = 1 CBZ でない対象外
@@ -658,7 +658,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         encoding: v.format === "text" ? "cp932" : null,
         progress: v.progress, parent_id: null, volume_number: v.volume_number, findings: [],
         work_id: workIdOf(v),
-        next_volume: nextOf(v),
+        prev_volume: adjacentOf(v, "prev"),
+        next_volume: adjacentOf(v, "next"),
         bookmarked: marks.volume.has(v.id),
       };
       return json(200, detail);
@@ -682,7 +683,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         parent_id: v.parent_id,
         volume_number: v.volume_number,
         work_id: workIdOf(v),
-        next_volume: nextOf(v),
+        prev_volume: adjacentOf(v, "prev"),
+        next_volume: adjacentOf(v, "next"),
         findings: v.findings,
         bookmarked: marks.volume.has(v.id),
       };

@@ -17,7 +17,7 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
   ヘッダーとページスライダー・ヘルプ・「続きから読みますか?」の確認・しおりの画面
 - SpineBox 側がする: 巻情報の取得と読み込み待ち・取得失敗の表示(`Reader()`。従来どおり)、読書位置のサーバー保存と再開位置の受け渡し、
   しおりの保存先(サーバー)、巻のブックマーク(★。[[bookmarks]])と次の巻(#113)のボタン、戻る先、
-  ページスライダーの大きさと「最後の画面からさらに進むと次の巻へ」(#324。どちらもライブラリの外から足す)
+  ページスライダーの大きさと「先頭・最後の画面からさらに前後へ進むと前の巻・次の巻へ」(#324, #338。どちらもライブラリの外から足す)
 
 ## 入口となるファイル
 
@@ -25,7 +25,7 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 | --- | --- |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | 巻情報の取得・読み込み待ち・取得失敗・小説への切り替え。漫画なら `MangaReader` へ |
 | `frontend/src/reader/MangaReader.tsx:45 MangaReader()` | manga-viewer の生成と破棄、オプション(ヘッダーのボタン・しおりの API・再開位置)、読書位置の保存の結線 |
-| `frontend/src/reader/viewerHooks.ts:44 enlargeSlider()` | オプションでは届かない結線(#324)。ページスライダーのスタイルを Shadow DOM へ足す `enlargeSlider()` と、最後の画面からさらに進む操作を拾う `watchPastEnd()` |
+| `frontend/src/reader/viewerHooks.ts:44 enlargeSlider()` | オプションでは届かない結線(#324, #338)。ページスライダーのスタイルを Shadow DOM へ足す `enlargeSlider()` と、先頭・最後の画面からさらに前後へ進む操作を拾う `watchVolumeEdges()` |
 | `spinebox/page_marks.py:41 list_marks()` | しおりの読み書き。`add()` / `remove()`、整理での移動 `transfer_volume()` |
 | `spinebox/app.py:1057 list_page_marks()` | `/api/page-marks`(GET / POST / DELETE)。ライブラリの `bookmarkApi` の形に合わせた口 |
 | `spinebox/analysis.py:130 _carry_page_marks()` | 巻への分解で親のしおりを子の巻・ページへ写す |
@@ -58,13 +58,14 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 - **ヘッダーは 戻る・しおり・★(巻のブックマーク)・次の巻・全画面・ヘルプ。X 共有・リンクのコピーは出さない**(LAN 内のアプリ)。
   全画面はライブラリが PC 幅だけで出す。★ のボタンは構築時に作られるので、付け外しのたびに Shadow DOM の中のボタン(`.spinebox-volume-bookmark`)の
   `title` / `aria-label` / `aria-pressed` / アイコンを直接直す
-- **次の巻へは、ヘッダーのボタンと「最後の画面からさらに進む」の両方で移る(#324)。** #136 ではボタンだけだった(ライブラリは最後のページより先へ進む操作を外へ渡さない。
+- **次の巻へはヘッダーのボタンと「最後の画面からさらに進む」の両方で、前の巻へは「先頭画面からさらに戻る」で移る(#324, #338)。** #136 ではボタンだけだった(ライブラリは端より先・前へ進む操作を外へ渡さない。
   `onComplete` は最後の画面に着いた時点で呼ばれ、そこで移動すると最後のページを読めない)が、利用者はボタンに気づかず「動いていない」と受け取った。
-  `watchPastEnd()` が、生成したインスタンスの内部メソッド 2 つを包んで拾う: キー・ホイール・スワイプ・ズーム中の端の引っ張りは `_goNext`、タップは `_navigateTo(今 + 1)`
-  (タップだけ `_goNext` を通らないので両方要る)。ライブラリのソースは変えていない。内部名に頼るので、形が違えば何もせず(ボタンは残る)、
-  固定したコミットを替えて形が変わったら `realViewer.test.ts` が落ちる。**最後の画面に着いてから 500ms(`PAST_END_SETTLE_MS`)以内の「さらに進む」は数えない。**
-  ホイール・トラックパッドの慣性や連打で、最後のページを見る前に次の巻へ飛ぶため。続きから読むかの確認が出ている間も移らない。
-  次巻がオフラインなら理由を出し、次巻が無ければ何もしない
+  `watchVolumeEdges()` が、生成したインスタンスの内部メソッド 4 つを包んで拾う: キー・ホイール・ズーム中の端の引っ張りは `_goNext` / `_goPrev`、タップは `_navigateTo(今 ± 1)`、
+  通常のスワイプ・マウスドラッグは `_endDrag`(#338。通常スワイプは `_goNext` / `_goPrev` を通らず `_endDrag` で `_slotForDrag` が `null` のときに何もせず閉じるため、ドラッグ量としきい値・向きから端スワイプを判定する)。
+  ライブラリのソースは変えていない。内部名に頼るので、形が違えば何もせず(次巻ボタンは残る)、
+  固定したコミットを替えて形が変わったら `realViewer.test.ts` が落ちる。**端の画面に着いてから 500ms(`PAST_END_SETTLE_MS`)以内の操作は数えない。**
+  ホイール・トラックパッドの慣性や連打で、端のページを見る前に別巻へ飛ぶため(スワイプで端に着いたときも `arrived` を更新する)。続きから読むかの確認が出ている間も移らない。
+  移動先がオフラインなら理由を出し、無ければ何もしない
 - **ページスライダーは軌道 12px・つまみ 32px・押せる高さ 44px にする(#324)。** ライブラリの既定(軌道 6〜8px・つまみ 18〜22px)はタブレットで押しにくいという利用者の報告。
   `styles.css` は Shadow DOM に届かず、ライブラリに大きさのオプションも無いので、`enlargeSlider()` が生成後の Shadow DOM へ `<style>` を 1 つ足す。
   ライブラリ自身の規則(メディアクエリの中を含む)に勝つよう、セレクタはクラスを重ねて詳細度を上げてある。入力欄の背景だった軌道は疑似要素へ移した

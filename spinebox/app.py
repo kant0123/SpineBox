@@ -575,6 +575,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
     def _get_novel(conn, volume_id: int) -> dict:
         with books.open(conn, volume_id) as book:
             row = get_volume_row(conn, volume_id)
+            prev_vol, next_vol = works.adjacent_volumes(conn, volume_id)
             return {
                 "id": volume_id,
                 "title": row["title"],
@@ -588,7 +589,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "parent_id": row["parent_id"],
                 "volume_number": _number(row),
                 "work_id": works.work_id_of(conn, volume_id),
-                "next_volume": works.next_volume(conn, volume_id),
+                "prev_volume": prev_vol,
+                "next_volume": next_vol,
                 "findings": [],
             }
 
@@ -603,6 +605,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 if library.register_analysis(conn, vol):
                     _sync_works(conn)  # 中の巻(子)が現れた
                 row = get_volume_row(conn, volume_id)
+                prev_vol, next_vol = works.adjacent_volumes(conn, volume_id)
                 return {
                     "id": volume_id,
                     "title": row["title"],
@@ -614,7 +617,8 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                     "parent_id": row["parent_id"],
                     "volume_number": _number(row),
                     "work_id": works.work_id_of(conn, volume_id),
-                    "next_volume": works.next_volume(conn, volume_id),
+                    "prev_volume": prev_vol,
+                    "next_volume": next_vol,
                     "findings": compute_findings(conn, [row["source_id"]]).get(volume_id, []),
                 }
         except VolumeUnreadable:
