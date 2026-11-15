@@ -27,7 +27,7 @@ related: [overview, backend, frontend, archive-reading, manga-reader]
 | `spinebox/novel/epub.py:164 open_book()` | EPUB の解析。参照の解決は `resolve_href()`、XML は `parse_xml()`(実体宣言を拒む) |
 | `spinebox/novel/sanitize.py:185 sanitize_html()` | サーバー側の無害化(1 段目) |
 | `spinebox/novel/text.py:24 decode_text()` | 文字コード判定。分割は `split_sections()`、青空文庫形式のルビは `line_to_html()` |
-| `frontend/src/novel/NovelReader.tsx:61 NovelReader()` | リーダー。行の位置の測り方は `measureColumns()` |
+| `frontend/src/novel/NovelReader.tsx:80 NovelReader()` | リーダー。行の位置の測り方は `measureColumns()` |
 | `frontend/src/novel/pagination.ts:40 pageStarts()` | ページの切れ目・位置の換算・ページ送りの純粋関数 |
 | `frontend/src/novel/sanitize.ts:58 sanitizeFragment()` | ブラウザ側の無害化(2 段目) |
 
@@ -76,6 +76,7 @@ container.xml・OPF は 4 MiB、本文 1 つは 16 MiB を上限にして読む�
   文字サイズ・画面幅が変わったら、同じ割合を含むページを開き直す。ページ番号は保存しない(端末・文字サイズで変わるため)
 - 全体の進み具合(メニューの %)は区切りの長さ(テキストは文字数、EPUB は本文の展開後のバイト数)で重み付けする
 - 行の高さは文字サイズの 2 倍(`LINE_HEIGHT`)。ルビ(0.5em)が行間に収まる大きさ
+- **UI は漫画リーダー([[manga-reader]])に統一している(#333)。** ヘッダー(戻るアイコンボタン・タイトル・★ブックマーク・次の巻へ・全画面・ヘルプ)・フッター(区切り番号/%・太いスライダー・文字サイズ/最初へ/文字コード)・フェードアニメーション・ライト/ダーク配色・ヘルプモーダル(`<dialog closedby="any">`)を `manga-viewer` の構成と配色に揃えている(しおりはページ番号が文字サイズで変わるため小説には置かない)
 
 ## 決めたこと(却下した代替案)
 

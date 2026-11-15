@@ -26,7 +26,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
-| `frontend/src/novel/NovelReader.tsx:61 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
+| `frontend/src/novel/NovelReader.tsx:80 NovelReader()` | 小説(`format` が `epub` / `text`)の縦書きリーダー。`Reader()` が巻情報を取った後に切り替える([[novel-reader]]) |
 | `frontend/src/reader/loadError.ts:4 volumeErrorMessage()` | 巻情報の取得失敗(404 / 409 / 422 / 接続不可)の文言 |
 | `frontend/src/reader/progressSaver.ts:10 createProgressSaver()` | 読書位置の送信のデバウンス |
 | `frontend/src/review/Review.tsx:16 Review()` | 確認(`#/review/<tab>`。#207)。タブは公開DBの候補(`links`、`frontend/src/review/ReviewLinks.tsx:75 ReviewLinks()`)・統合の提案(`WorkProposals` の `embedded`)・重複の候補(`Duplicates` の `embedded`)。件数はサイドバーの「確認」のバッジと共通の `frontend/src/review/reviewCounts.tsx:14 ReviewCountsProvider()`(`GET /api/review/counts`) |
@@ -149,7 +149,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **公開 DB の値は項目ごとに出所を出す。** 「公開データベース: 国立国会図書館サーチ(確信度 100%)」「手動で編集」など。確認待ちの候補は「これを採用」を押すまで反映しない(候補は種別・出版社・巻数・一致度つきで、同じ名前の漫画と小説を見分けられるように採用ボタンの名前にも種別を入れる)。
   取得元が落ちているときは理由を出し「すでに入っている値はそのまま」と添える。NDL の候補を選んで種別が決まったら、保留だった取得元を保存済みの応答で連携し直す(通信は出ない)。国立国会図書館サーチの利用明示のため、作品の一覧と作品ページの末尾に利用元を出す([[metadata-sources]])
 - **ホーム(`#/`)は作品の一覧。** 巻の一覧(`#/volumes`)は廃止し、ホームへ戻る。#85 までは `#/` が巻の一覧だったので、整理の画面と、リーダーの読み込み待ち・取得失敗の「一覧へ」(`libraryHref`)はホームへ戻る。
-  巻を開いた後のリーダーの戻る(漫画の「<」・小説のメニューの「‹ 作品へ」)は、その巻の作品のタイトル一覧へ戻る(#324。`readerBackHref()`。作品に割り当てられていない巻はホーム)。`#/works` もホームと同じ画面
+  巻を開いた後のリーダーの戻る(漫画・小説ともヘッダーの戻るアイコンボタン)は、その巻の作品のタイトル一覧へ戻る(#324, #333。`readerBackHref()`。作品に割り当てられていない巻はホーム)。`#/works` もホームと同じ画面
 - **作品カードは「タイトル一覧」(`#/works/<id>/titles`)へ、管理はそこから(#105)。** カードの行き先を作品ページから分け、まずその作品の巻を番号順に並べる。「作品を管理」ボタンで今までカードから開いていた `#/works/<id>`(作品名・著者・巻の割り当て・統合)へ移る。
   管理ページの URL を変えないのは、ブックマーク・フォロー・統合の提案・整理の履歴からの既存のリンクをそのまま使うため。作品ページの戻り先は「タイトル一覧へ」にした
 - **タイトル一覧の行の名前は「作品名 第N巻」にそろえ、ファイル名を出さない(#115)。** 同じ作品でも巻の名前は元のファイル名のまま(英字・作者の括弧・アンダースコア)で揺れ、並べても同じ本の巻に見えない。補完済みの作品名(`work.title`)と巻番号から作り、番号の無い巻だけ元の名前を残す(作品名だけでは見分けられない)。

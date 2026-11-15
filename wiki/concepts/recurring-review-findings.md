@@ -129,6 +129,7 @@ push 前に確かめること:
 - PR #331 — `spinebox/organize/organizer.py _plan_range_cbz()` — 画像だけの EPUB をスキャン時に `format='epub_images'`(読書位置 `page` は 0 始まりの画像ページ番号)として扱うようにした際、範囲指定の CBZ 化で `r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES)` の両方に無条件で `epub_sections` を付けたため、1 区切りに複数画像がある `epub_images` の巻で CBZ 化・undo 時にページ番号が区切り番号として誤変換され、undo 時に `position = 0` が書き込まれた(agy レビューの WARNING。`r["format"] == FORMAT_EPUB` のときだけ `epub_sections` を付けるように修正し、1 区切り 2 画像のテストを足した)
 - PR #331 — `spinebox/library.py Library.open()` / `spinebox/scanner.py Scanner._replace_volumes()` — 範囲指定の CBZ 化では `format='epub'` の読書位置(区切り番号)を画像ページ番号へ換算していたのに、通常閲覧・再スキャンで `format='epub'` から `format='epub_images'` へ切り替える経路では `position = NULL` にするのみで `page` を区切り番号のまま残し、また `epub.image_pages()` ではテキスト判定でコメント・`<script>/<style>` を除いたのに画像抽出は除去前の生文字列に対して行って `data-src` も拾いうる正規表現にしていた(agy レビューの WARNING。`upgrade_epub_progress()` で区切り番号から画像ページ番号へ換算し、`image_pages()` の画像抽出も除去後の文字列と属性境界ガードに揃えてテストを足した)
 - PR #331 — `spinebox/organize/organizer.py _rename_ineligible()` / `_plan_range_cbz()` / `spinebox/organize/intake.py Intake.evaluate()` — 拡張子が `.cbz` で中身が EPUB(`container.xml` あり、`format='epub_images'` / `'epub'`)の巻について、1 巻 = 1 CBZ の判定が拡張子 `.cbz` だけ(または `not novel` だけ)を見て `r["format"]` を見ておらず、改名・移動の対象外にならず範囲指定の CBZ 化でも `conversion=False` 側に振り分けられていた(agy レビューの WARNING。`not r["format"]` を必須にして修正し、`.cbz` 拡張子の EPUB 巻のテストを足した)
+- PR #339 — `frontend/src/novel/NovelReader.tsx novelKeyAction()` — ヘルプモーダルに「Esc / M: メニュー」と記載したのに `novelKeyAction()` に `m` / `M` キーの分岐が無く、テストも `Escape` のみ確認していた(agy レビューの WARNING。`m` / `M` で `"menu"` を返す分岐とテストを追加)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
@@ -557,3 +558,15 @@ push 前に確かめること:
 実例:
 
 - PR #303 — `spinebox/thumbs.py:190 are_built()` — `row is not None and self.store.contains(...)` が `row is None` のとき `_key()` の例外を飛ばし、`include_unavailable=False` でも `{vid: False}` を返した(存在しない id で再現し、`raise VolumeNotFound(vid)` に修正)
+
+### base レイヤーのフォーカスリング(二重輪郭)を、コンポーネントの単色 outline で上書きしている
+
+`@layer base` の `:focus-visible` が黒 4px + 黄 2px の二重リングでライト/ダーク両方の背景に対するコントラストを保っているのに、新しいコンポーネント側で `outline: 2px solid var(--focus-ring)` のような黄単色を指定して上書きしてしまう。ライトモードの明るい背景上では黄色の輪郭が溶けて視認性が著しく落ちる。
+
+push 前に確かめること:
+
+- `:focus-visible` に新しい `outline` を書くとき、`@layer base` の二重リングで不足する理由があるか。不要なら書かず、書く場合もライト/ダーク両背景で 3:1 以上のコントラストが保たれているか
+
+実例:
+
+- PR #339 — `frontend/src/styles.css` 小説リーダーのボタン・スライダー — `.novel-header-btn:focus-visible` 等と `.novel-slider:focus-visible` に黄単色の `outline` を書き、ライトモードの明るいヘッダー・フッター上で視認性が落ちていた(agy レビューの WARNING。上書きを削除して `@layer base` の二重リングを使うように修正)
