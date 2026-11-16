@@ -162,3 +162,68 @@ export function watchVolumeEdges(
 export function watchPastEnd(viewer: unknown, onPastEnd: () => void, now: () => number = () => Date.now()): boolean {
   return watchVolumeEdges(viewer, { onNext: onPastEnd }, now);
 }
+
+/** 今のスロットの前後、この数のスロットまでページ画像を持つ(#343) */
+export const IMAGE_KEEP_SLOTS = 3;
+/** 外した画像の URL の控え。近づいたら `src` へ戻す */
+export const PARKED_SRC_ATTR = "data-spinebox-src";
+
+interface ImageWindowInternals {
+  _preloadNearby?: () => void;
+  _currentSlotIndex?: number;
+  _slotTrack?: { querySelectorAll?: unknown };
+}
+
+/**
+ * 今のスロットから離れたページの画像を手放す(#343)。
+ * ライブラリは全ページぶんの `<img src>` を作って持ち続けるので、長い巻ではデコード済みの画像がたまり、
+ * タブレットのブラウザがメモリ不足でページごと読み直す(読み直すたびに「続きから読みますか?」が出る)。
+ * 離れたスロットの `src` を控えへ移して外し、近づいたら戻す。ライブラリがページ移動・スロットの作り直しのたびに
+ * 呼ぶ `_preloadNearby` を包んで、その直前に行う(戻した画像はそのまま先読みの対象になる)。
+ * 内部の形が変わっていたら何もせず false を返す(画像は従来どおり全部持つ)。
+ */
+export function windowPageImages(viewer: unknown, keep: number = IMAGE_KEEP_SLOTS): boolean {
+  const v = viewer as ImageWindowInternals;
+  const preloadNearby = v._preloadNearby;
+  if (
+    typeof preloadNearby !== "function"
+    || typeof v._currentSlotIndex !== "number"
+    || typeof v._slotTrack?.querySelectorAll !== "function"
+  ) {
+    return false;
+  }
+
+  const apply = () => {
+    const track = v._slotTrack as unknown as ParentNode | undefined;
+    const current = v._currentSlotIndex;
+    if (!track || typeof current !== "number") return;
+    track.querySelectorAll<HTMLElement>(".mv-page-slot[data-slot]").forEach((slot) => {
+      const index = Number(slot.dataset.slot);
+      if (!Number.isInteger(index)) return;
+      const near = Math.abs(index - current) <= keep;
+      slot.querySelectorAll("img").forEach((img) => {
+        const parked = img.getAttribute(PARKED_SRC_ATTR);
+        if (near) {
+          if (parked === null) return;
+          img.setAttribute("src", parked);
+          img.removeAttribute(PARKED_SRC_ATTR);
+        } else if (parked === null) {
+          const src = img.getAttribute("src");
+          if (!src) return;
+          img.setAttribute(PARKED_SRC_ATTR, src);
+          img.removeAttribute("src");
+          // ライブラリが付けた「先読み済み・デコード済み」の印も外す(戻したときにもう一度対象になるように)
+          delete img.dataset.preloaded;
+          delete img.dataset.mvDecoded;
+        }
+      });
+    });
+  };
+
+  v._preloadNearby = function (this: unknown) {
+    apply();
+    preloadNearby.call(this);
+  };
+  apply();
+  return true;
+}

@@ -6,7 +6,7 @@ import { loadSettings } from "../settings";
 import { useTheme } from "../shell/theme";
 import { nextVolumeStep, prevVolumeStep, type NextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
-import { enlargeSlider, watchVolumeEdges } from "./viewerHooks";
+import { enlargeSlider, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 /** しおり(ページの目印)の API。ブックマーク(巻・作品の目印 #86)とは別の機能 */
 export const PAGE_MARKS_API = "/api/page-marks";
@@ -162,6 +162,8 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
     ready = true;
     paintVolumeBookmark(host.shadowRoot, bookmarked);
     enlargeSlider(host.shadowRoot);
+    // 離れたページの画像を手放す(長い巻でタブレットのメモリが尽き、ページごと読み直されるのを防ぐ。#343)
+    windowPageImages(viewer);
     // 続きから読むか選ぶ前の操作では移らない
     watchVolumeEdges(viewer, {
       onNext: () => !resumeDialogOpen() && goVolume(nextStep),

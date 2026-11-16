@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MangaViewer from "@tokagemushi/manga-viewer";
 import { progressKey } from "./MangaReader";
-import { PAST_END_SETTLE_MS, watchVolumeEdges } from "./viewerHooks";
+import { IMAGE_KEEP_SLOTS, PAST_END_SETTLE_MS, PARKED_SRC_ATTR, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -83,6 +83,55 @@ describe("実物の manga-viewer の先頭・最後の画面", () => {
       inner._moveDrag(200);
       inner._endDrag();
       expect(onNext).toHaveBeenCalledTimes(3);
+    } finally {
+      viewer.destroy();
+      host.remove();
+    }
+  });
+});
+
+// 離れたページの画像を手放す結線(#343)もライブラリの内部(_preloadNearby・_slotTrack・data-slot)に頼る
+describe("実物の manga-viewer のページ画像", () => {
+  it("今のスロットの近くだけが src を持ち、移動・スロットの作り直しで入れ替わる", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const pages = Array.from({ length: 40 }, (_, i) => `/api/volumes/77/pages/${i}`);
+    const viewer = new MangaViewer({ container: host, pages, direction: "rtl" });
+    const inner = viewer as unknown as {
+      _slots: unknown[];
+      _currentSlotIndex: number;
+      _navigateTo(i: number): void;
+      _renderSlots(): void;
+      goToPage(n: number): void;
+    };
+    const imgs = () => [...host.shadowRoot!.querySelectorAll<HTMLImageElement>(".mv-page-slot img")];
+    const slotOf = (img: HTMLImageElement) => Number(img.closest<HTMLElement>(".mv-page-slot")!.dataset.slot);
+    const check = () => {
+      const all = imgs();
+      expect(all).toHaveLength(pages.length);
+      for (const img of all) {
+        const near = Math.abs(slotOf(img) - inner._currentSlotIndex) <= IMAGE_KEEP_SLOTS;
+        expect(img.hasAttribute("src")).toBe(near);
+        expect(img.hasAttribute(PARKED_SRC_ATTR)).toBe(!near);
+      }
+      // 外した URL は控えに残り、どのページも失われない
+      const urls = all.map((img) => img.getAttribute("src") ?? img.getAttribute(PARKED_SRC_ATTR)).sort();
+      expect(urls).toEqual([...pages].sort());
+    };
+    try {
+      expect(imgs().every((img) => img.hasAttribute("src"))).toBe(true); // ライブラリの既定は全ページ
+      expect(windowPageImages(viewer)).toBe(true);
+      check();
+      expect(imgs().filter((img) => img.hasAttribute("src")).length).toBeLessThan(pages.length / 2);
+
+      inner._navigateTo(inner._slots.length - 1); // 末尾へ
+      check();
+      inner.goToPage(15); // スライダー・再開での移動
+      check();
+      inner._renderSlots(); // 向きの切替ではスロットを作り直す(画像は全部 src つきで作られる)
+      check();
     } finally {
       viewer.destroy();
       host.remove();
