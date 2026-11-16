@@ -6,7 +6,7 @@ import { loadSettings } from "../settings";
 import { useTheme } from "../shell/theme";
 import { nextVolumeStep, prevVolumeStep, type NextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
-import { enlargeSlider, watchVolumeEdges, windowPageImages } from "./viewerHooks";
+import { enlargeSlider, setupAdaptiveSpreads, watchVolumeEdges, windowPageImages, type AdaptiveSpreadController } from "./viewerHooks";
 
 /** しおり(ページの目印)の API。ブックマーク(巻・作品の目印 #86)とは別の機能 */
 export const PAGE_MARKS_API = "/api/page-marks";
@@ -15,6 +15,7 @@ export const progressKey = (id: string) => `spinebox.progress.${id}`;
 
 const VOLUME_BOOKMARK_CLASS = "spinebox-volume-bookmark";
 const NEXT_VOLUME_CLASS = "spinebox-next-volume";
+const SPLIT_TOGGLE_CLASS = "spinebox-split-toggle";
 
 const svg = (path: string) =>
   `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
@@ -23,6 +24,8 @@ const ICON_STAR_OFF = svg(
 );
 const ICON_STAR_ON = svg("M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z");
 const ICON_NEXT_VOLUME = svg("M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z");
+const ICON_SPLIT_ON = svg("M3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2zm8 0v14H5V5h6zm2 14V5h6v14h-6z");
+const ICON_SPLIT_OFF = svg("M3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2zm16 14H5V5h14v14z");
 
 /** しおりの文言は「ブックマーク」と紛らわしいので、SpineBox では「しおり」と呼ぶ */
 const MESSAGES = { bookmarkAdd: " 現在のページにしおりを挟む" };
@@ -36,6 +39,16 @@ function paintVolumeBookmark(root: ShadowRoot | null | undefined, on: boolean) {
   btn.setAttribute("aria-label", label);
   btn.setAttribute("aria-pressed", String(on));
   btn.innerHTML = on ? ICON_STAR_ON : ICON_STAR_OFF;
+}
+
+/** 見開き画像の分割表示ボタンを今の状態に合わせる */
+function paintSplitToggle(root: ShadowRoot | null | undefined, enabled: boolean, visible: boolean) {
+  const btn = root?.querySelector<HTMLButtonElement>(`.${SPLIT_TOGGLE_CLASS}`);
+  if (!btn) return;
+  btn.hidden = !visible;
+  btn.setAttribute("aria-pressed", String(enabled));
+  btn.title = enabled ? "見開き画像を分割表示中（全体表示に切り替え）" : "見開き画像を全体表示中（分割表示に切り替え）";
+  btn.innerHTML = enabled ? ICON_SPLIT_ON : ICON_SPLIT_OFF;
 }
 
 /**
@@ -123,6 +136,7 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
       if ("href" in step) window.location.hash = step.href;
       else setNotice(step.notice);
     };
+    let adaptive: AdaptiveSpreadController | null = null;
     if (nextStep) {
       headerButtons.push({
         icon: ICON_NEXT_VOLUME,
@@ -131,6 +145,18 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
         onClick: () => goVolume(nextStep),
       });
     }
+    headerButtons.push({
+      icon: ICON_SPLIT_ON,
+      label: "見開き画像を分割して表示",
+      ariaLabel: "見開き画像を分割して表示",
+      className: SPLIT_TOGGLE_CLASS,
+      onClick: () => {
+        if (!adaptive?.active) return;
+        const next = adaptive.toggleSplit();
+        paintSplitToggle(host.shadowRoot, next, adaptive.canToggleSplit());
+        setNotice(next ? "見開き画像を分割して表示します" : "見開き画像を全体表示します");
+      },
+    });
     headerButtons.push("fullscreen", "help"); // 共有・リンクコピーは LAN 内のアプリなので出さない
 
     const viewer = new MangaViewer({
@@ -162,6 +188,12 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
     ready = true;
     paintVolumeBookmark(host.shadowRoot, bookmarked);
     enlargeSlider(host.shadowRoot);
+    adaptive = setupAdaptiveSpreads(viewer, {
+      onStateChange: () => {
+        if (adaptive) paintSplitToggle(host.shadowRoot, adaptive.isSplitEnabled(), adaptive.canToggleSplit());
+      },
+    });
+    paintSplitToggle(host.shadowRoot, adaptive.isSplitEnabled(), adaptive.canToggleSplit());
     // 離れたページの画像を手放す(長い巻でタブレットのメモリが尽き、ページごと読み直されるのを防ぐ。#343)
     windowPageImages(viewer);
     // 続きから読むか選ぶ前の操作では移らない
@@ -178,6 +210,7 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
     return () => {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVisibility);
+      adaptive?.destroy();
       flush();
       viewer.destroy();
     };

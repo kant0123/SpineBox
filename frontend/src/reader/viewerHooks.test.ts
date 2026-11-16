@@ -1,6 +1,6 @@
 // manga-viewer へ外から足す結線(#324, #338): スライダーの見た目と、先頭・最後の画面からさらに前後へ進む操作の検出
 import { describe, expect, it, vi } from "vitest";
-import { PAST_END_SETTLE_MS, PARKED_SRC_ATTR, SLIDER_STYLE_ATTR, enlargeSlider, watchPastEnd, watchVolumeEdges, windowPageImages } from "./viewerHooks";
+import { PAST_END_SETTLE_MS, PARKED_SRC_ATTR, SLIDER_STYLE_ATTR, enlargeSlider, setupAdaptiveSpreads, watchPastEnd, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 /** ライブラリと同じ形の最小の偽物: _goNext / _goPrev は端で何もしない、_navigateTo は範囲外を無視する */
 function fakeViewer(slots: number, at = 0, direction: "rtl" | "ltr" = "rtl") {
@@ -210,5 +210,62 @@ describe("windowPageImages", () => {
     const { v, withSrc } = build(10);
     expect(windowPageImages({ ...v, _currentSlotIndex: undefined })).toBe(false);
     expect(withSrc()).toHaveLength(10);
+  });
+});
+
+describe("setupAdaptiveSpreads", () => {
+  it("内部の形が違えば active: false のコントローラを返す", () => {
+    const ctrl = setupAdaptiveSpreads({});
+    expect(ctrl.active).toBe(false);
+    expect(ctrl.toggleSplit()).toBe(false);
+    expect(ctrl.canToggleSplit()).toBe(false);
+    expect(() => ctrl.destroy()).not.toThrow();
+  });
+
+  it("ドラッグ中の画像ロードは _endDrag の後までスロット再構築を遅延する", () => {
+    const track = document.createElement("div");
+    const slot0 = document.createElement("div");
+    slot0.className = "mv-page-slot";
+    slot0.dataset.slot = "0";
+    slot0.innerHTML = '<div class="mv-zoom-container" data-zoom-slot="0"><img src="/p/0"></div>';
+    const slot1 = document.createElement("div");
+    slot1.className = "mv-page-slot";
+    slot1.dataset.slot = "1";
+    slot1.innerHTML = '<div class="mv-zoom-container" data-zoom-slot="1"><img src="/p/1"></div>';
+    track.append(slot0, slot1);
+
+    const v = {
+      _buildSlots() {},
+      _renderSlots() {},
+      _updateUI() {},
+      _checkOrientation() {},
+      _endDrag() { this._isDragging = false; },
+      _updateTrackPosition() {},
+      _preloadNearby() {},
+      _slotTrack: track,
+      _slots: [{ pages: [0], spread: false }, { pages: [1], spread: false }],
+      _pages: [{ type: "image" }, { type: "image" }],
+      _spreadMode: false,
+      _isDragging: true,
+      _currentSlotIndex: 0,
+      _totalPages: 2,
+      opts: { direction: "rtl", firstPageSingle: true, lastPageAlign: "start" },
+    };
+
+    const ctrl = setupAdaptiveSpreads(v);
+    expect(ctrl.active).toBe(true);
+    const img1 = slot1.querySelector("img")!;
+    Object.defineProperty(img1, "naturalWidth", { configurable: true, value: 2000 });
+    Object.defineProperty(img1, "naturalHeight", { configurable: true, value: 1400 });
+    img1.dispatchEvent(new Event("load"));
+
+    // ドラッグ中はまだ 2 スロットのまま
+    expect(v._slots).toHaveLength(2);
+    expect(ctrl.canToggleSplit()).toBe(true);
+
+    // _endDrag 後に 3 スロット([0], [1 right], [1 left])へ反映される
+    v._endDrag();
+    expect(v._slots).toHaveLength(3);
+    ctrl.destroy();
   });
 });

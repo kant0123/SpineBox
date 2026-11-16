@@ -187,7 +187,7 @@ describe("manga-viewer に渡す設定", () => {
 
   it("ヘッダーのボタンは共有・リンクコピーを含めない", async () => {
     const { opts } = await opened("3"); // 次巻なし
-    expect(opts.headerButtons!.map(nameOf)).toEqual(["back", "bookmark", "spinebox-volume-bookmark", "fullscreen", "help"]);
+    expect(opts.headerButtons!.map(nameOf)).toEqual(["back", "bookmark", "spinebox-volume-bookmark", "spinebox-split-toggle", "fullscreen", "help"]);
   });
 
   it("戻るは巻の作品のタイトル一覧へ移る(#324)", async () => {
