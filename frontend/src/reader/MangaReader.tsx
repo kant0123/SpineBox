@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import MangaViewer, { type HeaderButton } from "@tokagemushi/manga-viewer";
+import MangaViewer, { type HeaderButton, type MangaPage } from "@tokagemushi/manga-viewer";
 import { api, type VolumeDetail } from "../api";
 import { readerBackHref } from "../route";
 import { loadSettings } from "../settings";
 import { useTheme } from "../shell/theme";
 import { nextVolumeStep, prevVolumeStep, type NextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
-import { enlargeSlider, watchVolumeEdges, windowPageImages } from "./viewerHooks";
+import { blankPages, canWindowImages, enlargeSlider, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 /** しおり(ページの目印)の API。ブックマーク(巻・作品の目印 #86)とは別の機能 */
 export const PAGE_MARKS_API = "/api/page-marks";
@@ -133,9 +133,10 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
     }
     headerButtons.push("fullscreen", "help"); // 共有・リンクコピーは LAN 内のアプリなので出さない
 
-    const viewer = new MangaViewer({
+    const urls = detail.pages.map((p) => api.pageUrl(id, p.index));
+    const build = (pages: MangaPage[]) => new MangaViewer({
       container: host,
-      pages: detail.pages.map((p) => api.pageUrl(id, p.index)),
+      pages,
       direction: "rtl",
       firstPageSingle: loadSettings().coverAlone,
       title: detail.title,
@@ -159,11 +160,15 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
         track();
       },
     });
+    // ページ画像は今のスロットの近くにだけ持たせる(長い巻でタブレットのメモリが尽き、ページごと読み直されるのを防ぐ。#343)。
+    // ライブラリには URL なしのページを渡し、近くのスロットにだけ windowPageImages が URL を付ける。
+    // ライブラリの内部の形が違うときは、従来どおり URL つきのページを渡す(同じ host には作り直せないので、作る前に決める)
+    const windowed = canWindowImages(MangaViewer);
+    const viewer = build(windowed ? blankPages(urls.length) : urls);
+    if (windowed && !windowPageImages(viewer, urls)) setNotice("ページの画像を表示できませんでした");
     ready = true;
     paintVolumeBookmark(host.shadowRoot, bookmarked);
     enlargeSlider(host.shadowRoot);
-    // 離れたページの画像を手放す(長い巻でタブレットのメモリが尽き、ページごと読み直されるのを防ぐ。#343)
-    windowPageImages(viewer);
     // 続きから読むか選ぶ前の操作では移らない
     watchVolumeEdges(viewer, {
       onNext: () => !resumeDialogOpen() && goVolume(nextStep),
