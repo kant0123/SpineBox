@@ -9,6 +9,7 @@ function mockApi(): Plugin {
   const backend = createMockBackend(undefined, {
     firstOpenDelayMs: 4000,
     failures: { "too-big": { status: 422, detail: "この巻を読めません: キャッシュの上限(2147483648 バイト)より大きい: 3221225472 バイト" } },
+    spreadVolumeIds: [6],
   });
   return {
     name: "spinebox-mock-api",

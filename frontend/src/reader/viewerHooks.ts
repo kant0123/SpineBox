@@ -1,5 +1,15 @@
-// manga-viewer(Shadow DOM に描く外部ライブラリ)へ、オプションでは届かない 2 点を外から足す(#324)。
+// manga-viewer(Shadow DOM に描く外部ライブラリ)へ、オプションでは届かない結線を外から足す(#324, #347)。
 // ライブラリのソースは改変しない。固定したコミットの内部名に頼るので、外れたら realViewer.test.ts が落ちる。
+import {
+  buildAdaptiveSlots,
+  computeDisplayProgress,
+  findSlotForAnchor,
+  formatPageDisplay,
+  isLandscapeAspect,
+  slotKey,
+  type AdaptiveSlot,
+  type SlotHalf,
+} from "./spreadPages";
 
 /** ページスライダーの見た目の差し替え。ライブラリの既定は軌道 6〜8px・つまみ 18〜22px で、タブレットで押しにくい */
 export const SLIDER_STYLE_ATTR = "data-spinebox-slider";
@@ -253,4 +263,416 @@ export function windowPageImages(viewer: unknown, urls: readonly string[], keep:
   };
   apply();
   return true;
+}
+
+export const SPLIT_STYLE_ATTR = "data-spinebox-split";
+const SPLIT_CSS = `
+.mv-zoom-container.sb-split-container {
+  container-type: size;
+}
+.mv-page-slot img.sb-split-half {
+  width: min(100cqw, calc(100cqh * var(--sb-half-ar, 0.707)));
+  height: min(100cqh, calc(100cqw / var(--sb-half-ar, 0.707)));
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+}
+.mv-page-slot img.sb-split-right {
+  object-position: 100% 50%;
+}
+.mv-page-slot img.sb-split-left {
+  object-position: 0% 50%;
+}
+.mv-header-btn.spinebox-split-toggle[hidden] {
+  display: none;
+}
+.mv-header-btn.spinebox-split-toggle[aria-pressed="true"] {
+  color: #facc15;
+}
+:host(.mv-theme-light) .mv-header-btn.spinebox-split-toggle[aria-pressed="true"] {
+  color: #b45309;
+}
+@media (max-width: 768px) {
+  :host(:not(.mv-theme-dark)) .mv-header-btn.spinebox-split-toggle[aria-pressed="true"] {
+    color: #b45309;
+  }
+}
+`;
+
+export interface AdaptiveSpreadOptions {
+  initialSplitEnabled?: boolean;
+  onStateChange?: () => void;
+}
+
+export interface AdaptiveSpreadController {
+  active: boolean;
+  toggleSplit(): boolean;
+  isSplitEnabled(): boolean;
+  canToggleSplit(): boolean;
+  destroy(): void;
+}
+
+interface AdaptiveViewerInternals {
+  _buildSlots?: () => void;
+  _renderSlots?: () => void;
+  _updateUI?: () => void;
+  _checkOrientation?: () => void;
+  _endDrag?: () => void;
+  _updateTrackPosition?: (animate?: boolean) => void;
+  _preloadNearby?: () => void;
+  _createPageNode?: (pageIdx: number, loadingAttr: string) => HTMLElement;
+  resetZoom?: () => void;
+  _slotTrack?: HTMLElement;
+  _slots?: AdaptiveSlot[];
+  _pages?: Array<{ type?: string }>;
+  _spreadMode?: boolean;
+  _isDragging?: boolean;
+  _currentZoom?: number;
+  _currentSlotIndex?: number;
+  _totalPages?: number;
+  _currentPageEl?: HTMLElement;
+  _progressEl?: HTMLElement;
+  _slider?: HTMLInputElement;
+  _liveRegion?: HTMLElement;
+  shadowRoot?: ShadowRoot | null;
+  opts?: {
+    direction?: string;
+    firstPageSingle?: boolean;
+    lastPageAlign?: string;
+    viewMode?: string;
+  };
+}
+
+const NOOP_CONTROLLER: AdaptiveSpreadController = {
+  active: false,
+  toggleSplit: () => false,
+  isSplitEnabled: () => false,
+  canToggleSplit: () => false,
+  destroy: () => {},
+};
+
+/**
+ * 見開きスキャン画像(横長画像)の縦画面左右分割と横画面単独表示を外から結線する(#347)。
+ * 内部の形が変わっていたら何もせず active: false のコントローラを返す。
+ */
+export function setupAdaptiveSpreads(
+  viewer: unknown,
+  options: AdaptiveSpreadOptions = {},
+): AdaptiveSpreadController {
+  const v = viewer as AdaptiveViewerInternals;
+  const origBuildSlots = v._buildSlots;
+  const origRenderSlots = v._renderSlots;
+  const origUpdateUI = v._updateUI;
+  const origCheckOrientation = v._checkOrientation;
+  const origEndDrag = v._endDrag;
+  const origUpdateTrack = v._updateTrackPosition;
+
+  if (
+    typeof origBuildSlots !== "function"
+    || typeof origRenderSlots !== "function"
+    || typeof origUpdateUI !== "function"
+    || typeof origCheckOrientation !== "function"
+    || typeof origEndDrag !== "function"
+    || typeof origUpdateTrack !== "function"
+    || typeof v._preloadNearby !== "function"
+    || !v._slotTrack
+    || !Array.isArray(v._slots)
+    || !Array.isArray(v._pages)
+    || typeof v._currentSlotIndex !== "number"
+    || typeof v._totalPages !== "number"
+  ) {
+    return NOOP_CONTROLLER;
+  }
+
+  const track = v._slotTrack;
+  const root = v.shadowRoot;
+  if (root && !root.querySelector(`style[${SPLIT_STYLE_ATTR}]`)) {
+    const style = document.createElement("style");
+    style.setAttribute(SPLIT_STYLE_ATTR, "");
+    style.textContent = SPLIT_CSS;
+    root.appendChild(style);
+  }
+
+  const nonImageIndices = new Set<number>();
+  v._pages.forEach((p, idx) => {
+    if (p?.type === "adsense" || p?.type === "purchase") nonImageIndices.add(idx);
+  });
+
+  const pageAspects = new Map<number, number>();
+  let splitEnabled = options.initialSplitEnabled ?? true;
+  let hasSplittableWidePage = false;
+  let pendingSync = false;
+
+  const getDir = (): "rtl" | "ltr" => (v.opts?.direction === "ltr" ? "ltr" : "rtl");
+  const getLastAlign = (): "center" | "start" | "end" => {
+    const a = v.opts?.lastPageAlign;
+    return a === "center" || a === "end" ? a : "start";
+  };
+
+  const buildCurrentSlots = (): AdaptiveSlot[] =>
+    buildAdaptiveSlots({
+      pageCount: v._pages?.length ?? 0,
+      direction: getDir(),
+      spreadMode: !!v._spreadMode,
+      firstPageSingle: v.opts?.firstPageSingle ?? true,
+      lastPageAlign: getLastAlign(),
+      pageAspects,
+      splitEnabled,
+      nonImageIndices,
+    });
+
+  const decorateSlotEl = (slotEl: HTMLElement, slot: AdaptiveSlot, realIdx: number, dir: "rtl" | "ltr") => {
+    slotEl.dataset.slot = String(realIdx);
+    slotEl.classList.toggle("mv-spread-slot", !!slot.spread);
+    slotEl.classList.toggle("mv-rtl-slot", !!slot.spread && dir === "rtl");
+    const zoomEl = slotEl.querySelector<HTMLElement>(".mv-zoom-container");
+    if (zoomEl) {
+      zoomEl.dataset.zoomSlot = String(realIdx);
+      zoomEl.classList.toggle("sb-split-container", !!slot.half);
+    }
+    const imgs = slotEl.querySelectorAll<HTMLImageElement>("img");
+    imgs.forEach((img, idx) => {
+      const pageIdx = slot.pages[idx];
+      if (typeof pageIdx === "number") img.dataset.spineboxPage = String(pageIdx);
+      img.classList.toggle("sb-split-half", !!slot.half);
+      img.classList.toggle("sb-split-right", slot.half === "right");
+      img.classList.toggle("sb-split-left", slot.half === "left");
+      if (slot.half && slot.aspect) {
+        img.style.setProperty("--sb-half-ar", String(slot.aspect / 2));
+      } else {
+        img.style.removeProperty("--sb-half-ar");
+      }
+    });
+  };
+
+  const createSlotEl = (slot: AdaptiveSlot, realIdx: number, dir: "rtl" | "ltr"): HTMLElement => {
+    const slotEl = document.createElement("div");
+    slotEl.className = "mv-page-slot";
+    const zoomEl = document.createElement("div");
+    zoomEl.className = "mv-zoom-container";
+    slotEl.appendChild(zoomEl);
+
+    const loadingAttr = realIdx <= 2 ? "eager" : "lazy";
+    const pageNodes: HTMLElement[] = slot.pages.map((pageIdx) => {
+      if (typeof v._createPageNode === "function") return v._createPageNode(pageIdx, loadingAttr);
+      const img = document.createElement("img");
+      img.loading = loadingAttr as "eager" | "lazy";
+      return img;
+    });
+    if (slot.hasBlank) {
+      const blank = document.createElement("div");
+      blank.className = "mv-blank-page";
+      blank.setAttribute("aria-hidden", "true");
+      if (slot.blankAlign === "start") pageNodes.push(blank);
+      else pageNodes.unshift(blank);
+    }
+    pageNodes.forEach((n) => zoomEl.appendChild(n));
+    decorateSlotEl(slotEl, slot, realIdx, dir);
+    return slotEl;
+  };
+
+  const currentAnchor = (): { pageIdx: number; half?: SlotHalf } => {
+    const cur = v._slots?.[v._currentSlotIndex ?? 0];
+    if (!cur || cur.pages.length === 0) return { pageIdx: 0 };
+    return { pageIdx: cur.pages[0], half: cur.half };
+  };
+
+  const syncSlots = (forceAnchor?: { pageIdx: number; half?: SlotHalf }) => {
+    if (v.opts?.viewMode === "scroll") return;
+    pendingSync = false;
+    const anchor = forceAnchor ?? currentAnchor();
+    const dir = getDir();
+    const newSlots = buildCurrentSlots();
+
+    // 既存スロット DOM をキーでプールし、単一ページのスロット構成変化時は既存の img を再利用してチラつきを防ぐ
+    const oldSlots = v._slots ?? [];
+    const pool = new Map<string, HTMLElement[]>();
+    const singlePagePool = new Map<number, HTMLElement[]>();
+    track.querySelectorAll<HTMLElement>(".mv-page-slot[data-slot]").forEach((el) => {
+      const idx = Number(el.dataset.slot);
+      const old = oldSlots[idx];
+      if (!old) return;
+      const k = slotKey(old);
+      const list = pool.get(k) ?? [];
+      list.push(el);
+      pool.set(k, list);
+      if (!old.spread && !old.hasBlank && old.pages.length === 1 && el.querySelector("img")) {
+        const p = old.pages[0];
+        const sList = singlePagePool.get(p) ?? [];
+        sList.push(el);
+        singlePagePool.set(p, sList);
+      }
+    });
+
+    const takeFromPool = (slot: AdaptiveSlot): HTMLElement | null => {
+      const k = slotKey(slot);
+      const exact = pool.get(k)?.shift();
+      if (exact) {
+        if (!slot.spread && !slot.hasBlank && slot.pages.length === 1) {
+          const sList = singlePagePool.get(slot.pages[0]);
+          if (sList) {
+            const pos = sList.indexOf(exact);
+            if (pos >= 0) sList.splice(pos, 1);
+          }
+        }
+        return exact;
+      }
+      if (!slot.spread && !slot.hasBlank && slot.pages.length === 1) {
+        const reused = singlePagePool.get(slot.pages[0])?.shift();
+        if (reused) return reused;
+      }
+      return null;
+    };
+
+    const shouldReverse = dir === "rtl";
+    const displayIndices = newSlots.map((_, idx) => idx);
+    if (shouldReverse) displayIndices.reverse();
+
+    const desiredEls = displayIndices.map((realIdx) => {
+      const slot = newSlots[realIdx];
+      const existing = takeFromPool(slot);
+      if (existing) {
+        decorateSlotEl(existing, slot, realIdx, dir);
+        return existing;
+      }
+      return createSlotEl(slot, realIdx, dir);
+    });
+
+    desiredEls.forEach((el, pos) => {
+      const curAtPos = track.children[pos] ?? null;
+      if (curAtPos !== el) {
+        track.insertBefore(el, curAtPos);
+      }
+    });
+    while (track.children.length > desiredEls.length) {
+      track.lastElementChild?.remove();
+    }
+
+    v._slots = newSlots;
+    v._currentSlotIndex = findSlotForAnchor(newSlots, anchor.pageIdx, anchor.half);
+    origUpdateTrack.call(v, false);
+    v._updateUI?.();
+  };
+
+  const inspectImage = (img: HTMLImageElement): boolean => {
+    const pageStr = img.dataset.spineboxPage;
+    if (pageStr === undefined) return false;
+    const pageIdx = Number(pageStr);
+    if (!Number.isInteger(pageIdx) || img.naturalWidth <= 0 || img.naturalHeight <= 0) return false;
+    const ar = img.naturalWidth / img.naturalHeight;
+    const prev = pageAspects.get(pageIdx);
+    const prevWide = isLandscapeAspect(prev);
+    const nextWide = isLandscapeAspect(ar);
+    pageAspects.set(pageIdx, ar);
+    if (pageIdx > 0 && nextWide && !hasSplittableWidePage) {
+      hasSplittableWidePage = true;
+      options.onStateChange?.();
+    }
+    return prev === undefined ? nextWide : prevWide !== nextWide;
+  };
+
+  const onImgLoad = (e: Event) => {
+    const target = e.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (!inspectImage(target)) return;
+    if (v._isDragging) {
+      pendingSync = true;
+    } else {
+      syncSlots();
+    }
+  };
+  track.addEventListener("load", onImgLoad, true);
+
+  v._buildSlots = function (this: AdaptiveViewerInternals) {
+    if (this.opts?.viewMode === "scroll") {
+      origBuildSlots.call(this);
+      return;
+    }
+    this._slots = buildCurrentSlots();
+  };
+
+  v._renderSlots = function (this: AdaptiveViewerInternals) {
+    origRenderSlots.call(this);
+    const dir = getDir();
+    const slots = this._slots ?? [];
+    let changed = false;
+    track.querySelectorAll<HTMLElement>(".mv-page-slot[data-slot]").forEach((el) => {
+      const idx = Number(el.dataset.slot);
+      const slot = slots[idx];
+      if (!slot) return;
+      decorateSlotEl(el, slot, idx, dir);
+      el.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+        if (img.complete && img.naturalWidth > 0 && inspectImage(img)) changed = true;
+      });
+    });
+    if (changed) {
+      if (v._isDragging) pendingSync = true;
+      else syncSlots();
+    }
+  };
+
+  v._updateUI = function (this: AdaptiveViewerInternals) {
+    origUpdateUI.call(this);
+    const slots = this._slots ?? [];
+    const idx = this._currentSlotIndex ?? 0;
+    const slot = slots[idx];
+    const total = this._totalPages ?? 0;
+    const dir = getDir();
+    const display = formatPageDisplay(slot, total);
+    if (this._currentPageEl) this._currentPageEl.textContent = display;
+    const { progress, sliderValue } = computeDisplayProgress(slots, idx, total, dir);
+    if (this._progressEl) this._progressEl.textContent = `${progress}%`;
+    if (this._slider) this._slider.value = String(sliderValue);
+    if (this._liveRegion && slot?.half) {
+      this._liveRegion.textContent = `${display} ページ`;
+    }
+  };
+
+  v._checkOrientation = function (this: AdaptiveViewerInternals) {
+    const beforeSpread = !!this._spreadMode;
+    origCheckOrientation.call(this);
+    if (beforeSpread !== !!this._spreadMode) {
+      options.onStateChange?.();
+    }
+  };
+
+  v._endDrag = function (this: AdaptiveViewerInternals) {
+    origEndDrag.call(this);
+    if (pendingSync && !this._isDragging) {
+      syncSlots();
+    }
+  };
+
+  // 初回に既に読み込み済みの画像があれば検査し、無ければ現在の装飾・UI 表示を確定する
+  let initialChanged = false;
+  const initialSlots = v._slots;
+  track.querySelectorAll<HTMLElement>(".mv-page-slot[data-slot]").forEach((el) => {
+    const idx = Number(el.dataset.slot);
+    const slot = initialSlots[idx];
+    if (!slot) return;
+    decorateSlotEl(el, slot, idx, getDir());
+    el.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+      if (img.complete && img.naturalWidth > 0 && inspectImage(img)) initialChanged = true;
+    });
+  });
+  if (initialChanged) syncSlots();
+  else v._updateUI();
+
+  return {
+    active: true,
+    toggleSplit() {
+      if ((v._currentZoom ?? 1) > 1 && typeof v.resetZoom === "function") {
+        v.resetZoom();
+      }
+      splitEnabled = !splitEnabled;
+      syncSlots();
+      options.onStateChange?.();
+      return splitEnabled;
+    },
+    isSplitEnabled: () => splitEnabled,
+    canToggleSplit: () => !v._spreadMode && hasSplittableWidePage,
+    destroy() {
+      track.removeEventListener("load", onImgLoad, true);
+    },
+  };
 }

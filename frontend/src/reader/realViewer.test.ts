@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MangaViewer from "@tokagemushi/manga-viewer";
 import { progressKey } from "./MangaReader";
-import { IMAGE_KEEP_SLOTS, PAST_END_SETTLE_MS, blankPages, canWindowImages, watchVolumeEdges, windowPageImages } from "./viewerHooks";
+import { IMAGE_KEEP_SLOTS, PAST_END_SETTLE_MS, SPLIT_STYLE_ATTR, blankPages, canWindowImages, setupAdaptiveSpreads, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -84,6 +84,105 @@ describe("実物の manga-viewer の先頭・最後の画面", () => {
       inner._endDrag();
       expect(onNext).toHaveBeenCalledTimes(3);
     } finally {
+      viewer.destroy();
+      host.remove();
+    }
+  });
+});
+
+describe("実物の manga-viewer の見開き画像対応(#347)", () => {
+  const stubViewport = (w: number, h: number) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: w });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: h });
+  };
+  const fireImgLoad = (img: HTMLImageElement, w: number, h: number) => {
+    Object.defineProperty(img, "naturalWidth", { configurable: true, value: w });
+    Object.defineProperty(img, "naturalHeight", { configurable: true, value: h });
+    img.dispatchEvent(new Event("load"));
+  };
+
+  it("縦長画面で本文の横長画像を右→左に分割し、1 ページ目表紙は分割せず、横長画面では単独表示する", () => {
+    stubViewport(375, 812);
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const pages = Array.from({ length: 4 }, (_, i) => `/api/volumes/88/pages/${i}`);
+    const viewer = new MangaViewer({ container: host, pages: blankPages(pages.length), direction: "rtl", firstPageSingle: true });
+    const inner = viewer as unknown as {
+      _slots: Array<{ pages: number[]; spread: boolean; half?: string }>;
+      _currentSlotIndex: number;
+      _currentPageEl: HTMLElement;
+      _goNext(): void;
+      _navigateTo(i: number): void;
+      _checkOrientation(): void;
+    };
+    windowPageImages(viewer, pages);
+    const ctrl = setupAdaptiveSpreads(viewer);
+    const onNext = vi.fn();
+    let t = Date.now();
+    watchVolumeEdges(viewer, { onNext }, () => t);
+
+    try {
+      expect(ctrl.active).toBe(true);
+      expect(host.shadowRoot!.querySelector(`style[${SPLIT_STYLE_ATTR}]`)).not.toBeNull();
+
+      // ページ 0(表紙・横長)・1(横長)・2(縦長)・3(横長) をロード
+      const imgOf = (pageIdx: number) =>
+        host.shadowRoot!.querySelector<HTMLImageElement>(`.mv-page-slot img[data-spinebox-page="${pageIdx}"]`)!;
+      fireImgLoad(imgOf(0), 2000, 1400);
+      fireImgLoad(imgOf(1), 2000, 1400);
+      fireImgLoad(imgOf(2), 700, 1000);
+      fireImgLoad(imgOf(3), 2000, 1400);
+
+      // 0 は非分割、1 は right->left、2 は単、3 は right->left の計 6 スロット
+      expect(inner._slots.map((s) => ({ p: s.pages, h: s.half }))).toEqual([
+        { p: [0], h: undefined },
+        { p: [1], h: "right" },
+        { p: [1], h: "left" },
+        { p: [2], h: undefined },
+        { p: [3], h: "right" },
+        { p: [3], h: "left" },
+      ]);
+      expect(ctrl.canToggleSplit()).toBe(true);
+
+      // 2 ページ目(index 1)の右半分 → 左半分へ進み、フッター表示と DOM クラスを確認
+      inner._goNext();
+      expect(inner._currentSlotIndex).toBe(1);
+      expect(inner._currentPageEl.textContent).toBe("2 (右) / 4");
+      const rightImg = host.shadowRoot!.querySelector<HTMLImageElement>('.mv-page-slot[data-slot="1"] img')!;
+      expect(rightImg.classList.contains("sb-split-right")).toBe(true);
+
+      inner._goNext();
+      expect(inner._currentSlotIndex).toBe(2);
+      expect(inner._currentPageEl.textContent).toBe("2 (左) / 4");
+
+      // トグルで全体表示(4 スロット)に切り替え、ページ 2(index 1)に留まる
+      expect(ctrl.toggleSplit()).toBe(false);
+      expect(inner._slots).toHaveLength(4);
+      expect(inner._currentSlotIndex).toBe(1);
+      expect(inner._currentPageEl.textContent).toBe("2 / 4");
+
+      // 再度分割 ON にして最終ページへ移動: 右半分では次巻へ飛ばず、左半分到達後に飛ぶ
+      expect(ctrl.toggleSplit()).toBe(true);
+      inner._navigateTo(4); // ページ 4(index 3) の右半分
+      t += PAST_END_SETTLE_MS;
+      inner._goNext(); // 左半分(slot 5)へ
+      expect(inner._currentSlotIndex).toBe(5);
+      expect(onNext).not.toHaveBeenCalled();
+      t += PAST_END_SETTLE_MS;
+      inner._goNext(); // 左半分からさらに進むと次巻へ
+      expect(onNext).toHaveBeenCalledTimes(1);
+
+      // 横長画面へ回転すると、横長画像は単独フル幅(spread: false)になり分割トグルは不要になる
+      stubViewport(1024, 768);
+      inner._checkOrientation();
+      expect(ctrl.canToggleSplit()).toBe(false);
+      expect(inner._slots.every((s) => s.spread === false && s.half === undefined)).toBe(true);
+      expect(inner._slots).toHaveLength(4);
+      expect(inner._currentSlotIndex).toBe(3); // 元の最終ページに留まる
+    } finally {
+      ctrl.destroy();
       viewer.destroy();
       host.remove();
     }

@@ -25,8 +25,9 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 | パス | 役割 |
 | --- | --- |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | 巻情報の取得・読み込み待ち・取得失敗・小説への切り替え。漫画なら `MangaReader` へ |
-| `frontend/src/reader/MangaReader.tsx:45 MangaReader()` | manga-viewer の生成と破棄、オプション(ヘッダーのボタン・しおりの API・再開位置)、読書位置の保存の結線 |
-| `frontend/src/reader/viewerHooks.ts:44 enlargeSlider()` | オプションでは届かない結線(#324, #338)。ページスライダーのスタイルを Shadow DOM へ足す `enlargeSlider()` と、先頭・最後の画面からさらに前後へ進む操作を拾う `watchVolumeEdges()`、近くのスロットにだけ画像の URL を付ける `windowPageImages()`(#343) |
+| `frontend/src/reader/MangaReader.tsx:58 MangaReader()` | manga-viewer の生成と破棄、オプション(ヘッダーのボタン・しおりの API・再開位置)、読書位置の保存の結線 |
+| `frontend/src/reader/viewerHooks.ts:54 enlargeSlider()` | オプションでは届かない結線(#324, #338, #343, #347)。ページスライダーのスタイルを Shadow DOM へ足す `enlargeSlider()`、前後エッジ操作を拾う `watchVolumeEdges()`、近くのスロットにだけ画像の URL を付ける `windowPageImages()`(#343)、見開き画像を縦画面分割・横画面単独表示にする `setupAdaptiveSpreads()`(#347) |
+| `frontend/src/reader/spreadPages.ts:53 buildAdaptiveSlots()` | 見開きスキャン画像(横長)のスロット分割・単独表示・進捗補正の純粋関数(#347) |
 | `spinebox/page_marks.py:41 list_marks()` | しおりの読み書き。`add()` / `remove()`、整理での移動 `transfer_volume()` |
 | `spinebox/app.py:1057 list_page_marks()` | `/api/page-marks`(GET / POST / DELETE)。ライブラリの `bookmarkApi` の形に合わせた口 |
 | `spinebox/analysis.py:130 _carry_page_marks()` | 巻への分解で親のしおりを子の巻・ページへ写す |
@@ -92,6 +93,15 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 - **「横長画面で見開き」の切替は廃止した。** ライブラリは横長で常に見開き、縦長で単ページにし、横長で単ページに固定するオプションが無い
   (README の「単ページ」はこの自動切替のこと)。内部メソッドを継承で差し替えて残す案は利用者が選ばず、廃止した。
   「表紙を単独で表示」は `firstPageSingle` に渡し、次に巻を開いたときから効く(管理の好みタブ)
+- **見開きスキャン画像(横長画像)は縦長画面で右→左へ自動分割し、横長画面では 1 枚単独で表示する(#347)。**
+  1 ファイルが見開き 2 ページ分でスキャンされた本をタブレット縦・スマホで開くと上下に余白ができて小さくなり、横長画面では 2 枚(4 ページ分)が並びうる。
+  `setupAdaptiveSpreads()` が画像ロード時の `naturalWidth / naturalHeight > 1.2`(`WorkCover.tsx` と同じしきい値)を監視し、
+  縦長画面では 2 ページ目以降を右→左(LTR は左→右)の 2 スロットへ分割する。**1 ページ目(表紙)は「左=表表紙・右=裏表紙」のスキャンがあるため分割しない。**
+  横長画面では横長画像を他ページやブランクページと並べず単独フル幅(`spread: false`)にする。
+  分割表示は `container-type: size` (`cqw`/`cqh`) + `object-fit: cover` + `object-position` で `<img>` 自身のボックスを半ページ比率へ合わせているため、
+  `manga-viewer` のズーム・パン境界計算(`img.getBoundingClientRect()`)と干渉しない。ページ番号(`progress.page`・しおり・スライダー範囲)は
+  元の画像単位のまま保ち、フッター表示のみ `5 (右) / 137` のように補い、先読みによる未ロードページの分割で `%` が跳ねないよう実ページ番号基準で補正する。
+  縦長画面かつ本文に横長画像を 1 枚以上検出した巻では、ヘッダーの切替ボタン(`.spinebox-split-toggle`)で一時的に全体表示へ切り替えられる
 - **テーマは開いた時点のライト/ダークを渡し、読んでいる途中では作り直さない**(作り直すとページが戻る)
 
 ## 却下した代替案
@@ -99,6 +109,7 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 - **npm 0.6.0 のまま、再開の確認の代わりに保存位置へ黙って `goToPage` する:** 利用者が求めた「続きから読む」の確認が出ないので採らなかった
 - **しおりをライブラリ既定の `localStorage` に置く:** 端末ごとに分かれる(上)
 - **ライブラリのソースを改変して同梱する:** 更新の取り込みで差分管理が要る。改変せず、オプションと Shadow DOM の外からの結線だけにした
+- **サーバー側で全ページの画像寸法を事前取得・クロップ配信する(#347):** 巻を開く時点でソリッド 7z/rar の全展開が走って初動が遅くなり、Pillow での再エンコードによる画質劣化・通信量増加を招くため、ブラウザ側の画像ロード判定 + CSS 切り抜きにした
 
 ## 落とし穴
 
@@ -122,3 +133,7 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 - #343(2 回目): モック API を組み込みブラウザの 375px と 1100×820 で開き、8 ページの巻で近くの 7 ページにだけ URL が付いて 8 ページ目には付かないこと、「続きから」で 4 ページ目が出ること、
   横向きの見開き(表紙は単独)で空白ページの縦横比が渡り、表示が欠けないことを確かめた。**利用者の iPad(実機)で読み直しが止まることは未確認**
   (メモリ不足も WebKit の読み込み開始も開発機では再現できない)。確かめるには、デプロイ後にサーバーのアクセスログで、巻を開いた直後の `/api/volumes/<id>/pages/` の要求が近くのページだけになっているかを見る
+- #347: モック API(`npm run dev:mock` の `#/read/6`)を組み込みブラウザの 375×812・768×1024・1024×768 で開き、
+  縦長画面で 1 ページ目(表紙)が分割されないこと、2 ページ目以降が `2 (右) / 11` → `2 (左) / 11` で半ページずつ大きく表示されること、
+  ヘッダーの切替ボタンで全体表示と分割表示を切り替えられること、横長画面では 1 枚単独表示になり切替ボタンが隠れること、
+  通常の縦長巻(`#/read/1`)では切替ボタンが出ないことを確かめた。**利用者の実機タブレット・実データでのズーム鮮明さ等は確認待ち**

@@ -47,6 +47,8 @@ export interface MockOptions {
   scanIssues?: ScanIssue[];
   /** `POST /api/scan` を失敗させる(サーバーの `detail` を画面に出す確認用) */
   scanFailure?: { status: number; detail: string };
+  /** 見開きスキャン(横長 1400x1000 SVG)を返す巻 ID(ブラウザ確認用) */
+  spreadVolumeIds?: number[];
 }
 
 type MockVolume = Omit<VolumeSummary, "id"> & {
@@ -175,6 +177,21 @@ function pageSvg(title: string, index: number, total: number): string {
 <text x="350" y="480" font-size="160" text-anchor="middle" font-family="sans-serif">${index + 1}</text>
 <text x="350" y="600" font-size="36" text-anchor="middle" font-family="sans-serif">/ ${total}</text>
 <text x="350" y="80" font-size="32" text-anchor="middle" font-family="sans-serif">${esc}</text>
+</svg>`;
+}
+
+function spreadPageSvg(title: string, index: number, total: number): string {
+  const hue = (index * 47) % 360;
+  const esc = title.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  const leftLabel = index === 0 ? "表表紙" : `${index + 1} 左ページ`;
+  const rightLabel = index === 0 ? "裏表紙" : `${index + 1} 右ページ`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000">
+<rect width="700" height="1000" fill="hsl(${hue},38%,86%)"/>
+<rect x="700" width="700" height="1000" fill="hsl(${(hue + 24) % 360},38%,80%)"/>
+<line x1="700" y1="0" x2="700" y2="1000" stroke="#666" stroke-width="2" stroke-dasharray="10 8"/>
+<text x="350" y="480" font-size="72" text-anchor="middle" font-family="sans-serif">${leftLabel}</text>
+<text x="1050" y="480" font-size="72" text-anchor="middle" font-family="sans-serif">${rightLabel}</text>
+<text x="700" y="80" font-size="32" text-anchor="middle" font-family="sans-serif">${esc} (${index + 1}/${total})</text>
 </svg>`;
 }
 
@@ -721,7 +738,8 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
       const i = Number(m[3]);
       const n = pagesOf(v);
       if (i >= n) return json(404, { detail: "ページがありません" });
-      return { status: 200, contentType: "image/svg+xml", body: pageSvg(v.title, i, n) };
+      const svg = options.spreadVolumeIds?.includes(Number(v.id)) ? spreadPageSvg(v.title, i, n) : pageSvg(v.title, i, n);
+      return { status: 200, contentType: "image/svg+xml", body: svg };
     }
     return json(405, { detail: "未対応" });
   }
