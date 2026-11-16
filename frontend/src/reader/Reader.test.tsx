@@ -173,6 +173,33 @@ describe("manga-viewer に渡す設定", () => {
     expect(["light", "dark"]).toContain(opts.theme);
   });
 
+  // 実物は内部メソッド(_preloadNearby・_renderSlots)を持つ。偽物に足して、ページ画像を近くだけ持たせる経路(#343)を通す
+  describe("ライブラリがページ画像の出し入れに対応しているとき", () => {
+    let proto: Record<string, unknown>;
+    beforeEach(async () => {
+      proto = (await import("@tokagemushi/manga-viewer")).default.prototype as unknown as Record<string, unknown>;
+      proto._preloadNearby = () => {};
+      proto._renderSlots = () => {};
+    });
+    afterEach(() => {
+      delete proto._preloadNearby;
+      delete proto._renderSlots;
+      delete proto._slotTrack;
+    });
+
+    it("URL なしのページを渡す(離れたページを読み込ませない)", async () => {
+      proto._slotTrack = document.createElement("div");
+      const { opts } = await opened("2");
+      expect(opts.pages).toEqual(Array.from({ length: 8 }, () => ({ type: "image", src: "" })));
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("画像を付けられなければ、その旨を出す", async () => {
+      await opened("2"); // _slotTrack が無い
+      expect(screen.getByRole("status").textContent).toBe("ページの画像を表示できませんでした");
+    });
+  });
+
   it.each([true, false])("表紙を単独で表示する設定(%s)が firstPageSingle になる", async (coverAlone) => {
     saveSettings({ coverAlone });
     const { opts } = await opened("1");

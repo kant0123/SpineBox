@@ -175,29 +175,43 @@ export function watchPastEnd(viewer: unknown, onPastEnd: () => void, now: () => 
 
 /** 今のスロットの前後、この数のスロットまでページ画像を持つ(#343) */
 export const IMAGE_KEEP_SLOTS = 3;
-/** 外した画像の URL の控え。近づいたら `src` へ戻す */
-export const PARKED_SRC_ATTR = "data-spinebox-src";
 
 interface ImageWindowInternals {
   _preloadNearby?: () => void;
   _currentSlotIndex?: number;
+  _slots?: Array<{ pages?: number[] } | undefined>;
   _slotTrack?: { querySelectorAll?: unknown };
 }
 
+/** ライブラリが `windowPageImages()` の頼る形をしているか(ビューアを作る前に、URL なしのページを渡してよいか決める) */
+export function canWindowImages(viewerClass: unknown): boolean {
+  const proto = (viewerClass as { prototype?: Record<string, unknown> } | null | undefined)?.prototype;
+  return typeof proto?._preloadNearby === "function" && typeof proto?._renderSlots === "function";
+}
+
+/** ライブラリへ渡す、URL を持たないページ(`windowPageImages()` と組で使う) */
+export function blankPages(count: number): Array<{ type: "image"; src: string }> {
+  return Array.from({ length: count }, () => ({ type: "image" as const, src: "" }));
+}
+
 /**
- * 今のスロットから離れたページの画像を手放す(#343)。
+ * ページ画像を、今のスロットの近くにだけ持たせる(#343)。
  * ライブラリは全ページぶんの `<img src>` を作って持ち続けるので、長い巻ではデコード済みの画像がたまり、
  * タブレットのブラウザがメモリ不足でページごと読み直す(読み直すたびに「続きから読みますか?」が出る)。
- * 離れたスロットの `src` を控えへ移して外し、近づいたら戻す。ライブラリがページ移動・スロットの作り直しのたびに
- * 呼ぶ `_preloadNearby` を包んで、その直前に行う(戻した画像はそのまま先読みの対象になる)。
- * 内部の形が変わっていたら何もせず false を返す(画像は従来どおり全部持つ)。
+ * ライブラリには URL を持たないページ(`blankPages()`)を渡しておき、ここで近くのスロットの `<img>` にだけ
+ * `urls`(ページ番号順)の URL を付け、離れたら外す。作られた `<img src>` を後から外す方法は使わない:
+ * WebKit は `src` が付いた時点で読み込みを始めるので、外しても全ページの読み込みが走る。
+ * ライブラリがページ移動・スロットの作り直しのたびに呼ぶ `_preloadNearby` を包んで、その直前に行う
+ * (付けた画像はそのまま先読みの対象になる)。
+ * 内部の形が変わっていたら何もせず false を返す(作る前の判定は `canWindowImages()`)。
  */
-export function windowPageImages(viewer: unknown, keep: number = IMAGE_KEEP_SLOTS): boolean {
+export function windowPageImages(viewer: unknown, urls: readonly string[], keep: number = IMAGE_KEEP_SLOTS): boolean {
   const v = viewer as ImageWindowInternals;
   const preloadNearby = v._preloadNearby;
   if (
     typeof preloadNearby !== "function"
     || typeof v._currentSlotIndex !== "number"
+    || !Array.isArray(v._slots)
     || typeof v._slotTrack?.querySelectorAll !== "function"
   ) {
     return false;
@@ -206,23 +220,36 @@ export function windowPageImages(viewer: unknown, keep: number = IMAGE_KEEP_SLOT
   const apply = () => {
     const track = v._slotTrack as unknown as ParentNode | undefined;
     const current = v._currentSlotIndex;
-    if (!track || typeof current !== "number") return;
-    track.querySelectorAll<HTMLElement>(".mv-page-slot[data-slot]").forEach((slot) => {
-      const index = Number(slot.dataset.slot);
+    const slots = v._slots;
+    if (!track || typeof current !== "number" || !Array.isArray(slots)) return;
+    track.querySelectorAll<HTMLElement>(".mv-page-slot[data-slot]").forEach((slotEl) => {
+      const index = Number(slotEl.dataset.slot);
       if (!Number.isInteger(index)) return;
+      const pages = slots[index]?.pages ?? [];
       const near = Math.abs(index - current) <= keep;
-      slot.querySelectorAll("img").forEach((img) => {
-        const parked = img.getAttribute(PARKED_SRC_ATTR);
+      // スロットの中の <img> は、スロットのページの並びと同じ順に作られる
+      slotEl.querySelectorAll("img").forEach((img, i) => {
+        const url = urls[pages[i]];
+        if (url === undefined) return;
         if (near) {
-          if (parked === null) return;
-          img.setAttribute("src", parked);
-          img.removeAttribute(PARKED_SRC_ATTR);
-        } else if (parked === null) {
-          const src = img.getAttribute("src");
-          if (!src) return;
-          img.setAttribute(PARKED_SRC_ATTR, src);
+          if (img.getAttribute("src") === url) return;
+          // 表紙の隣の空白ページは画像の縦横比に合わせる(ライブラリは作った時点の画像で合わせるので、ここで付けた画像では合わない)
+          const blank = slotEl.querySelector<HTMLElement>(".mv-blank-page");
+          if (blank) {
+            img.addEventListener(
+              "load",
+              () => {
+                if (img.naturalWidth && img.naturalHeight) {
+                  blank.style.setProperty("--mv-blank-aspect-ratio", `${img.naturalWidth} / ${img.naturalHeight}`);
+                }
+              },
+              { once: true },
+            );
+          }
+          img.setAttribute("src", url);
+        } else if (img.hasAttribute("src")) {
           img.removeAttribute("src");
-          // ライブラリが付けた「先読み済み・デコード済み」の印も外す(戻したときにもう一度対象になるように)
+          // ライブラリが付けた「先読み済み・デコード済み」の印も外す(付け直したときにもう一度対象になるように)
           delete img.dataset.preloaded;
           delete img.dataset.mvDecoded;
         }

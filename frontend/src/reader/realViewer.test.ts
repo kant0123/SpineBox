@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MangaViewer from "@tokagemushi/manga-viewer";
 import { progressKey } from "./MangaReader";
-import { IMAGE_KEEP_SLOTS, PAST_END_SETTLE_MS, PARKED_SRC_ATTR, SPLIT_STYLE_ATTR, setupAdaptiveSpreads, watchVolumeEdges, windowPageImages } from "./viewerHooks";
+import { IMAGE_KEEP_SLOTS, PAST_END_SETTLE_MS, SPLIT_STYLE_ATTR, blankPages, canWindowImages, setupAdaptiveSpreads, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -108,7 +108,7 @@ describe("実物の manga-viewer の見開き画像対応(#347)", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const pages = Array.from({ length: 4 }, (_, i) => `/api/volumes/88/pages/${i}`);
-    const viewer = new MangaViewer({ container: host, pages, direction: "rtl", firstPageSingle: true });
+    const viewer = new MangaViewer({ container: host, pages: blankPages(pages.length), direction: "rtl", firstPageSingle: true });
     const inner = viewer as unknown as {
       _slots: Array<{ pages: number[]; spread: boolean; half?: string }>;
       _currentSlotIndex: number;
@@ -117,8 +117,8 @@ describe("実物の manga-viewer の見開き画像対応(#347)", () => {
       _navigateTo(i: number): void;
       _checkOrientation(): void;
     };
+    windowPageImages(viewer, pages);
     const ctrl = setupAdaptiveSpreads(viewer);
-    windowPageImages(viewer);
     const onNext = vi.fn();
     let t = Date.now();
     watchVolumeEdges(viewer, { onNext }, () => t);
@@ -189,17 +189,26 @@ describe("実物の manga-viewer の見開き画像対応(#347)", () => {
   });
 });
 
-// 離れたページの画像を手放す結線(#343)もライブラリの内部(_preloadNearby・_slotTrack・data-slot)に頼る
+// ページ画像を近くのスロットにだけ持たせる結線(#343)もライブラリの内部(_preloadNearby・_slots・_slotTrack・data-slot)に頼る
 describe("実物の manga-viewer のページ画像", () => {
-  it("今のスロットの近くだけが src を持ち、移動・スロットの作り直しで入れ替わる", () => {
+  const setup = (landscape: boolean) => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
     vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    vi.stubGlobal("innerWidth", landscape ? 1100 : 400);
+    vi.stubGlobal("innerHeight", landscape ? 600 : 800);
+    // <img> に付いた URL を、付いた時点で全部控える(WebKit は src が付いた時点で読み込みを始める)
+    const seen = new Set<string>();
+    const setAttribute = Element.prototype.setAttribute;
+    const spy = vi.spyOn(Element.prototype, "setAttribute").mockImplementation(function (this: Element, name: string, value: string) {
+      if (this.tagName === "IMG" && name === "src" && value) seen.add(value);
+      setAttribute.call(this, name, value);
+    });
     const host = document.createElement("div");
     document.body.appendChild(host);
-    const pages = Array.from({ length: 40 }, (_, i) => `/api/volumes/77/pages/${i}`);
-    const viewer = new MangaViewer({ container: host, pages, direction: "rtl" });
+    const urls = Array.from({ length: 40 }, (_, i) => `/api/volumes/77/pages/${i}`);
+    const viewer = new MangaViewer({ container: host, pages: blankPages(urls.length), direction: "rtl", firstPageSingle: true });
     const inner = viewer as unknown as {
-      _slots: unknown[];
+      _slots: Array<{ pages: number[] }>;
       _currentSlotIndex: number;
       _navigateTo(i: number): void;
       _renderSlots(): void;
@@ -207,33 +216,57 @@ describe("実物の manga-viewer のページ画像", () => {
     };
     const imgs = () => [...host.shadowRoot!.querySelectorAll<HTMLImageElement>(".mv-page-slot img")];
     const slotOf = (img: HTMLImageElement) => Number(img.closest<HTMLElement>(".mv-page-slot")!.dataset.slot);
+    /** 近くのスロットの <img> だけが URL を持ち、その URL は表示するページ(alt は「Page <ページ番号>」)のもの */
     const check = () => {
       const all = imgs();
-      expect(all).toHaveLength(pages.length);
+      expect(all).toHaveLength(urls.length);
       for (const img of all) {
         const near = Math.abs(slotOf(img) - inner._currentSlotIndex) <= IMAGE_KEEP_SLOTS;
         expect(img.hasAttribute("src")).toBe(near);
-        expect(img.hasAttribute(PARKED_SRC_ATTR)).toBe(!near);
+        if (near) expect(img.getAttribute("src")).toBe(urls[Number(img.alt.replace("Page ", "")) - 1]);
       }
-      // 外した URL は控えに残り、どのページも失われない
-      const urls = all.map((img) => img.getAttribute("src") ?? img.getAttribute(PARKED_SRC_ATTR)).sort();
-      expect(urls).toEqual([...pages].sort());
     };
+    const done = () => {
+      viewer.destroy();
+      host.remove();
+      spy.mockRestore();
+    };
+    return { viewer, inner, urls, seen, imgs, check, done };
+  };
+
+  it("近くのスロットだけが URL を持ち、移動・スロットの作り直しで入れ替わる。離れたページには一度も URL が付かない", () => {
+    const { viewer, inner, urls, seen, imgs, check, done } = setup(false);
     try {
-      expect(imgs().every((img) => img.hasAttribute("src"))).toBe(true); // ライブラリの既定は全ページ
-      expect(windowPageImages(viewer)).toBe(true);
+      expect(canWindowImages(MangaViewer)).toBe(true);
+      expect(imgs().every((img) => !img.getAttribute("src"))).toBe(true); // URL なしで作られる
+      expect(windowPageImages(viewer, urls)).toBe(true);
       check();
-      expect(imgs().filter((img) => img.hasAttribute("src")).length).toBeLessThan(pages.length / 2);
+      expect(seen.size).toBe(IMAGE_KEEP_SLOTS + 1); // 開いた直後に読み込まれるのは先頭の近くだけ
 
       inner._navigateTo(inner._slots.length - 1); // 末尾へ
       check();
       inner.goToPage(15); // スライダー・再開での移動
       check();
-      inner._renderSlots(); // 向きの切替ではスロットを作り直す(画像は全部 src つきで作られる)
+      inner._renderSlots(); // 向きの切替ではスロットを作り直す
+      check();
+      // 先頭の近く・末尾の近く・15 ページ目の近く以外には、一度も URL が付いていない
+      expect(seen.size).toBeLessThan(urls.length / 2);
+      expect(seen.has(urls[25])).toBe(false);
+    } finally {
+      done();
+    }
+  });
+
+  it("横向きの見開き(表紙は単独)でも、ページと URL が合う", () => {
+    const { viewer, inner, urls, check, done } = setup(true);
+    try {
+      expect(windowPageImages(viewer, urls)).toBe(true);
+      expect(inner._slots.some((slot) => slot.pages.length === 2)).toBe(true);
+      check();
+      inner.goToPage(20);
       check();
     } finally {
-      viewer.destroy();
-      host.remove();
+      done();
     }
   });
 });

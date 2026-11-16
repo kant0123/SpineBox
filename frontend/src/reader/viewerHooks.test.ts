@@ -1,6 +1,6 @@
 // manga-viewer へ外から足す結線(#324, #338): スライダーの見た目と、先頭・最後の画面からさらに前後へ進む操作の検出
 import { describe, expect, it, vi } from "vitest";
-import { PAST_END_SETTLE_MS, PARKED_SRC_ATTR, SLIDER_STYLE_ATTR, enlargeSlider, setupAdaptiveSpreads, watchPastEnd, watchVolumeEdges, windowPageImages } from "./viewerHooks";
+import { PAST_END_SETTLE_MS, SLIDER_STYLE_ATTR, blankPages, canWindowImages, enlargeSlider, setupAdaptiveSpreads, watchPastEnd, watchVolumeEdges, windowPageImages } from "./viewerHooks";
 
 /** ライブラリと同じ形の最小の偽物: _goNext / _goPrev は端で何もしない、_navigateTo は範囲外を無視する */
 function fakeViewer(slots: number, at = 0, direction: "rtl" | "ltr" = "rtl") {
@@ -167,49 +167,87 @@ describe("enlargeSlider", () => {
 });
 
 describe("windowPageImages", () => {
-  const build = (count: number) => {
+  // ライブラリと同じ形: URL なしで作られた <img src="">。perSlot が 2 なら見開き(1 スロットに 2 ページ)
+  const build = (count: number, perSlot = 1) => {
     const track = document.createElement("div");
+    const slots: Array<{ pages: number[] }> = [];
     for (let i = 0; i < count; i++) {
       const slot = document.createElement("div");
       slot.className = "mv-page-slot";
       slot.dataset.slot = String(i);
-      const img = document.createElement("img");
-      img.setAttribute("src", `/p/${i}`);
-      img.dataset.preloaded = "true";
-      img.dataset.mvDecoded = "1";
-      slot.appendChild(img);
+      const pages = Array.from({ length: perSlot }, (_, k) => i * perSlot + k);
+      slots.push({ pages });
+      pages.forEach(() => {
+        const img = document.createElement("img");
+        img.setAttribute("src", "");
+        slot.appendChild(img);
+      });
       track.appendChild(slot);
     }
+    const urls = Array.from({ length: count * perSlot }, (_, i) => `/p/${i}`);
     const calls: string[][] = [];
     const withSrc = () => [...track.querySelectorAll("img")].filter((i) => i.hasAttribute("src")).map((i) => i.getAttribute("src")!);
-    // 先読み(元の処理)が呼ばれた時点で、近くの画像は既に戻っている
-    const v = { _currentSlotIndex: 0, _slotTrack: track, _preloadNearby() { calls.push(withSrc()); } };
-    return { track, v, calls, withSrc };
+    // 先読み(元の処理)が呼ばれた時点で、近くの画像には既に URL が付いている
+    const v = { _currentSlotIndex: 0, _slots: slots, _slotTrack: track, _preloadNearby() { calls.push(withSrc()); } };
+    return { track, v, urls, calls, withSrc };
   };
 
-  it("離れたスロットの画像を外し、近づいたら戻してから元の先読みを呼ぶ", () => {
-    const { track, v, calls, withSrc } = build(10);
-    expect(windowPageImages(v, 1)).toBe(true);
+  it("近くのスロットにだけ URL を付け、離れたら外し、付けてから元の先読みを呼ぶ", () => {
+    const { track, v, urls, calls, withSrc } = build(10);
+    expect(windowPageImages(v, urls, 1)).toBe(true);
     expect(withSrc()).toEqual(["/p/0", "/p/1"]);
-    const far = track.querySelectorAll("img")[5];
-    expect(far.getAttribute(PARKED_SRC_ATTR)).toBe("/p/5");
-    expect(far.dataset.preloaded).toBeUndefined();
-    expect(far.dataset.mvDecoded).toBeUndefined();
     expect(calls).toHaveLength(0);
 
+    const first = track.querySelectorAll("img")[0];
+    first.dataset.preloaded = "true";
+    first.dataset.mvDecoded = "1";
     v._currentSlotIndex = 5;
     v._preloadNearby();
     expect(withSrc()).toEqual(["/p/4", "/p/5", "/p/6"]);
     expect(calls).toEqual([["/p/4", "/p/5", "/p/6"]]);
-    expect(far.hasAttribute(PARKED_SRC_ATTR)).toBe(false);
+    // 外した画像は、ライブラリの「先読み済み・デコード済み」の印も失う
+    expect(first.dataset.preloaded).toBeUndefined();
+    expect(first.dataset.mvDecoded).toBeUndefined();
+  });
+
+  it("見開きのスロットでは、スロットのページの並びどおりに URL を付ける", () => {
+    const { v, urls, withSrc } = build(6, 2);
+    v._currentSlotIndex = 3;
+    expect(windowPageImages(v, urls, 0)).toBe(true);
+    expect(withSrc()).toEqual(["/p/6", "/p/7"]);
+  });
+
+  it("空白ページのあるスロットでは、読み込んだ画像の縦横比を空白ページへ渡す", () => {
+    const { track, v, urls } = build(3);
+    const blank = document.createElement("div");
+    blank.className = "mv-blank-page";
+    track.querySelector(".mv-page-slot")!.prepend(blank);
+    windowPageImages(v, urls, 0);
+    const img = track.querySelector("img")!;
+    Object.defineProperty(img, "naturalWidth", { value: 984 });
+    Object.defineProperty(img, "naturalHeight", { value: 1400 });
+    img.dispatchEvent(new Event("load"));
+    expect(blank.style.getPropertyValue("--mv-blank-aspect-ratio")).toBe("984 / 1400");
   });
 
   it("内部の形が違えば何もしない", () => {
-    expect(windowPageImages({})).toBe(false);
-    expect(windowPageImages({ _preloadNearby() {}, _currentSlotIndex: 0 })).toBe(false);
-    const { v, withSrc } = build(10);
-    expect(windowPageImages({ ...v, _currentSlotIndex: undefined })).toBe(false);
-    expect(withSrc()).toHaveLength(10);
+    expect(windowPageImages({}, [])).toBe(false);
+    expect(windowPageImages({ _preloadNearby() {}, _currentSlotIndex: 0 }, [])).toBe(false);
+    const { v, urls, withSrc } = build(10);
+    expect(windowPageImages({ ...v, _currentSlotIndex: undefined }, urls)).toBe(false);
+    expect(windowPageImages({ ...v, _slots: undefined }, urls)).toBe(false);
+    expect(withSrc()).toEqual(Array(10).fill(""));
+  });
+
+  it("blankPages は URL を持たないページを数ぶん返す", () => {
+    expect(blankPages(2)).toEqual([{ type: "image", src: "" }, { type: "image", src: "" }]);
+  });
+
+  it("canWindowImages は、頼る内部メソッドを持つクラスだけを通す", () => {
+    expect(canWindowImages(class { _preloadNearby() {} _renderSlots() {} })).toBe(true);
+    expect(canWindowImages(class { _preloadNearby() {} })).toBe(false);
+    expect(canWindowImages(class {})).toBe(false);
+    expect(canWindowImages(undefined)).toBe(false);
   });
 });
 
