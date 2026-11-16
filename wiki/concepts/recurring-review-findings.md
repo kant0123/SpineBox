@@ -1,13 +1,13 @@
 ---
 type: concept
 summary: レビューで妥当と判定された指摘を誤りの種類ごとに集約した台帳。着手時と push 前に読む
-updated: 2026-11-15
+updated: 2026-11-16
 related: [overview]
 ---
 
 # 繰り返し指摘される誤り
 
-レビュー(agy レビュー)で**妥当と判定して直した指摘**を、誤りの種類ごとにまとめた台帳。
+レビュー(Gemini レビュー)で**妥当と判定して直した指摘**を、誤りの種類ごとにまとめた台帳。
 個々の指摘は PR コメントに残るが、そこは merge hook と経緯を追う人しか読まない。
 ここに集めておかないと、次の実装者は同じ種類の誤りを別の場所でまた作る。
 
@@ -18,7 +18,7 @@ related: [overview]
 **読むタイミング:** 着手時(`worktree-start` 手順 1)と push 前(`pr-finish` の前提の確認)。
 push 前は、自分の差分が下の各種類に当てはまらないかを 1 つずつ確かめる。
 
-**書くタイミング:** 差し戻しの指摘を妥当と判定して直したとき(`agy-review` 手順 3)。
+**書くタイミング:** 差し戻しの指摘を妥当と判定して直したとき(`gemini-review` 手順 3)。
 既存の種類に当てはまれば実例を 1 行足し、無ければ種類を足す。
 **未確認と判定した指摘は載せない。** 成立を確かめていないものを実装側の誤りとして記録すると、
 推測が「繰り返される誤り」として次の実装者に読まれる。
@@ -33,9 +33,9 @@ push 前は、自分の差分が下の各種類に当てはまらないかを 1 
 - 種類の数は増やしすぎない。似た種類が並んだら統合する。
 
 誤検知(`false-positive`)と見逃し(`false-negative`)はここではなく上流の Issue に送る
-(`review/README.md` の「記録の置き場所」)。未確認はこのリポジトリの Issue に起票する(上流には送らない。`agy-review` 手順 4)。ここはレビュー役ではなく**実装側の誤り**の記録。
+(`review/README.md` の「記録の置き場所」)。未確認はこのリポジトリの Issue に起票する(上流には送らない。`gemini-review` 手順 4)。ここはレビュー役ではなく**実装側の誤り**の記録。
 
-> 初期の実例はこのテンプレート自身(`review/agy_review.py`)の開発で出たもの。
+> 初期の実例はこのテンプレート自身(`review/gemini_review.py`)の開発で出たもの。
 > 他プロジェクトに導入したら実例は消してよいが、種類はそのまま当てはまることが多い。
 
 ## 種類
@@ -57,17 +57,17 @@ push 前に確かめること:
 
 実例:
 
-- PR #8 — `review/agy_review.py ci_state()` — `gh pr checks` が失敗して出力が空のときに緑と判定していた
-- PR #8 — `review/agy_review.py` JSON 抽出 — LLM 出力に前置きがあると JSON を取り出せない
-- PR #20 — `review/agy_review.py` 差分パスの抽出 — 空白・非 ASCII を含むパスは `git diff` が引用符で囲むため正規表現に合わない
-- PR #20 — `review/agy_review.py` パスの解決 — Windows で不正な文字を含むパスで `OSError`
-- PR #33 — `review/agy_review.py has_unverified_critical()` — 評価の理由文に「未確認」があるだけで判定語と取り違えていた
-- PR #33 — `review/agy_review.py has_unverified_critical()` — 過去の評価も見ていて、記録し直しても差し止めが解けなかった
+- PR #8 — `review/gemini_review.py ci_state()` — `gh pr checks` が失敗して出力が空のときに緑と判定していた
+- PR #8 — `review/gemini_review.py` JSON 抽出 — LLM 出力に前置きがあると JSON を取り出せない
+- PR #20 — `review/gemini_review.py` 差分パスの抽出 — 空白・非 ASCII を含むパスは `git diff` が引用符で囲むため正規表現に合わない
+- PR #20 — `review/gemini_review.py` パスの解決 — Windows で不正な文字を含むパスで `OSError`
+- PR #33 — `review/gemini_review.py has_unverified_critical()` — 評価の理由文に「未確認」があるだけで判定語と取り違えていた
+- PR #33 — `review/gemini_review.py has_unverified_critical()` — 過去の評価も見ていて、記録し直しても差し止めが解けなかった
 - PR #97 — `deploy/update_spinebox.ps1 Get-HealthUrl` — `--print-bind` の出力を `2>&1` で読み、設定の警告(使われなくなったキー)が stderr に出ると host を読み違えた。直したら今度は Windows PowerShell 5.1 が stderr を例外にして止まった(警告の出る偽の spinebox で再現・修正)
 - PR #97 — `deploy/update_spinebox.ps1` 起動前のコミット取得 — `git` が失敗すると同じく例外で止まり、「途中で失敗しても起動し直す」に届かなかった(git リポジトリでない場所で再現)。比べる短縮 SHA もアプリ(7 文字固定)と git の既定(環境で長くなる)で長さがずれていた。さらに `/healthz` が `commit: null`(git が見えない環境)を返すと照合の前に null のメソッドを呼んで例外になり、正常起動でもタイムアウトしていた(偽の /healthz で再現・修正)
-- 導入先 MeltKelp PR #16 — `.claude/hooks/command_match.mjs` ヒアドキュメントの終端行 — CRLF の入力だと終端行が `EOF\r` になって区切り語と一致せず、後ろのマージのコマンドまで本文として読み飛ばして素通ししていた(agy レビューで発覚。`\r` を除いて再現・修正)
-- PR #128 — `scripts/worktree-cleanup.ps1` — `.gitignore` 外の未追跡ファイルがある worktree に対して `--force` 無しで `git worktree remove` を呼び、失敗して `.git` ファイルが残ったままの状態で先に `git worktree prune` を走らせてから作業ディレクトリだけ `Remove-Item` していたため、`.git/worktrees/<id>` が残って後続のブランチ削除が失敗した(agy レビューの WARNING。`-RemoveDirs` 指定時は `--force` を付け、残骸削除の後に `git worktree prune` を走らせる順序に修正。また PR マージ直後のローカル `main` はリモートのマージコミットを未取得で `git push origin --delete` により追跡ブランチも消えているため、後始末のローカルブランチ削除は `-d` ではなく `git branch -D` にした)
-- PR #240 — `spinebox/archive/sevenzip.py _error_line()` — 7-Zip の標準エラーの先頭行を `startswith("ERROR")` で探し、`ERRORS:` の節だけの出力で節の見出しを拾って理由が「出力なし」になった(agy レビューの WARNING。`ERROR:` の行、無ければ `ERRORS:` の節から読むように修正。前方一致は見出しの接頭辞まで含むので、区切りの `:` まで書く)
+- 導入先 MeltKelp PR #16 — `.claude/hooks/command_match.mjs` ヒアドキュメントの終端行 — CRLF の入力だと終端行が `EOF\r` になって区切り語と一致せず、後ろのマージのコマンドまで本文として読み飛ばして素通ししていた(Gemini レビューで発覚。`\r` を除いて再現・修正)
+- PR #128 — `scripts/worktree-cleanup.ps1` — `.gitignore` 外の未追跡ファイルがある worktree に対して `--force` 無しで `git worktree remove` を呼び、失敗して `.git` ファイルが残ったままの状態で先に `git worktree prune` を走らせてから作業ディレクトリだけ `Remove-Item` していたため、`.git/worktrees/<id>` が残って後続のブランチ削除が失敗した(Gemini レビューの WARNING。`-RemoveDirs` 指定時は `--force` を付け、残骸削除の後に `git worktree prune` を走らせる順序に修正。また PR マージ直後のローカル `main` はリモートのマージコミットを未取得で `git push origin --delete` により追跡ブランチも消えているため、後始末のローカルブランチ削除は `-d` ではなく `git branch -D` にした)
+- PR #240 — `spinebox/archive/sevenzip.py _error_line()` — 7-Zip の標準エラーの先頭行を `startswith("ERROR")` で探し、`ERRORS:` の節だけの出力で節の見出しを拾って理由が「出力なし」になった(Gemini レビューの WARNING。`ERROR:` の行、無ければ `ERRORS:` の節から読むように修正。前方一致は見出しの接頭辞まで含むので、区切りの `:` まで書く)
 
 ### 新しく足した分岐・関数にテストが無い
 
@@ -81,15 +81,15 @@ push 前に確かめること:
 
 実例:
 
-- PR #225 — `tests/test_mojibake.py` — `spinebox/mojibake.py` で新規追加した EUC-JP 誤読修復分岐や半角カナの安全性テストが欠落していた(agy レビューの WARNING。テストケースを追加)
-- PR #8 — `review/agy_review.py` — `cmd_review` / `cmd_triage` / `cmd_check` / `call_agy` / `ci_state` にテストが無かった
-- PR #23 — `review/agy_review.py call_agy()` — 再試行時の `--conversation` 付与にテストが無かった
+- PR #225 — `tests/test_mojibake.py` — `spinebox/mojibake.py` で新規追加した EUC-JP 誤読修復分岐や半角カナの安全性テストが欠落していた(Gemini レビューの WARNING。テストケースを追加)
+- PR #8 — `review/gemini_review.py` — `cmd_review` / `cmd_triage` / `cmd_check` / `call_agy`(当時の名前。Gemini API への切り替えで削除) / `ci_state` にテストが無かった
+- PR #23 — `review/gemini_review.py`(当時の `call_agy()`。Gemini API への切り替えで削除) — 再試行時の `--conversation` 付与にテストが無かった
 - PR #61 — `spinebox/app.py background_metadata()` — 設定で有効にしたときに常駐する裏のスレッドにテストが無かった(既存の裏の解析は `tests/test_analysis.py` に有る。足したら同じ形で足す)
 - PR #97 — `deploy/update_spinebox.ps1` — 「途中の手順が失敗しても起動し直す」「止められなければ何もしない」の分岐にテストが無かった(止める・起動するを `-TaskRunner` で差し替えられるようにしてテストを足した)
 - PR #61 — `spinebox/app.py _run_metadata_fetch()` — 進み具合(`done`)を各作品の開始時にしか更新せず、全件完了後も `done < total` のままだった(完了時の状態を確かめるテストが無かった)
-- PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えてコミットを持つ作業ブランチに対する `git branch -D` が通ることも assert していなかった(agy レビューの WARNING)
-- PR #262 — `spinebox/app.py get_page` — PDF のページを中身で `image/png` と見分ける分岐を足したのに、PNG を埋めた PDF で配信する経路のテストが無かった(agy レビューの WARNING。`make_png_pdf` で足した)
-- PR #331 — `spinebox/thumbs.py Thumbnails.get()` / `spinebox/organize/intake.py Intake.evaluate()` / `spinebox/organize/organizer.py Organizer.plan()` / `spinebox/bookmarks.py list_bookmarks()` / `spinebox/stats.py collect()` — `FORMAT_EPUB_IMAGES` の表紙フォールバック・受け入れ・単体整理計画・ブックマーク・統計の各分岐を足したのに、それぞれを通るテストが無かった(agy レビューの WARNING。`tests/test_novel.py` にテストを追加)
+- PR #128 — `tests/test_deploy_scripts.py` — `worktree-cleanup.ps1` の削除テストで `.gitignore` 対象のファイルだけ置いて `.gitignore` 外の未追跡ファイルを置かず、削除後に `.git/worktrees/<id>` が消えてコミットを持つ作業ブランチに対する `git branch -D` が通ることも assert していなかった(Gemini レビューの WARNING)
+- PR #262 — `spinebox/app.py get_page` — PDF のページを中身で `image/png` と見分ける分岐を足したのに、PNG を埋めた PDF で配信する経路のテストが無かった(Gemini レビューの WARNING。`make_png_pdf` で足した)
+- PR #331 — `spinebox/thumbs.py Thumbnails.get()` / `spinebox/organize/intake.py Intake.evaluate()` / `spinebox/organize/organizer.py Organizer.plan()` / `spinebox/bookmarks.py list_bookmarks()` / `spinebox/stats.py collect()` — `FORMAT_EPUB_IMAGES` の表紙フォールバック・受け入れ・単体整理計画・ブックマーク・統計の各分岐を足したのに、それぞれを通るテストが無かった(Gemini レビューの WARNING。`tests/test_novel.py` にテストを追加)
 
 ### ルールを足したのに、同じ流れを書いた他の箇所と食い違う
 
@@ -104,32 +104,33 @@ push 前に確かめること:
 
 実例:
 
-- PR #33 — `.agent/skills/agy-review/SKILL.md` 手順 4 — 「CRITICAL が未確認ならマージしない」を足したが、手順 4 の見出しと結びは未確認でも無条件にマージさせていた
-- PR #33 — `review/agy_review.py check_merge()` — 同じルールを hook が判定していなかった
+- PR #33 — `.agent/skills/gemini-review/SKILL.md` 手順 4 — 「CRITICAL が未確認ならマージしない」を足したが、手順 4 の見出しと結びは未確認でも無条件にマージさせていた
+- PR #33 — `review/gemini_review.py check_merge()` — 同じルールを hook が判定していなかった
 - PR #33 — `.agent/skills/pr-finish/SKILL.md` — PR 本文テンプレートと手順 4 の振り分けに「未確認」が無かった
-- PR #33 — `.agent/skills/agy-review/SKILL.md` フローチャート — 未確認の CRITICAL もマージに至る経路として描いていた(この種類を台帳に足した PR 自身で再発)
+- PR #33 — `.agent/skills/gemini-review/SKILL.md` フローチャート — 未確認の CRITICAL もマージに至る経路として描いていた(この種類を台帳に足した PR 自身で再発)
+- PR #342 — `.agent/skills/gemini-review/SKILL.md` — コマンド例を `--thinking high` に直したが、直下の説明文に旧 `--model gemini-4-hydrogen-high`(API では 404)が残っていた。テンプレートの差分を取り込むときは、マージ後のファイルに旧名・旧オプションが残っていないか grep する
 - PR #35 — `wiki/concepts/recurring-review-findings.md` — 「未確認は台帳に載せない」を足したが、同じページの送り先の説明に未確認の行き先が無かった
 - PR #40 — `spinebox/duplicates.py candidate_counts()` — 画面の API は「一覧に見えている巻どうしの組」だけを出すのに、一覧の印の数は見える条件を掛けず、片方が missing になった候補を数えて「開いても何も出ない印」が残った(missing にして再現)
-- PR #47 — `.agent/rules/git-workflow.md` / `knowledge-wiki.md` — `CLAUDE.md` の写しとして足したが、agy レビュー・両論併記・lint はコミット後の不変条件が抜けていた(外部レビューで発覚)
-- PR #231 — `.agent/rules/spinebox-invariants.md` — `CLAUDE.md` の不変条件を足したのに、写し(同じ PR で直す決まり)を直していなかった(agy レビューの WARNING。写しにも同じ条文を足して修正)
+- PR #47 — `.agent/rules/git-workflow.md` / `knowledge-wiki.md` — `CLAUDE.md` の写しとして足したが、Gemini レビュー・両論併記・lint はコミット後の不変条件が抜けていた(外部レビューで発覚)
+- PR #231 — `.agent/rules/spinebox-invariants.md` — `CLAUDE.md` の不変条件を足したのに、写し(同じ PR で直す決まり)を直していなかった(Gemini レビューの WARNING。写しにも同じ条文を足して修正)
 - PR #61 — `spinebox/app.py decide_work_proposal()` — 手動の統合には連携の反映(`_sync_works`)を足したのに、同じ統合を行う提案の承認には足さず、統合で増えた巻に書誌が入らなかった
 - PR #61 — `spinebox/linking.py choose()` / `reset_link()` — API 契約と mock は未知の取得元を 404 としたが、実装は 409 を返した(契約・mock・実装の突き合わせ漏れ)
 - PR #61 — `spinebox/linking.py reset_link()` / `_store()` — 連携を決める通常の経路(`fetch_work`)には「種別が未決なら保留」「作品の種別と食い違う候補は除く」があるのに、手動の選択を解除する経路と、自動連携を保つ近道は通らず、規則を飛ばして連携した(同じ判定を `decide()` へ集める。近道は判定の前提を満たすときだけ)
-- PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(agy レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
-- PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(agy レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
+- PR #118 — `.agent/skills/dads-ui/SKILL.md`「設計思想」 — 角丸・字を「ローカルに決めてよい」と書きながら、同じページの表と手順 3 では「DADS の値をそのまま使う」としており、逆の指示になっていた(Gemini レビューの WARNING。同じ内容の `.claude/skills/` の写しも)
+- PR #127 — `frontend/src/organize/OrganizeFiles.tsx` / `Inbox.tsx` — DADS のフォーム部品でサポートテキストを `<label>` と `<input>` の間に置くと定めたのに、`#organize-path`・`#organize-folder-template`・`Inbox` の作品名では `<input>` の下に置き、`Inbox` では空白を含みうる `rel_path` を HTML の `id` / `aria-describedby` に埋め込んでいた(Gemini レビューの WARNING。`source_id` に変え、`compareDocumentPosition` で `<input>` より前にあることを確かめるテストを足した)
 - PR #135 — `spinebox/organize/organizer.py _range_cbz_target_problem()` / `_check_range_cbz_item()` — 改名・移動の「出力先に同じ `sources` 行があれば衝突」を CBZ 化にもそのまま使ったが、CBZ 化は実行時に `_upsert_source` で missing の行を再利用する。実行 → 元に戻した後の再計画が常に「この場所にあったファイルの記録が残っています」で衝突になった(undo 後の再計画・再実行のテストで再現し、CBZ 化からは `sources` の存在チェックを外した)
-- PR #219 — `spinebox/scanner.py:717 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(agy レビューの WARNING。`specs is not None` のガードを足して修正)
-- PR #219 — `spinebox/organize/organizer.py:1022 _plan_range_cbz()` — 計画全体の `problems` と同じ名前の変数を PDF 検査の戻り値受け取りに使ったため、前段で拾った未解析アーカイブ等の問題リストが上書きされて消失した(agy レビューの WARNING。`pdf_probs` にリネームして修正)
-- PR #219 — `spinebox/app.py:577 get_volume` / `spinebox/thumbs.py:131 get` / `spinebox/library.py:178 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(agy レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
-- PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(agy レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
-- PR #219 — `spinebox/organize/intake.py:132 preview()` — `novel` 判定から PDF を除外して `mode="cbz"` に流れるようにしたのに、`mode == "cbz"` 内の検査で PDF の分岐を置かず 7-Zip 未対応として恒常的に blocked になり、`_volume_dict` に format を引き継がず execute 時に library.open に流れて VolumeUnreadable になっていた(agy レビューの WARNING。`_inspect_pdf` 呼び出しと `_volume_dict` への format 引き継ぎを足して修正)
-- PR #249 — `spinebox/works.py _belongs_to()` — 巻の名前が外側の名前より長い向きには「番号・…編・区切りの後ろの副題」の検査を足したのに、外側の方が長い向きは単なる前方一致のままで、`魔法使いの嫁` のフォルダが `魔法使い 第01巻` を取り込んだ。両向きを同じ `_extends()` で見るようにした(agy レビューの WARNING)
-- PR #249 — `spinebox/works.py _same_series()` — 外側の名前との突き合わせ(`_belongs_to`)を `_extends()` に揃えた後も、系列のまとめ(`_group_keys`)は単なる前方一致のままで、ローマ字のアーカイブの中の `ゾンビ` と `ゾンビだらけの世界` が 1 系列になり統合された。同じ `_extends()` で見るようにした(agy レビューの WARNING)
-- PR #262 — `spinebox/works.py _volume_json()` / `spinebox/bookmarks.py` — PDF を画像の巻として扱うよう `app.py _format()` だけ直し、同じ `format or "images"` を書いた作品・ブックマークの組み立てを直さず、`format: "pdf"` が API に漏れて作品の表紙候補(`cover_volume_id`)から外れた(agy レビューの CRITICAL。作品一覧で再現して両方を直し、テストを足した)
-- PR #331 — `spinebox/organize/organizer.py _plan_range_cbz()` — 画像だけの EPUB をスキャン時に `format='epub_images'`(読書位置 `page` は 0 始まりの画像ページ番号)として扱うようにした際、範囲指定の CBZ 化で `r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES)` の両方に無条件で `epub_sections` を付けたため、1 区切りに複数画像がある `epub_images` の巻で CBZ 化・undo 時にページ番号が区切り番号として誤変換され、undo 時に `position = 0` が書き込まれた(agy レビューの WARNING。`r["format"] == FORMAT_EPUB` のときだけ `epub_sections` を付けるように修正し、1 区切り 2 画像のテストを足した)
-- PR #331 — `spinebox/library.py Library.open()` / `spinebox/scanner.py Scanner._replace_volumes()` — 範囲指定の CBZ 化では `format='epub'` の読書位置(区切り番号)を画像ページ番号へ換算していたのに、通常閲覧・再スキャンで `format='epub'` から `format='epub_images'` へ切り替える経路では `position = NULL` にするのみで `page` を区切り番号のまま残し、また `epub.image_pages()` ではテキスト判定でコメント・`<script>/<style>` を除いたのに画像抽出は除去前の生文字列に対して行って `data-src` も拾いうる正規表現にしていた(agy レビューの WARNING。`upgrade_epub_progress()` で区切り番号から画像ページ番号へ換算し、`image_pages()` の画像抽出も除去後の文字列と属性境界ガードに揃えてテストを足した)
-- PR #331 — `spinebox/organize/organizer.py _rename_ineligible()` / `_plan_range_cbz()` / `spinebox/organize/intake.py Intake.evaluate()` — 拡張子が `.cbz` で中身が EPUB(`container.xml` あり、`format='epub_images'` / `'epub'`)の巻について、1 巻 = 1 CBZ の判定が拡張子 `.cbz` だけ(または `not novel` だけ)を見て `r["format"]` を見ておらず、改名・移動の対象外にならず範囲指定の CBZ 化でも `conversion=False` 側に振り分けられていた(agy レビューの WARNING。`not r["format"]` を必須にして修正し、`.cbz` 拡張子の EPUB 巻のテストを足した)
-- PR #339 — `frontend/src/novel/NovelReader.tsx novelKeyAction()` — ヘルプモーダルに「Esc / M: メニュー」と記載したのに `novelKeyAction()` に `m` / `M` キーの分岐が無く、テストも `Escape` のみ確認していた(agy レビューの WARNING。`m` / `M` で `"menu"` を返す分岐とテストを追加)
+- PR #219 — `spinebox/scanner.py:717 _scan_pdf()` — 読めない・暗号化 PDF の場合に `_scan_archive` や `_scan_novel` と異なり `specs is not None` のガードを置かず無条件に `_replace_volumes` と `sources` の size/mtime を更新していたため、次回スキャンで再挑戦されず既存巻も missing になる状態だった(Gemini レビューの WARNING。`specs is not None` のガードを足して修正)
+- PR #219 — `spinebox/organize/organizer.py:1022 _plan_range_cbz()` — 計画全体の `problems` と同じ名前の変数を PDF 検査の戻り値受け取りに使ったため、前段で拾った未解析アーカイブ等の問題リストが上書きされて消失した(Gemini レビューの WARNING。`pdf_probs` にリネームして修正)
+- PR #219 — `spinebox/app.py:577 get_volume` / `spinebox/thumbs.py:131 get` / `spinebox/library.py:178 open` — 新しい形式 `format='pdf'` を追加したのに、`format is not None` を小説と仮定していた既存箇所の分岐を更新せず、未整理の PDF を開こうとすると小説扱いの例外・422 になっていた(Gemini レビューの WARNING。`format == "pdf"` を明示的に分岐して修正)
+- PR #219 — `spinebox/organize/pdf.py:191 write_pdf_cbz()` — CBZ 内のエントリ名を `.jpg` 固定にしていたため、埋め込み画像が PNG や生ピクセル等の場合に拡張子と実データが食い違い配信 API で破損しえた(Gemini レビューの WARNING。抽出した拡張子を反映し、生画像は Pillow で JPEG 化して修正)
+- PR #219 — `spinebox/organize/intake.py:132 preview()` — `novel` 判定から PDF を除外して `mode="cbz"` に流れるようにしたのに、`mode == "cbz"` 内の検査で PDF の分岐を置かず 7-Zip 未対応として恒常的に blocked になり、`_volume_dict` に format を引き継がず execute 時に library.open に流れて VolumeUnreadable になっていた(Gemini レビューの WARNING。`_inspect_pdf` 呼び出しと `_volume_dict` への format 引き継ぎを足して修正)
+- PR #249 — `spinebox/works.py _belongs_to()` — 巻の名前が外側の名前より長い向きには「番号・…編・区切りの後ろの副題」の検査を足したのに、外側の方が長い向きは単なる前方一致のままで、`魔法使いの嫁` のフォルダが `魔法使い 第01巻` を取り込んだ。両向きを同じ `_extends()` で見るようにした(Gemini レビューの WARNING)
+- PR #249 — `spinebox/works.py _same_series()` — 外側の名前との突き合わせ(`_belongs_to`)を `_extends()` に揃えた後も、系列のまとめ(`_group_keys`)は単なる前方一致のままで、ローマ字のアーカイブの中の `ゾンビ` と `ゾンビだらけの世界` が 1 系列になり統合された。同じ `_extends()` で見るようにした(Gemini レビューの WARNING)
+- PR #262 — `spinebox/works.py _volume_json()` / `spinebox/bookmarks.py` — PDF を画像の巻として扱うよう `app.py _format()` だけ直し、同じ `format or "images"` を書いた作品・ブックマークの組み立てを直さず、`format: "pdf"` が API に漏れて作品の表紙候補(`cover_volume_id`)から外れた(Gemini レビューの CRITICAL。作品一覧で再現して両方を直し、テストを足した)
+- PR #331 — `spinebox/organize/organizer.py _plan_range_cbz()` — 画像だけの EPUB をスキャン時に `format='epub_images'`(読書位置 `page` は 0 始まりの画像ページ番号)として扱うようにした際、範囲指定の CBZ 化で `r["format"] in (FORMAT_EPUB, FORMAT_EPUB_IMAGES)` の両方に無条件で `epub_sections` を付けたため、1 区切りに複数画像がある `epub_images` の巻で CBZ 化・undo 時にページ番号が区切り番号として誤変換され、undo 時に `position = 0` が書き込まれた(Gemini レビューの WARNING。`r["format"] == FORMAT_EPUB` のときだけ `epub_sections` を付けるように修正し、1 区切り 2 画像のテストを足した)
+- PR #331 — `spinebox/library.py Library.open()` / `spinebox/scanner.py Scanner._replace_volumes()` — 範囲指定の CBZ 化では `format='epub'` の読書位置(区切り番号)を画像ページ番号へ換算していたのに、通常閲覧・再スキャンで `format='epub'` から `format='epub_images'` へ切り替える経路では `position = NULL` にするのみで `page` を区切り番号のまま残し、また `epub.image_pages()` ではテキスト判定でコメント・`<script>/<style>` を除いたのに画像抽出は除去前の生文字列に対して行って `data-src` も拾いうる正規表現にしていた(Gemini レビューの WARNING。`upgrade_epub_progress()` で区切り番号から画像ページ番号へ換算し、`image_pages()` の画像抽出も除去後の文字列と属性境界ガードに揃えてテストを足した)
+- PR #331 — `spinebox/organize/organizer.py _rename_ineligible()` / `_plan_range_cbz()` / `spinebox/organize/intake.py Intake.evaluate()` — 拡張子が `.cbz` で中身が EPUB(`container.xml` あり、`format='epub_images'` / `'epub'`)の巻について、1 巻 = 1 CBZ の判定が拡張子 `.cbz` だけ(または `not novel` だけ)を見て `r["format"]` を見ておらず、改名・移動の対象外にならず範囲指定の CBZ 化でも `conversion=False` 側に振り分けられていた(Gemini レビューの WARNING。`not r["format"]` を必須にして修正し、`.cbz` 拡張子の EPUB 巻のテストを足した)
+- PR #339 — `frontend/src/novel/NovelReader.tsx novelKeyAction()` — ヘルプモーダルに「Esc / M: メニュー」と記載したのに `novelKeyAction()` に `m` / `M` キーの分岐が無く、テストも `Escape` のみ確認していた(Gemini レビューの WARNING。`m` / `M` で `"menu"` を返す分岐とテストを追加)
 
 ### 同じ規則で判定すべき対象を、種類ごとに先に別々に判定している
 
@@ -144,8 +145,8 @@ push 前に確かめること:
 実例:
 
 - PR #144 — `spinebox/organize/organizer.py _plan_range_cbz()` — 単巻の振り分け(`_classify_renames`)が単巻どうしの重複だけで衝突・譲りを決め、同じ名前の CBZ 化の元と比べなかった。単巻が同数で衝突していると、ファイル数の少ない元が `cbz` のまま確定した(単巻 5・5 と画像フォルダ 2 で再現し、`dedupe=False` で全体の判定へ寄せた)
-- PR #249 — `spinebox/scanner.py archive_volume_specs()` — 目次・表紙の断片を「ほかに巻があるときだけ」除く判定を、画像のフォルダだけを並べた時点で行い、後から足す内側アーカイブを数えていなかった(断片と内側アーカイブだけのアーカイブで断片が巻に残る)。全部の巻の候補を並べた後に判定するよう移した(agy レビューの WARNING)
-- PR #249 — `spinebox/scanner.py _is_fragment_folder()` — 「ほかに巻があるときだけ断片を外す」の「ほかの巻」に、断片どうしのフォルダと表紙 1 枚を数え、`Cover/` と `目次/` だけのフォルダで両方を外していた。アーカイブの中の判定(断片でない巻だけを数える)に揃えた(agy レビューの WARNING)
+- PR #249 — `spinebox/scanner.py archive_volume_specs()` — 目次・表紙の断片を「ほかに巻があるときだけ」除く判定を、画像のフォルダだけを並べた時点で行い、後から足す内側アーカイブを数えていなかった(断片と内側アーカイブだけのアーカイブで断片が巻に残る)。全部の巻の候補を並べた後に判定するよう移した(Gemini レビューの WARNING)
+- PR #249 — `spinebox/scanner.py _is_fragment_folder()` — 「ほかに巻があるときだけ断片を外す」の「ほかの巻」に、断片どうしのフォルダと表紙 1 枚を数え、`Cover/` と `目次/` だけのフォルダで両方を外していた。アーカイブの中の判定(断片でない巻だけを数える)に揃えた(Gemini レビューの WARNING)
 
 ### 例外の規則で選ぶ範囲が、規則の前提より広い
 
@@ -159,7 +160,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #256 — `spinebox/linking.py decide()` — 1.0 の同点を全巻数で決める例外で、拮抗の判定(差 < 0.15)の範囲から選んだため、首位 1.0(巻数なし)より次点 0.9(全巻数が合う)を自動連携した(agy レビューの WARNING。失敗するテストを足し、1.0 どうしの 2 件以上に絞った)
+- PR #256 — `spinebox/linking.py decide()` — 1.0 の同点を全巻数で決める例外で、拮抗の判定(差 < 0.15)の範囲から選んだため、首位 1.0(巻数なし)より次点 0.9(全巻数が合う)を自動連携した(Gemini レビューの WARNING。失敗するテストを足し、1.0 どうしの 2 件以上に絞った)
 
 ### 名前の読み・統合の規則を、実データで見た形だけから広げる
 
@@ -175,9 +176,9 @@ push 前に確かめること:
 
 実例:
 
-- PR #264 — `spinebox/naming.py _RULES` — 日本語の間の数字(`… 1 …`)を名前だけで巻番号にしたため、`クラスで 2 番目に可愛い女の子と友達になった` の作品名が切れた(agy レビューの WARNING。規則を消し、同じ入れ物で数字だけ違う名前の組のときだけ同じ系列と数える `works._differs_only_in_numbers()` にした)
-- PR #264 — `spinebox/naming.py _ISSUE` — 週刊誌の `2021年36号` だけを読み、月刊誌の `2023年12月号` を号と読まず号ごとの作品にしていた(agy レビューの WARNING。`月` を足した)
-- PR #264 — `spinebox/works.py _subtitle_evidence()` — 空白だけの区切りの後ろも副題として自動統合し、`進撃の巨人 Before the fall` のような外伝を本編へ混ぜうる(agy レビューの WARNING。記号の区切りだけ自動統合、空白は確認待ち 0.8)
+- PR #264 — `spinebox/naming.py _RULES` — 日本語の間の数字(`… 1 …`)を名前だけで巻番号にしたため、`クラスで 2 番目に可愛い女の子と友達になった` の作品名が切れた(Gemini レビューの WARNING。規則を消し、同じ入れ物で数字だけ違う名前の組のときだけ同じ系列と数える `works._differs_only_in_numbers()` にした)
+- PR #264 — `spinebox/naming.py _ISSUE` — 週刊誌の `2021年36号` だけを読み、月刊誌の `2023年12月号` を号と読まず号ごとの作品にしていた(Gemini レビューの WARNING。`月` を足した)
+- PR #264 — `spinebox/works.py _subtitle_evidence()` — 空白だけの区切りの後ろも副題として自動統合し、`進撃の巨人 Before the fall` のような外伝を本編へ混ぜうる(Gemini レビューの WARNING。記号の区切りだけ自動統合、空白は確認待ち 0.8)
 
 ### 外部ツールの設定形式を一次資料で確かめずに書く
 
@@ -195,7 +196,7 @@ push 前に確かめること:
 実例:
 
 - PR #47 — `.agent/skills/agent-config-manager/SKILL.md` Hook テンプレート — `PreToolUse` を配列ではなくオブジェクトで書き、コマンドのパスも作業ディレクトリ(`hooks.json` の場所)を考えていなかった
-- PR #48 — `.github/workflows-optional/deploy.yml` — シェル行を自前指定にして、組み込みの `shell: powershell` / `pwsh` が前に足す `$ErrorActionPreference = 'stop'` を失い、デプロイスクリプトが無くても exit 0 で緑になっていた(導入先 MeltKelp の PR #11 の agy レビューで発覚。手元の Windows PowerShell 5.1 で再現)
+- PR #48 — `.github/workflows-optional/deploy.yml` — シェル行を自前指定にして、組み込みの `shell: powershell` / `pwsh` が前に足す `$ErrorActionPreference = 'stop'` を失い、デプロイスクリプトが無くても exit 0 で緑になっていた(導入先 MeltKelp の PR #11 の Gemini レビューで発覚。手元の Windows PowerShell 5.1 で再現)
 
 ### 主目的のページ以外に触った Wiki の付随更新を漏らす
 
@@ -260,7 +261,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #23 — `review/agy_review.py` — 再試行で `agy_raw_output.txt` を上書きしていた
+- PR #23 — `review/gemini_review.py` — 再試行で(当時の)`agy_raw_output.txt` を上書きしていた(Gemini API への切り替えで廃止)
 
 ### 件数が増える処理で、1 件ごとに全体を引き直している
 
@@ -279,7 +280,7 @@ push 前に確かめること:
 - PR #91 — `spinebox/organize/organizer.py name_values()` — 範囲指定が蔵書ルート全体の巻を渡すのに、巻ごとに 3 回 SELECT していた(20000 巻で 1.1 秒。10 万巻規模で効く)。文の数を数えるテストを足して `IN` でまとめて引くようにした
 - PR #94 — `spinebox/stats.py collect()` — 全作品の表紙の有無を見るのに、作品ごとに `is_built()`(巻の行を 1 件 SELECT)を呼んでいた。`get_volume_rows()` で 500 件ずつ IN でまとめて引く `Thumbnails.are_built()` にし、文の数が巻の数に比例しないことを `set_trace_callback` で確かめるテストを足した
 - PR #135 — `spinebox/organize/organizer.py _plan_range_cbz()` — `include_cbz` の計画で 1 巻 = 1 CBZ の巻ごとに `_classify_renames([r], ...)` を呼び、その中の `sources`・画像フォルダの SELECT が巻数ぶん出た。1 回の `_classify_renames` にまとめ、`folder_sources` / `source_paths` のキャッシュを渡すようにした。計画の SELECT 数が巻数に比例しないことを `set_trace_callback` で確かめるテストを足した
-- PR #249 — `spinebox/works.py _settle_claims()` — 作品名を揃える段で、一覧の巻ごとに `work_volumes` を 1 件 SELECT していた(1 万巻で 2 万文)。割り当てを一度に引く辞書にし、文の数が巻の数に比例しないテストを足した(agy レビューの WARNING)
+- PR #249 — `spinebox/works.py _settle_claims()` — 作品名を揃える段で、一覧の巻ごとに `work_volumes` を 1 件 SELECT していた(1 万巻で 2 万文)。割り当てを一度に引く辞書にし、文の数が巻の数に比例しないテストを足した(Gemini レビューの WARNING)
 - #291 — `spinebox/app.py review_links()` — 確認待ちの作品ごとに `works.get_work()` を呼び、その中で全作品の項目と全巻を引き直していた(本番の 239 作品で 60 秒以上。レビューではなく利用者の報告で発覚)。`get_works()` でまとめて組み立て、文の数が作品の数に比例しないテストを足した。**一覧を返す API から「1 件の詳細を返す関数」を件数ぶん呼ばない**(その関数が全体を引いていないか中を見る)
 
 ### 共有すべき状態を、呼び出しごとに作るインスタンスに持たせている
@@ -342,7 +343,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #111 — `.agent/skills/dads-ui/SKILL.md`「このリポジトリの罠」 — `.page` を「リーダーの紙面用なので新しい画面のコンテナに使わない」と書いたが、実際は `frontend/src/styles.css` で `.page` が画面共通の枠(`max-width: 1100px`)で、`Admin.tsx` / `FacetList.tsx` が使っている。#99 / #100 の修正はリーダー側の `pointer-events: none` を `.stage .page` に限定したものだった(agy レビューの WARNING で発覚)
+- PR #111 — `.agent/skills/dads-ui/SKILL.md`「このリポジトリの罠」 — `.page` を「リーダーの紙面用なので新しい画面のコンテナに使わない」と書いたが、実際は `frontend/src/styles.css` で `.page` が画面共通の枠(`max-width: 1100px`)で、`Admin.tsx` / `FacetList.tsx` が使っている。#99 / #100 の修正はリーダー側の `pointer-events: none` を `.stage .page` に限定したものだった(Gemini レビューの WARNING で発覚)
 
 ### 既存のクラス名を確かめずに、同じ名前のスタイルを足す
 
@@ -374,7 +375,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #174 — `spinebox/naming.py trailing_number()` — 末尾の括弧装飾(`dropped`)は `_TRAILING_NUMBER` の経路では `evidence` に付けていたが、後から足した著者列の経路(`_TRAILING_AUTHOR_TAIL`)では捨てており、`作品名 1 - 著者 [レーベル]` の括弧装飾が根拠から欠落していた(agy レビューの WARNING。経路を要約して再現し、両経路で付けるように修正)
+- PR #174 — `spinebox/naming.py trailing_number()` — 末尾の括弧装飾(`dropped`)は `_TRAILING_NUMBER` の経路では `evidence` に付けていたが、後から足した著者列の経路(`_TRAILING_AUTHOR_TAIL`)では捨てており、`作品名 1 - 著者 [レーベル]` の括弧装飾が根拠から欠落していた(Gemini レビューの WARNING。経路を要約して再現し、両経路で付けるように修正)
 
 ### シェルへ渡す文字列で、シェルのエスケープを考慮せず書いている
 
@@ -388,7 +389,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #174 — `wiki/log.md` の備考 — PowerShell の二重引用符で渡した Python `-c` の文字列中の `` `trailing_number()` `` など 4 か所が、タブ・BEL 文字に化けてコミットされていた(agy レビューの NITPICK。機械で数えて修正)
+- PR #174 — `wiki/log.md` の備考 — PowerShell の二重引用符で渡した Python `-c` の文字列中の `` `trailing_number()` `` など 4 か所が、タブ・BEL 文字に化けてコミットされていた(Gemini レビューの NITPICK。機械で数えて修正)
 
 ### 一度取り出した値を捨てて、元の文字列から作り直す
 
@@ -420,9 +421,9 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/naming.py:131 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(agy レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
-- PR #249 — `spinebox/naming.py _CHAPTER_LABEL` — `extra` の単語境界が `_` を単語の文字として扱うので `extra_01` に当たらなかった(さらに書き込み時のエスケープ誤りで `` が後退文字になっていた)。`(?![a-z])` にし、`extra_01` `Extra-02` `Extraordinary` のテストを足した(agy レビューの WARNING)
-- PR #249 — `spinebox/naming.py is_fragment_name()` / `_RULES` の ch.N — 1 文字の名前を一律に断片とし漢字 1 文字の作品名(`岳`)を落とした。`c(?=\d)` を IGNORECASE の中に置き `C100`(コミックマーケットの回)を話 100 と読んだ。漢字・かなを除き、`(?-i:c)` にした(agy レビューの WARNING)
+- PR #172 — `spinebox/naming.py:131 _find_number()` — 小数点の巻の判定で、巻番号の値 `start` を添字の境界として使い、`4.1巻` を `1巻` と誤読し、先頭付近で負のインデックスを参照しうる状態だった(Gemini レビューの WARNING。`m.start() >= 2` に修正し、`4.1巻` のテストを足した)
+- PR #249 — `spinebox/naming.py _CHAPTER_LABEL` — `extra` の単語境界が `_` を単語の文字として扱うので `extra_01` に当たらなかった(さらに書き込み時のエスケープ誤りで `` が後退文字になっていた)。`(?![a-z])` にし、`extra_01` `Extra-02` `Extraordinary` のテストを足した(Gemini レビューの WARNING)
+- PR #249 — `spinebox/naming.py is_fragment_name()` / `_RULES` の ch.N — 1 文字の名前を一律に断片とし漢字 1 文字の作品名(`岳`)を落とした。`c(?=\d)` を IGNORECASE の中に置き `C100`(コミックマーケットの回)を話 100 と読んだ。漢字・かなを除き、`(?-i:c)` にした(Gemini レビューの WARNING)
 
 ### 共通の後処理を分岐の片側だけに置いている
 
@@ -435,7 +436,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:938 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(agy レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
+- PR #172 — `spinebox/works.py:938 _assign_volumes()` — 番号付きの作品から系列名の作品へ付け替えるときの `_merge_links()` を、系列名の作品を新設する `if target is None:` の側にだけ置き、既存の系列名の作品へ付け替える `else` 側では連携が移らなかった(Gemini レビューの WARNING。分岐の外へ移し、2 巻目以降の連携を移すテストを足した)
 
 ### 解析規則を変えたのに、既存データを読み直す版を上げていない
 
@@ -449,8 +450,8 @@ push 前に確かめること:
 
 実例:
 
-- PR #225 — `spinebox/scanner.py:64 SCAN_VERSION` — タイトル生成と巻番号抽出に文字化け修復(`fix_mojibake`)を適用したのに `SCAN_VERSION` を 7 のままにしていた(agy レビューの WARNING。8 に上げた)
-- PR #172 — `spinebox/scanner.py:64 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(agy レビューの WARNING。3 に上げた)
+- PR #225 — `spinebox/scanner.py:64 SCAN_VERSION` — タイトル生成と巻番号抽出に文字化け修復(`fix_mojibake`)を適用したのに `SCAN_VERSION` を 7 のままにしていた(Gemini レビューの WARNING。8 に上げた)
+- PR #172 — `spinebox/scanner.py:64 SCAN_VERSION` — `parse_number()` に `卷` と小数点の巻の読み方を足したのに `SCAN_VERSION` を 2 のままにしていた(Gemini レビューの WARNING。3 に上げた)
 
 ### 変化が無ければ書かない処理で、条件の抜けにより毎回書く
 
@@ -464,7 +465,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py:918 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(agy レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
+- PR #172 — `spinebox/works.py:918 _apply_trailing_numbers()` — 小数点の巻の番号を消す条件に `parse_number() is None` だけを入れ、`number_kind is None` の巻も毎回 UPDATE して `updated_at` を書き換えていた(Gemini レビューの WARNING。`number_kind is not None` のガードを足し、番号なしの巻の行が変わらないテストを足した)
 
 ### 前提条件の内側に置いた処理が、前提を満たさない自然な状態で実行されない
 
@@ -478,7 +479,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #172 — `spinebox/works.py _assign_volumes()` — `_refresh_title()` を `norm in work.names` の分岐の内側に置いていた。小数点の巻を誤読した 1 巻作品は系列名の別名を持たないのが自然なので、`norm in work.names` が偽になり、作品名が直らず、新しい系列作品を作って元の作品が孤立した(agy レビューの WARNING。判定の前に呼ぶよう移し、テストから事前の `add_alias` を外した)
+- PR #172 — `spinebox/works.py _assign_volumes()` — `_refresh_title()` を `norm in work.names` の分岐の内側に置いていた。小数点の巻を誤読した 1 巻作品は系列名の別名を持たないのが自然なので、`norm in work.names` が偽になり、作品名が直らず、新しい系列作品を作って元の作品が孤立した(Gemini レビューの WARNING。判定の前に呼ぶよう移し、テストから事前の `add_alias` を外した)
 
 ### 撤回(revert)や一括削除で、維持すべき機能・ログ・テストを巻き添えで消す
 
@@ -493,9 +494,9 @@ push 前に確かめること:
 
 実例:
 
-- PR #213 — 当時の `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(agy レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
-- PR #216 — 当時の `wiki/log.md` — スクリプトによる文字列の一括置換(`replace`)で、最新エントリだけでなく過去の PR (#159, #160, #164, #174, #172) の更新行まで同じ文字列として置換され、同一ページへの重複リンクが混入していた(agy レビューの WARNING。過去ログを元に戻し最新エントリのみ追記する形に修正)
-- PR #302 — 当時の `wiki/log.md` — 最新エントリの「更新:」行を `sed` で書き換えたとき、同じ文面の過去の行(PR #192・#201)にも当たって履歴が変わった(agy レビューの NITPICK。置換後に `git diff` で当たった行を数える)
+- PR #213 — 当時の `wiki/log.md` / `wiki/components/backend.md` / `wiki/concepts/work-search.md` / `frontend/src/works/Works.test.tsx` — PR #191 の revert で `wiki/log.md` の後続 PR #197・#201 のエントリが巻き添えで削除され、維持する `read_later` フィルタの API 契約表・検索仕様の記述、およびフロントのテストのアサーションまで削除されていた(Gemini レビューの WARNING 2 件・NITPICK 1 件。復元して修正)
+- PR #216 — 当時の `wiki/log.md` — スクリプトによる文字列の一括置換(`replace`)で、最新エントリだけでなく過去の PR (#159, #160, #164, #174, #172) の更新行まで同じ文字列として置換され、同一ページへの重複リンクが混入していた(Gemini レビューの WARNING。過去ログを元に戻し最新エントリのみ追記する形に修正)
+- PR #302 — 当時の `wiki/log.md` — 最新エントリの「更新:」行を `sed` で書き換えたとき、同じ文面の過去の行(PR #192・#201)にも当たって履歴が変わった(Gemini レビューの NITPICK。置換後に `git diff` で当たった行を数える)
 
 ### 文字化け修復の判定で、正常な別文字コードの文字列が偶然デコードされる誤爆を考えていない
 
@@ -510,12 +511,12 @@ push 前に確かめること:
 
 実例:
 
-- PR #259 — `spinebox/archive/rar4.py recovered_name()` — RAR4 の OEM 名を cp932 で読み直す判定を「日本語 2 文字以上」だけにしたため、西欧の Windows で作った rar の OEM 名(cp1252)の `élégant` が `駘馮ant` に誤変換されていた(同じ台帳の #225 と同じ機序を別の場所で再発。agy レビューの CRITICAL。Unicode 名が OEM 名の DOS 読み(cp437 / cp850)そのものであること・英字と漢字かなが隣り合わないことの二重ガードに修正)
-- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で `len(_JAPANESE.findall(fixed)) >= 2` だけで成功としていたため、正常な半角カナ `ｱｲｳｴ`(4文字)が EUC-JP の漢字 `塊慨` に誤変換されていた(agy レビューの CRITICAL。元テキストの半角カナ連続と復元後の全角かな必須の二重ガードに修正)
-- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で `kanji_count >= 2` を無条件で許容していたため、小文字アクセント付き母音を複数含む欧文単語 `élégant`・`téléphone`・`céréale` 等が Latin-1 経由で Shift_JIS 第 2 水準漢字のバイト列と偶然一致して `齔齠ant` 等に誤変換されていた(agy レビューの CRITICAL。テキストが欧文文字・記号のみで構成される場合は全角かな必須とするガードに修正)
-- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で、テキストが欧文文字のみ(`is_western`)の場合でも全角かな 1 文字で無条件に修復判定していたため、フランス語単語に含まれる `â`(CP437 で 0x83)の直後に ASCII 小文字が続く単語 `château`・`gâteau`・`grâce` 等が、Shift_JIS のカタカナ 1 文字(0x83 0x74='フ', 0x83 0x63='ツ' 等)を含む文字列 `chフeau`・`grツe` 等に不可逆的に誤変換されていた(agy レビューの CRITICAL。`is_western` の場合は連続した全角かな 2 文字以上を必須とするガードに修正)
-- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で半角カナ 2 文字以上(`[｡-ﾟ]{2,}`)かつ全角かな 1 文字としていたため、正常な半角カナ 2 文字単語 `ｴｱ`・`ｵﾝ` 等が EUC-JP の全角かな 1 文字 `か`・`ヱ` に誤変換されていた(agy レビューの CRITICAL。元テキストに半角カナ 4 文字以上の連続を含み、かつ復元後に全角かな 2 文字以上および非 ASCII 文字 2 文字以上を必須とするガードに修正)
-- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — `château de grâce` のように複数単語に `â` を含むタイトルで散発したカタカナが計 2 文字となりガードをすり抜ける問題、および商標記号 `™`(`℀-⅏`)が `_WESTERN_TEXT` から漏れて誤変換される問題(agy レビューの CRITICAL。`has_kana_seq` による連続全角かな必須化と正規表現拡張で修正)
+- PR #259 — `spinebox/archive/rar4.py recovered_name()` — RAR4 の OEM 名を cp932 で読み直す判定を「日本語 2 文字以上」だけにしたため、西欧の Windows で作った rar の OEM 名(cp1252)の `élégant` が `駘馮ant` に誤変換されていた(同じ台帳の #225 と同じ機序を別の場所で再発。Gemini レビューの CRITICAL。Unicode 名が OEM 名の DOS 読み(cp437 / cp850)そのものであること・英字と漢字かなが隣り合わないことの二重ガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で `len(_JAPANESE.findall(fixed)) >= 2` だけで成功としていたため、正常な半角カナ `ｱｲｳｴ`(4文字)が EUC-JP の漢字 `塊慨` に誤変換されていた(Gemini レビューの CRITICAL。元テキストの半角カナ連続と復元後の全角かな必須の二重ガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で `kanji_count >= 2` を無条件で許容していたため、小文字アクセント付き母音を複数含む欧文単語 `élégant`・`téléphone`・`céréale` 等が Latin-1 経由で Shift_JIS 第 2 水準漢字のバイト列と偶然一致して `齔齠ant` 等に誤変換されていた(Gemini レビューの CRITICAL。テキストが欧文文字・記号のみで構成される場合は全角かな必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — 欧文コードページ誤読修復判定で、テキストが欧文文字のみ(`is_western`)の場合でも全角かな 1 文字で無条件に修復判定していたため、フランス語単語に含まれる `â`(CP437 で 0x83)の直後に ASCII 小文字が続く単語 `château`・`gâteau`・`grâce` 等が、Shift_JIS のカタカナ 1 文字(0x83 0x74='フ', 0x83 0x63='ツ' 等)を含む文字列 `chフeau`・`grツe` 等に不可逆的に誤変換されていた(Gemini レビューの CRITICAL。`is_western` の場合は連続した全角かな 2 文字以上を必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — EUC-JP 誤読修復判定で半角カナ 2 文字以上(`[｡-ﾟ]{2,}`)かつ全角かな 1 文字としていたため、正常な半角カナ 2 文字単語 `ｴｱ`・`ｵﾝ` 等が EUC-JP の全角かな 1 文字 `か`・`ヱ` に誤変換されていた(Gemini レビューの CRITICAL。元テキストに半角カナ 4 文字以上の連続を含み、かつ復元後に全角かな 2 文字以上および非 ASCII 文字 2 文字以上を必須とするガードに修正)
+- PR #225 — `spinebox/mojibake.py:59 fix_mojibake()` — `château de grâce` のように複数単語に `â` を含むタイトルで散発したカタカナが計 2 文字となりガードをすり抜ける問題、および商標記号 `™`(`℀-⅏`)が `_WESTERN_TEXT` から漏れて誤変換される問題(Gemini レビューの CRITICAL。`has_kana_seq` による連続全角かな必須化と正規表現拡張で修正)
 
 ### 新しい画面・モックが、同じ種類の既存の画面とバックエンドの規約から外れる
 
@@ -530,7 +531,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #230 — `frontend/src/works/WorkProposals.tsx` / `frontend/src/mock/mockWorks.ts` / `tests/test_linking.py` — 統合の提案の絞り込みで、placeholder での説明・モックの単純な `toLowerCase()` 比較・著者と別名が空のテストを、agy レビューで指摘された
+- PR #230 — `frontend/src/works/WorkProposals.tsx` / `frontend/src/mock/mockWorks.ts` / `tests/test_linking.py` — 統合の提案の絞り込みで、placeholder での説明・モックの単純な `toLowerCase()` 比較・著者と別名が空のテストを、Gemini レビューで指摘された
 
 ### 規約に「上の」「下の」と相対的に書き、参照先を取り違えさせる・手順名を実際の手順とずらす
 
@@ -544,7 +545,7 @@ push 前に確かめること:
 
 実例:
 
-- PR #237 — `CLAUDE.md` のラップアップ報告 — 「上のワークフロー」と「worktree は prune 済みか」を、agy レビューで指摘された
+- PR #237 — `CLAUDE.md` のラップアップ報告 — 「上のワークフロー」と「worktree は prune 済みか」を、Gemini レビューで指摘された
 
 ### 結果に含めない対象を、短絡評価の既定値で含めてしまう
 
@@ -569,4 +570,4 @@ push 前に確かめること:
 
 実例:
 
-- PR #339 — `frontend/src/styles.css` 小説リーダーのボタン・スライダー — `.novel-header-btn:focus-visible` 等と `.novel-slider:focus-visible` に黄単色の `outline` を書き、ライトモードの明るいヘッダー・フッター上で視認性が落ちていた(agy レビューの WARNING。上書きを削除して `@layer base` の二重リングを使うように修正)
+- PR #339 — `frontend/src/styles.css` 小説リーダーのボタン・スライダー — `.novel-header-btn:focus-visible` 等と `.novel-slider:focus-visible` に黄単色の `outline` を書き、ライトモードの明るいヘッダー・フッター上で視認性が落ちていた(Gemini レビューの WARNING。上書きを削除して `@layer base` の二重リングを使うように修正)

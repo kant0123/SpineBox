@@ -1,8 +1,8 @@
 # Git ワークフロー & 完了の定義
 
-> `CLAUDE.md` の「Git ワークフロー」「完了の定義」「agy レビュー」節の写し。
+> `CLAUDE.md` の「Git ワークフロー」「完了の定義」「Gemini レビュー」節の写し。
 > 規約を変えるときは `CLAUDE.md` と同じ PR でここも直す(片方だけ直すと食い違う)。
-> 手順は `.agent/skills/` の各スキル(`worktree-start` / `wiki-ingest` / `pr-finish` / `agy-review` / `file-issue`)。
+> 手順は `.agent/skills/` の各スキル(`worktree-start` / `wiki-ingest` / `pr-finish` / `gemini-review` / `file-issue`)。
 
 ## 常に守る基本規約
 
@@ -17,11 +17,11 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
 3. **`git add` はファイルを明示指定する**:
    - `-A` / `.` は使わない。他セッションの未コミット変更が混ざりうるため、`git diff --cached` で確認してからコミットする。
 4. **worktree の安全な後始末**:
-   - 使い終わったら、メインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` で消す。
+   - 使い終わったら、メインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名>` で消す。`-Remove` を省かない(素の `git worktree remove` はジャンクションがあると exit 0 のままディレクトリを残す)。
    - 失敗しても手で `rm -rf` / `Remove-Item` しない(ジャンクションのリンク先を巻き込む恐れがあり、git が working tree と認識しなくなり回復しない)。
 5. **事前承認済みの操作**:
    - push・PR 作成・マージ・ブランチ削除・worktree 削除は事前承認済み。`git status` で意図しない変更が混ざっていないか確認してから実行する。
-   - CI 成功と agy レビューの完了まで確認したら、マージしてよいかを改めて聞かない。
+   - CI 成功と Gemini レビューの完了まで確認したら、マージしてよいかを改めて聞かない。
 6. **失敗時はマージしない**:
    - CI が失敗したらマージせず原因を調べる。修正が困難なら PR は開いたまま報告する(勝手に close しない)。
    - Actions がジョブを起動しない(課金・上限。注記「The job was not started」)ときだけ、コミット・push 済みの状態で `python scripts/ci_local.py` を実行し、head に `local/*` を載せて代替する。Actions で実際に動いて落ちたチェックは代替しない。
@@ -33,12 +33,12 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
 
 コミットメッセージは `feat:` / `fix:` / `docs:` / `chore:` プレフィックス + 概要。
 
-## agy レビュー
+## Gemini レビュー
 
-PR の CI が緑になった後、マージの前に、差分を agy (Antigravity CLI) 経由で Gemini に 1 回レビューさせる。
-手順は `agy-review` スキル、仕組みは `review/README.md`。
+PR の CI が緑になった後、マージの前に、差分を Gemini API で Gemini に 1 回レビューさせる。
+手順は `gemini-review` スキル、仕組みは `review/README.md`。
 
-- **レビューは必須。順序は push → CI → `python review/agy_review.py` → (差し戻しなら評価)→ マージ。**
+- **レビューは必須。順序は push → CI → `python review/gemini_review.py` → (差し戻しなら評価)→ マージ。**
   レビュー記録の無いマージは `gh pr merge` の hook が差し止める。
 - **`gh pr merge` には必ず PR 番号を付ける**(hook は番号で PR を特定する)。
 - **レビューは head SHA ごとに有効。** 修正を push したら CI から回し直す。
@@ -50,7 +50,7 @@ PR の CI が緑になった後、マージの前に、差分を agy (Antigravit
   CRITICAL が未確認ならマージしない(merge hook も差し止める)。
 - **妥当だった指摘は、誤りの種類として `wiki/concepts/recurring-review-findings.md` に修正と同じ PR で残す。**
   着手時と push 前にこのページを読む。
-- **レビューが失敗(agy のエラー・空出力)したままマージしない。**
+- **レビューが失敗(API のエラー・空出力)したままマージしない。**
 - **レポート(`review/work/`)をコミットしない。** 残す価値のある知見は `wiki/` に還元する。
 
 ## 完了の定義 (Definition of Done)
@@ -63,4 +63,4 @@ PR の CI が緑になった後、マージの前に、差分を agy (Antigravit
 - Wiki を更新した場合、**コミット後に** `node scripts/wiki-lint.js` が通っている。
 - 作業中に見つけてこの PR で直さないと決めた問題を、すべて Issue 化している(1 件も無ければ、それ自体を確認済みとする)。
 - 変更内容の要約と手動確認結果を報告している。起票した Issue があれば番号を挙げている。
-- **PR の最新 head が agy レビューを通っている**(APPROVE、または差し戻しを評価して誤検知を起票済み)。結果を PR 本文の「レビュー」節に書いている。
+- **PR の最新 head が Gemini レビューを通っている**(APPROVE、または差し戻しを評価して誤検知を起票済み)。結果を PR 本文の「レビュー」節に書いている。

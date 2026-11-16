@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
-"""PR の差分を agy (Antigravity CLI / Gemini) にレビューさせ、結果を PR コメントに残す。
+"""PR の差分を Gemini API でレビューさせ、結果を PR コメントに残す。
 
-使い方 (手順全体は agy-review スキル):
+使い方 (手順全体は gemini-review スキル):
 
-  python review/agy_review.py [--pr N]                 CI 緑を確認してレビューし、PR にコメントする
-  python review/agy_review.py --triage FILE [--pr N]   差し戻しに対する評価を PR にコメントする
-  python review/agy_review.py --check [--pr N]         マージしてよいかを判定する (merge hook 用)
+  python review/gemini_review.py [--pr N]                 CI 緑を確認してレビューし、PR にコメントする
+  python review/gemini_review.py --triage FILE [--pr N]   差し戻しに対する評価を PR にコメントする
+  python review/gemini_review.py --check [--pr N]         マージしてよいかを判定する (merge hook 用)
 
 終了コード:
   0  APPROVE / 評価を投稿した / マージしてよい
-  1  実行時エラー (agy・gh の失敗、出力を解釈できない)。レビュー結果は投稿しない
+  1  実行時エラー (API・gh の失敗、応答を解釈できない)。レビュー結果は投稿しない
   2  前提を満たさない (CI が緑でない / レビュー未実施 / 差し戻しが未評価)
   3  CHANGES_REQUESTED (CRITICAL か WARNING がある)
 
 判定の記録は PR コメントの先頭に置く HTML コメントのマーカーだけで行う。
 **head SHA ごと**に記録するので、修正を push すれば自動的に「未レビュー」に戻る。
 
-レビューでは差分と関連 Wiki ページをプロンプトに埋め込み、head 時点のリポジトリの
-スナップショットを agy に読み取り用として渡す (`--add-dir`)。スナップショットは実行後に消す。
+API キーは環境変数 GEMINI_API_KEY から読む (Google AI Studio で作る)。
+レビューでは差分・関連 Wiki ページ・変更されたファイルの全文をプロンプトに埋め込み、API を 1 回呼ぶ。
+Wiki とファイルの全文は head 時点のスナップショットから読み、スナップショットは実行後に消す。
 """
 
 import argparse
@@ -29,13 +30,14 @@ import json
 import os
 import re
 import shutil
-import signal
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path, PurePosixPath
 
 REVIEW_DIR = Path(__file__).resolve().parent
@@ -43,28 +45,39 @@ PROMPT_FILE = REVIEW_DIR / "prompt.md"
 INVARIANTS_FILE = REVIEW_DIR / "domain_invariants.json"
 WORK_DIR = REVIEW_DIR / "work"
 
+API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+API_KEY_ENV = "GEMINI_API_KEY"
+
 # 実装は Claude 系で行う前提なので、レビューは別系統のモデルに担当させる
-# (自分が書いたコードを自分で採点させない)。gemini-3.1-pro-high は使えなくなったため flash に変え、
-# gemini-4-hydrogen-high (#322) を経て、通常コストとの両立のため既定を medium にした (#336)。
-DEFAULT_MODEL_NAME = "gemini-4-hydrogen-medium"
-DEFAULT_MODEL = os.environ.get("REVIEW_MODEL", DEFAULT_MODEL_NAME)
+# (自分が書いたコードを自分で採点させない)。名前は Gemini API のモデル ID。
+# agy の時代: gemini-3.1-pro-high → (使えなくなった #40) gemini-3.8-flash-high → (#61) gemini-4-hydrogen-low。
+# API への切り替え (#67) で、モデル ID と思考レベルを分けて指定する形になった。
+DEFAULT_MODEL = os.environ.get("REVIEW_MODEL", "gemini-4-hydrogen")
+THINKING_LEVELS = ("low", "medium", "high", "xhigh")
+DEFAULT_THINKING = os.environ.get("REVIEW_THINKING", "medium")
 DEFAULT_DOMAIN = os.environ.get("REVIEW_DOMAIN", "spinebox")
 DEFAULT_TIMEOUT_MIN = 15
 # これを超える差分は 1 回のレビューで精度が落ちる。PR を分けるのが本筋。
 DEFAULT_MAX_CHARS = 400_000
 # 埋め込む Wiki ページの合計文字数。主要な設計判断・過去指摘台帳が予算超過で落ちにくい量。
 DEFAULT_WIKI_CHARS = 120_000
-# 大きい変更で使う上位モデルの (max_chars, wiki_chars)。--max-chars / --wiki-chars 未指定時に適用する。
-MODEL_BUDGETS = {
-    "gemini-4-hydrogen-high": (600_000, 300_000),
-    "gemini-4-hydrogen-xhigh": (600_000, 300_000),
+# 大きい変更で使う上位の思考レベルの (max_chars, wiki_chars)。--max-chars / --wiki-chars 未指定時に適用する (SpineBox #322・#336)。
+THINKING_BUDGETS = {
+    "high": (600_000, 300_000),
+    "xhigh": (600_000, 300_000),
 }
+# 埋め込む変更ファイル (全文) の合計文字数。API はファイルを開けないので、差分の前後を見せる手段はこれだけ。
+DEFAULT_FILES_CHARS = 200_000
+# 一時的な障害 (過負荷・内部エラー) だけ、この秒数を置いて再試行する。429 (上限超過) は待っても通らないので再試行しない。
+RETRY_STATUS = (500, 503)
+RETRY_WAITS = (10, 30)
 
 # スナップショットの一時ディレクトリ。プロセスごと強制終了されると finally が走らず残るので、
-# 次回の起動時にこの接頭辞で古いものを掃除する。
-SNAPSHOT_PREFIX = "agy-review-snapshot-"
+# 次回の起動時にこの接頭辞で古いものを掃除する。agy の時代の接頭辞で残ったものも掃除する。
+SNAPSHOT_PREFIX = "gemini-review-snapshot-"
+LEGACY_SNAPSHOT_PREFIXES = ("agy-review-snapshot-",)
 STALE_SNAPSHOT_HOURS = 24
-# 差分に載っていない秘匿情報を、スナップショット経由で agy (= Google) に送らないための除外。
+# 差分に載っていない秘匿情報を、変更ファイルの全文として Gemini (= Google) に送らないための除外。
 # コミットされていなければ tarball に入らないが、誤ってコミットされた場合の保険。
 SECRET_NAME_PATTERNS = (".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ecdsa*", "id_ed25519*")
 SECRET_NAME_ALLOW = ("*.example", "*.sample", "*.template")
@@ -76,8 +89,12 @@ CODE_REF_RE = re.compile(r"^([\w./-]+\.[a-zA-Z0-9]{1,5})(?::\d+)?(?:\s+.+)?$")
 SEVERITIES = ("CRITICAL", "WARNING", "NITPICK")
 BLOCKING = ("CRITICAL", "WARNING")
 
-REVIEW_MARKER_RE = re.compile(r"<!-- agy-review sha=([0-9a-f]{40}) verdict=(APPROVE|CHANGES_REQUESTED) -->")
-TRIAGE_MARKER_RE = re.compile(r"<!-- agy-review-triage sha=([0-9a-f]{40}) -->")
+# 書くのは gemini-review。agy の時代に書かれた agy-review も読む (導入済みプロジェクトの過去の記録を無効にしない)。
+MARKER_NAME = "gemini-review"
+MARKER_NAMES_RE = r"(?:gemini|agy)-review"
+REVIEW_MARKER_RE = re.compile(rf"<!-- {MARKER_NAMES_RE} sha=([0-9a-f]{{40}}) verdict=(APPROVE|CHANGES_REQUESTED) -->")
+TRIAGE_MARKER_RE = re.compile(rf"<!-- {MARKER_NAMES_RE}-triage sha=([0-9a-f]{{40}}) -->")
+ANY_MARKER_RE = re.compile(rf"<!-- {MARKER_NAMES_RE}")
 
 SCHEMA = {
     "type": "object",
@@ -104,19 +121,6 @@ SCHEMA = {
 
 class ReviewError(RuntimeError):
     pass
-
-
-class ToolDeniedError(ReviewError):
-    """ヘッドレスで許可されないツールを agy が呼び、応答が空のまま終わった。再試行で通ることがある。"""
-
-    def __init__(self, message, denied=(), conversation=None, calls=()):
-        super().__init__(message)
-        self.denied = list(denied)
-        # 拒否された会話の ID。再試行はこの会話の続きとして行う。
-        self.conversation = conversation
-        # 拒否された呼び出しそのもの (`run_command: python -c ...`)。再試行の注意に名指しで載せる。
-        self.calls = list(calls)
-        self.raw = ""
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +218,7 @@ def pr_comments(pr):
 def fetch_tarball(sha, timeout=300):
     """head 時点の tarball を bytes で返す。テキストで受けると壊れるので run() は使わない。
 
-    認証はスクリプト側の gh が持つので private リポジトリでも取れる。agy には gh を触らせない。
+    認証はスクリプト側の gh が持つので private リポジトリでも取れる。
     """
     cmd = ["gh", "api", f"repos/{{owner}}/{{repo}}/tarball/{sha}"]
     try:
@@ -306,7 +310,8 @@ def sweep_stale_snapshots(tmp_root=None, now=None, hours=STALE_SNAPSHOT_HOURS):
     root = Path(tmp_root or tempfile.gettempdir())
     now = now if now is not None else time.time()
     removed = []
-    for entry in root.glob(f"{SNAPSHOT_PREFIX}*"):
+    entries = [e for prefix in (SNAPSHOT_PREFIX, *LEGACY_SNAPSHOT_PREFIXES) for e in root.glob(f"{prefix}*")]
+    for entry in entries:
         try:
             if not entry.is_dir() or now - entry.stat().st_mtime < hours * 3600:
                 continue
@@ -401,22 +406,52 @@ def select_wiki_pages(root, changed, budget):
 
 
 # ---------------------------------------------------------------------------
-# プロンプトと agy の出力
+# 変更ファイルの全文
 # ---------------------------------------------------------------------------
-ENVIRONMENT_NOTE = """## この環境の制約(agy CLI・ヘッドレス)
+def read_changed_files(root, changed, budget, skip=(), excluded=()):
+    """埋め込む変更ファイルをスナップショットから読む。(採用 [(相対パス, 本文)], 外した [(相対パス, 理由)]) を返す。
 
-- **コマンド実行・URL 取得・ファイルの書き込みは許可されていません。** 呼んだ時点で拒否され、
-  レビューが応答なしで終了します。確かめたいことは `view_file` / `grep_search` で読んで推論し、
-  実行していない点は該当する指摘の issue にその旨を書いてください。
-- **agy 自身の会話ログを読もうとしないでください** (`transcript.jsonl` / `transcript_full.jsonl`、
-  `.gemini/antigravity-cli/brain/` 配下)。表示上このメッセージが `<truncated NNNN bytes>` と
-  切り詰められて見えても、**本文は全文があなたに渡っています**(実測で確認済み。約 4KB を超える
-  メッセージは保存・表示側だけが切り詰められます)。読み直す必要はなく、試みると拒否されて
-  レビューが失敗します。
-"""
+    差分の順に、予算に収まるものを採る。skip は別の形で既に埋め込んだパス (Wiki ページ)、
+    excluded はスナップショットに展開しなかったパス (秘匿情報らしい名前・リンクなど)。
+    スナップショットに無いパスは削除されたファイルなので、黙って飛ばす。
+    """
+    skip, excluded = set(skip), set(excluded)
+    included, omitted, used = [], [], 0
+    for rel in changed:
+        if rel in skip:
+            continue
+        if rel in excluded:
+            omitted.append((rel, "スナップショットから除外"))
+            continue
+        try:
+            path = Path(root).joinpath(*PurePosixPath(rel).parts)
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+        except (OSError, ValueError):
+            # OS が扱えないパス。レビューを止めるほどではないが、見せていないことは残す。
+            omitted.append((rel, "読めない"))
+            continue
+        if b"\0" in data:
+            omitted.append((rel, "バイナリ"))
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            omitted.append((rel, "UTF-8 でない"))
+            continue
+        if used + len(text) > budget:
+            omitted.append((rel, "予算超過"))
+            continue
+        included.append((rel, text))
+        used += len(text)
+    return included, omitted
 
 
-def build_prompt(diff, domain, snapshot=None, wiki_pages=(), changed=()):
+# ---------------------------------------------------------------------------
+# プロンプトと Gemini API
+# ---------------------------------------------------------------------------
+def build_prompt(diff, domain, files=(), wiki_pages=()):
     """参考資料 → 差分 → 指示の順に並べる。長い入力では末尾の指示の方が守られやすいため。"""
     invariants = json.loads(INVARIANTS_FILE.read_text(encoding="utf-8"))
     if domain not in invariants:
@@ -424,19 +459,11 @@ def build_prompt(diff, domain, snapshot=None, wiki_pages=(), changed=()):
     info = invariants[domain]
     rules = "\n".join(f"- {r}" for r in info["critical_rules"])
 
-    # 先頭と末尾の両方に置く。切り詰めは中間を落とすので、どちらか一方は必ず残る。
-    parts = ["以下の参考資料と差分を読んだ上で、末尾の「Role」以降の指示に従って差分をレビューしてください。", "",
-             ENVIRONMENT_NOTE, ""]
-    if snapshot:
-        parts += [
-            "# 参考資料 1: リポジトリのスナップショット",
-            "",
-            f"PR の head 時点のリポジトリ全体を `{snapshot}` に置いてあります(読み取り専用のコピー)。",
-            "差分に出てこない前提は、ここを開いて確認してください。変更されたファイル:",
-            "",
-            *[f"- `{snapshot / p}`" for p in changed],
-            "",
-        ]
+    parts = ["以下の参考資料と差分を読んだ上で、末尾の「Role」以降の指示に従って差分をレビューしてください。", ""]
+    if files:
+        parts += ["# 参考資料 1: 変更されたファイルの全文 (PR の head 時点)", ""]
+        for rel, text in files:
+            parts += [f"## {rel}", "", fence(text), ""]
     if wiki_pages:
         parts += ["# 参考資料 2: 関連する Wiki ページ", ""]
         for rel, text in wiki_pages:
@@ -452,59 +479,45 @@ def build_prompt(diff, domain, snapshot=None, wiki_pages=(), changed=()):
         "",
         rules,
         "",
-        # agy CLI 固有の事情なので prompt.md (上流と共有) ではなくここに置く。末尾なのは、
-        # 長い入力では末尾の指示の方が守られやすいため。
-        ENVIRONMENT_NOTE,
     ]
     return "\n".join(parts)
 
 
-def _events(stdout):
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict):
-            yield event
+def parse_response(raw):
+    """generateContent の応答から (findings, usageMetadata) を取り出す。
 
-
-def parse_output(stdout):
-    """agy の stream-json 出力から findings を取り出す。
-
-    **出力が空・解釈不能のときは絶対に「指摘 0 件」として扱わない。**
+    **応答が空・途中で切れた・解釈不能のときは絶対に「指摘 0 件」として扱わない。**
     それを APPROVE として記録すると、レビューしていないのにレビュー済みの記録だけが残る。
     """
-    result = None
-    for event in _events(stdout):
-        if event.get("event") == "result":
-            result = event.get("result") or {}
-    if result is None:
-        raise ReviewError("agy の出力に result イベントがありません (出力が空か途中で切れています)。")
-    if result.get("status") != "SUCCESS":
-        raise ReviewError(f"agy が失敗を報告しました: {result.get('error') or result.get('status')}")
-
-    payload = result.get("structured_output")
-    if not isinstance(payload, dict):
-        text = (result.get("response") or "").strip()
-        denied = [d.get("action") for d in result.get("denied_actions") or [] if isinstance(d, dict)]
-        if not text and denied:
-            # ヘッドレスでは許可を求められないツールを呼ぶと、その場で空の応答のまま終わる。
-            raise ToolDeniedError(f"agy のツール呼び出しが拒否され、レビューが途中で終わりました: {', '.join(denied)}",
-                                  denied, result.get("conversation_id"), denied_calls(stdout))
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else ""
-            text = text[:text.rfind("```")] if "```" in text else text
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            raise ReviewError("agy の出力から JSON を取り出せませんでした。")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raise ReviewError("Gemini API の応答を JSON として解釈できませんでした。")
+    if not isinstance(data, dict):
+        raise ReviewError("Gemini API の応答がオブジェクトではありません。")
+    candidates = data.get("candidates")
+    if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):
+        # 入力が安全フィルタなどで弾かれると candidates が無く、promptFeedback に理由が入る。
+        raise ReviewError(f"Gemini API の応答に候補がありません (promptFeedback={data.get('promptFeedback')!r})。")
+    candidate = candidates[0]
+    finish = candidate.get("finishReason")
+    if finish != "STOP":
+        # MAX_TOKENS で切れた JSON は、たまたま閉じていると指摘の一部だけを読んでしまう。
+        raise ReviewError(f"Gemini の応答が最後まで生成されませんでした (finishReason={finish!r})。")
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and not p.get("thought")).strip()
+    if not text:
+        raise ReviewError("Gemini の応答が空です。")
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text[:text.rfind("```")] if "```" in text else text
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        raise ReviewError("Gemini の応答から JSON を取り出せませんでした。")
     findings = payload.get("findings") if isinstance(payload, dict) else None
     if not isinstance(findings, list):
-        raise ReviewError("agy の出力に findings 配列がありません。")
+        raise ReviewError("Gemini の応答に findings 配列がありません。")
 
     normalized = []
     for f in findings:
@@ -514,152 +527,76 @@ def parse_output(stdout):
         if severity not in SEVERITIES:
             raise ReviewError(f"未知の severity です: {f.get('severity')!r}")
         normalized.append({**f, "severity": severity})
-    return normalized
+    usage = data.get("usageMetadata")
+    return normalized, usage if isinstance(usage, dict) else {}
 
 
-def denied_calls(stdout):
-    """許可が無くて失敗したツール呼び出しを `ツール名: 引数` の形で順序つきで返す。"""
-    calls = []
-    for event in _events(stdout):
-        step = event.get("step_update") if event.get("event") == "step_update" else None
-        if not isinstance(step, dict) or step.get("state") != "ERROR":
-            continue
-        info = step.get("tool_info") or {}
-        if "denied" not in str((info.get("error") or {}).get("message", "")):
-            continue
-        params = info.get("parameters") or {}
-        arg = params.get("CommandLine") or params.get("Url") or json.dumps(params, ensure_ascii=False)
-        call = f"{step.get('tool_name')}: {arg}"
-        if call not in calls:
-            calls.append(call)
-    return calls
+def api_error_message(body):
+    """エラー応答の本文から、人が読むメッセージだけを取り出す。"""
+    try:
+        return str(json.loads(body)["error"]["message"])
+    except (ValueError, KeyError, TypeError):
+        return body.strip()[:500]
 
 
-def files_read(stdout, root):
-    """agy が view_file で開いたファイルを、スナップショットからの相対パスで順序つきで返す。"""
-    root = Path(root).resolve()
-    seen = []
-    for event in _events(stdout):
-        step = event.get("step_update") if event.get("event") == "step_update" else None
-        if not isinstance(step, dict) or step.get("tool_name") != "view_file" or step.get("state") != "DONE":
-            continue
-        raw = ((step.get("tool_info") or {}).get("parameters") or {}).get("AbsolutePath")
-        if not raw:
-            continue
+def http_error_text(code, detail, model):
+    hint = {
+        400: "リクエストが受け付けられませんでした。API キーが無効か、--thinking の値をモデルが受け付けない可能性があります",
+        401: f"API キーが無効です。環境変数 {API_KEY_ENV} を確認してください",
+        403: f"API キーにこのモデルを使う権限がありません。環境変数 {API_KEY_ENV} を確認してください",
+        404: (f"モデル `{model}` が見つかりません。--model / REVIEW_MODEL には Gemini API のモデル ID を指定します"
+              " (例: gemini-4-hydrogen。agy の時代の `gemini-4-hydrogen-low` のような名前は使えません)"),
+        429: "利用上限を超えました (無料枠の 1 日・1 分あたりの回数など)。時間を置くか、上限を確認してください",
+    }.get(code, "")
+    return f"Gemini API がエラーを返しました (HTTP {code}): {detail}" + (f" [{hint}]" if hint else "")
+
+
+def call_gemini(prompt, model, thinking, timeout_min, opener=None, sleep=time.sleep):
+    """(findings, usageMetadata) を返す。API キーは URL に載せず、ヘッダーで渡す (URL はログに残りやすい)。"""
+    api_key = os.environ.get(API_KEY_ENV, "").strip()
+    if not api_key:
+        raise ReviewError(f"環境変数 {API_KEY_ENV} が設定されていません。Google AI Studio で API キーを作って設定してください。")
+    opener = opener or urllib.request.urlopen
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            # enum を書かないと severity が小文字で返ってくることがある。
+            "responseJsonSchema": SCHEMA,
+            "thinkingConfig": {"thinkingLevel": thinking},
+        },
+    }
+    request = urllib.request.Request(
+        API_URL.format(model=model),
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8", "x-goog-api-key": api_key},
+        method="POST",
+    )
+    for attempt in range(len(RETRY_WAITS) + 1):
         try:
-            shown = Path(raw).resolve().relative_to(root).as_posix()
-        except (ValueError, OSError):
-            # スナップショットの外、または OS が扱えないパス。表示のためだけなので落とさない。
-            shown = raw
-        if shown not in seen:
-            seen.append(shown)
-    return seen
-
-
-def kill_tree(proc):
-    """agy の子プロセスごと止める。残るとスナップショットのファイルを掴んだままになり消せない。"""
-    if proc.poll() is not None:
-        return
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-    else:
-        with contextlib.suppress(OSError):
-            os.killpg(proc.pid, signal.SIGKILL)
-    with contextlib.suppress(OSError):
-        proc.kill()
-
-
-def call_agy(prompt, model, timeout_min, add_dir, conversation=None):
-    """(findings, agy の生出力) を返す。conversation を渡すとその会話の続きとして prompt を送る。"""
-    WORK_DIR.mkdir(exist_ok=True)
-    schema = WORK_DIR / "schema.json"
-    schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
-    # 本文は -p の引数ではなく stdin で渡す。引数だと Windows のコマンドライン長 (約 32KB) に当たる。
-    message = json.dumps({"event": "user", "message": {"content": prompt}}, ensure_ascii=False) + "\n"
-    # --add-dir で加えたディレクトリはヘッドレスでも読める (書き込みも通るので、捨てるコピーを渡す)。
-    # コマンド実行と URL 取得は許可ルールを置かない限り拒否される。
-    cmd = ["agy", "--add-dir", str(add_dir), "--input-format", "stream-json", "--output-format", "stream-json",
-           "--json-schema", str(schema), "--print-timeout", f"{timeout_min}m", "--model", model]
-    if conversation:
-        cmd += ["--conversation", conversation]
-    popen_extra = {} if os.name == "nt" else {"start_new_session": True}
+            with opener(request, timeout=timeout_min * 60) as response:
+                raw = response.read().decode("utf-8", "replace")
+            break
+        except urllib.error.HTTPError as e:
+            detail = api_error_message(e.read().decode("utf-8", "replace"))
+            if e.code in RETRY_STATUS and attempt < len(RETRY_WAITS):
+                wait = RETRY_WAITS[attempt]
+                print(f"[WARN] Gemini API が一時的なエラーを返しました (HTTP {e.code}): {detail} — "
+                      f"{wait} 秒後に再試行します ({attempt + 1}/{len(RETRY_WAITS)})", file=sys.stderr)
+                sleep(wait)
+                continue
+            raise ReviewError(http_error_text(e.code, detail, model))
+        except OSError as e:
+            # URLError (名前解決・接続の失敗) とタイムアウト。どちらも OSError の下にある。
+            raise ReviewError(f"Gemini API に接続できませんでした ({timeout_min} 分でタイムアウト): {getattr(e, 'reason', e)}")
     try:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                cwd=str(add_dir), **popen_extra)
-    except FileNotFoundError:
-        raise ReviewError("コマンドが見つかりません: agy")
-    try:
-        out, err = proc.communicate(message.encode("utf-8"), timeout=timeout_min * 60 + 60)
-    except subprocess.TimeoutExpired:
-        kill_tree(proc)
-        proc.communicate()
-        raise ReviewError(f"agy がタイムアウトしました ({timeout_min} 分)")
-    except BaseException:
-        kill_tree(proc)
-        raise
-    stdout = out.decode("utf-8", "replace")
-    stderr = err.decode("utf-8", "replace")
-    if proc.returncode != 0:
-        tail = " / ".join(stderr.strip().splitlines()[-3:])
-        hint = ""
-        if not tail and stdout.strip():
-            # モデル名が合わないと agy は stderr に何も出さず、モデル一覧だけを stdout に出して落ちる (#40)
-            hint = f" [stderr 空。stdout 末尾: {' / '.join(stdout.strip().splitlines()[-3:])}。--model のモデル名が使えない可能性]"
-        raise ReviewError(f"agy が異常終了しました (exit={proc.returncode}): {tail}{hint}")
-    try:
-        return parse_output(stdout), stdout
+        return parse_response(raw)
     except ReviewError as e:
-        if isinstance(e, ToolDeniedError):
-            e.raw = stdout
-        dump = WORK_DIR / "agy_raw_output.txt"
-        text = (stdout or "(出力なし)") + ("\n--- stderr ---\n" + stderr if stderr.strip() else "")
-        # 会話の続きのときは追記する。上書きすると、拒否に至った前半の出力が消えて原因を追えない。
-        with open(dump, "a" if conversation else "w", encoding="utf-8") as f:
-            f.write(f"\n=== 会話の続き ({conversation}) ===\n{text}" if conversation else text)
+        WORK_DIR.mkdir(exist_ok=True)
+        dump = WORK_DIR / "gemini_raw_output.txt"
+        dump.write_text(raw or "(出力なし)", encoding="utf-8")
         e.args = (f"{e} 生出力: {dump}",)
         raise
-
-
-TOOL_DENIED_RETRIES = 3
-TOOL_DENIED_NOTE = (
-    "## 注意: ツール呼び出しが拒否されました\n\n"
-    "次の呼び出しは許可されておらず、この環境では**何度呼んでも実行されません**"
-    "(呼んだ時点でレビューが失敗します)。\n\n"
-    "{calls}\n\n"
-    "`run_command` / `read_url_content` / 書き込み系のツールは二度と呼ばないでください。"
-    "会話ログ (`transcript.jsonl` / `transcript_full.jsonl`) を読み直す必要もありません"
-    "(切り詰めて表示されているだけで、本文は全文渡っています)。"
-    "結果が知りたかった点は `view_file` / `grep_search` でコードを読んで推論し、"
-    "推論で済ませた点は該当する指摘の issue に「実行して確かめていない」と書いてください。"
-    "そのうえでレビューを最後まで行い、指定の JSON で結果を返してください。"
-)
-
-
-def call_agy_with_retry(prompt, model, timeout_min, add_dir, call=None, retries=TOOL_DENIED_RETRIES):
-    """ツール拒否で途中終了したときだけ再試行する。それ以外の失敗は即座に上げる。(findings, 全試行の生出力) を返す。
-
-    プロンプトで読み取り系ツールに限っても、agy は検証のために `python -c` などを呼ぶことがある (実測)。
-    再試行は**拒否された会話の続き**として、拒否された呼び出しを名指しした注意だけを送る。
-    最初からやり直してプロンプト末尾に一般的な注意を足すだけでは、同じコマンドを呼び直して落ちた (#22)。
-    会話 ID が取れなかったときだけ、最初のプロンプトに注意を足して新しい会話でやり直す。
-    """
-    call = call or call_agy
-    message, conversation, raws, calls = prompt, None, [], []
-    for attempt in range(retries + 1):
-        try:
-            findings, raw = call(message, model, timeout_min, add_dir, conversation)
-            return findings, "\n".join(raws + [raw])
-        except ToolDeniedError as e:
-            raws.append(e.raw)
-            if attempt == retries:
-                raise
-            print(f"[WARN] {e} — 再試行します ({attempt + 1}/{retries})", file=sys.stderr)
-            calls += [c for c in e.calls or [f"{d}: (内容不明)" for d in e.denied] if c not in calls]
-            note = TOOL_DENIED_NOTE.format(calls="\n".join(f"- `{c}`" for c in calls))
-            if e.conversation:
-                message, conversation = note, e.conversation
-            else:
-                message, conversation = f"{prompt}\n\n{note}", None
 
 
 # ---------------------------------------------------------------------------
@@ -675,19 +612,24 @@ def fence(code):
 
 
 def render_context(context):
-    """何を見せ、agy が何を読んだか。省いたことに気づかないと「全部見た上での APPROVE」と読み違えるため。"""
-    read = context.get("files_read", [])
-    unread = [p for p in context.get("changed_existing", []) if p not in read]
+    """何を見せたか。省いたことに気づかないと「全部見た上での APPROVE」と読み違えるため。"""
+    embedded = context.get("files_included", [])
     lines = ["<details><summary>参照した資料</summary>", ""]
     lines.append("- 埋め込んだ Wiki: " + (", ".join(f"`{p}`" for p in context.get("wiki_included", [])) or "なし"))
     if context.get("wiki_omitted"):
         lines.append("- 予算超過で外した Wiki: " + ", ".join(f"`{p}`" for p in context["wiki_omitted"]))
-    lines.append(f"- agy が開いたファイル ({len(read)} 件): " + (", ".join(f"`{p}`" for p in read) or "なし"))
-    if unread:
-        lines.append("- **開かれなかった変更ファイル:** " + ", ".join(f"`{p}`" for p in unread))
+    lines.append(f"- 全文を埋め込んだ変更ファイル ({len(embedded)} 件): " + (", ".join(f"`{p}`" for p in embedded) or "なし"))
+    if context.get("files_omitted"):
+        lines.append("- **埋め込めなかった変更ファイル:** "
+                     + ", ".join(f"`{p}`({why})" for p, why in context["files_omitted"]))
+    lines.append("- 変更していないファイル(呼び出し元など)は Gemini に見せていません。")
     if context.get("snapshot_skipped"):
         lines.append(f"- スナップショットから除外したファイル: {len(context['snapshot_skipped'])} 件"
                      "(リンク・秘匿情報らしい名前・書き出せない名前)")
+    usage = context.get("usage") or {}
+    if usage:
+        lines.append(f"- トークン: 入力 {usage.get('promptTokenCount', '?')} / 出力 {usage.get('candidatesTokenCount', '?')}"
+                     f" / 思考 {usage.get('thoughtsTokenCount', 0)}")
     lines += ["", "</details>", ""]
     return lines
 
@@ -697,8 +639,8 @@ def render(findings, sha, model, domain, context=None):
     icon = "✅" if verdict == "APPROVE" else "🔁"
     counts = " / ".join(f"{s} {sum(f['severity'] == s for f in findings)}" for s in SEVERITIES)
     lines = [
-        f"<!-- agy-review sha={sha} verdict={verdict} -->",
-        f"## {icon} agy レビュー: {verdict}",
+        f"<!-- {MARKER_NAME} sha={sha} verdict={verdict} -->",
+        f"## {icon} Gemini レビュー: {verdict}",
         "",
         f"`{sha[:7]}` / `{model}` / ドメイン `{domain}` / {counts}",
         "",
@@ -723,7 +665,7 @@ def render(findings, sha, model, domain, context=None):
     if verdict == "CHANGES_REQUESTED":
         lines += [
             "---",
-            "依頼元は CRITICAL / WARNING を 1 件ずつ評価し、`python review/agy_review.py --triage <file>` で",
+            "依頼元は CRITICAL / WARNING を 1 件ずつ評価し、`python review/gemini_review.py --triage <file>` で",
             "評価を記録してください(修正する場合は push 後に再レビュー)。",
         ]
     return "\n".join(lines) + "\n"
@@ -732,9 +674,9 @@ def render(findings, sha, model, domain, context=None):
 # ---------------------------------------------------------------------------
 # サブコマンド
 # ---------------------------------------------------------------------------
-def resolve_budgets(model, max_chars=None, wiki_chars=None):
-    """モデルに応じた (max_chars, wiki_chars) を返す。明示指定 (None 以外) があればそちらを優先する。"""
-    default_max, default_wiki = MODEL_BUDGETS.get(model, (DEFAULT_MAX_CHARS, DEFAULT_WIKI_CHARS))
+def resolve_budgets(thinking, max_chars=None, wiki_chars=None):
+    """思考レベルに応じた (max_chars, wiki_chars) を返す。明示指定 (None 以外) があればそちらを優先する。"""
+    default_max, default_wiki = THINKING_BUDGETS.get(thinking, (DEFAULT_MAX_CHARS, DEFAULT_WIKI_CHARS))
     return (
         default_max if max_chars is None else max_chars,
         default_wiki if wiki_chars is None else wiki_chars,
@@ -753,10 +695,10 @@ def cmd_review(args):
         return 2
     print(f"PR #{pr} `{sha[:7]}`: CI {detail}")
 
-    max_chars, wiki_chars = resolve_budgets(args.model, args.max_chars, args.wiki_chars)
     diff = gh("pr", "diff", str(pr))
     if not diff.strip():
         raise ReviewError(f"PR #{pr} の差分が空です。")
+    max_chars, wiki_chars = resolve_budgets(args.thinking, args.max_chars, args.wiki_chars)
     if len(diff) > max_chars:
         raise ReviewError(f"差分が {len(diff)} 文字あり、上限 {max_chars} を超えています。"
                           "PR を分けるか、--max-chars で上限を上げてください。")
@@ -765,25 +707,30 @@ def cmd_review(args):
     with snapshot_dir() as root:
         written, skipped = extract_snapshot(fetch_tarball(sha), root)
         wiki_pages, wiki_omitted = select_wiki_pages(root, changed, wiki_chars)
-        changed_existing = [p for p in changed if (root / p).is_file()]
-        print(f"スナップショット {written} ファイル / Wiki {len(wiki_pages)} ページ (上限 {wiki_chars} 文字)"
-              f"{f' (予算超過で {len(wiki_omitted)} ページ除外)' if wiki_omitted else ''}")
-        print(f"agy ({args.model}) でレビュー中... 差分 {len(diff)} 文字 (上限 {max_chars})")
-        prompt = build_prompt(diff, args.domain, root, wiki_pages, changed_existing)
-        findings, raw = call_agy_with_retry(prompt, args.model, args.timeout, root)
-        context = {
-            "wiki_included": [rel for rel, _ in wiki_pages],
-            "wiki_omitted": wiki_omitted,
-            "files_read": files_read(raw, root),
-            "changed_existing": changed_existing,
-            "snapshot_skipped": skipped,
-        }
+        files, files_omitted = read_changed_files(root, changed, args.files_chars,
+                                                  skip=[rel for rel, _ in wiki_pages], excluded=skipped)
+    # ここから先はスナップショットを使わない (本文は読み終えている)。
+    print(f"スナップショット {written} ファイル / Wiki {len(wiki_pages)} ページ"
+          f"{f' (予算超過で {len(wiki_omitted)} ページ除外)' if wiki_omitted else ''}"
+          f" / 変更ファイルの全文 {len(files)} 件"
+          f"{f' ({len(files_omitted)} 件は埋め込めず)' if files_omitted else ''}")
+    prompt = build_prompt(diff, args.domain, files, wiki_pages)
+    print(f"Gemini API ({args.model} / 思考 {args.thinking}) でレビュー中... プロンプト {len(prompt)} 文字")
+    findings, usage = call_gemini(prompt, args.model, args.thinking, args.timeout)
+    context = {
+        "wiki_included": [rel for rel, _ in wiki_pages],
+        "wiki_omitted": wiki_omitted,
+        "files_included": [rel for rel, _ in files],
+        "files_omitted": files_omitted,
+        "snapshot_skipped": skipped,
+        "usage": usage,
+    }
 
     # レビュー中に push されていたら、古い差分の結果を新しい head に紐付けない。
     if pr_info(pr)["headRefOid"] != sha:
         raise ReviewError("レビュー中に PR の head が変わりました。再実行してください。")
 
-    report = render(findings, sha, args.model, args.domain, context)
+    report = render(findings, sha, f"{args.model} ({args.thinking})", args.domain, context)
     WORK_DIR.mkdir(exist_ok=True)
     out = WORK_DIR / f"pr-{pr}-{sha[:7]}.md"
     out.write_text(report, encoding="utf-8")
@@ -804,7 +751,7 @@ def cmd_triage(args):
     body = Path(args.triage).read_text(encoding="utf-8").strip()
     if not body:
         raise ReviewError("評価の本文が空です。")
-    comment = f"<!-- agy-review-triage sha={sha} -->\n## agy レビューの評価 (`{sha[:7]}`)\n\n{body}\n"
+    comment = f"<!-- {MARKER_NAME}-triage sha={sha} -->\n## Gemini レビューの評価 (`{sha[:7]}`)\n\n{body}\n"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as f:
         f.write(comment)
     try:
@@ -821,26 +768,23 @@ def check_merge(comments, sha):
     triaged = set(TRIAGE_MARKER_RE.findall(comments))
     verdict = reviews.get(sha)
     if verdict is None:
-        return False, (f"head `{sha[:7]}` に対する agy レビューがありません。"
-                       "CI が緑になってから `python review/agy_review.py` を実行してください。")
+        return False, (f"head `{sha[:7]}` に対する Gemini レビューがありません。"
+                       "CI が緑になってから `python review/gemini_review.py` を実行してください。")
     if verdict == "CHANGES_REQUESTED" and sha not in triaged:
         return False, (f"head `{sha[:7]}` のレビューは差し戻しで、評価が記録されていません。"
                        "指摘を評価し、的外れなら上流に、確かめられないならこのリポジトリに起票した上で "
-                       "`python review/agy_review.py --triage <file>` を実行してください。"
+                       "`python review/gemini_review.py --triage <file>` を実行してください。"
                        "成立を確かめた指摘があるなら修正して push してください。")
     if verdict == "CHANGES_REQUESTED" and has_unverified_critical(triage_bodies(comments, sha)):
         return False, (f"head `{sha[:7]}` の評価に未確認の CRITICAL があります。"
                        "マージせず、状況を人間に報告してください。")
-    return True, f"head `{sha[:7]}` は agy レビュー済みです ({verdict})。"
+    return True, f"head `{sha[:7]}` は Gemini レビュー済みです ({verdict})。"
 
 
 def triage_bodies(comments, sha):
     """sha に対する評価コメントの本文。次のマーカーまでを 1 件とみなす(コメントの境界は取れないため)。"""
-    marker = f"<!-- agy-review-triage sha={sha} -->"
-    bodies = []
-    for part in comments.split(marker)[1:]:
-        bodies.append(re.split(r"<!-- agy-review", part, maxsplit=1)[0])
-    return bodies
+    marker = re.compile(rf"<!-- {MARKER_NAMES_RE}-triage sha={re.escape(sha)} -->")
+    return [ANY_MARKER_RE.split(part, maxsplit=1)[0] for part in marker.split(comments)[1:]]
 
 
 # 判定は最初の `—` の直後の語。理由文に「未確認」が出てくるだけでは止めない。
@@ -871,12 +815,15 @@ def main():
     mode.add_argument("--triage", metavar="FILE", help="差し戻しに対する評価 (Markdown) を PR に記録する")
     mode.add_argument("--check", action="store_true", help="マージしてよいかを判定する (merge hook 用)")
     p.add_argument("--domain", default=DEFAULT_DOMAIN, help=f"ドメイン不変条件 (既定: {DEFAULT_DOMAIN})")
-    p.add_argument("--model", default=DEFAULT_MODEL, help=f"agy のモデル (既定: {DEFAULT_MODEL})")
-    p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_MIN, help="agy のタイムアウト (分)")
+    p.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini API のモデル ID (既定: {DEFAULT_MODEL})")
+    p.add_argument("--thinking", default=DEFAULT_THINKING, choices=THINKING_LEVELS,
+                   help=f"思考レベル (既定: {DEFAULT_THINKING})")
+    p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_MIN, help="API 呼び出しのタイムアウト (分)")
     p.add_argument("--max-chars", type=int, default=None,
-                   help=f"差分の上限文字数 (既定: {DEFAULT_MAX_CHARS}、gemini-4-hydrogen-high 指定時は {MODEL_BUDGETS['gemini-4-hydrogen-high'][0]})")
+                   help=f"差分の上限文字数 (既定: {DEFAULT_MAX_CHARS}、--thinking high / xhigh 指定時は {THINKING_BUDGETS['high'][0]})")
     p.add_argument("--wiki-chars", type=int, default=None,
-                   help=f"埋め込む Wiki ページの合計文字数 (既定: {DEFAULT_WIKI_CHARS}、gemini-4-hydrogen-high 指定時は {MODEL_BUDGETS['gemini-4-hydrogen-high'][1]})")
+                   help=f"埋め込む Wiki ページの合計文字数 (既定: {DEFAULT_WIKI_CHARS}、--thinking high / xhigh 指定時は {THINKING_BUDGETS['high'][1]})")
+    p.add_argument("--files-chars", type=int, default=DEFAULT_FILES_CHARS, help="埋め込む変更ファイル (全文) の合計文字数")
     p.add_argument("--no-post", action="store_true", help="PR にコメントせずローカルにだけ出力する")
     args = p.parse_args()
     try:

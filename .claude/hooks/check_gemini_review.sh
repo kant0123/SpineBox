@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# [オプション] agy レビュー — マージ差し止め hook (Claude Code / PreToolUse / matcher: Bash)
+# [オプション] Gemini レビュー — マージ差し止め hook (Claude Code / PreToolUse / matcher: Bash)
 #
-# `gh pr merge` の直前に発火し、PR の head SHA に対する agy レビューの記録があるかを見る。
+# `gh pr merge` の直前に発火し、PR の head SHA に対する Gemini レビューの記録があるかを見る。
 #   - レビューが無い                         → 差し止め
 #   - 差し戻し (CHANGES_REQUESTED) で評価が無い → 差し止め
 #   - APPROVE、または差し戻しを評価済み        → 通す
-# 判定の本体は review/agy_review.py --check。ここはコマンドの振り分けだけ。
+# 判定の本体は review/gemini_review.py --check。ここはコマンドの振り分けだけ。
 #
 # レビューは必須なので回避手段は置かない。hook は Claude Code 経由のマージにしか効かず、
 # GitHub の画面から押されたマージは止められない。
@@ -50,7 +50,7 @@ if [[ $parsed != 1 ]]; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-script="$repo_root/review/agy_review.py"
+script="$repo_root/review/gemini_review.py"
 # review/ を採用していないプロジェクトでは何もしない。
 [[ -f "$script" ]] || exit 0
 
@@ -66,13 +66,13 @@ while IFS= read -r line; do
         pr="${BASH_REMATCH[1]}"
     else
         echo "gh pr merge に PR 番号が指定されていないため、マージを差し止めました。" >&2
-        echo "agy レビューの記録を PR 番号で確認するので、\`gh pr merge <PR番号> --merge\` の形で再実行してください。" >&2
+        echo "Gemini レビューの記録を PR 番号で確認するので、\`gh pr merge <PR番号> --merge\` の形で再実行してください。" >&2
         exit 2
     fi
 
     # 判定できない (gh の失敗など) 場合も止める。exit 2 以外は Claude Code がブロックとして扱わない。
     if ! python "$script" --check --pr "$pr" >&2; then
-        echo "agy レビューの確認が取れないため、マージを差し止めました (手順: agy-review スキル)。" >&2
+        echo "Gemini レビューの確認が取れないため、マージを差し止めました (手順: gemini-review スキル)。" >&2
         exit 2
     fi
 done <<< "$matches"

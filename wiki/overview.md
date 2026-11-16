@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: システム全体像と各ページへの入口
-updated: 2026-11-10
+updated: 2026-11-16
 related: [recurring-review-findings, local-ci, frontend, backend, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-linking, metadata-clients, metadata-sources, novel-reader, work-search, inbox, cover-thumbnails, bookmarks, follow, data-jobs]
 ---
 
@@ -17,7 +17,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 
 ## 構成
 
-開発基盤(エージェント規約・CI・agy レビュー・この Wiki)に加えて、アプリは次の構成要素から成る。
+開発基盤(エージェント規約・CI・Gemini レビュー・この Wiki)に加えて、アプリは次の構成要素から成る。
 これから作るものの仕様は Issue に置く。実装したら、その PR でここに構成要素を足す。
 
 - [[backend]] — `spinebox/`。FastAPI の単一プロセス。設定・SQLite・スキャン・閲覧 API。フロントと共有する API 契約もここ
@@ -51,7 +51,7 @@ related: [recurring-review-findings, local-ci, frontend, backend, archive-readin
 
 - 蔵書を壊さないための不変条件は `CLAUDE.md`(および `.agent/rules/spinebox-invariants.md`)の「蔵書を扱う不変条件」にある。差分がこれに触れていないかを PR ごとに確かめる
 - GOAL.md のフェーズ 1〜4 を一括で自律開発するときの進行規約(フェーズごとの通し検証と進捗の記録先、Opus・Sonnet 5.5 のエフォート指定、クラウドクレジット活用の `[Cloud]` / `[Local]` 振り分けと引き取り手順を含む)は `KICKOFF.md` にある
-- agy レビューは分野 `spinebox`(`review/domain_invariants.json`)の観点で見る
+- Gemini レビューは分野 `spinebox`(`review/domain_invariants.json`)の観点で見る。Gemini API を直接呼ぶ(`review/gemini_review.py`、環境変数 `GEMINI_API_KEY`。旧 agy は規約上のリスクで廃止、#341)。差分・関連 Wiki・変更ファイル全文が Google に送られる。既定の思考レベルは `medium`、大きい変更は `--thinking high`(`review/README.md`)
 - GitHub Actions は課金・上限でジョブが起動しないことがある。そのときの CI の代替は [[local-ci]]
 - 動作確認用の蔵書サンプルは `_参考/` にある(git 管理外)
 - レビューで繰り返し差し戻された誤りの種類は [[recurring-review-findings]]。着手時と push 前に読む

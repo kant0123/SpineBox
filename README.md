@@ -82,9 +82,9 @@ DB の変更は起動時に自動で入る。途中で失敗しても、最後�
 - 開発用の起動: `py -3.12 -m spinebox`(設定は `config.local.toml` か環境変数 `SPINEBOX_CONFIG`)。
   フロントだけなら `npm --prefix frontend run dev:mock`(モック API)
 - テスト: `py -3.12 scripts/ci_local.py --no-report`(CI と同じ検査)
-- エージェント向けの規約: [CLAUDE.md](CLAUDE.md)、開発の流れ(worktree・PR・CI・agy レビュー):
+- エージェント向けの規約: [CLAUDE.md](CLAUDE.md)、開発の流れ(worktree・PR・CI・Gemini レビュー):
   [docs/development_workflow.md](docs/development_workflow.md)、Wiki の運用: [docs/wiki_workflow.md](docs/wiki_workflow.md)、
-  agy レビュー: [review/README.md](review/README.md)
+  Gemini レビュー: [review/README.md](review/README.md)
 - `_参考/` には動作確認用の蔵書サンプルを置く。git の管理外で、コミットしない
 
 開発基盤は [エージェントルール汎用テンプレート](https://github.com/kant0123/ai-coding-template) から導入した。

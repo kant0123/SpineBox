@@ -55,4 +55,4 @@
   各ソースのレート制限を守り、生の応答は保存して再取得を減らす
 - 秘匿情報の扱い: 外部 API のキー(楽天ウェブサービスなど)はリポジトリ外の設定ファイルに置き、
   ログ出力・コミット・Issue 記載をしない
-- agy レビューの分野は `spinebox`(`review/domain_invariants.json`。`review/agy_review.py` の既定値)
+- Gemini レビューの分野は `spinebox`(`review/domain_invariants.json`。`review/gemini_review.py` の既定値)

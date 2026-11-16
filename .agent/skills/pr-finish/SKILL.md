@@ -62,11 +62,14 @@ gh pr create --title "<一文>" --body "<下記テンプレート>"
 
 ## レビュー
 
-- agy: <APPROVE / 差し戻し N 回 → APPROVE / 差し戻しを評価してマージ>
-- 起票: <kant0123/gemini-review#12 (誤検知) / #58 (スコープ外) / #61 (未確認) / なし>
+- Gemini: 【未記入: マージ前に手順 4 の結果で書き換える】
+- 起票: 【未記入】
 ```
 
-「レビュー」節は作成時点では空欄でよく、マージ前に手順 4 の結果で埋める。
+「レビュー」節は作成時点では上の【未記入】のままにする。**「未実施」「あとで実施する」とは書かない**
+(書くと、レビューを後回しにしてよいように読める)。
+手順 4 の結果(`gemini-review` の「PR 本文に書くこと」の書式)で書き換え、【未記入】が残っていないことを
+マージ前に確かめる。
 
 - **`Fixes #<番号>` / `Closes #<番号>` を書かない。** クロージングキーワードがあると
   マージ時に GitHub が Issue を自動クローズし、後段の `gh issue close --comment` が
@@ -75,11 +78,24 @@ gh pr create --title "<一文>" --body "<下記テンプレート>"
 - `wiki/` に差分が無いと PreToolUse hook がブロックする。意図的なら理由を本文に書いた上で
   `WIKI_SKIP=1 gh pr create ...` で再実行する。
 
+**PR を作っただけでは作業は終わっていない。** 手順 3(CI)→ 4(Gemini レビュー)→ 5(マージ)→
+6(後始末)→ 7(Issue クローズ)まで、同じターンで続ける。途中で止めてよいのは、CI の失敗が直せないときと
+未確認の CRITICAL が残るときだけで、その場合は理由を報告する。
+**「CI が緑になったら声をかけてください」と言って止めない。** 待つ手段は手順 3 にある。
+
 ## 3. CI を待つ
+
+CI の完了は**自分で待つ**。デスクトップアプリ等の実行環境が「CI をポーリングしない」と指示していても、
+その指示が禁じているのは短い間隔での繰り返し確認で、このリポジトリでは CI 成功の確認が完了の定義に入っている。
+次の**1 回きりの待機コマンド**を、バックグラウンド実行(Bash の `run_in_background`)で走らせる。
+終了すると呼び出し元に通知が戻るので、ポーリングにならず、止まらずに手順 4 へ進める。
 
 ```bash
 gh pr checks <PR番号> --watch
 ```
+
+終了コードが 0 なら全件成功。それ以外は失敗(または未起動)として下へ。
+Auto-fix が有効でも、CI の**成功**では通知が来ない。成功の確認は上の待機で自分で行う。
 
 失敗したらマージせず原因を調べる。修正が困難なら PR は開いたまま状況を報告する
 (勝手に close しない)。
@@ -92,22 +108,22 @@ or your spending limit needs to be increased.」なら、コードではなく A
 
 ```bash
 git status                       # 未コミット・未追跡が無いこと(あると載せない)
-python scripts/ci_local.py       # test・wiki-lint を実行し、local/test・local/wiki-lint を載せる
+python scripts/ci_local.py       # ワークフローと同じジョブを実行し、local/<ジョブ名> を載せる
 gh pr checks <PR番号>            # local/* が pass になっていることを確かめる
 ```
 
 - 載るのは**実行したときの HEAD**。push 前・未コミットの変更があるときは前提エラー(exit 2)で何も載せない。
 - **代替できるのは「起動しなかった」チェックだけ。** Actions で実際に動いて落ちたなら、ローカルが通っても
-  直すのが先(`review/agy_review.py` も代替を認めない)。環境差が疑わしいなら、その旨を報告する。
+  直すのが先(`review/gemini_review.py` も代替を認めない)。環境差が疑わしいなら、その旨を報告する。
 - 修正を push したら head が変わるので、ローカル CI もやり直す。
 
-## 4. agy レビュー
+## 4. Gemini レビュー
 
-**CI が緑になってから** `agy-review` スキルに従う。詳しい手順はそちらにある。
+**CI が緑になってから** `gemini-review` スキルに従う。詳しい手順はそちらにある。
 
 ```bash
-python review/agy_review.py --pr <PR番号>
-# 大きい変更のときは --model gemini-4-hydrogen-high を付ける(参照予算も自動で広がる)
+python review/gemini_review.py --pr <PR番号>
+# 大きい変更のときは --thinking high を付ける(参照予算も自動で広がる)
 ```
 
 - APPROVE → 手順 5 へ。
@@ -141,24 +157,38 @@ gh pr view <PR番号> --json state,mergedAt
 
 ## 6. 後始末
 
+Windows では次が標準(SpineBox の開発機は Windows):
+
 ```bash
 git push origin --delete <branch>
 cd C:/Users/kntat/Documents/Git/SpineBox   # メインツリー
-powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs
+powershell -ExecutionPolicy Bypass -File scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名>
 git branch -D <branch>
 ```
 
-**worktree の削除はメインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` で実行する。**
+それ以外は `powershell ...` の行を `git worktree remove ../SpineBox-<作業名>` に置き換える。
 
-- シェルの作業ディレクトリが削除対象の中にあると、Windows はプロセスのカレントディレクトリを削除できず必ず失敗する。
-  `../SpineBox-<作業名>` は **worktree の中からでも自分自身に解決してしまう**ので、パスを見ただけでは気づけない。
-- **`-Remove ../SpineBox-<作業名>` を必ず付ける。** `-Remove` を省いて `-RemoveDirs` だけ実行すると、稼働中の worktree は
-  残骸ではないためスキップされ、何も消えないまま exit 0 で終わる。
-- 素の `git worktree remove` は、ReadOnly 属性で失敗したり、`frontend/node_modules` 等のジャンクション(`ReparsePoint`)や
-  未追跡ディレクトリがあると `.git` ファイルだけ消して親ディレクトリを残したりする。`worktree-cleanup.ps1` は
-  ジャンクションをリンク先の中身を辿らずに解除し、ReadOnly を外してから削除し、残ったディレクトリも `-RemoveDirs` で掃除する。
-- 失敗しても**手で `rm -rf` / `Remove-Item` しない**(ジャンクションのリンク先を巻き込む恐れがあり、git も working tree と
-  認識しなくなって回復しない)。マージ前の worktree が絡むときは `-RemoveDirs` を外して中身を確かめてから実行する。
+**Windows で素の `git worktree remove` を使わない。** worktree の中にジャンクション /
+シンボリックリンク(共有の `node_modules` 等)があると、追跡ファイルと `.git` だけを消して
+**exit 0 で終わり**、リンクとディレクトリが残る。ReadOnly 属性が付く環境(クラウドストレージの
+ミラー同期・バックアップツール)では Permission denied で失敗し、以後 `git worktree prune` も
+失敗し続ける。`-Remove` はリンク(リンク先は辿らない)と ReadOnly を外してから git に消させ、
+それでも残ったディレクトリまで消す。
+
+**`-Remove` を省かない。** 引数なしや `-RemoveDirs` だけでは稼働中の worktree を対象にしない
+(「なし」と出て exit 0 になるので、消えたと誤認する)。`-RemoveDirs` は他セッションの残骸まで
+**未コミットの変更ごと**すべて消すので、後始末の標準手順には付けない。
+未追跡ファイルや変更が残っている worktree は何も触らずに失敗する。`git -C ../SpineBox-<作業名> status`
+で中身を確かめてから判断する。
+
+**メインツリーに `cd` してから実行する。** シェルの作業ディレクトリが削除対象の中にあると、
+Windows はプロセスのカレントディレクトリを削除できず必ず失敗する。
+`../SpineBox-<作業名>` は **worktree の中からでも自分自身に解決してしまう**ので、
+パスを見ただけでは気づけない。
+
+失敗したら**手で `rm -rf` / `Remove-Item` しない。** 一度失敗すると git はその worktree を
+working tree と認識しなくなり、`--force` でも `fatal: ... is not a working tree` で回復しない。
+引数なしで実行すると孤立エントリを掃除し、残骸を列挙する。残骸は `-Remove <パス>` で 1 件ずつ消す。
 
 ## 7. Issue をクローズする
 
@@ -172,7 +202,7 @@ gh issue close <番号> --comment "<実装内容の要約>"
 ## 事前承認の範囲
 
 push・PR 作成・マージ・ブランチ削除・worktree 削除は `CLAUDE.md` が事前承認しており、
-都度の確認は不要。CI 成功と agy レビューの完了を確認したら、マージしてよいかを改めて聞かない。
+都度の確認は不要。CI 成功と Gemini レビューの完了を確認したら、マージしてよいかを改めて聞かない。
 
 ただし**タスクが失敗・中断した場合は勝手にマージ / 削除せず、状況を報告する。**
 worktree も残す(作業内容を失わないため)。

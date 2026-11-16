@@ -1,24 +1,24 @@
-# [オプション] agy レビュー
+# [オプション] Gemini レビュー
 
-PR の CI が緑になった後、マージの前に、差分を **agy (Antigravity CLI) 経由で Gemini に 1 回レビューさせる**仕組み。
+PR の CI が緑になった後、マージの前に、差分を **Gemini API で Gemini に 1 回レビューさせる**仕組み。
 差し戻しがあれば実装したエージェント(Claude)が指摘を評価し、修正して再レビューするか、
-誤検知・未確認として起票してマージする(未確認の CRITICAL が残るならマージしない)。手順は [agy-review スキル](../.agent/skills/agy-review/SKILL.md)。
+誤検知・未確認として起票してマージする(未確認の CRITICAL が残るならマージしない)。手順は [gemini-review スキル](../.agent/skills/gemini-review/SKILL.md)。
 
 採用しない場合、以下をまとめて削除する。
 
 - `review/`
-- `.agent/skills/agy-review/`
-- `.claude/hooks/check_agy_review.sh` と `.claude/settings.example.json` の該当エントリ
-- `CLAUDE.md` の「[オプション] agy レビュー」節と、`pr-finish` スキルの手順 4
+- `.agent/skills/gemini-review/`
+- `.claude/hooks/check_gemini_review.sh` と `.claude/settings.example.json` の該当エントリ
+- `CLAUDE.md` の「[オプション] Gemini レビュー」節と、`pr-finish` スキルの手順 4
 
 ## 構成
 
 ```
 review/
-  agy_review.py              レビュー実行・評価の記録・マージ可否の判定
+  gemini_review.py              レビュー実行・評価の記録・マージ可否の判定
   prompt.md                  レビュアーへの指示 (観点・重大度・出力形式)
   domain_invariants.json     ドメインごとの不変条件。プロンプトに差し込む
-  tests/test_agy_review.py   「レビューしていないのに通る」を防ぐ部分の回帰テスト
+  tests/test_gemini_review.py   「レビューしていないのに通る」を防ぐ部分の回帰テスト
   work/                      レポートの出力先 (.gitignore 対象)
 ```
 
@@ -26,23 +26,24 @@ review/
 
 ### 前提
 
-- `agy` がインストール・ログイン済みで PATH に通っていること、`python` (3.9 以降) と `gh` があること。
-  hook も `python` を呼ぶので、Node.js などのプロジェクトでも Python は要る。
-- **差分・関連 Wiki ページ・agy が開いたファイルが、agy 経由で Google に送られる。** private リポジトリでも同じ。
-  agy には head 時点のリポジトリ全体を読める状態で渡すので、差分に載っていないファイルでも agy が開けば送られる。
-  スナップショットはコミット済みの内容だけで(未追跡の `.env` などは入らない)、`.env*` や鍵らしい名前のファイルは
-  除外しているが、それ以外の名前で秘匿情報をコミットしている場合は送られうる。
-- **agy は実行ごとに会話記録をローカルに残す**(`~/.gemini/antigravity-cli/` の `conversations/` と `brain/`。
-  プロンプト全文と開いたファイルの出力を含む)。スクリプトは消さない(後述)。
+- 環境変数 `GEMINI_API_KEY`(Google AI Studio で作った API キー)が設定されていること、`python` (3.9 以降) と `gh` があること。
+  追加のパッケージは要らない(標準ライブラリだけで API を呼ぶ)。hook も `python` を呼ぶので、Node.js などのプロジェクトでも Python は要る。
+- **API キーをリポジトリ・設定ファイル・Issue に書かない。** スクリプトは環境変数から読み、URL には載せずヘッダーで渡す。
+- **差分・関連 Wiki ページ・変更されたファイルの全文が、Gemini API 経由で Google に送られる。** private リポジトリでも同じ。
+  送るのは head 時点のコミット済みの内容だけで(未追跡の `.env` などは入らない)、`.env*` や鍵らしい名前のファイルは
+  全文を埋め込まないが、**差分そのものには載る**。それ以外の名前で秘匿情報をコミットしている場合も送られうる。
+- **無料枠の API キーでは、送った内容が Google の製品改善に使われうる。** 使われたくないコードを扱うなら、
+  課金を有効にした(有料枠の)キーを使う。無料枠は 1 日・1 分あたりの回数も少なく、上限に当たるとレビューは
+  exit 1 で止まる(レビューを飛ばしてマージはできない)。上限は AI Studio で確認する。
 - スナップショットは GitHub の tarball なので、**Git LFS の実体とサブモジュールの中身は入らない。**
 
 ### 強制が効き始めるのは、メインツリーに導入が反映されてから
 
-hook の登録 (`.claude/settings.json`) も判定スクリプト (`review/agy_review.py`) も、
-Claude Code のセッションを開いた**メインツリー**から読まれる。hook は `review/agy_review.py` が
+hook の登録 (`.claude/settings.json`) も判定スクリプト (`review/gemini_review.py`) も、
+Claude Code のセッションを開いた**メインツリー**から読まれる。hook は `review/gemini_review.py` が
 無いと何もせず通す (採用していないプロジェクトを壊さないため)。
 
-- 導入 PR 自体は hook に守られない。**導入 PR は手で `python review/agy_review.py --pr <番号>` を
+- 導入 PR 自体は hook に守られない。**導入 PR は手で `python review/gemini_review.py --pr <番号>` を
   通してからマージする。**
 - マージ後、メインツリーに `review/` と hook の登録が入ったことを確かめ、
   レビューしていない PR 番号で `gh pr merge <番号> --merge` が差し止められることを確認してから運用を始める。
@@ -60,13 +61,13 @@ Claude Code のセッションを開いた**メインツリー**から読まれ�
   変更の後に更新が無ければ放棄された作業とみなし、差分を退避してから破棄してよいか人間に確認する
   (実例: AlexaLogDB では 2 日前に書かれた `src/config.js` の変更が、参照先 Issue の最終更新より新しいまま残っていた)。
 - `review/work/` と `__pycache__/` は `.gitignore` に入れる。デプロイスクリプトが未追跡ファイルを
-  数えない作りなら止まらないが、数える作りだと `review/agy_review.py` を実行しただけでデプロイが止まる。
+  数えない作りなら止まらないが、数える作りだと `review/gemini_review.py` を実行しただけでデプロイが止まる。
 
 ### ブランチ保護が使えなくても成立する
 
 GitHub の無料プランの private リポジトリではブランチ保護が使えない (API が 403 を返す)。
-agy レビューは CI のチェックではなく merge hook で担保するので、影響を受けない
-(CI 緑の確認は従来どおりエージェントの手順と `agy_review.py` の CI 判定が担う)。
+Gemini レビューは CI のチェックではなく merge hook で担保するので、影響を受けない
+(CI 緑の確認は従来どおりエージェントの手順と `gemini_review.py` の CI 判定が担う)。
 ただし hook は Claude Code 経由のマージにしか効かず、GitHub の画面から押されたマージは止められない。
 
 ### 既存プロジェクトに入れる場合
@@ -77,13 +78,13 @@ agy レビューは CI のチェックではなく merge hook で担保するの
 
 | 対象 | やること |
 | --- | --- |
-| `review/` | `agy_review.py` / `prompt.md` / `domain_invariants.json` / `README.md` をコピー。README の冒頭(採用しない場合の削除一覧)と導入手引きはプロジェクト向けに削る |
-| `review/tests/` | CI で Python のテストを回さないなら省く。その場合、**`agy_review.py` はテンプレート側で直してテストを通してからコピーする**(導入先で直すと誰もテストしない) |
+| `review/` | `gemini_review.py` / `prompt.md` / `domain_invariants.json` / `README.md` をコピー。README の冒頭(採用しない場合の削除一覧)と導入手引きはプロジェクト向けに削る |
+| `review/tests/` | CI で Python のテストを回さないなら省く。その場合、**`gemini_review.py` はテンプレート側で直してテストを通してからコピーする**(導入先で直すと誰もテストしない) |
 | `review/work/.gitkeep` | コピーしない。`.gitignore` で `review/work/` をディレクトリごと除外すると追跡できず、スクリプトが実行時に自分で作る |
-| スキル | `agy-review` をコピー (`.agent/skills/` と `.claude/skills/` のうち、プロジェクトが使っている方)。冒頭の「このファイルはテンプレートです」を削る |
-| hook | `.claude/hooks/check_agy_review.sh` をコピーし、`.claude/settings.json` の `PreToolUse` に登録。許可プロンプトを減らすなら `permissions.allow` に `Bash(python review/agy_review.py *)` |
-| `pr-finish` スキル | CI 確認とマージの間に「agy レビュー」の手順を足し、**後続の見出し番号と本文中の「手順 N」参照を繰り下げる**。PR 本文テンプレートに「レビュー」節を足し、「事前承認の範囲」のマージ条件にレビューの完了を加える |
-| `CLAUDE.md` | 「[オプション] agy レビュー」節、スキル一覧の行、「完了の定義」の行を足す。「常に守ること」の事前承認の文言にもレビュー完了を足す。秘匿情報を持つプロジェクトなら、差分が外部に送られる旨をその情報の名前つきで書く |
+| スキル | `gemini-review` をコピー (`.agent/skills/` と `.claude/skills/` のうち、プロジェクトが使っている方)。冒頭の「このファイルはテンプレートです」を削る |
+| hook | `.claude/hooks/check_gemini_review.sh` をコピーし、`.claude/settings.json` の `PreToolUse` に登録。許可プロンプトを減らすなら `permissions.allow` に `Bash(python review/gemini_review.py *)` |
+| `pr-finish` スキル | CI 確認とマージの間に「Gemini レビュー」の手順を足し、**後続の見出し番号と本文中の「手順 N」参照を繰り下げる**。PR 本文テンプレートに「レビュー」節を足し、「事前承認の範囲」のマージ条件にレビューの完了を加える |
+| `CLAUDE.md` | 「[オプション] Gemini レビュー」節、スキル一覧の行、「完了の定義」の行を足す。「常に守ること」の事前承認の文言にもレビュー完了を足す。秘匿情報を持つプロジェクトなら、差分が外部に送られる旨をその情報の名前つきで書く |
 | `.gitignore` | `review/work/` と `__pycache__/` |
 | `wiki/` | Wiki を運用しているなら、プロジェクト固有の事情(強制が効かない期間、ブランチ保護の有無、差分の外部送信)を operations のページに書く。仕組みの一般論は `review/README.md` を参照させて重複させない |
 
@@ -95,7 +96,7 @@ Git Bash で動く(AlexaLogDB で確認)。テンプレート自身が LF に固
 hook は導入 PR 自体を守れないので、この PR だけ手で順に確認する。
 
 1. push して CI が緑になるのを待つ。Actions がジョブを起動しない(課金・上限)ときは `python scripts/ci_local.py` で代替する(`wiki/operations/local-ci.md`)。
-2. worktree から `python review/agy_review.py --pr <番号>` を実行する。差し戻しは通常どおり評価する。
+2. worktree から `python review/gemini_review.py --pr <番号>` を実行する。差し戻しは通常どおり評価する。
 3. PR 本文の「レビュー」節に、手動で実行したことを書いてマージする。
 4. メインツリーへの反映を待つ(本番同居 CD ならデプロイの `status: deployed` と `/healthz` の `commit`)。
 5. **メインツリーで** hook を確かめる。レビューしていない過去の PR 番号(マージ済みのものなら、hook が
@@ -105,7 +106,7 @@ hook は導入 PR 自体を守れないので、この PR だけ手で順に確�
    マージを本当に実行する形で手元の Claude Code に打つと、有効な hook 自身が反応する)。
 
    ```bash
-   printf '{"tool_input":{"command":"gh pr merge <N> --merge"}}' | bash .claude/hooks/check_agy_review.sh; echo $?
+   printf '{"tool_input":{"command":"gh pr merge <N> --merge"}}' | bash .claude/hooks/check_gemini_review.sh; echo $?
    ```
 
 ## 設計判断
@@ -119,7 +120,21 @@ LLM は CI を通った差分だけを見る。**
 ### なぜ別のモデルか
 
 実装は Claude で行う前提なので、レビューは Gemini に担当させる(自分が書いたコードを
-自分で採点させない)。既定は `gemini-4-hydrogen-medium`(以前は `gemini-3.8-flash-high` → `gemini-4-hydrogen-high`。#40, #322, #336)。大きい変更のときだけ `--model gemini-4-hydrogen-high` を指定する。`--model` か環境変数 `REVIEW_MODEL` で変える。
+自分で採点させない)。既定は `gemini-4-hydrogen` の思考レベル `medium`(テンプレートの既定は `low`。SpineBox は #336 で medium に上げた)。
+大きい変更のときだけ `--thinking high` を指定する(参照予算も自動で広がる)。`--model` / `--thinking` か
+環境変数 `REVIEW_MODEL` / `REVIEW_THINKING` で変える。モデル名は Gemini API のモデル ID で、
+agy の時代の `gemini-4-hydrogen-medium` のような名前は使えない(404 になる)。
+
+### なぜ agy をやめて API を直接呼ぶか
+
+以前は agy (Antigravity CLI) を起動して Gemini に見せていた(#40・#322・#336 でモデルを変えてきた)。
+Google の公式フォーラムで、個人プランのログインで他社のコーディングエージェントから `agy -p` を呼ぶ構成は
+規約 §6 に反し、アカウント停止につながりうると回答されたため、案内されている代替の Gemini API に切り替えた(テンプレート側 #67、SpineBox #341)。
+https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021
+
+副作用として、agy 固有の不安定さ(ツール呼び出しの拒否で応答が空になる・会話ログを読みに行って失敗する・
+変更ファイルを開くかが実行ごとに揺れる)と、その対策(再試行・会話の継続)がまとめて不要になった。
+失ったものは「agy が自分で周辺のファイルを開く」こと(次節)。
 
 ### なぜ 1 回の呼び出しか
 
@@ -132,29 +147,33 @@ LLM は CI を通った差分だけを見る。**
 - 本命の段 2 はどこでも強制されておらず、実行者も決まっていなかった(実装した Claude 自身が回していた)。
 - 5 ロールの観点は 1 つのプロンプトに並べても失われない。合議の工程を外すと呼び出しは 1 回で済む。
 
-### なぜスナップショットを読ませるか
+### なぜ変更ファイルの全文を埋め込むか
 
 差分の前後 3 行だけでは既存コードの前提も、Wiki にある設計判断も見えない。それが
-「意図した設計を欠陥と判定する」誤検知の主な原因だった。見せ方は次のように分けている。
+「意図した設計を欠陥と判定する」誤検知の主な原因だった。API にはファイルを開く手段が無いので、
+見せたいものはすべてプロンプトに埋め込む。
 
 | 中身 | 渡し方 | 理由 |
 | --- | --- | --- |
-| 差分 | プロンプトに埋め込む(`--max-chars` の上限まで) | レビュー対象そのもの。既定の `gemini-4-hydrogen-medium` は 400,000 文字、`--model gemini-4-hydrogen-high` 指定時は 600,000 文字 |
-| 関連 Wiki ページ | プロンプトに埋め込む(`--wiki-chars` の予算内) | 設計判断は必ず見せたい。`overview.md`・差分で変更されたページ・変更ファイルを `path:line` で参照するページを選ぶ。既定は 120,000 文字、`--model gemini-4-hydrogen-high` 指定時は 300,000 文字 |
-| ファイル全文・周辺コード | head 時点の tarball を展開し `agy --add-dir` で渡す | 何を開くかは agy に任せる。全部埋め込むとコンテキストが膨らみ精度も落ちる |
+| 差分 | プロンプトに埋め込む(`--max-chars` の上限まで) | レビュー対象そのもの。既定は 400,000 文字、`--thinking high` 指定時は 600,000 文字 |
+| 関連 Wiki ページ | プロンプトに埋め込む(`--wiki-chars` の予算内) | 設計判断は必ず見せたい。`overview.md`・差分で変更されたページ・変更ファイルを `path:line` で参照するページを選ぶ。既定は 120,000 文字、`--thinking high` 指定時は 300,000 文字 |
+| 変更されたファイルの全文 | head 時点の tarball から読んで埋め込む(`--files-chars` の予算内、差分の順) | 変更の前後の文脈を見せる。毎回同じものを見せられる |
 
 プロンプトは「参考資料 → 差分 → 指示」の順に並べる(長い入力では末尾の指示の方が守られやすい)。
 指摘の対象は差分の変更に限り、Wiki は「コードが正、Wiki が従」として読ませる(`prompt.md`)。
-**何を埋め込み、agy が何を開いたか**(開かれなかった変更ファイルも)を PR コメントに出す。
+**何を埋め込み、何を埋め込めなかったか**(予算超過・バイナリ・UTF-8 でない・除外した名前)を PR コメントに出す。
 省いたことに気づかないと「全部見た上での APPROVE」と読み違えるため。
+
+**変更していないファイル(呼び出し元・設定など)は Gemini に見えていない。** `prompt.md` で
+「見えていないコードを前提にした指摘は出さないか、確認できていない点を明記して重大度を下げる」と指示しているが、
+差分の外で既に防がれている問題を指摘する誤検知は agy の時代より増えうる。評価のときに確かめる。
 
 却下した案:
 
+- **リポジトリ全体を埋め込む。** 大きいリポジトリでは入力上限を超え、無料枠では学習に使われうる範囲も広がる。
+- **関数呼び出しでファイルを読むツールを与える。** agy に近い動きになるが、1 回のレビューで API を何度も呼ぶので
+  無料枠を使い切りやすく、何を開くかが再び実行ごとに揺れる。必要になったら足す。
 - **GitHub の URL を読ませる。** private リポジトリは認証できない。読むかどうかもモデル次第になる。
-- **agy に `gh` を許可する。** `gh pr comment` でレビュー記録のマーカーを agy 自身が書けてしまう。
-  差分の中の文字列からコマンド実行を誘導される余地も生まれる。tarball の取得はスクリプト側の `gh` で行う。
-- **worktree をそのまま読ませる。** 未追跡の `.env` などが見え、`--add-dir` 先には書き込みも通る。
-  捨てるコピーを渡す。
 
 ### なぜ未確認の指摘を取り込まないか
 
@@ -184,22 +203,24 @@ CRITICAL が未確認のままならマージしない(評価の `[CRITICAL] ...
 
 | 対象 | 扱い |
 | --- | --- |
-| スナップショット(OS の一時ディレクトリの `agy-review-snapshot-*`) | 終了時に必ず消す(例外・Ctrl+C でも)。タイムアウト時は agy をプロセスツリーごと止めてから消す(子プロセスがファイルを掴んでいると消せない)。プロセスごと強制終了されて残ったものは、次回の起動時に 24 時間以上前のものだけ消す |
+| スナップショット(OS の一時ディレクトリの `gemini-review-snapshot-*`) | Wiki と変更ファイルを読み終えたら、API を呼ぶ前に消す(例外・Ctrl+C でも)。プロセスごと強制終了されて残ったものは、次回の起動時に 24 時間以上前のものだけ消す(agy の時代の `agy-review-snapshot-*` も同じ扱い) |
 | `review/work/` | worktree と一緒に消える。`.gitignore` 対象 |
-| agy の会話記録 | **消さない。** 保存形式は agy の内部仕様で、更新で黙って壊れる。消しても同じマシンに worktree があり、内容は送信済みなので漏えいの範囲はほぼ縮まない。消したければ agy 側の手段で消す |
 
 ### なぜ PR コメントに記録するか
 
 記録を **head SHA ごと**に PR コメントの先頭のマーカーで残す。
 
 ```
-<!-- agy-review sha=<40桁> verdict=APPROVE|CHANGES_REQUESTED -->
-<!-- agy-review-triage sha=<40桁> -->
+<!-- gemini-review sha=<40桁> verdict=APPROVE|CHANGES_REQUESTED -->
+<!-- gemini-review-triage sha=<40桁> -->
 ```
+
+agy の時代に書かれた `agy-review` / `agy-review-triage` のマーカーも同じ意味で読む
+(導入済みプロジェクトの過去の記録を無効にしないため)。書くのは `gemini-review` だけ。
 
 - push すれば head が変わるので、**修正後の再レビューを忘れる余地が無い。**
 - ローカルのファイルと違い worktree を消しても残り、人間も PR 上で経緯を追える。
-- merge hook は `python review/agy_review.py --check` でこのマーカーを見るだけで済む。
+- merge hook は `python review/gemini_review.py --check` でこのマーカーを見るだけで済む。
 
 マーカーは誰でも書けるので、改ざんを防ぐ仕組みではない。**手順の飛ばし忘れを止めるための仕組み。**
 
@@ -213,7 +234,7 @@ CRITICAL が未確認のままならマージしない(評価の `[CRITICAL] ...
 | 誤検知(`false-positive`)・見逃し(`false-negative`) | 上流の Issue | プロンプトを直す人。全プロジェクト共通 |
 | 妥当だった指摘(実装側の誤り)の種類 | `wiki/concepts/recurring-review-findings.md` | 次の実装者。着手時と push 前 |
 | 評価の過程で分かった設計上の知見 | `wiki/` | 次にそのコードを触る人 |
-| レポート・agy の生出力 | `review/work/`(使い捨て) | その場のデバッグだけ |
+| レポート・解釈できなかった API の応答 | `review/work/`(使い捨て) | その場のデバッグだけ |
 
 - **セッション単位・ローカルファイルには置かない。** 並行セッションや worktree の削除で失われ、
   hook がどのツリーから動いても同じ記録を読める、という前提が崩れる。
@@ -224,63 +245,26 @@ CRITICAL が未確認のままならマージしない(評価の `[CRITICAL] ...
 - 全プロジェクトの集計(差し戻し率など)は仕組みを置いていない。要るようになったら、
   各リポジトリの PR コメントのマーカーを集めるスクリプトで作る。
 
-## ヘッドレスの agy の癖(実測)
+## Gemini API の使い方(実測)
 
-`agy_review.py` の `call_agy()` はこれを踏まえて書いてある。変えるときは注意する。
+`gemini_review.py` の `call_gemini()` / `parse_response()` はこれを踏まえて書いてある。変えるときは注意する。
 
-- **プロンプトは stdin に stream-json で渡す。** `-p` の引数に載せると Windows のコマンドライン長
-  (約 32KB)に当たる。
-- **ワークスペースはカレントディレクトリではない**(`~/.gemini/antigravity-cli/scratch`)。
-  ワークスペース外のファイルは、ヘッドレスでは読み取りの許可が自動で拒否されて空振りする。
-  **`--add-dir <dir>` で加えたディレクトリは許可なしで読める**が、**書き込みも通る**。
-  `--add-dir` は `settings.json` に保存されない。
-- **コマンド実行(`run_command`)と URL 取得(`read_url_content`)は自動で拒否される。**
-  agy の `settings.json` の `permissions.allow` に許可ルールを書けば開けられるが、置かない。
-- **ツールが拒否されると、その時点で応答が空のまま実行が終わる。** `status` は `SUCCESS` のままで、
-  `denied_actions` に拒否されたアクションが載る。スクリプトはこれを専用のエラーにする。
-  プロンプトで使ってよいツールを読み取り系に限っているのはこのため。
-  **それでも agy は検証のためにコマンドを呼ぶことがある**(実測: 正規表現の修正を確かめようと `python -c` を実行しようとした)。
-  そのためツール拒否で終わったときだけ、最大 3 回再試行する。他の失敗(空出力・JSON 不正)は再試行しない。
-- **再試行は、拒否された会話の続き(`--conversation <result.conversation_id>`)として行う。**
-  送るのは「次の呼び出しは何度呼んでも実行されない」と**拒否された呼び出しそのもの**
-  (`step_update` の `state: ERROR` の `CommandLine` / `Url`)を名指しした注意だけ。
-  以前は最初からやり直し、プロンプト末尾に一般的な注意を足していたが、エンコーディングや正規表現の
-  挙動を確かめたくなる差分では同じ `python -c` を呼び直して 4 試行中 3 回落ちた(#22)。
-  会話を続ければ、それまでに開いたファイルを読み直さずに済み、モデルは自分の拒否された呼び出しを
-  履歴として見たうえで続きを書く。会話 ID が取れなかったときだけ、注意を足して新しい会話でやり直す。
-- **会話を続けた実行の stdout にも `result.structured_output` が入る。** レポートの「agy が開いたファイル」は
-  全試行の生出力を合わせて数える。
-- **agy 側で `run_command` を封じる手段は採っていない。** `hooks.json` の `PreToolUse` で `deny` できるが、
-  置き場所がグローバル設定(`~/.gemini/config/`)かワークスペースの `.agents/` で、
-  前者は同じマシンの agy 利用すべてに効き、後者はスナップショット(= PR の中身)に置くことになるため。
-- **所要時間の目安**(2026-10-17、既定の `gemini-3.8-flash-high`): 差分 約 3 千文字・スナップショット 51 ファイルで 252 秒。
-  (参考: 2026-09-15 の `gemini-3.1-pro-high` は差分 約 3 万文字・42 ファイルで 172 秒。flash が速いとは限らず、
-  所要時間は差分の大きさより agy が開くファイル数に左右される。1 回ずつの観測で断定はできない。)
-  既定のタイムアウト 15 分には余裕がある。
-- **agy が変更ファイルを開くかは実行ごとに揺れる。** 同じ PR の続けての 2 回で、変更された 5 ファイルのうち
-  1 回目は 5 件、2 回目は 1 件だけを開いた。プロンプトで「全文を開く」と指示しても保証にはならないので、
-  レポートの「開かれなかった変更ファイル」を見て判定する。
-- **結果は最後の `{"event":"result"}` 行の `result.structured_output` に入る。**
-  `--json-schema` を渡すとそこにスキーマどおりの JSON が入る。スキーマに `enum` を書かないと
-  `severity` が小文字で返ってくることがある。
-- **送ったメッセージは agy の保存する transcript の中で約 4KB に切り詰められ、モデルはそれを見て
-  全文を取りに行こうとする。** `~/.gemini/antigravity-cli/brain/<会話 ID>/.system_generated/logs/`
-  の `transcript.jsonl` には `<truncated NNNNN bytes>` と "Use a more targeted query" という注記が付き、
-  全文は同じ場所の `transcript_full.jsonl` にある。agy はこれを `cat` しようとして拒否され、
-  レビューが失敗することがある(kant0123/todays-poem#19 では 6 試行すべてこれで失敗した)。
-  **切り詰めは保存・表示側だけで、本文は全文モデルに渡っている**(ダミープロンプトでの実測:
-  21KB でも 160KB でも末尾の合言葉を正答し、`view_file` を挟んだ 2 手目でも正答。`input_tokens` も
-  全文ぶん計上される)。切り詰めは差分の大きさによらず起きる(3.2KB は切り詰めなし、6.5KB で発生。
-  `prompt.md` だけで 5.4KB あるので毎回起きている)。そのため**メッセージを小さくしても避けられず**、
-  プロンプトの**先頭と末尾の両方**に `ENVIRONMENT_NOTE` を置き、「会話ログを読むな・本文は全部渡っている」と
-  明示している(切り詰めは中間を落として頭と末尾を残すので、どちらか一方は必ず残る)。
-  **ただしこれで引き金が消えるとは確認できていない** — 147k 文字の PR での 1 回の実測では、
-  この指示を入れても agy は 2 回続けて transcript を読もうとして拒否され(`python -c`、`Get-ChildItem`)、
-  3 回目で完走した。実際に救っているのは #22 の「拒否された会話を続けて再試行する」方で、
-  この指示はその試行回数を減らすための保険と考えた方がよい。
-  大きい差分ほど注記の bytes 数が大きく、引き金を引きやすいと考えられるが、観測は 1 PR ぶんで断定はできない。
-- **出力が空になることがある**(非 TTY で報告されている不具合)。空・解釈不能を「指摘 0 件」として
-  扱うと、レビューしていないのに APPROVE が記録される。スクリプトはエラーにして何も投稿しない。
+- **呼ぶのは `generateContent`(`v1beta`)を 1 回。** API キーは `x-goog-api-key` ヘッダーで渡す
+  (クエリ文字列に載せると URL ごとログやエラーメッセージに残る)。
+- **結果は構造化出力で受ける。** `generationConfig` に `responseMimeType: application/json` と
+  `responseJsonSchema`(通常の JSON Schema。型名は小文字)を渡す。2026-11-16 に `gemini-4-hydrogen` で
+  `responseJsonSchema` と旧来の `responseSchema` のどちらも通ることを確かめ、前者を使っている。
+  スキーマに `enum` を書かないと `severity` が小文字で返ってくることがある。
+- **思考レベルは `generationConfig.thinkingConfig.thinkingLevel`。** Gemini 4 では `low` / `medium` / `high` / `xhigh`
+  (`minimal` は使えない。API の既定は `high`)。既定を `low` にしているのは #61 の選定を引き継いだため。
+- **`finishReason` が `STOP` 以外の応答は使わない。** `MAX_TOKENS` で切れた JSON がたまたま閉じていると、
+  指摘の一部だけを読んで APPROVE にしてしまう。入力が弾かれたときは `candidates` が無く `promptFeedback` に理由が入る。
+  どちらもエラーにして何も投稿しない。空・解釈不能を「指摘 0 件」として扱うと、レビューしていないのに
+  APPROVE が記録される。解釈できなかった応答は `review/work/gemini_raw_output.txt` に残す。
+- **再試行するのは HTTP 500 / 503 だけ**(10 秒・30 秒を置いて最大 2 回)。429(上限超過)は待っても通らないので
+  すぐにエラーにする。404 はモデル ID の誤り、400 / 401 / 403 は API キーか引数の誤り。
+- **所要時間の目安**(2026-11-16、`gemini-4-hydrogen` / `low`): 数百トークンの入力で数秒。
+  agy は差分 約 3 千文字で 252 秒かかっていた(2026-10-17 の 1 回の観測)。タイムアウトの既定 15 分には余裕がある。
 
 ## 誤検知・見逃しを見つけたら
 

@@ -62,7 +62,7 @@
   🙋 人間がすべきこと / ➡️ 次アクション / ✅ プロジェクトルールのワークフローに則ったか(逸脱したらその内容) /
   🧹 worktree は `scripts/worktree-cleanup.ps1` で削除済みか(`git worktree prune` で代用しない。未了のときだけ、できていない理由と🗂️パスを書く)。
   該当なしの項目は「なし」と一語で済ませる。
-  **ラップアップを書く前に、依頼・「完了の定義」・本規約のワークフロー(Issue・wiki 反映・起票・agy レビュー・後始末)と
+  **ラップアップを書く前に、依頼・「完了の定義」・本規約のワークフロー(Issue・wiki 反映・起票・Gemini レビュー・後始末)と
   突き合わせて作業漏れを自分で点検する。** 漏れがあれば報告に回さず、その場で補ってから書く
   (補えないものだけ📌残件・🙋人間がすべきことに挙げる)。
 - **成果物ドキュメントの長さはタスクに合わせる。** 水増しの節・重複する要約・定型文で膨らませない。
@@ -122,7 +122,7 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
 | 着手 — Wiki を読む / Issue を確保する / worktree を切る | `worktree-start` |
 | 実装後 — 変更を `wiki/` に反映する | `wiki-ingest` |
 | 完了 — PR 作成 / CI / マージ / 後始末 / デプロイ確認 | `pr-finish` |
-| CI 緑の後・マージ前 — 差分を agy でレビューし、差し戻しを評価する | `agy-review` |
+| CI 緑の後・マージ前 — 差分を Gemini API でレビューし、差し戻しを評価する | `gemini-review` |
 | 作業中 — スコープ外の問題を起票する | `file-issue` |
 
 スキルの仕組みを持たないツールでは、各 SKILL.md の中身をこの節の下に展開する。
@@ -137,19 +137,20 @@ HEAD の奪い合いで自分のコミットが他人のブランチに乗るた
   `chore/` / `docs/` を前置し、**ローカル `main` ではなく `origin/main` から切る**。
 - **`git add` はファイルを明示指定する**(`-A` / `.` は使わない)。他セッションの未コミット変更が
   混ざりうるため、`git diff --cached` で確認してからコミットする。
-- **worktree は使い終わったら、メインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名> -RemoveDirs` で消す。**
+- **worktree は使い終わったら、メインツリーに `cd` してから `scripts/worktree-cleanup.ps1 -Remove ../SpineBox-<作業名>` で消す。** `-Remove` を省かない
+  (素の `git worktree remove` はジャンクションがあると exit 0 のままディレクトリを残す)。
   失敗しても手で `rm -rf` / `Remove-Item` しない(ジャンクションのリンク先を巻き込む恐れがあり、git が working tree と認識しなくなり回復しない)。
 - **push・PR 作成・マージ・ブランチ削除・worktree 削除は事前承認済み。** `git status` で意図しない
-  変更が混ざっていないか確認してから実行する。CI 成功と agy レビューの完了まで
+  変更が混ざっていないか確認してから実行する。CI 成功と Gemini レビューの完了まで
   確認したら、マージしてよいかを改めて聞かない。
-- **`gh pr create` で作業を終えない。** CI 確認・agy レビュー・マージ・Issue クローズ・worktree の後始末まで
+- **`gh pr create` で作業を終えない。** CI 確認・Gemini レビュー・マージ・Issue クローズ・worktree の後始末まで
   同じターンで続ける(手順は `pr-finish`)。CI は自分で待ち(`gh pr checks <PR番号> --watch` をバックグラウンド実行)、
   「緑になったら声をかけてください」と言って止めない。実行環境が CI のポーリングを禁じていても、この待機は 1 回きりで禁止の対象ではない。
 - **CI が失敗したらマージせず原因を調べる。** 修正が困難なら PR は開いたまま報告する(勝手に close
   しない)。タスクが失敗・中断した場合も勝手にマージ / 削除せず、worktree は残して報告する。
 - **Actions がジョブを起動しない(課金・上限。注記「The job was not started」)ときだけ、ローカル CI で代替する。**
   worktree をコミット・push 済みの状態にして `python scripts/ci_local.py` を実行し、head に `local/*` を載せる。
-  Actions で実際に動いて落ちたチェックはローカルの成功で代替しない(`review/agy_review.py` も代替を認めない)。
+  Actions で実際に動いて落ちたチェックはローカルの成功で代替しない(`review/gemini_review.py` も代替を認めない)。
 - **`gh pr create --fill`・`Fixes #` / `Closes #`・`gh pr merge --delete-branch` は使わない**
   (理由は `pr-finish`)。
 
@@ -188,16 +189,16 @@ Projects ボードは使わない。
 - **作業中に見つけてこの PR で直さないと決めた問題を、すべて Issue 化している**
   (1 件も無ければ、それ自体を確認済みとする)。
 - 変更内容の要約と手動確認結果を報告している。起票した Issue があれば番号を挙げている。
-- **PR の最新 head が agy レビューを通っている**
+- **PR の最新 head が Gemini レビューを通っている**
   (APPROVE、または差し戻しを評価して誤検知を起票済み)。結果を PR 本文の「レビュー」節に
   書いている。
 
-## agy レビュー
+## Gemini レビュー
 
-PR の CI が緑になった後、マージの前に、差分を agy (Antigravity CLI) 経由で Gemini に
-1 回レビューさせる。手順は `agy-review` スキル、仕組みと設計判断は `review/README.md`。
+PR の CI が緑になった後、マージの前に、差分を Gemini API で Gemini に
+1 回レビューさせる。手順は `gemini-review` スキル、仕組みと設計判断は `review/README.md`。
 
-- **レビューは必須。順序は push → CI → `python review/agy_review.py` → (差し戻しなら評価)→ マージ。**
+- **レビューは必須。順序は push → CI → `python review/gemini_review.py` → (差し戻しなら評価)→ マージ。**
   レビュー記録の無いマージは `gh pr merge` の hook が差し止める(回避手段は置いていない)。
 - **`gh pr merge` には必ず PR 番号を付ける**(hook は番号で PR を特定する)。
 - **レビューは head SHA ごとに有効。** 修正を push したら CI から回し直す。
@@ -209,7 +210,7 @@ PR の CI が緑になった後、マージの前に、差分を agy (Antigravit
   CRITICAL が未確認ならマージしない(merge hook も差し止める)。
 - **妥当だった指摘は、誤りの種類として `wiki/concepts/recurring-review-findings.md` に修正と同じ PR で残す。**
   着手時と push 前にこのページを読む。PR コメントに残るだけでは次の実装者に届かず、同じ誤りが繰り返される。
-- **レビューが失敗(agy のエラー・空出力)したままマージしない。**
+- **レビューが失敗(API のエラー・空出力)したままマージしない。**
 - **レポート(`review/work/`)をコミットしない。** 残す価値のある知見は `wiki/` に還元する。
 
 ## プロジェクト固有ルール
@@ -221,4 +222,4 @@ PR の CI が緑になった後、マージの前に、差分を agy (Antigravit
   各ソースのレート制限を守り、生の応答は保存して再取得を減らす
 - 秘匿情報の扱い: 外部 API のキー(楽天ウェブサービスなど)はリポジトリ外の設定ファイルに置き、
   ログ出力・コミット・Issue 記載をしない
-- agy レビューの分野は `spinebox`(`review/domain_invariants.json`。`review/agy_review.py` の既定値)
+- Gemini レビューの分野は `spinebox`(`review/domain_invariants.json`。`review/gemini_review.py` の既定値)

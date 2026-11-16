@@ -1,22 +1,22 @@
 ---
-name: agy-review
+name: gemini-review
 description: >
-  PR の CI が緑になった後、マージする前に差分を agy (Gemini) にレビューさせ、
+  PR の CI が緑になった後、マージする前に差分を Gemini にレビューさせ、
   差し戻しがあれば指摘を評価して「修正して再レビュー」か「誤検知・未確認として起票してマージ」に振り分ける。
-  pr-finish の CI 確認とマージの間で必ず使う。「レビューして」「agy に見せて」と言われたときも使う。
+  pr-finish の CI 確認とマージの間で必ず使う。「レビューして」「Gemini に見せて」と言われたときも使う。
   レビューは必須で、gh pr merge の hook がレビュー記録の無いマージを差し止める。
-  不具合を直していて、その原因が agy レビューを通過した PR だと分かったとき(見逃しの記録)にも使う。
+  不具合を直していて、その原因が Gemini レビューを通過した PR だと分かったとき(見逃しの記録)にも使う。
 ---
 
-# agy レビュー — CI 緑の後、マージの前
+# Gemini レビュー — CI 緑の後、マージの前
 
 > **このファイルはテンプレートです。** 採用しない場合は `review/` ごと削除する。
-> Claude Code で使う場合は `.claude/skills/agy-review/SKILL.md` に置く。
+> Claude Code で使う場合は `.claude/skills/gemini-review/SKILL.md` に置く。
 
 仕組みの説明は [review/README.md](../../../review/README.md)。ここには手順だけ書く。
 
 ```
-push → CI ─緑→ agy レビュー ─APPROVE→ merge
+push → CI ─緑→ Gemini レビュー ─APPROVE→ merge
         ↑            │
         │       CHANGES_REQUESTED
         │            ↓ 指摘を 1 件ずつ評価
@@ -29,13 +29,13 @@ push → CI ─緑→ agy レビュー ─APPROVE→ merge
 
 ```bash
 gh pr checks <PR番号> --watch
-python review/agy_review.py --pr <PR番号>
+python review/gemini_review.py --pr <PR番号>
 # 大きい変更のときだけ:
-# python review/agy_review.py --pr <PR番号> --model gemini-4-hydrogen-high
+# python review/gemini_review.py --pr <PR番号> --thinking high
 ```
 
-既定モデルは `gemini-4-hydrogen-medium`(差分上限 400,000 文字 / Wiki 予算 120,000 文字)。
-大きい変更のときだけ `--model gemini-4-hydrogen-high` を指定する(差分上限 600,000 文字 /
+既定はモデル `gemini-4-hydrogen`・思考レベル `medium`(差分上限 400,000 文字 / Wiki 予算 120,000 文字)。
+大きい変更のときだけ `--thinking high` を指定する(差分上限 600,000 文字 /
 Wiki 予算 300,000 文字へ自動で広がる)。
 
 スクリプトは CI が緑でなければ実行を拒否する(exit 2)。テストで落ちる差分をレビューしても
@@ -51,16 +51,16 @@ push するたびに「未レビュー」に戻る。
 | 0 | APPROVE(指摘なし、または NITPICK のみ) | `pr-finish` に戻ってマージ |
 | 3 | CHANGES_REQUESTED(CRITICAL か WARNING がある) | 手順 2 |
 | 2 | CI が緑でない | CI を直す。Actions が起動していないだけなら `python scripts/ci_local.py` |
-| 1 | agy / gh の失敗 | エラーを読んで再実行。**レビューを飛ばしてマージしない** |
+| 1 | API / gh の失敗 | エラーを読んで再実行。**レビューを飛ばしてマージしない** |
 
 NITPICK は採否を自由に決めてよく、記録も要らない。
 
 ## 2. 差し戻しを評価する
 
 CRITICAL / WARNING を **1 件ずつ**、実際のコードと突き合わせて判定する。
-agy は差分と関連 Wiki に加えて head 時点のスナップショットを読めるが、どのファイルを開いたかは
-agy 次第なので、差分の外にある前提を知らずに指摘していることがある。PR コメントの「参照した資料」で
-開いたファイルと、**開かれなかった変更ファイル**を確かめてから判定する。
+Gemini には差分・関連 Wiki・変更されたファイルの全文までしか見えておらず、自分でファイルを開けない。
+変更していないファイル(呼び出し元など)は見えていないので、差分の外にある前提を知らずに指摘していることがある。
+PR コメントの「参照した資料」で、埋め込んだ Wiki・埋め込んだ変更ファイルと、**埋め込めなかった変更ファイル**を確かめてから判定する。
 
 | 判定 | 基準 | やること |
 | --- | --- | --- |
@@ -87,14 +87,14 @@ CRITICAL が未確認のままならマージせず、状況を人間に報告�
 
 **修正は指摘の failure_scenario を実際に再現する形にする。** 症状に触れない箇所(テスト名・
 コメント等)だけ変えて済ませない。再レビューの APPROVE は「その症状を再現するテストで
-確認した」ことの代わりにはならない — agy は新しい差分を見て新たに判定するだけで、
+確認した」ことの代わりにはならない — Gemini は新しい差分を見て新たに判定するだけで、
 元の指摘が実際に塞がれたかは見ていない。
 
 ```bash
 # worktree で修正・コミット
 git push
 gh pr checks <PR番号> --watch
-python review/agy_review.py --pr <PR番号>   # 新しい head に対して再レビュー
+python review/gemini_review.py --pr <PR番号>   # 新しい head に対して再レビュー
 ```
 
 PR への評価の記録は不要(新しい head には新しいレビューが要るので、古い差し戻しは効かない)。
@@ -123,7 +123,7 @@ gh issue create --repo kant0123/gemini-review --label false-positive \
 評価を PR に記録する。記録が無いと merge hook がマージを差し止める。
 
 ```bash
-python review/agy_review.py --pr <PR番号> --triage <評価を書いた md ファイル>
+python review/gemini_review.py --pr <PR番号> --triage <評価を書いた md ファイル>
 ```
 
 評価のファイルには指摘ごとに 1 行ずつ書く(scratchpad などリポジトリ外に置く)。
@@ -145,7 +145,7 @@ python review/agy_review.py --pr <PR番号> --triage <評価を書いた md フ�
 
 ## 5. 見逃しを記録する — 通過した PR に不具合が見つかったとき
 
-不具合を直していて、原因のコードが agy レビューを通過した PR で入ったと分かったら、上流に
+不具合を直していて、原因のコードが Gemini レビューを通過した PR で入ったと分かったら、上流に
 `false-negative` で起票する。誤検知だけを記録していると、プロンプトは「指摘を減らす」方向にしか直らない。
 
 起票するのは、**原因が通過した PR の差分に載っていた**場合だけ。差分の外の既存コードが原因のもの、
@@ -155,10 +155,10 @@ python review/agy_review.py --pr <PR番号> --triage <評価を書いた md フ�
 ```bash
 git log -s -L <開始行>,<終了行>:<原因のファイル> --format='%H %s'   # 原因の行を変えたコミット (新しい順)
 gh pr list --state merged --search <コミットSHA> --json number,url  # そのコミットを含む PR
-python review/agy_review.py --check --pr <PR番号>                   # 通過の記録があるか(exit 0 なら通過)
+python review/gemini_review.py --check --pr <PR番号>                   # 通過の記録があるか(exit 0 なら通過)
 ```
 
-PR コメントの agy レビューが APPROVE だったか、差し戻しを評価してマージしていたかも確かめる。
+PR コメントの Gemini レビューが APPROVE だったか、差し戻しを評価してマージしていたかも確かめる。
 評価でその指摘を誤検知と判定していたなら、見逃しではなく**評価の誤り**なので、元の誤検知 Issue に
 コメントで追記する(新たに起票しない)。
 
@@ -177,7 +177,7 @@ gh issue create --repo kant0123/gemini-review --label false-negative \
 ```markdown
 ## レビュー
 
-- agy: <APPROVE / 差し戻し N 回 → APPROVE / 差し戻しを評価してマージ>
+- Gemini: <APPROVE / 差し戻し N 回 → APPROVE / 差し戻しを評価してマージ>
 - 起票: <kant0123/gemini-review#12 (誤検知) / #58 (スコープ外) / #61 (未確認) / なし>
 ```
 

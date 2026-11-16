@@ -22,12 +22,12 @@ from pathlib import Path
 # resolve() を使わない。ネットワークドライブ (G: 等) を UNC (\\host\share) に展開し、それを cwd にすると
 # node が \\?\UNC\host\package.json を読もうとして起動できない (Node 26 で再現。#63)。
 ROOT = Path(os.path.abspath(__file__)).parents[1]
-STATUS_PREFIX = "local/"  # review/agy_review.py の LOCAL_STATUS_PREFIX と揃える
+STATUS_PREFIX = "local/"  # review/gemini_review.py の LOCAL_STATUS_PREFIX と揃える
 
 
 def jobs(root: Path = ROOT) -> dict:
     """ジョブ名 → 実行するコマンドの列。名前は Actions のジョブ名 (`jobs:` 直下のキー) と同じにする。"""
-    pytest_targets = ["review/tests"] + (["tests"] if (root / "tests").is_dir() else [])
+    pytest_targets = ["review/tests"] + [d for d in ("scripts/test", "tests") if (root / d).is_dir()]
     node_tests = sorted(str(p.relative_to(root)).replace("\\", "/")
                         for d in (".claude/hooks/test", "scripts/test") for p in (root / d).glob("*.test.mjs"))
     test = [[sys.executable, "-m", "pytest", *pytest_targets, "-v"]]
