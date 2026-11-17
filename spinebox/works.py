@@ -24,13 +24,14 @@ import unicodedata
 from collections import defaultdict
 from difflib import SequenceMatcher
 from dataclasses import dataclass, field, replace
+from pathlib import PurePosixPath
 
 from . import db, ja_terms, search
 from .duplicates import candidate_counts
 from .library import VolumeNotFound, is_offline
 from .mojibake import looks_garbled
 from .naming import (JUNK_NAMES, WorkName, is_chapter_label, is_fragment_name, is_junk_name, normalize_title,
-                     parse_number, parse_work_name, trailing_number)
+                     parse_number, parse_number_in, parse_work_name, trailing_number)
 from .novel import IMAGE_FORMATS
 from .pages import natural_key
 from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE
@@ -194,7 +195,7 @@ class _State:
     def __init__(self, c: sqlite3.Connection):
         self.vols = c.execute(
             "SELECT v.id, v.title, v.container_path, v.entry_prefix, v.inner_path, v.parent_id, "
-            "v.number_kind, v.number_start, v.number_end, v.number_evidence, "
+            "v.number_kind, v.number_start, v.number_end, v.number_evidence, v.number_manual, "
             "s.id AS source_id, s.rel_path " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE + " ORDER BY v.id").fetchall()
         self.listed = {r["id"] for r in self.vols}
         # EPUB の OPF の dc:creator(巻の書誌 author。名前に著者が無いときの候補。#251)
@@ -879,6 +880,19 @@ def sync(conn: sqlite3.Connection) -> SyncSummary:
     return summary
 
 
+def _ancestors_for_row(r) -> tuple[str, ...]:
+    """巻行の親階層名(スキャン/解析の ancestors に相当)を組み立てる。"""
+    rel = PurePosixPath(r["rel_path"]).parts[:-1] if r["rel_path"] else ()
+    prefix = r["entry_prefix"] or ""
+    inner = PurePosixPath(prefix.rstrip("/")).parts[:-1] if prefix else ()
+    if r["parent_id"] is not None:
+        chain = json.loads(r["inner_path"]) if r["inner_path"] else []
+        outer = [part for ch in (chain[:-1] if not prefix else chain) for part in PurePosixPath(ch).parts]
+        return (*rel, *outer, *inner)
+    container = PurePosixPath(r["container_path"]).parts[:-1] if r["container_path"] else ()
+    return (*rel, *container, *inner)
+
+
 def _owns_trailing_number(r) -> bool:
     """末尾の番号の規則で入れた番号か(付け直しで消してよいのはこれだけ)。"""
     if r["number_kind"] != "volume" or r["number_start"] is None or r["number_start"] != r["number_end"]:
@@ -896,8 +910,8 @@ def _trailing_series(st: _State) -> dict[int, dict]:
     """
     groups: dict[str, list] = defaultdict(list)
     for r in st.vols:
-        if r["number_kind"] is not None and not _owns_trailing_number(r):
-            continue  # 印の付いた番号(`v01-03`)など、強い根拠で読めている番号は触らない
+        if r["number_manual"] or (r["number_kind"] is not None and not _owns_trailing_number(r)):
+            continue  # 手動指定や印の付いた番号(`v01-03`)など、強い根拠で読めている番号は触らない
         t = trailing_number(r["title"])
         if t is None:
             continue
@@ -920,11 +934,15 @@ def _apply_trailing_numbers(c, st: _State, series: dict[int, dict]) -> None:
     """末尾の番号を巻の番号の列へ反映する。組が無くなった番号は消す(名前から導出した値なので)。"""
     now = db.now()
     for r in st.vols:
+        if r["number_manual"]:
+            continue  # 手動指定された巻番号は上書き・消去しない(#358)
         want = series.get(r["id"])
         if want is None:
             # 末尾の番号の組が無くなった番号と、今の読み方で読めない番号(小数点の巻など)を消す。
-            # 番号を持たない巻の行は触らない(冪等)。
-            if _owns_trailing_number(r) or (r["number_kind"] is not None and parse_number(r["title"]) is None):
+            # 親階層(ancestors)から読めた番号は消さない(#358)。番号を持たない巻の行は触らない(冪等)。
+            if _owns_trailing_number(r) or (
+                r["number_kind"] is not None and parse_number_in(r["title"], _ancestors_for_row(r)) is None
+            ):
                 c.execute("UPDATE volumes SET number_kind = NULL, number_start = NULL, number_end = NULL, "
                           "number_evidence = NULL, updated_at = ? WHERE id = ?", (now, r["id"]))
             continue
@@ -1489,6 +1507,77 @@ def reset_volume_field(conn: sqlite3.Connection, volume_id: int, field: str) -> 
             c.execute("DELETE FROM volume_fields WHERE volume_id = ? AND field = ?", (volume_id, field))
 
 
+def edit_volume_number(conn: sqlite3.Connection, volume_id: int, kind: str | None,
+                       start: int | None, end: int | None) -> dict | None:
+    """巻の番号を手で指定する(番号なしにもできる)。スキャン・名寄せ・分解・整理で上書きしない(#358)。"""
+    if kind is None:
+        if start is not None or end is not None:
+            raise InvalidValue("番号なしにする場合は start / end も null にしてください")
+        numbers = (None, None, None, None)
+        result = None
+    else:
+        if kind not in ("volume", "episode"):
+            raise InvalidValue("kind は 'volume' または 'episode' を指定してください")
+        if start is None or start < 1:
+            raise InvalidValue("start は 1 以上の整数を指定してください")
+        if end is None:
+            end = start
+        if end < start:
+            raise InvalidValue("end は start 以上の整数を指定してください")
+        numbers = (kind, start, end, "手動指定")
+        result = {"kind": kind, "start": start, "end": end, "evidence": "手動指定"}
+    now = db.now()
+    with db.transaction(conn) as c:
+        if c.execute("SELECT 1 FROM volumes WHERE id = ?", (volume_id,)).fetchone() is None:
+            raise VolumeNotFound(volume_id)
+        c.execute(
+            """UPDATE volumes SET number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
+               number_manual = 1, updated_at = ? WHERE id = ?""",
+            (*numbers, now, volume_id),
+        )
+    return result
+
+
+def reset_volume_number(conn: sqlite3.Connection, volume_id: int) -> dict | None:
+    """巻番号の手動指定を解除し、自動判定を再計算する。手動設定されていない巻なら Conflict(#358)。"""
+    now = db.now()
+    with db.transaction(conn) as c:
+        row = c.execute(
+            """SELECT v.id, v.title, v.container_path, v.entry_prefix, v.inner_path, v.parent_id,
+                      v.number_manual, s.rel_path
+               FROM volumes v JOIN sources s ON s.id = v.source_id
+               WHERE v.id = ?""",
+            (volume_id,),
+        ).fetchone()
+        if row is None:
+            raise VolumeNotFound(volume_id)
+        if not row["number_manual"]:
+            raise Conflict("この巻の番号は手動で指定されていません")
+        cand = parse_number_in(row["title"], _ancestors_for_row(row))
+        if cand is not None:
+            numbers = (cand.kind, cand.start, cand.end, cand.evidence)
+            result = cand.as_dict()
+        else:
+            c.execute(
+                """UPDATE volumes SET number_kind = NULL, number_start = NULL, number_end = NULL,
+                   number_evidence = NULL, number_manual = 0, updated_at = ? WHERE id = ?""",
+                (now, volume_id),
+            )
+            want = _trailing_series(_State(c)).get(volume_id)
+            if want is not None:
+                numbers = ("volume", want["number"], want["number"], want["evidence"])
+                result = {"kind": "volume", "start": want["number"], "end": want["number"], "evidence": want["evidence"]}
+            else:
+                numbers = (None, None, None, None)
+                result = None
+        c.execute(
+            """UPDATE volumes SET number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
+               number_manual = 0, updated_at = ? WHERE id = ?""",
+            (*numbers, now, volume_id),
+        )
+    return result
+
+
 def transfer_volume_fields(c: sqlite3.Connection, from_id: int, to_id: int) -> None:
     """巻の書誌(手動の編集を含む)を別の巻へ写す。整理で巻が CBZ の新しい巻に置き換わるときに使う。
     写し先で手動の項目は、写し元の自動の値で上書きしない。"""
@@ -1632,7 +1721,7 @@ def decide_proposal(conn: sqlite3.Connection, proposal_id: int, action: str) -> 
 # --- 参照(API 用) ----------------------------------------------------------------------------
 
 _VOLUME_SELECT = """SELECT v.id, v.title, v.page_count, v.format, v.number_kind, v.number_start, v.number_end, v.number_evidence,
-       pv.title AS parent_title, s.rel_path, s.offline AS source_offline, r.online AS root_online, p.page, p.finished,
+       v.number_manual, pv.title AS parent_title, s.rel_path, s.offline AS source_offline, r.online AS root_online, p.page, p.finished,
        wv.work_id, wv.source AS a_source, wv.manual AS a_manual, wv.confidence AS a_confidence,
        wv.evidence AS a_evidence"""
 _VOLUME_FROM_ID = LISTED_VOLUMES_JOIN + " JOIN work_volumes wv ON wv.volume_id = v.id "
@@ -1649,7 +1738,8 @@ def _volume_json(r, dup_counts: dict[int, int], meta: dict[int, dict] | None = N
         "id": r["id"], "title": r["title"], "parent_title": r["parent_title"], "page_count": r["page_count"],
         "format": "images" if r["format"] in IMAGE_FORMATS else r["format"], "offline": is_offline(r),
         "progress": None if r["page"] is None else {"page": r["page"], "finished": bool(r["finished"])},
-        "volume_number": number, "duplicate_count": dup_counts.get(r["id"], 0),
+        "volume_number": number, "number_manual": bool(r["number_manual"]),
+        "duplicate_count": dup_counts.get(r["id"], 0),
         "assignment": {"source": r["a_source"], "manual": bool(r["a_manual"]), "confidence": r["a_confidence"],
                        "evidence": json.loads(r["a_evidence"]) if r["a_evidence"] else None},
         **({"metadata": meta.get(r["id"], {})} if meta is not None else {}),

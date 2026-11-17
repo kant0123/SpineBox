@@ -159,6 +159,13 @@ class VolumeMetaIn(BaseModel):
     isbn: StrictStr | None = None
 
 
+class VolumeNumberIn(BaseModel):
+    """巻番号の手動指定。kind が null のときは番号なしにする(#358)。"""
+    kind: StrictStr | None = None
+    start: StrictInt | None = None
+    end: StrictInt | None = None
+
+
 class ChooseIn(BaseModel):
     """確認待ちの候補を選ぶ。source_id が null なら「該当なし」。"""
     source_id: StrictStr | None = None
@@ -589,6 +596,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                 "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
                 "parent_id": row["parent_id"],
                 "volume_number": _number(row),
+                "number_manual": bool(row["number_manual"]),
                 "work_id": work_id,
                 "work_title": works.work_title_of(conn, work_id),
                 "prev_volume": prev_vol,
@@ -619,6 +627,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                     "bookmarked": bookmarks.is_volume_bookmarked(conn, volume_id),
                     "parent_id": row["parent_id"],
                     "volume_number": _number(row),
+                    "number_manual": bool(row["number_manual"]),
                     "work_id": work_id,
                     "work_title": works.work_title_of(conn, work_id),
                     "prev_volume": prev_vol,
@@ -975,6 +984,18 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         if work_id is not None:
             linking.apply_work(conn, work_id)
         return _volume_meta_json(conn, volume_id)
+
+    @app.patch("/api/volumes/{volume_id}/number")
+    def edit_volume_number(volume_id: int, body: VolumeNumberIn, conn: sqlite3.Connection = Depends(get_conn)):
+        """巻番号(種別・開始・終了、または番号なし)を手動で指定する(#358)。"""
+        number = works.edit_volume_number(conn, volume_id, body.kind, body.start, body.end)
+        return {"volume_id": volume_id, "volume_number": number, "number_manual": True}
+
+    @app.post("/api/volumes/{volume_id}/number/reset")
+    def reset_volume_number(volume_id: int, conn: sqlite3.Connection = Depends(get_conn)):
+        """巻番号の手動指定を解除し、自動判定を再計算する(#358)。"""
+        number = works.reset_volume_number(conn, volume_id)
+        return {"volume_id": volume_id, "volume_number": number, "number_manual": False}
 
     @app.post("/api/works/{work_id}/aliases")
     def add_work_alias(work_id: int, body: AliasIn, conn: sqlite3.Connection = Depends(get_conn)):

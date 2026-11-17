@@ -306,3 +306,19 @@ def test_a_one_kanji_name_is_not_a_fragment():
 def test_parse_number_in_ignores_chapters_inside_a_volume_folder(name, ancestors, expected):
     cand = parse_number_in(name, ancestors)
     assert (cand and (cand.kind, cand.start, cand.end)) == expected
+
+
+@pytest.mark.parametrize("name, ancestors, expected", [
+    # 巻自身の名前が数字のみ・番号なしのとき、親階層の単一巻番号にフォールバックする(#358)
+    ("01", ("[RYOMA×カンブリア爆発太郎] クラス最安値で売られた俺は、実は最強パラメーター 第01巻s",), ("volume", 1, 1)),
+    ("02", ("作品名 第02巻",), ("volume", 2, 2)),
+    ("01", ("シリーズ", "作品名 第03巻", "scan"), ("volume", 3, 3)),
+    ("本体", ("作品名 Vol.4",), ("volume", 4, 4)),
+    # 親が範囲(01-06 / 第01-20巻)や話数(第05話)のときはフォールバックしない
+    ("01", ("作品名 01-06",), None),
+    ("01", ("作品名 第01-20巻",), None),
+    ("01", ("作品名 第05話",), None),
+])
+def test_parse_number_in_falls_back_to_single_volume_ancestor(name, ancestors, expected):
+    cand = parse_number_in(name, ancestors)
+    assert (cand and (cand.kind, cand.start, cand.end)) == expected

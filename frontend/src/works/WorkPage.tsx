@@ -6,6 +6,7 @@ import { BookmarkButton } from "../bookmarks/BookmarkButton";
 import { Credits } from "./Credits";
 import { KIND_TEXT, confidenceText, evidenceLines, fieldNote, missingLabel, sourceText } from "./labels";
 import { VolumeMeta } from "./VolumeMeta";
+import { VolumeNumberEdit } from "./VolumeNumberEdit";
 import { WorkLinks } from "./WorkLinks";
 import { PROPOSAL_RULE, ProposalCard } from "./WorkProposals";
 import { WorkFollowPanel } from "../follows/Follows";
@@ -44,6 +45,7 @@ function VolumeRow({ v, selected, onToggle, busy, run, onChanged }: { v: WorkVol
         <span className="volume-meta">{assignmentText(v)}</span>
         <BookmarkButton target="volume" id={v.id} initial={v.bookmarked ?? false} label={v.title} />
         <VolumeMeta v={v} busy={busy} run={run} onChanged={onChanged} />
+        <VolumeNumberEdit v={v} busy={busy} run={run} onChanged={onChanged} />
       </div>
     </li>
   );

@@ -164,17 +164,25 @@ def parse_number(name: str) -> NumberCandidate | None:
 
 
 def parse_number_in(name: str, ancestors: tuple[str, ...] = ()) -> NumberCandidate | None:
-    """`parse_number` に、アーカイブ内の外側のフォルダ名(ancestors)を加えて読む。
+    """`parse_number` に、外側のフォルダ名(ancestors)を加えて読む。
 
-    外側のフォルダ名が**1 冊の巻**(`…v06s` → 6 巻)を表すなら、その中のフォルダの印の無い範囲
-    (`DLRAW.AC_110-113`)や話・章(`… Raw Chapter 171`)は巻の中の章の番号であって、巻番号ではない。
-    読まずに番号なしにする(読むと欠け巻の計算が章の数だけ膨らむ。#248)。
-    外側が範囲(`第01-20巻`)なら、中のフォルダは巻のことがあるので従来どおり読む。
-    巻の印の付いた名前(`v07`)は、外側に巻があっても巻として読む。
+    - 巻自身の名前から番号が読めない(例: `"01"`, `"02"` や番号なし)とき、親階層(直近の親から順)に
+      単一巻番号(`第01巻` 等、範囲でないもの)があればフォールバックで採用する(#358)。
+    - 外側のフォルダ名が**1 冊の巻**(`…v06s` → 6 巻)を表すなら、その中のフォルダの印の無い範囲
+      (`DLRAW.AC_110-113`)や話・章(`… Raw Chapter 171`)は巻の中の章の番号であって、巻番号ではない。
+      読まずに番号なしにする(読むと欠け巻の計算が章の数だけ膨らむ。#248)。
+    - 外側が範囲(`第01-20巻`)なら、中のフォルダは巻のことがあるので従来どおり読む。
+    - 巻の印の付いた名前(`v07`)は、外側に巻があっても巻として読む。
     """
     cand = parse_number(name)
-    if cand is None or not ancestors:
+    if not ancestors:
         return cand
+    if cand is None:
+        for outer in reversed(ancestors):
+            o = parse_number(outer)
+            if o is not None and o.kind == "volume" and o.start == o.end and o.rule != "N-M":
+                return o
+        return None
     if cand.rule != "N-M" and cand.kind != "episode":
         return cand
     for outer in ancestors:

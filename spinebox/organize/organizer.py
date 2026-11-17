@@ -1650,13 +1650,21 @@ class Organizer:
             title = Path(name).stem
             num = parse_number(title)
             numbers = (num.kind, num.start, num.end, num.evidence) if num else (None, None, None, None)
-            c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = 'filesystem', number_kind = ?,
-                         number_start = ?, number_end = ?, number_evidence = ?, updated_at = ? WHERE id = ?""",
+            c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = 'filesystem',
+                         number_kind = CASE WHEN number_manual THEN number_kind ELSE ? END,
+                         number_start = CASE WHEN number_manual THEN number_start ELSE ? END,
+                         number_end = CASE WHEN number_manual THEN number_end ELSE ? END,
+                         number_evidence = CASE WHEN number_manual THEN number_evidence ELSE ? END,
+                         updated_at = ? WHERE id = ?""",
                       (title, _fs_name_bytes(name), *numbers, now, it["volume_id"]))
         else:
             raw = bytes.fromhex(before["name_raw"]) if before["name_raw"] is not None else None
-            c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?, number_kind = ?,
-                         number_start = ?, number_end = ?, number_evidence = ?, updated_at = ? WHERE id = ?""",
+            c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?,
+                         number_kind = CASE WHEN number_manual THEN number_kind ELSE ? END,
+                         number_start = CASE WHEN number_manual THEN number_start ELSE ? END,
+                         number_end = CASE WHEN number_manual THEN number_end ELSE ? END,
+                         number_evidence = CASE WHEN number_manual THEN number_evidence ELSE ? END,
+                         updated_at = ? WHERE id = ?""",
                       (before["title"], raw, before["name_encoding"], before["number_kind"], before["number_start"],
                        before["number_end"], before["number_evidence"], now, it["volume_id"]))
 
@@ -2140,6 +2148,16 @@ def transfer_volume_state(c: sqlite3.Connection, from_id: int, to_id: int, page_
     """
     transfer_assignment(c, from_id, to_id)
     transfer_volume_fields(c, from_id, to_id)  # 手動で直した出版社・ISBN などを、整理しても失わない
+    num = c.execute(
+        "SELECT number_kind, number_start, number_end, number_evidence, number_manual FROM volumes WHERE id = ?",
+        (from_id,),
+    ).fetchone()
+    if num is not None and num["number_manual"]:
+        c.execute(
+            """UPDATE volumes SET number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
+               number_manual = 1, updated_at = ? WHERE id = ?""",
+            (num["number_kind"], num["number_start"], num["number_end"], num["number_evidence"], db.now(), to_id),
+        )
     bookmarks.transfer_volume(c, from_id, to_id)  # 印は写さず移す(元に戻すと元の巻へ戻る)
     page_marks.transfer_volume(c, from_id, to_id, page_count)  # しおり(#136)も移す(元に戻すと戻る)
     row = c.execute("SELECT page, finished FROM reading_progress WHERE volume_id = ?", (from_id,)).fetchone()

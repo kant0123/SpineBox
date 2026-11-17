@@ -79,8 +79,12 @@ def register_units(conn: sqlite3.Connection, parent, units: list[Unit],
                 numbers = _number_columns(None if u.is_container_root else parse_number_in(u.title, u.ancestors))
                 vid = existing.get((inner_path, u.prefix))
                 if vid is not None:
-                    c.execute("""UPDATE volumes SET title = ?, page_count = ?, number_kind = ?, number_start = ?,
-                                 number_end = ?, number_evidence = ?, missing = 0, updated_at = ? WHERE id = ?""",
+                    c.execute("""UPDATE volumes SET title = ?, page_count = ?,
+                                 number_kind = CASE WHEN number_manual THEN number_kind ELSE ? END,
+                                 number_start = CASE WHEN number_manual THEN number_start ELSE ? END,
+                                 number_end = CASE WHEN number_manual THEN number_end ELSE ? END,
+                                 number_evidence = CASE WHEN number_manual THEN number_evidence ELSE ? END,
+                                 missing = 0, updated_at = ? WHERE id = ?""",
                               (u.title, len(u.page_names), *numbers, now, vid))
                 else:
                     vid = c.execute(
