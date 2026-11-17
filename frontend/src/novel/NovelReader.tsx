@@ -7,6 +7,7 @@ import { volumeErrorMessage } from "../reader/loadError";
 import { nextVolumeStep, prevVolumeStep } from "../reader/nextVolume";
 import { createProgressSaver } from "../reader/progressSaver";
 import { ErrorMessage } from "../reader/Reader";
+import { useReaderTitle } from "../reader/useReaderTitle";
 import { useViewport } from "../reader/useViewport";
 import {
   DEFAULT_FONT_SIZE,
@@ -95,6 +96,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
   const [helpOpen, setHelpOpen] = useState(false);
   const helpTitleId = useId();
   const { w, h } = useViewport();
+  const displayTitle = useReaderTitle(detail);
 
   // 今の位置(区切りの中の割合)。ページ割りをやり直すとき(文字サイズ・画面幅・画像の読み込み)はここから page を決める
   const posRef = useRef(detail.progress?.position ?? 0);
@@ -384,7 +386,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
 
   return (
     <main ref={mainRef} className={`reader novel${isPseudoFullscreen ? " is-pseudo-fullscreen" : ""}`}>
-      <h1 className="sr-only">{detail.title}</h1>
+      <h1 className="sr-only">{displayTitle}</h1>
       <div
         className="novel-stage"
         data-testid="stage"
@@ -436,7 +438,7 @@ export function NovelReader({ id, detail }: { id: string; detail: VolumeDetail }
         <a href={readerBackHref(detail.work_id)} className="novel-header-btn" aria-label={backLabel}>
           <ReaderIcon path={ICON_BACK} />
         </a>
-        <span className="novel-header-title">{detail.title}</span>
+        <span className="novel-header-title">{displayTitle}</span>
         <div className="novel-header-buttons" role="toolbar" aria-label="リーダー操作">
           <button
             type="button"

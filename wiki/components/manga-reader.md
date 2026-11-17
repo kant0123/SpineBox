@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 漫画(画像)の巻のリーダー(#136)。表示・ページ送り・見開き・ズーム・しおりは外部ライブラリ manga-viewer(MIT)に任せ、読書位置のサーバー保存と「続きから読む」の結線、しおりのサーバー保存(整理・巻への分解での引き継ぎ)、巻のブックマーク・次巻のボタンを足す。GitHub のコミットに固定した理由、見開きの切替を廃止した経緯、却下した代替案
-updated: 2026-11-17
+updated: 2026-11-18
 related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 ---
 
@@ -25,7 +25,8 @@ related: [frontend, backend, bookmarks, organize, volume-split, novel-reader]
 | パス | 役割 |
 | --- | --- |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | 巻情報の取得・読み込み待ち・取得失敗・小説への切り替え。漫画なら `MangaReader` へ |
-| `frontend/src/reader/MangaReader.tsx:58 MangaReader()` | manga-viewer の生成と破棄、オプション(ヘッダーのボタン・しおりの API・再開位置)、読書位置の保存の結線 |
+| `frontend/src/reader/MangaReader.tsx:59 MangaReader()` | manga-viewer の生成と破棄、オプション(ヘッダーのボタン・しおりの API・再開位置)、読書位置の保存の結線 |
+| `frontend/src/reader/useReaderTitle.ts:5 useReaderTitle()` | リーダーの表示タイトル(`work_title` + 巻/話数、無ければ元の巻名)と `document.title` の更新(#351) |
 | `frontend/src/reader/viewerHooks.ts:54 enlargeSlider()` | オプションでは届かない結線(#324, #338, #343, #347)。ページスライダーのスタイルを Shadow DOM へ足す `enlargeSlider()`、前後エッジ操作を拾う `watchVolumeEdges()`、近くのスロットにだけ画像の URL を付ける `windowPageImages()`(#343)、見開き画像を縦画面分割・横画面単独表示にする `setupAdaptiveSpreads()`(#347) |
 | `frontend/src/reader/spreadPages.ts:53 buildAdaptiveSlots()` | 見開きスキャン画像(横長)のスロット分割・単独表示・進捗補正の純粋関数(#347) |
 | `spinebox/page_marks.py:41 list_marks()` | しおりの読み書き。`add()` / `remove()`、整理での移動 `transfer_volume()` |

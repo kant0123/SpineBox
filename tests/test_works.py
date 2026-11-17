@@ -1320,3 +1320,37 @@ def test_sync_does_not_rewrite_unchanged_open_proposals(make_env):
         assert conn.total_changes == c0
     finally:
         conn.close()
+
+
+def test_volume_detail_returns_work_title(make_env):
+    """GET /api/volumes/{id} は割り当てられた作品の確定タイトル(統合時は吸収先)を work_title で返す(#351)。"""
+    _, settings, client = make_env([
+        "[著者A] テスト漫画 第01巻.cbz",
+        "123.cbz",  # 作品名にならず未割り当てになる巻
+    ])
+    v_assigned = vid(client, "[著者A] テスト漫画 第01巻")
+    v_unassigned = vid(client, "123")
+
+    d1 = client.get(f"/api/volumes/{v_assigned}").json()
+    assert d1["work_title"] == "テスト漫画"
+
+    # 手動で作品タイトルを変更すると work_title も追従する
+    wid = d1["work_id"]
+    assert client.patch(f"/api/works/{wid}", json={"title": "正規化テスト漫画"}).status_code == 200
+    assert client.get(f"/api/volumes/{v_assigned}").json()["work_title"] == "正規化テスト漫画"
+
+    # 未割り当ての巻は work_title が None
+    d2 = client.get(f"/api/volumes/{v_unassigned}").json()
+    assert d2["work_id"] is None and d2["work_title"] is None
+
+    # work_volumes が統合前の作品 id を指していても吸収先のタイトルを返す
+    conn = db.connect(settings.db_path)
+    try:
+        with db.transaction(conn) as c:
+            now = db.now()
+            c.execute("INSERT INTO works (merged_into, created_at, updated_at) VALUES (?, ?, ?)", (wid, now, now))
+            merged_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+            c.execute("UPDATE work_volumes SET work_id = ? WHERE volume_id = ?", (merged_id, v_assigned))
+        assert client.get(f"/api/volumes/{v_assigned}").json()["work_title"] == "正規化テスト漫画"
+    finally:
+        conn.close()

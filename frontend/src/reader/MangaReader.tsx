@@ -6,6 +6,7 @@ import { loadSettings } from "../settings";
 import { useTheme } from "../shell/theme";
 import { nextVolumeStep, prevVolumeStep, type NextVolumeStep } from "./nextVolume";
 import { createProgressSaver } from "./progressSaver";
+import { useReaderTitle } from "./useReaderTitle";
 import { blankPages, canWindowImages, enlargeSlider, setupAdaptiveSpreads, watchVolumeEdges, windowPageImages, type AdaptiveSpreadController } from "./viewerHooks";
 
 /** しおり(ページの目印)の API。ブックマーク(巻・作品の目印 #86)とは別の機能 */
@@ -61,6 +62,7 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
   const { effective } = useTheme();
   // 読んでいる途中でテーマが変わっても作り直さない(作り直すとページが戻る)
   const themeRef = useRef(effective);
+  const displayTitle = useReaderTitle(detail);
 
   useEffect(() => {
     if (!notice) return;
@@ -165,7 +167,7 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
       pages,
       direction: "rtl",
       firstPageSingle: loadSettings().coverAlone,
-      title: detail.title,
+      title: displayTitle,
       theme: themeRef.current,
       storageKey: key,
       bookmarks: true,
@@ -219,11 +221,11 @@ export function MangaReader({ id, detail }: { id: string; detail: VolumeDetail }
       flush();
       viewer.destroy();
     };
-  }, [id, detail]);
+  }, [id, detail, displayTitle]);
 
   return (
     <main className="reader manga-reader">
-      <h1 className="sr-only">{detail.title}</h1>
+      <h1 className="sr-only">{displayTitle}</h1>
       <div ref={hostRef} className="manga-host" />
       {notice && (
         <div className="reader-notice" role="status">

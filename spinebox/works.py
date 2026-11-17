@@ -2251,3 +2251,12 @@ def work_id_of(conn: sqlite3.Connection, volume_id: int) -> int | None:
     """巻が割り当てられている作品の id(リーダーの「戻る」の行き先)。割り当てが無ければ None。"""
     row = conn.execute("SELECT work_id FROM work_volumes WHERE volume_id = ?", (volume_id,)).fetchone()
     return None if row is None else row["work_id"]
+
+
+def work_title_of(conn: sqlite3.Connection, work_id: int | None) -> str | None:
+    """作品の表示タイトル(統合されていれば吸収先)。割り当てが無ければ None。"""
+    if work_id is None:
+        return None
+    wid = root_of(conn, work_id) or work_id
+    title, _ = _title_of(conn, wid)
+    return title or None

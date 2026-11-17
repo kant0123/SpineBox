@@ -304,4 +304,39 @@ describe("縦書きリーダー", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe("ブックマークを変更できませんでした"));
     expect(screen.getByRole("button", { name: "ブックマークに追加" }).getAttribute("aria-pressed")).toBe("false");
   });
+
+  it("work_title と volume_number があれば正規化後タイトルを表示し、document.title も更新する(#351)", async () => {
+    document.title = "元のタイトル";
+    const html = mockSections()[7];
+    const detail: VolumeDetail = {
+      id: 7,
+      title: "[著者] raw_novel_v01",
+      work_title: "正規化小説",
+      volume_number: { kind: "volume", start: 1, end: 1, evidence: "v01" },
+      format: "epub",
+      page_count: html.length,
+      pages: [],
+      sections: html.map((h, i) => ({ index: i, length: h.length })),
+      progress: null,
+      next_volume: {
+        id: 8,
+        title: "[著者] raw_novel_v02",
+        volume_number: { kind: "volume", start: 2, end: 2, evidence: "v02" },
+        offline: true,
+      },
+    };
+    const r = render(<NovelReader id="7" detail={detail} />);
+    await ready();
+    expect(screen.getByRole("heading", { level: 1, name: "正規化小説 第1巻" })).toBeTruthy();
+    expect(document.title).toBe("正規化小説 第1巻 | SpineBox");
+
+    press("Escape");
+    expect(document.querySelector(".novel-header-title")?.textContent).toBe("正規化小説 第1巻");
+
+    fireEvent.click(screen.getByRole("button", { name: "次の巻へ" }));
+    expect(screen.getByRole("status").textContent).toBe("次の巻「正規化小説 第2巻」はオフラインです");
+
+    r.unmount();
+    expect(document.title).toBe("元のタイトル");
+  });
 });
