@@ -386,3 +386,21 @@ def test_service_closes_only_a_fetcher_it_owns(tmp_path):
     svc.close()
     assert not shared._client.is_closed          # 渡された fetcher は呼び出し側のもの
     shared.close()
+
+
+def test_force_refetches_even_inside_ttl(env):
+    env.search(sources=["ndl"])
+    env.wall.now += timedelta(minutes=5)
+    out = env.service.search(SearchQuery(OKIRAKU), ["ndl"], force=True)[0]
+    assert len(env.net.requests) == 2 and not out.from_cache
+    assert env.stored_rows() == 1
+    row = env.conn.execute("SELECT fetched_at FROM metadata_responses").fetchone()
+    assert row["fetched_at"].startswith("2026-11-01T12:05")
+
+
+def test_force_falls_back_to_saved_response_when_source_fails(env):
+    env.search(sources=["ndl"])
+    env.net.route("GET", NDL, httpx.Response(503))
+    out = env.service.search(SearchQuery(OKIRAKU), ["ndl"], force=True)[0]
+    assert out.ok and out.candidates
+    assert out.responses[0].stale and out.responses[0].from_cache

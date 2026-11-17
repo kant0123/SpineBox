@@ -318,7 +318,9 @@ export function createMockWorks(
       for (const k of Object.keys(facets) as WorkFilterName[]) facets[k] = [...new Set([...facets[k], ...vals[k]])].sort();
     }
     const status = params.get("status");
-    if (status && !["unread", "reading", "finished"].includes(status)) return res(422, { detail: "status は unread / reading / finished" });
+    if (status && !["unread", "reading", "finished", "not_finished"].includes(status)) {
+      return res(422, { detail: "status は unread / reading / finished / not_finished" });
+    }
     const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
     const shown = all.filter((w) => {
       if (laterOnly && !laterMarked(w.id)) return false;
@@ -330,6 +332,7 @@ export function createMockWorks(
         const wanted = params.get(k);
         if (wanted && !vals[k].some((v) => normalizeSearch(v) === normalizeSearch(wanted))) return false;
       }
+      if (status === "not_finished") return readingState(volumesOf(w, root)) !== "finished";
       return !status || readingState(volumesOf(w, root)) === status;
     });
     const byTitle = (a: MockWork, b: MockWork) => (a.title < b.title ? -1 : a.title > b.title ? 1 : a.id - b.id);
@@ -628,7 +631,13 @@ export function createMockWorks(
       if (!w) return res(404, { detail: "作品が見つかりません" });
       if (ex[3]) return resetField(w, ex[3]);
       if (ex[2] === "metadata/fetch") {
-        for (const l of w.links) l.attempted_at = "2026-11-02T02:00:00+00:00";
+        const force = new URLSearchParams(query).get("force") === "true";
+        for (const l of w.links) {
+          l.attempted_at = "2026-11-02T02:00:00+00:00";
+          if (force) {
+            l.responses = l.responses.map((r) => ({ ...r, fetched_at: "2026-11-02T02:00:00+00:00", from_cache: false, stale: false }));
+          }
+        }
         return res(200, detail(w));
       }
       const link = w.links.find((l) => l.source === ex[4]);

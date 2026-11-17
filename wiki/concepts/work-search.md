@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 作品の全文検索と絞り込み(#56)。FTS5 trigram の索引を作品 1 件 1 行で持ち、変更はトリガーの「古い」印で次の一覧の前に追いつかせる。正規化は名寄せと同じ。2 文字以下は LIKE、trigram の無い SQLite は普通の表。絞り込みは work_fields の項目名で汎用
-updated: 2026-11-14
+updated: 2026-11-18
 related: [work-grouping, backend, frontend, metadata-clients, metadata-linking, overview]
 ---
 
@@ -67,7 +67,7 @@ trigram トークナイザは SQLite 3.34 から。サーバー機・CI の Pyth
   左メニューの「同人誌」(`#/doujinshi`)は種別 `doujinshi` の絞り込み。公開 DB は同人誌を漫画として返すので、同人誌の作品は漫画の候補とも種別が食い違わないものとして扱う(`spinebox/works.py kind_compatible()`。連携の候補の絞り・フォローの種別違いの判定が使う)。
   候補(`facets.kind`)は保存された値(`manga`)のまま返し、画面で日本語に直す
 - 読書状態は作品単位: 見えている巻を全部読み終えたら `finished`(既読)、1 巻も開いていなければ `unread`(未読)、それ以外は `reading`(読書中)。
-  `reading_state` として一覧の各作品に付ける
+  `reading_state` として一覧の各作品に付ける。`status` クエリではこれらに加えて `not_finished`(既読以外: `finished` 以外の `unread` / `reading`)も受け付ける(`spinebox/search.py:37 STATUS_FILTERS`)
 - 「後で読む」の絞り込み(`read_later=1`)は `work_fields` の項目ではなく、一覧の各作品の `read_later` で絞る。`spinebox/works.py list_works()` の `read_later_only` で処理し、画面は「絞り込み(件数)」の数にも含める。組み合わせ可能で、`total`・`facets` は絞る前の作品で計算する(読書状態などと同じ)
 - 絞り込みの候補(`facets`)は**絞る前**の作品の値から作る(絞ったあとで候補が消えて戻れなくならないように)。候補の無い項目は画面に出さない
 - 未対応の絞り込み名・読書状態の値は 422

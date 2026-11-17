@@ -136,7 +136,8 @@ class DataJobs:
             "follow_check": lambda ctx, c: self._follow_check(ctx, c, params.get("work_ids")),
             "works_refresh": lambda ctx, c: asdict(works.sync(c)),
             "inbox_sync": self._inbox_sync,
-            "work_metadata": lambda ctx, c: self._metadata(ctx, c, ids=[int(params["work_id"])]),
+            "work_metadata": lambda ctx, c: self._metadata(ctx, c, ids=[int(params["work_id"])],
+                                                           force=bool(params.get("force"))),
         }
         step = steps[kind]
 
@@ -210,7 +211,8 @@ class DataJobs:
         return linking.works_needing_fetch(c, self.settings.metadata, self.default_sources,
                                            per_work=linking.work_sources(c, self.default_sources))
 
-    def _metadata(self, ctx: JobContext, c, *, all_works: bool = False, ids: list[int] | None = None) -> dict:
+    def _metadata(self, ctx: JobContext, c, *, all_works: bool = False, ids: list[int] | None = None,
+                  force: bool = False) -> dict:
         """ids を渡すと(作品ページの「情報を取得」)、その作品を全取得元で調べる。渡さなければ全作品をまとめて取る
         経路で、連携したところで残りの取得元を引かない軽い取得にする(`linking.fetch_work(quick=True)`。#288)。
         どちらも、引くのはその作品の蔵書の取得元だけ(#316)。"""
@@ -229,7 +231,7 @@ class DataJobs:
                 ctx.progress(i, len(ids), work_title(c, work_id))
                 try:
                     result = linking.fetch_work(c, service, work_id, allowed.get(work_id, self.default_sources),
-                                                quick=quick)
+                                                quick=quick, force=force)
                 except works.WorkNotFound:
                     if len(ids) == 1:
                         raise

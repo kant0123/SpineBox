@@ -208,7 +208,10 @@ def test_reading_state_and_author_filters_combine_with_query(env):
     assert titles(client, status="reading") == [JA]
     assert titles(client, status="finished") == [KAKU]
     assert titles(client, status="unread") == sorted([ROMAJI, "Other story"])
+    assert titles(client, status="not_finished") == sorted([JA, ROMAJI, "Other story"])
     assert titles(client, status="unread", q="okiraku") == [ROMAJI]
+    assert titles(client, status="not_finished", q="okiraku") == [ROMAJI]
+    assert titles(client, status="not_finished", q="防衛") == [JA]
     assert titles(client, status="reading", q="okiraku") == []
 
     assert titles(client, author="東村アキコ") == [KAKU]
@@ -220,6 +223,7 @@ def test_reading_state_and_author_filters_combine_with_query(env):
     client.put(f"/api/volumes/{second}/progress", json={"page": 2, "finished": True})
     client.put(f"/api/volumes/{first}/progress", json={"page": 2, "finished": True})
     assert titles(client, status="finished") == sorted([JA, KAKU])
+    assert titles(client, status="not_finished") == sorted([ROMAJI, "Other story"])
 
 
 def test_facets_list_authors_from_all_listed_works(env):
@@ -232,6 +236,9 @@ def test_facets_list_authors_from_all_listed_works(env):
 def test_invalid_filters_are_422(env):
     _, client = env
     assert client.get("/api/works", params={"status": "done"}).status_code == 422
+    assert search.check_filters({"status": "not_finished"}) == {"status": "not_finished"}
+    with pytest.raises(search.InvalidFilter):
+        search.check_filters({"status": "done"})
     with pytest.raises(search.InvalidFilter):
         search.check_filters({"label": "x"})
 

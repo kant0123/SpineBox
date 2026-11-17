@@ -85,14 +85,15 @@ class MetadataService:
             elif name not in self.sources:
                 self.sources[name] = cls(settings, self.fetcher, self.store)
 
-    def search(self, query: SearchQuery, sources: list[str] | None = None) -> list[SearchOutcome]:
+    def search(self, query: SearchQuery, sources: list[str] | None = None, *,
+               force: bool = False) -> list[SearchOutcome]:
         outcomes = []
         for name in sources if sources is not None else list(self.sources):
             source = self.sources.get(name)
             if source is None:
                 outcomes.append(SearchOutcome(name, failure=Failure(FAIL_DISABLED, "この取得元は有効になっていない")))
             else:
-                outcomes.append(source.search(query))
+                outcomes.append(source.search(query, force=force))
         return outcomes
 
     def close(self) -> None:

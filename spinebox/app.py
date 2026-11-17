@@ -757,7 +757,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                    sort: str | None = None, conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
 
-        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status は絞り込み。
+        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status(unread / reading / finished / not_finished) は絞り込み。
         library は蔵書の切り替え(#85。/api/libraries の id。その蔵書のフォルダの巻だけで数える。知らない id なら空)。
         read_later=1 は後で読む(#173)を付けた作品だけにする。
         sort は並び順(#273。title / recent_read / added_desc / added_asc / released_desc / released_asc / random)。
@@ -933,14 +933,15 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return work_detail(conn, works.root_of(conn, work_id) or work_id)
 
     @app.post("/api/works/{work_id}/metadata/fetch")
-    def fetch_work_metadata(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
-        """この作品の公開 DB の情報を取りに行く(数秒かかる)。取得元の失敗は作品の連携に理由つきで記録し、
-        応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
+    def fetch_work_metadata(work_id: int, force: bool = False, conn: sqlite3.Connection = Depends(get_conn)):
+        """この作品の公開 DB の情報を取りに行く(数秒かかる)。force=true で保存済み応答を使わず再取得する。
+        取得元の失敗は作品の連携に理由つきで記録し、応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
         if works.root_of(conn, work_id) != work_id:
             raise works.WorkNotFound(work_id)
         if not linking.sources_of(conn, default_sources, work_id):
             raise HTTPException(409, "この作品の蔵書では、公開 DB の取得元が有効になっていません(管理の「蔵書」タブで選べます)")
-        job = run_job_now("work_metadata", {"work_id": work_id},
+        params = {"work_id": work_id, **({"force": True} if force else {})}
+        job = run_job_now("work_metadata", params,
                           label=f"{kind_label('work_metadata')}: {work_title(conn, work_id)}")
         if job.status == "failed" and job.error and job.error.startswith("WorkNotFound"):
             raise works.WorkNotFound(work_id)

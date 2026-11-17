@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ReadingState, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery, type WorkSort, type WorkSummary } from "../api";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { api, type SourceName, type WorkFilterName, type WorkKind, type WorkList, type WorkQuery, type WorkSort, type WorkSummary } from "../api";
 import { facetListHref, reviewHref, workTitlesHref, type WorksScope } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { Credits } from "./Credits";
-import { KIND_TEXT, READING_STATE_TEXT } from "./labels";
+import { KIND_TEXT, WORK_STATUS_FILTER_OPTIONS, WORK_STATUS_FILTER_TEXT } from "./labels";
 import { ReadLaterButton } from "./ReadLaterButton";
 import { NotifyDot } from "./ReviewPending";
 import { WorkCover, WorkCoverPlaceholder } from "./WorkCover";
@@ -115,7 +115,7 @@ export function WorkCard({ work, onReadLaterChange, eager = false }: WorkCardPro
         <NotifyDot work={work} />
         {(work.reading_state === "reading" || work.reading_state === "finished") && (
           <span className={`work-reading-badge${work.reading_state === "finished" ? " finished" : ""}`}>
-            {work.reading_state === "finished" ? "読了" : "読書中"}
+            {work.reading_state === "finished" ? "既読" : "読書中"}
           </span>
         )}
         <ReadLaterButton id={work.id} initial={work.read_later ?? false} label={work.title} onChange={onReadLaterChange} />
@@ -141,11 +141,19 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
   const [text, setText] = useState("");
-  const [query, setQuery] = useState<WorkQuery>({});
+  const [query, setQuery] = useState<WorkQuery>(() => (scope.by === "all" ? { status: "not_finished" } : {}));
   const [sort, setSort] = useState<WorkSort>(loadWorkSort);
   const [showFilters, setShowFilters] = useState(false);
   const [sources, setSources] = useState<SourceName[]>([]);
   const seq = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const idPrefix = useId();
+  const searchId = `${idPrefix}-search`;
+  const hintId = `${idPrefix}-search-hint`;
+  const sortId = `${idPrefix}-sort`;
+  const filtersId = `${idPrefix}-filters`;
+  const statusId = `${idPrefix}-status`;
+  const readLaterId = `${idPrefix}-read-later`;
 
   const fixedKey = JSON.stringify(fixed);
   const load = useCallback(async (q: WorkQuery, s: WorkSort) => {
@@ -196,6 +204,11 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
     saveWorkSort(next);
     setSort(next);
   };
+  const clearSearch = () => {
+    setText("");
+    setQuery((cur) => ({ ...cur, q: undefined }));
+    searchInputRef.current?.focus();
+  };
   const clearAll = () => {
     setText("");
     setQuery({});
@@ -204,6 +217,25 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
   const selectable = FILTER_NAMES.filter((n) => !(n in fixed));
   const activeFilters = selectable.filter((n) => query[n]).length + (query.status ? 1 : 0) + (query.read_later ? 1 : 0);
   const filtering = activeFilters > 0 || !!query.q?.trim();
+
+  const activeChips: { key: string; label: string; ariaLabel: string; onClear: () => void }[] = [];
+  if (query.q?.trim()) {
+    const qText = query.q.trim();
+    activeChips.push({ key: "q", label: `検索: ${qText}`, ariaLabel: `検索「${qText}」を解除`, onClear: clearSearch });
+  }
+  if (query.status) {
+    const statusLabel = WORK_STATUS_FILTER_TEXT[query.status] ?? query.status;
+    activeChips.push({ key: "status", label: `読書状態: ${statusLabel}`, ariaLabel: `読書状態「${statusLabel}」を解除`, onClear: () => setFilter("status", "") });
+  }
+  for (const n of selectable) {
+    const val = query[n];
+    if (!val) continue;
+    const displayVal = n === "kind" ? KIND_TEXT[val as WorkKind] ?? val : val;
+    activeChips.push({ key: n, label: `${FILTER_LABELS[n]}: ${displayVal}`, ariaLabel: `${FILTER_LABELS[n]}「${displayVal}」を解除`, onClear: () => setFilter(n, "") });
+  }
+  if (query.read_later) {
+    activeChips.push({ key: "read_later", label: "後で読むだけ", ariaLabel: "後で読むだけの絞り込みを解除", onClear: () => setReadLaterOnly(false) });
+  }
 
   return (
     <div className="library works">
@@ -227,67 +259,108 @@ export function Works({ scope = { by: "all" } }: { scope?: WorksScope }) {
       )}
       <search>
       <form className="work-search" onSubmit={(e) => { e.preventDefault(); setQuery((cur) => ({ ...cur, q: text })); }}>
-        <p id="work-search-hint" className="muted organize-hint">作品名・別名・著者で検索できます</p>
+        <p id={hintId} className="muted organize-hint">作品名・別名・著者で検索できます</p>
         <div className="work-search-row">
-          <input
-            type="search"
-            name="q"
-            autoComplete="off"
-            aria-label="作品を検索"
-            aria-describedby="work-search-hint"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            enterKeyHint="search"
-          />
-          <button type="button" className="work-filter-toggle" aria-expanded={showFilters} aria-controls="work-filters" onClick={() => setShowFilters((v) => !v)}>
-            絞り込み{activeFilters > 0 ? `(${activeFilters})` : ""}
-          </button>
-        </div>
-        {showFilters && (
-          <div className="work-filters" id="work-filters">
-            <label>
-              読書状態
-              <select name="status" value={query.status ?? ""} onChange={(e) => setFilter("status", e.target.value)}>
-                <option value="">すべて</option>
-                {(Object.keys(READING_STATE_TEXT) as ReadingState[]).map((st) => (
-                  <option key={st} value={st}>{READING_STATE_TEXT[st]}</option>
+          <div className="work-search-field">
+            <label htmlFor={searchId} className="visually-hidden">作品を検索</label>
+            <div className="work-search-input-wrap">
+              <input
+                ref={searchInputRef}
+                id={searchId}
+                type="search"
+                name="q"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder="作品名・別名・著者で検索"
+                aria-describedby={hintId}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                enterKeyHint="search"
+              />
+              {text.length > 0 && (
+                <button
+                  type="button"
+                  className="work-search-clear"
+                  aria-label="検索をクリア"
+                  onClick={clearSearch}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="work-toolbar-actions">
+            <div className="work-sort">
+              <label htmlFor={sortId} className="work-sort-label">並び順</label>
+              <select id={sortId} name="sort" value={sort} onChange={(e) => changeSort(e.target.value as WorkSort)}>
+                {WORK_SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
-            </label>
-            {selectable.filter((n) => (data?.facets[n]?.length ?? 0) > 0 || query[n]).map((n) => (
-              <label key={n}>
-                {FILTER_LABELS[n]}
-                <select name={n} value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
-                  <option value="">すべて</option>
-                  {[...new Set([...(data?.facets[n] ?? []), ...(query[n] ? [query[n]!] : [])])].map((v) => (
-                    <option key={v} value={v}>{n === "kind" ? KIND_TEXT[v as WorkKind] ?? v : v}</option>
-                  ))}
-                </select>
-              </label>
-            ))}
-            <label className="work-filter-check">
+            </div>
+            <button
+              type="button"
+              className={`work-filter-toggle${activeFilters > 0 ? " is-active" : ""}`}
+              aria-expanded={showFilters}
+              aria-controls={filtersId}
+              onClick={() => setShowFilters((v) => !v)}
+            >
+              絞り込み{activeFilters > 0 ? `(${activeFilters})` : ""}
+            </button>
+          </div>
+        </div>
+        {showFilters && (
+          <fieldset className="work-filters" id={filtersId}>
+            <legend className="visually-hidden">絞り込み条件</legend>
+            <div className="work-filter-item">
+              <label htmlFor={statusId}>読書状態</label>
+              <select id={statusId} name="status" value={query.status ?? ""} onChange={(e) => setFilter("status", e.target.value)}>
+                <option value="">すべて</option>
+                {WORK_STATUS_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {selectable.filter((n) => (data?.facets[n]?.length ?? 0) > 0 || query[n]).map((n) => {
+              const fieldId = `${idPrefix}-filter-${n}`;
+              return (
+                <div className="work-filter-item" key={n}>
+                  <label htmlFor={fieldId}>{FILTER_LABELS[n]}</label>
+                  <select id={fieldId} name={n} value={query[n] ?? ""} onChange={(e) => setFilter(n, e.target.value)}>
+                    <option value="">すべて</option>
+                    {[...new Set([...(data?.facets[n] ?? []), ...(query[n] ? [query[n]!] : [])])].map((v) => (
+                      <option key={v} value={v}>{n === "kind" ? KIND_TEXT[v as WorkKind] ?? v : v}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+            <div className="work-filter-check-wrap">
               <input
                 type="checkbox"
+                id={readLaterId}
                 name="read_later"
                 checked={!!query.read_later}
                 onChange={(e) => setReadLaterOnly(e.target.checked)}
               />
-              後で読むだけ
-            </label>
-          </div>
+              <label htmlFor={readLaterId}>後で読むだけ</label>
+            </div>
+          </fieldset>
         )}
-        <div className="work-sort-row">
-          <label className="work-sort">
-            <span className="work-sort-label">並び順</span>
-            <select name="sort" value={sort} onChange={(e) => changeSort(e.target.value as WorkSort)}>
-              {WORK_SORTS.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-          </label>
-        </div>
       </form>
       </search>
+      {activeChips.length > 0 && (
+        <div className="work-active-filters" aria-label="適用中の絞り込み条件">
+          {activeChips.map((chip) => (
+            <button key={chip.key} type="button" className="work-filter-chip" aria-label={chip.ariaLabel} onClick={chip.onClear}>
+              <span>{chip.label}</span>
+              <span className="work-filter-chip-x" aria-hidden="true">×</span>
+            </button>
+          ))}
+        </div>
+      )}
       {data && filtering && (
         <p className="muted work-count" role="status">
           {data.works.length} 件 / 全 {data.total} 作品
