@@ -483,6 +483,11 @@ MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE library_groups ADD COLUMN metadata_sources TEXT",
     ],
+    # 20: 巻番号の手動指定フラグ(#358)。number_manual = 1 の巻はスキャン・名寄せ・分解・整理で
+    #     number_kind / number_start / number_end / number_evidence を上書きしない
+    [
+        "ALTER TABLE volumes ADD COLUMN number_manual INTEGER NOT NULL DEFAULT 0",
+    ],
 ]
 
 

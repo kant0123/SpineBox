@@ -343,3 +343,33 @@ def test_recheck_rewrites_unchanged_image_folder(conn, tmp_path, make_settings):
     assert volumes(conn)[("Title 01", None, "")]["title"] == "手で書き換えた"  # 通常は読み飛ばす
     Scanner(conn, settings, recheck=True).scan()
     assert volumes(conn)[("Title 01", None, "")]["title"] == "Title 01"
+
+
+def test_folder_scan_uses_parent_ancestors_and_protects_manual_number(conn, tmp_path, make_settings):
+    lib = tmp_path / "lib"
+    v1 = lib / "[著者] 作品名 第01巻s" / "01"
+    v1.mkdir(parents=True)
+    (v1 / "000.jpg").write_bytes(page_bytes("v1"))
+    v_range = lib / "作品名 01-06" / "01"
+    v_range.mkdir(parents=True)
+    (v_range / "000.jpg").write_bytes(page_bytes("vr"))
+
+    settings = make_settings(lib)
+    scan(conn, settings)
+    vols = volumes(conn)
+    row1 = vols[("[著者] 作品名 第01巻s/01", None, "")]
+    assert (row1["number_kind"], row1["number_start"], row1["number_end"]) == ("volume", 1, 1)
+    assert row1["number_manual"] == 0
+    row_range = vols[("作品名 01-06/01", None, "")]
+    assert row_range["number_kind"] is None
+
+    # 手動指定された巻番号は recheck 再スキャンでも上書きされない
+    conn.execute(
+        "UPDATE volumes SET number_kind = 'volume', number_start = 9, number_end = 9, "
+        "number_evidence = '手動指定', number_manual = 1 WHERE id = ?",
+        (row_range["id"],),
+    )
+    Scanner(conn, settings, recheck=True).scan()
+    after = conn.execute("SELECT number_kind, number_start, number_end, number_manual FROM volumes WHERE id = ?",
+                         (row_range["id"],)).fetchone()
+    assert tuple(after) == ("volume", 9, 9, 1)

@@ -735,3 +735,67 @@ describe("公開データベースの強制再取得(#352)", () => {
     await waitFor(() => expect(checkbox.checked).toBe(false));
   });
 });
+
+describe("巻番号の手動指定とリセット(#358)", () => {
+  it("unnumbered の巻に巻番号を手動設定してスロットへ移し、自動に戻せる", async () => {
+    window.location.hash = "#/works/2";
+    render(<App />);
+    const volTitle = (await screen.findAllByText("外付けドライブの巻")).find((el) => el.closest("li.work-volume"))!;
+    const row = volTitle.closest("li.work-volume") as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(within(row).queryByRole("button", { name: /自動に戻す/ })).toBeNull();
+
+    // 詳細を開いて 1〜3話 を設定する
+    fireEvent.click(within(row).getByText("番号: 未判定"));
+    fireEvent.click(within(row).getByLabelText("話"));
+    fireEvent.change(within(row).getByLabelText(/開始番号/), { target: { value: "1" } });
+    fireEvent.change(within(row).getByLabelText(/終了番号/), { target: { value: "3" } });
+    fireEvent.click(within(row).getByRole("button", { name: "番号を保存" }));
+
+    await waitFor(() => {
+      expect(backend.log.some((l) => l.method === "PATCH" && l.path === "/api/volumes/4/number")).toBe(true);
+    });
+    // 再取得後、1〜3話 スロットと手動設定済みの表示・自動に戻すボタンが出る
+    await screen.findByText("1〜3話");
+    const updatedRow = (await screen.findAllByText("外付けドライブの巻")).find((el) => el.closest("li.work-volume"))!.closest("li.work-volume") as HTMLElement;
+    expect(within(updatedRow).getByText("番号: 手動設定済み")).toBeTruthy();
+    const resetBtn = within(updatedRow).getByRole("button", { name: "外付けドライブの巻 の巻番号を自動に戻す" });
+    fireEvent.click(resetBtn);
+
+    await waitFor(() => {
+      expect(backend.log.some((l) => l.method === "POST" && l.path === "/api/volumes/4/number/reset")).toBe(true);
+    });
+    await screen.findByText("番号の読めない巻");
+    const resetRow = (await screen.findAllByText("外付けドライブの巻")).find((el) => el.closest("li.work-volume"))!.closest("li.work-volume") as HTMLElement;
+    expect(within(resetRow).queryByRole("button", { name: /自動に戻す/ })).toBeNull();
+  });
+
+  it("slots の巻を番号なしに変更でき、不正な入力では送信せずエラーを表示する", async () => {
+    window.location.hash = "#/works/1";
+    render(<App />);
+    const volLink = await screen.findByRole("link", { name: "サンプル漫画 第01巻" });
+    const row = volLink.closest("li.work-volume") as HTMLElement;
+
+    fireEvent.click(within(row).getByText("番号: 1巻"));
+    const startInput = within(row).getByLabelText(/開始番号/) as HTMLInputElement;
+    const endInput = within(row).getByLabelText(/終了番号/) as HTMLInputElement;
+
+    // 終了番号 < 開始番号 で送信するとエラーが出て API は呼ばれない
+    fireEvent.change(startInput, { target: { value: "3" } });
+    fireEvent.change(endInput, { target: { value: "1" } });
+    fireEvent.click(within(row).getByRole("button", { name: "番号を保存" }));
+
+    expect(within(row).getByText(/開始番号以上の整数を入力してください/)).toBeTruthy();
+    expect(document.activeElement).toBe(endInput);
+    expect(backend.log.some((l) => l.method === "PATCH" && l.path === "/api/volumes/1/number")).toBe(false);
+
+    // 番号なしを選んで保存する
+    fireEvent.click(within(row).getByLabelText("番号なし"));
+    fireEvent.click(within(row).getByRole("button", { name: "番号を保存" }));
+
+    await waitFor(() => {
+      expect(backend.log.some((l) => l.method === "PATCH" && l.path === "/api/volumes/1/number")).toBe(true);
+    });
+    await screen.findByText("番号の読めない巻");
+  });
+});

@@ -61,7 +61,8 @@ log = logging.getLogger(__name__)
 # 12: RAR4 の化けた Unicode 名を OEM 名(cp932)で直す(#257)
 # 13: PDF を 1 巻として直接登録・閲覧する(#261)
 # 14: 画像だけの EPUB(固定レイアウト漫画)を format='epub_images' として小説と区別する(#202)
-SCAN_VERSION = 14
+# 15: 巻自身の名前から番号が読めないとき、親階層(ancestors)の単一巻番号へフォールバックする(#358)
+SCAN_VERSION = 15
 
 # 一覧に出る巻の条件。分解済みの親(見えている子を持つ巻)は出さず、子を並べる。親が消えた子も出さない
 LISTED_VOLUMES_JOIN = """
@@ -589,7 +590,8 @@ class Scanner:
             return
         name = path.name if rel else (root.name or str(root))
         title = fix_mojibake(name)[0]
-        spec = VolumeSpec(None, "", title, _fs_name_bytes(name), "filesystem", len(readable))
+        ancestors = PurePosixPath(rel).parts[:-1] if rel else ()
+        spec = VolumeSpec(None, "", title, _fs_name_bytes(name), "filesystem", len(readable), ancestors=ancestors)
         with db.transaction(self.conn) as c:
             src = self._upsert_source(c, root_id, rel, "folder")
             record_issues(c, src["id"], None, unreadable)
@@ -634,6 +636,9 @@ class Scanner:
                 return
             issues.extend(listing.skipped)
             specs, more = archive_volume_specs(listing, path.name, self.settings.limits)
+            rel_ancestors = PurePosixPath(rel).parts[:-1] if rel else ()
+            if rel_ancestors:
+                specs = [dataclasses.replace(s, ancestors=rel_ancestors + s.ancestors) for s in specs]
             issues.extend(more)
             if not specs:
                 issues.append(Skip(None, "巻にできるもの(画像のあるフォルダ・内側のアーカイブ)が見つからない"))
@@ -669,7 +674,9 @@ class Scanner:
             return
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
-        spec = VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem", None, fmt)
+        ancestors = PurePosixPath(rel).parts[:-1] if rel else ()
+        spec = VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem", None, fmt,
+                          ancestors=ancestors)
         if fmt == FORMAT_EPUB:
             try:
                 with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
@@ -733,7 +740,9 @@ class Scanner:
         issues = [Skip(None, safe_text(p)) for p in problems]
         specs: list[VolumeSpec] | None = None
         if not issues and page_count > 0:
-            specs = [VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem", page_count, FORMAT_PDF)]
+            ancestors = PurePosixPath(rel).parts[:-1] if rel else ()
+            specs = [VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem",
+                                page_count, FORMAT_PDF, ancestors=ancestors)]
         with db.transaction(self.conn) as c:
             record_issues(c, src["id"], None, issues)
             if specs is not None:
@@ -762,10 +771,14 @@ class Scanner:
             numbers = (num.kind, num.start, num.end, num.evidence) if num else (None, None, None, None)
             if key in existing:
                 vid, old_fmt = existing[key]
-                # 読み直しただけ(keep)なら、開いて数えたページ数(目次からは分からない内側アーカイブの巻)も残す
+                # 読み直しただけ(keep)なら、開いて数えたページ数(目次からは分からない内側アーカイブの巻)も残す。
+                # 手動指定された巻番号(number_manual = 1)は上書きしない(#358)
                 c.execute("""UPDATE volumes SET title = ?, name_raw = ?, name_encoding = ?,
                              page_count = CASE WHEN ? THEN COALESCE(?, page_count) ELSE ? END,
-                             number_kind = ?, number_start = ?, number_end = ?, number_evidence = ?,
+                             number_kind = CASE WHEN number_manual THEN number_kind ELSE ? END,
+                             number_start = CASE WHEN number_manual THEN number_start ELSE ? END,
+                             number_end = CASE WHEN number_manual THEN number_end ELSE ? END,
+                             number_evidence = CASE WHEN number_manual THEN number_evidence ELSE ? END,
                              analyzed_version = CASE WHEN ? THEN analyzed_version END,
                              analysis_error = CASE WHEN ? THEN analysis_error END, format = ?,
                              missing = 0, updated_at = ? WHERE id = ?""",

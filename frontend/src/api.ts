@@ -368,6 +368,8 @@ export interface WorkVolume {
   offline: boolean;
   progress: Progress | null;
   volume_number: VolumeNumber | null;
+  /** 巻・話の番号を手動で指定した(再スキャン・再計算で変えない) */
+  number_manual?: boolean;
   duplicate_count: number;
   format?: VolumeFormat;
   assignment: { source: WorkSource; manual: boolean; confidence: number | null; evidence: { level?: string; name?: string } | null };
@@ -1110,6 +1112,16 @@ export const api = {
     request<unknown>(`/api/volumes/${vid(id)}/metadata`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   resetVolumeMetadata: (id: VolumeId, field: "publisher" | "label" | "released" | "isbn") =>
     request<unknown>(`/api/volumes/${vid(id)}/metadata/${field}/reset`, { method: "POST" }),
+  updateVolumeNumber: (volumeId: VolumeId, payload: { kind: "volume" | "episode" | null; start?: number | null; end?: number | null }) =>
+    request<{ volume_id: number; volume_number: VolumeNumber | null; number_manual: boolean }>(`/api/volumes/${vid(volumeId)}/number`, {
+      method: "PATCH",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload),
+    }),
+  resetVolumeNumber: (volumeId: VolumeId) =>
+    request<{ volume_id: number; volume_number: VolumeNumber | null; number_manual: boolean }>(`/api/volumes/${vid(volumeId)}/number/reset`, {
+      method: "POST",
+    }),
   metadataStatus: () => request<MetadataStatus>("/api/works/metadata"),
   /** 公開データベースの情報を、取得が必要な作品(all なら全作品)について取りに行く(裏で動く) */
   fetchAllMetadata: (all = false) => request<MetadataFetchState>(`/api/works/metadata/fetch${all ? "?all=true" : ""}`, { method: "POST" }),

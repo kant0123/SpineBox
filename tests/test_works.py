@@ -1354,3 +1354,96 @@ def test_volume_detail_returns_work_title(make_env):
         assert client.get(f"/api/volumes/{v_assigned}").json()["work_title"] == "正規化テスト漫画"
     finally:
         conn.close()
+
+
+def test_manual_volume_number_edit_reset_and_sync_protection(make_env, tmp_path, make_settings):
+    """巻番号の手動指定・リセット API と、親階層由来・手動指定の sync 保護(#358)。"""
+    from PIL import Image
+    import io
+
+    def _jpg(tag: str) -> bytes:
+        buf = io.BytesIO()
+        Image.new("RGB", (10, 10), (100, 100, 100)).save(buf, "JPEG")
+        return buf.getvalue()
+
+    lib = tmp_path / "lib"
+    for vol_dir, sub in [("[著者] 親テスト 第01巻s", "01"), ("[著者] 親テスト 第02巻s", "02")]:
+        d = lib / vol_dir / sub
+        d.mkdir(parents=True)
+        (d / "001.jpg").write_bytes(_jpg(sub))
+    d_plain = lib / "作品B" / "番外"
+    d_plain.mkdir(parents=True)
+    (d_plain / "001.jpg").write_bytes(_jpg("extra"))
+
+    _, settings, client = make_env([])
+    conn = db.connect(settings.db_path)
+    try:
+        from spinebox.scanner import Scanner
+        with db.transaction(conn) as c:
+            c.execute("UPDATE library_roots SET path = ? WHERE id = 1", (str(lib),))
+        settings = make_settings(lib)
+        Scanner(conn, settings).scan()
+        works.sync(conn)
+
+        rows = {r["rel_path"]: dict(r) for r in conn.execute(
+            "SELECT v.*, s.rel_path FROM volumes v JOIN sources s ON s.id = v.source_id"
+        ).fetchall()}
+        v1 = rows["[著者] 親テスト 第01巻s/01"]["id"]
+        v_extra = rows["作品B/番外"]["id"]
+
+        # 親階層から自動判定された 1巻 が works.sync() で消されない
+        assert rows["[著者] 親テスト 第01巻s/01"]["number_kind"] == "volume"
+        assert rows["[著者] 親テスト 第01巻s/01"]["number_start"] == 1
+
+        # 未手動の巻を reset すると 409
+        assert client.post(f"/api/volumes/{v1}/number/reset").status_code == 409
+
+        # 手動で 1-3巻 に指定
+        r = client.patch(f"/api/volumes/{v_extra}/number", json={"kind": "volume", "start": 1, "end": 3})
+        assert r.status_code == 200
+        assert r.json() == {
+            "volume_id": v_extra,
+            "volume_number": {"kind": "volume", "start": 1, "end": 3, "evidence": "手動指定"},
+            "number_manual": True,
+        }
+
+        # GET /api/works/{id} に number_manual が含まれる
+        wid = works.assignments(conn)[v_extra]
+        work_data = client.get(f"/api/works/{wid}").json()
+        all_vols = [v for s in work_data["slots"] for v in s["volumes"]] + work_data["unnumbered"]
+        target = next(v for v in all_vols if v["id"] == v_extra)
+        assert target["number_manual"] is True
+        assert target["volume_number"]["start"] == 1 and target["volume_number"]["end"] == 3
+
+        # works.sync() でも手動指定は上書きされない
+        works.sync(conn)
+        row_after = conn.execute("SELECT number_kind, number_start, number_end, number_manual FROM volumes WHERE id = ?",
+                                 (v_extra,)).fetchone()
+        assert tuple(row_after) == ("volume", 1, 3, 1)
+
+        # 手動で「番号なし」に指定
+        r_clear = client.patch(f"/api/volumes/{v1}/number", json={"kind": None, "start": None, "end": None})
+        assert r_clear.status_code == 200
+        assert r_clear.json() == {"volume_id": v1, "volume_number": None, "number_manual": True}
+
+        # リセットで親階層からの自動判定(1巻)に戻る
+        r_reset = client.post(f"/api/volumes/{v1}/number/reset")
+        assert r_reset.status_code == 200
+        assert r_reset.json()["number_manual"] is False
+        assert r_reset.json()["volume_number"]["kind"] == "volume"
+        assert r_reset.json()["volume_number"]["start"] == 1
+
+        # バリデーションエラー(422)と存在しない巻(404)
+        for bad in [
+            {"kind": "unknown", "start": 1},
+            {"kind": "volume", "start": 0},
+            {"kind": "volume", "start": 3, "end": 2},
+            {"kind": None, "start": 1},
+            {"kind": "volume", "start": "1"},
+            {"kind": "volume", "start": True},
+        ]:
+            assert client.patch(f"/api/volumes/{v_extra}/number", json=bad).status_code == 422, bad
+        assert client.patch("/api/volumes/999999/number", json={"kind": "volume", "start": 1}).status_code == 404
+        assert client.post("/api/volumes/999999/number/reset").status_code == 404
+    finally:
+        conn.close()

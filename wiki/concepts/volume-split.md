@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: 内側アーカイブを開いて中の巻の単位を子の巻として登録する「巻への分解」と、名前の巻範囲と中身の食い違いの検出。巻番号の候補の読み方・保存場所、読書位置の引き継ぎ、重複を食い違いにしない理由
-updated: 2026-11-15
+updated: 2026-11-18
 related: [overview, backend, archive-reading, extraction-cache, frontend, organize, duplicate-detection, work-grouping, cover-thumbnails, bookmarks, data-jobs, manga-reader]
 ---
 
@@ -29,7 +29,9 @@ related: [overview, backend, archive-reading, extraction-cache, frontend, organi
 - `作品名 01` `作品名(3)` の形も `parse_number()` では拾わない(`Kitchen 2` が作品名のこともある)。
   `spinebox/naming.py trailing_number()` が候補を返し、**同じ名前で末尾の番号だけが違う巻が 2 つ以上**のときだけ
   [[work-grouping]] が巻番号として `volumes.number_*` に入れる(スキャンでは書かない)
-- 読み方を変えたら `spinebox/scanner.py:64 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
+- **巻自身の名前から番号が読めないときは親階層の単一巻番号へフォールバックする(#358)。** 親フォルダに `第01巻` があり巻名が `"01"` や番号なしのように単独で読めない場合、`spinebox/naming.py parse_number_in()` は直近の親から順に `parse_number()` を試し、範囲でない単一の巻番号(`kind == "volume"`, `start == end`, `rule != "N-M"`)が見つかればそれを採用する。スキャナー(`spinebox/scanner.py`、`SCAN_VERSION=15`)はフォルダ・アーカイブ・EPUB・PDF のいずれも `rel_path` の親階層を `ancestors` として渡す
+- **手動で指定された巻番号(`volumes.number_manual = 1`、`spinebox/db.py MIGRATIONS` の 20 番)は自動判定で上書きしない(#358)。** スキャン(`_replace_volumes`)・分解(`register_units`)・名寄せ(`_apply_trailing_numbers`)・整理(`spinebox/organize/organizer.py`)のすべてで `number_manual = 1` の `number_*` 列を保持する
+- 読み方を変えたら `spinebox/scanner.py:65 SCAN_VERSION` を上げる(既存 DB の巻の候補を読み直させるため)
 
 ### 分解(巻の単位と子の巻)
 

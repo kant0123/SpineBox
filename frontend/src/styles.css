@@ -1312,6 +1312,19 @@ button.link-choose::after { content: ""; position: absolute; inset: 0; border-ra
 .volume-bib { margin-top: 4px; font-size: 0.875rem; }
 .volume-bib summary { cursor: pointer; color: var(--muted); overflow-wrap: anywhere; min-block-size: 24px; }
 .bib-field { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.volume-number-wrap { display: flex; flex-direction: column; gap: 4px; min-inline-size: 0; }
+.volume-number-manual-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.volume-number-form { margin-top: 8px; }
+.volume-number-kind { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 0; min-inline-size: 0; }
+.volume-number-kind legend { font-size: 0.875rem; font-weight: 700; padding: 0 4px; color: var(--fg); }
+.volume-number-radios { display: flex; gap: 12px; flex-wrap: wrap; }
+.volume-number-radio { display: flex; align-items: center; gap: 6px; min-block-size: 36px; }
+.work-edit .volume-number-radio label { flex-direction: row; align-items: center; font-weight: 400; cursor: pointer; margin: 0; }
+.volume-number-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.volume-number-field { display: flex; flex-direction: column; gap: 4px; min-inline-size: 0; }
+.volume-number-field input { font-size: max(1rem, 1em); inline-size: 100%; box-sizing: border-box; }
+.field-error { color: var(--error); font-size: 0.8125rem; margin-top: 2px; }
+.volume-number-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .credits { margin: 24px 0 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.875rem; color: var(--muted); overflow-wrap: anywhere; }
 .credits a { color: var(--accent); }
 .work-edit, .work-section, .credits { max-inline-size: 720px; }

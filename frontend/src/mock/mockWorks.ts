@@ -117,6 +117,7 @@ export function createMockWorks(
 
   const volMeta: Record<number, Partial<Record<VolumeMetaField, FieldInfo<string | null>>>> = {};
   const volPrev: Record<string, FieldInfo<string | null> | null> = {};
+  const manualNumbers: Record<number, { value: VolumeNumber | null; manual: boolean }> = {};
   const fillVolumes = (w: MockWork) => {
     for (const id of w.volumeIds) {
       const n = NUMBERS[id];
@@ -131,14 +132,15 @@ export function createMockWorks(
 
   const find = (id: number) => works.find((w) => w.id === id);
   const vol = (id: number) => getVolumes().find((v) => v.id === id && !v.hidden);
-  const number = (id: number): VolumeNumber | null => (NUMBERS[id] ? { kind: "volume", start: NUMBERS[id], end: NUMBERS[id], evidence: `${NUMBERS[id]}` } : null);
+  const autoNumber = (id: number): VolumeNumber | null => (NUMBERS[id] ? { kind: "volume", start: NUMBERS[id], end: NUMBERS[id], evidence: `${NUMBERS[id]}` } : null);
+  const number = (id: number): VolumeNumber | null => (id in manualNumbers ? manualNumbers[id].value : autoNumber(id));
 
   const volJson = (id: number): WorkVolume | null => {
     const v = vol(id);
     if (!v) return null;
     return {
       id: Number(v.id), title: v.title, parent_title: v.parent_title, page_count: v.page_count, offline: v.offline, progress: v.progress,
-      volume_number: number(id), duplicate_count: v.duplicate_count,
+      volume_number: number(id), number_manual: manualNumbers[id]?.manual ?? false, duplicate_count: v.duplicate_count,
       assignment: { source: "filename", manual: false, confidence: 0.9, evidence: { level: "volume" } },
       metadata: volMeta[id] ?? {},
       bookmarked: marked("volume", Number(v.id)),
@@ -149,15 +151,26 @@ export function createMockWorks(
     w.volumeIds.filter((id) => !root || String(rootOf(id)) === root).map(volJson).filter((v): v is WorkVolume => v !== null);
 
   function slots(vols: WorkVolume[]): { slots: WorkSlot[]; unnumbered: WorkVolume[] } {
-    const groups = new Map<number, WorkVolume[]>();
+    const groups = new Map<string, { kind: "volume" | "episode"; start: number; end: number; volumes: WorkVolume[] }>();
     const unnumbered: WorkVolume[] = [];
     for (const v of vols) {
-      if (!v.volume_number) unnumbered.push(v);
-      else groups.set(v.volume_number.start, [...(groups.get(v.volume_number.start) ?? []), v]);
+      if (!v.volume_number) {
+        unnumbered.push(v);
+      } else {
+        const { kind, start, end } = v.volume_number;
+        const key = `${kind}:${start}:${end}`;
+        const g = groups.get(key) ?? { kind, start, end, volumes: [] };
+        g.volumes.push(v);
+        groups.set(key, g);
+      }
     }
-    const out = [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([n, vs]): WorkSlot => ({
-      kind: "volume", start: n, end: n, label: `${n}巻`, duplicate: vs.length > 1, volumes: vs,
-    }));
+    const out = [...groups.values()]
+      .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "volume" ? -1 : 1) || a.start - b.start || a.end - b.end)
+      .map((g): WorkSlot => {
+        const unit = g.kind === "episode" ? "話" : "巻";
+        const range = g.end > g.start ? `${g.start}〜${g.end}` : `${g.start}`;
+        return { kind: g.kind, start: g.start, end: g.end, label: `${range}${unit}`, duplicate: g.volumes.length > 1, volumes: g.volumes };
+      });
     return { slots: out, unnumbered };
   }
 
@@ -511,11 +524,39 @@ export function createMockWorks(
     return res(405, { detail: "未対応" });
   }
 
+  function volumeNumber(method: string, id: number, reset: boolean, body: any): Res {
+    if (!vol(id)) return res(404, { detail: "巻が見つかりません" });
+    if (reset && method === "POST") {
+      if (!manualNumbers[id]?.manual) return res(409, { detail: "この巻の番号は手動で設定されていません" });
+      delete manualNumbers[id];
+      return res(200, { volume_id: id, volume_number: autoNumber(id), number_manual: false });
+    }
+    if (!reset && method === "PATCH") {
+      const kind = body?.kind;
+      if (kind === null) {
+        manualNumbers[id] = { value: null, manual: true };
+        return res(200, { volume_id: id, volume_number: null, number_manual: true });
+      }
+      if (kind !== "volume" && kind !== "episode") {
+        return res(422, { detail: "kind は volume / episode / null のいずれかです" });
+      }
+      const start = body?.start;
+      const end = body?.end ?? start;
+      if (!Number.isInteger(start) || start < 1 || !Number.isInteger(end) || end < start) {
+        return res(422, { detail: "開始番号は 1 以上の整数、終了番号は開始番号以上の整数で入力してください" });
+      }
+      const value: VolumeNumber = { kind, start, end, evidence: "manual" };
+      manualNumbers[id] = { value, manual: true };
+      return res(200, { volume_id: id, volume_number: value, number_manual: true });
+    }
+    return res(405, { detail: "未対応" });
+  }
+
   /** 作品の API を処理する。対象外のパスは null */
   function handle(method: string, path: string, query: string, body: any): Res | null {
     const fol = handleFollows(method, path, query, body);
     if (fol) return fol;
-    if (!path.startsWith("/api/works") && !/^\/api\/volumes\/\d+\/metadata/.test(path)) return null;
+    if (!path.startsWith("/api/works") && !/^\/api\/volumes\/\d+\/(?:metadata|number)/.test(path)) return null;
     if (method === "GET" && path === "/api/works") return listWorks(query);
     const facet = path.match(/^\/api\/works\/facets\/([a-z]+)$/);
     if (facet && method === "GET") return facetValues(facet[1], new URLSearchParams(query).get("library"));
@@ -605,6 +646,8 @@ export function createMockWorks(
     }
     const vm = path.match(/^\/api\/volumes\/(\d+)\/metadata(?:\/(\w+)\/reset)?$/);
     if (vm) return volumeMeta(method, Number(vm[1]), vm[2], body);
+    const vn = path.match(/^\/api\/volumes\/(\d+)\/number(?:\/(reset))?$/);
+    if (vn) return volumeNumber(method, Number(vn[1]), Boolean(vn[2]), body);
     const m = path.match(/^\/api\/works\/(\d+)(?:\/(aliases|merge)(?:\/(\d+))?)?$/);
     if (!m) return res(404, { detail: "見つかりません" });
     const w = find(Number(m[1]));
