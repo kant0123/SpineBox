@@ -1090,8 +1090,9 @@ export const api = {
   /** 手動の項目を自動に戻す(直す前の値、無ければ公開データベースの値) */
   resetWorkField: (id: number | string, field: WorkFieldName) =>
     request<WorkDetail>(`/api/works/${vid(id)}/fields/${field}/reset`, { method: "POST" }),
-  /** この作品の公開データベースの情報を取りに行く(数秒かかる。取得元の失敗は 200 で返り、連携に記録される) */
-  fetchWorkMetadata: (id: number | string) => request<WorkDetail>(`/api/works/${vid(id)}/metadata/fetch`, { method: "POST" }),
+  /** この作品の公開データベースの情報を取りに行く(数秒かかる。force が true なら保存分を使わず再取得する) */
+  fetchWorkMetadata: (id: number | string, force = false) =>
+    request<WorkDetail>(`/api/works/${vid(id)}/metadata/fetch${force ? "?force=true" : ""}`, { method: "POST" }),
   /** 確認待ちの候補を選ぶ(sourceId が null なら「該当なし」)。選んだ結果は手動の決定になる */
   chooseLink: (id: number | string, source: SourceName, sourceId: string | null) =>
     request<WorkDetail>(`/api/works/${vid(id)}/links/${source}/choose`, {

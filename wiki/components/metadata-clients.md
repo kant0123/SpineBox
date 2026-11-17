@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 公開 DB クライアント(spinebox/metadata/)の入口。検索の入出力の型、失敗の表現、生応答の保存(metadata_responses)、取得元ごとのレート制限、確からしさの出し方、結線が使う入口。結線そのものは [[metadata-linking]]
-updated: 2026-11-14
+updated: 2026-11-18
 related: [metadata-sources, metadata-linking, overview, backend, work-search, follow]
 ---
 
@@ -29,7 +29,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/metadata/service.py:61 MetadataService` | 入口。`search(query, sources=None)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
+| `spinebox/metadata/service.py:61 MetadataService` | 入口。`search(query, sources=None, *, force=False)`。有効な取得元は設定 `[metadata] sources` の順に直列で引く。取得元の追加は `SOURCE_CLASSES` への登録 |
 | `spinebox/metadata/model.py:29 SearchQuery` | 入力。`title` だけ必須。`author` `volume` `kind` は確からしさの手がかり、`isbn` は NDL で巻の書誌を直接引く |
 | `spinebox/metadata/model.py:44 MetadataItem` | 正規化した項目(作品名・副題・読み・ローマ字名・別名・著者・巻・巻の表記・全巻数・出版社・レーベル・発売日・ISBN・種別・ジャンル・タグ・出典 URL。あらすじは読み取らない([[metadata-linking]] の「あらすじの廃止」))。取れなかった項目は None / 空。`scope` が `volume`(NDL: 巻ごとの書誌)か `work`(メディア芸術データベース / Bangumi: 作品全体) |
 | `spinebox/metadata/model.py:82 Match` | 確からしさ。`score`(0〜1)、観点ごとの `components`、根拠 `reasons`(`title:exact` `author:match` `volume:mismatch` など) |
@@ -70,7 +70,7 @@ outcomes = service.search(SearchQuery("作品名", author=None, volume=None, kin
 ## 生応答の保存(`metadata_responses`)
 
 - 鍵は `(source, request_key)`。`request_key` は要求(メソッド・URL・クエリ・JSON 本文)の SHA-256 で、**秘匿情報は含めない**。行には秘匿を除いた要求の記述(JSON)・本文のバイト列そのまま・取得日時を持つ。同じ鍵は上書き
-- 同じ要求は有効期限内(設定 `cache_ttl_days`、既定 30 日)なら保存済みを使い、ネットワークに出ない(`SearchOutcome.from_cache`)
+- 同じ要求は有効期限内(設定 `cache_ttl_days`、既定 30 日)なら保存済みを使い、ネットワークに出ない(`SearchOutcome.from_cache`)。ただし `force=True` のときは有効期限内の保存済み応答を使わず再取得し、成功すれば上書き保存する(通信失敗時は従来通り `stale` を使う。#352)
 - **有効期限が切れた行も消さない。取得に失敗したとき、その古い応答を代わりに使う**(`ResponseRef.stale`、`notes` に理由)。取得元が落ちていても検索が返るようにするため
 - 保存するのは**解釈できて 200 だった応答だけ**。失敗・解釈できない応答は保存しない。保存済みが解釈できなくなっていたら捨てて取り直す。保存に失敗(DB ロックなど)しても検索結果は返す
 - 検索 1 回が複数の要求(Bangumi は検索 + 詳細)に分かれるので、`ResponseRef` は要求ごとに出る。`Candidate.response_key` はその候補の項目を取り出した要求

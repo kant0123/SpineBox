@@ -920,14 +920,15 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         return work_detail(conn, works.root_of(conn, work_id) or work_id)
 
     @app.post("/api/works/{work_id}/metadata/fetch")
-    def fetch_work_metadata(work_id: int, conn: sqlite3.Connection = Depends(get_conn)):
-        """この作品の公開 DB の情報を取りに行く(数秒かかる)。取得元の失敗は作品の連携に理由つきで記録し、
-        応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
+    def fetch_work_metadata(work_id: int, force: bool = False, conn: sqlite3.Connection = Depends(get_conn)):
+        """この作品の公開 DB の情報を取りに行く(数秒かかる)。force=true で保存済み応答を使わず再取得する。
+        取得元の失敗は作品の連携に理由つきで記録し、応答は 200 で返す。別名の一致で他の作品に統合されたら、吸収先の詳細を返す。"""
         if works.root_of(conn, work_id) != work_id:
             raise works.WorkNotFound(work_id)
         if not linking.sources_of(conn, default_sources, work_id):
             raise HTTPException(409, "この作品の蔵書では、公開 DB の取得元が有効になっていません(管理の「蔵書」タブで選べます)")
-        job = run_job_now("work_metadata", {"work_id": work_id},
+        params = {"work_id": work_id, **({"force": True} if force else {})}
+        job = run_job_now("work_metadata", params,
                           label=f"{kind_label('work_metadata')}: {work_title(conn, work_id)}")
         if job.status == "failed" and job.error and job.error.startswith("WorkNotFound"):
             raise works.WorkNotFound(work_id)

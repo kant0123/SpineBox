@@ -65,6 +65,7 @@ export function WorkPage({ id }: { id: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [moveTarget, setMoveTarget] = useState("");
   const [mergeTarget, setMergeTarget] = useState("");
+  const [forceFetch, setForceFetch] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const apply = useCallback((w: WorkDetail) => {
@@ -97,6 +98,7 @@ export function WorkPage({ id }: { id: string }) {
   }, [id, apply]);
 
   useEffect(() => {
+    setForceFetch(false);
     void load();
   }, [load]);
 
@@ -294,14 +296,31 @@ export function WorkPage({ id }: { id: string }) {
       <section className="work-section" aria-labelledby="work-db-heading">
         <div className="section-head">
           <h2 id="work-db-heading">公開データベース</h2>
-          <button
-            type="button"
-            className="small"
-            disabled={busy || enabledSources.length === 0}
-            onClick={() => void run(async () => apply(await api.fetchWorkMetadata(work.id)))}
-          >
-            {busy ? "取得中…" : "情報を取得"}
-          </button>
+          <div className="work-db-actions">
+            <label className="work-db-force" htmlFor="work-db-force-checkbox">
+              <input
+                id="work-db-force-checkbox"
+                type="checkbox"
+                checked={forceFetch}
+                disabled={busy || enabledSources.length === 0}
+                onChange={(e) => setForceFetch(e.target.checked)}
+              />
+              <span>保存分を使わず再取得</span>
+            </label>
+            <button
+              type="button"
+              className="small"
+              disabled={busy || enabledSources.length === 0}
+              onClick={() =>
+                void run(async () => {
+                  apply(await api.fetchWorkMetadata(work.id, forceFetch));
+                  setForceFetch(false);
+                })
+              }
+            >
+              {busy ? "取得中…" : "情報を取得"}
+            </button>
+          </div>
         </div>
         <WorkLinks work={work} busy={busy} run={run} onWork={apply} />
       </section>
