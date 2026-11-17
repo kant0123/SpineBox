@@ -665,4 +665,16 @@ describe("作品カードのタイトルスクロールとタグ高さ(#266)", (
     const otherCard = (await screen.findByText("外付けの作品")).closest("li")!;
     expect(otherCard.querySelector(".work-reading-badge")).toBeNull();
   });
+
+  it("読了した作品の表紙に work-reading-badge.finished が「読了」として表示される(#353)", async () => {
+    backend.handle("PUT", "/api/volumes/4/progress", JSON.stringify({ page: 11, finished: true }));
+    window.location.hash = "#/works";
+    render(<App />);
+    const finishedCard = (await screen.findByText("外付けの作品")).closest("li")!;
+    const badge = finishedCard.querySelector(".work-reading-badge");
+    expect(badge).toBeTruthy();
+    expect(badge?.classList.contains("finished")).toBe(true);
+    expect(badge?.textContent).toBe("読了");
+    expect(within(finishedCard).getByText("読了")).toBeTruthy();
+  });
 });
