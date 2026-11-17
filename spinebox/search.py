@@ -34,6 +34,7 @@ KIND_LABELS = {"manga": "漫画", "novel": "小説", "doujinshi": "同人誌"}
 _VALUE_SEPARATORS = re.compile(r"[、,，;；]")
 
 READING_STATES = ("unread", "reading", "finished")
+STATUS_FILTERS = (*READING_STATES, "not_finished")
 
 _MIN_TRIGRAM = 3  # trigram で索引から引ける語の最短
 
@@ -216,8 +217,8 @@ def check_filters(filters: dict[str, str | None]) -> dict[str, str]:
     unknown = set(out) - set(FILTER_FIELDS) - {"status"}
     if unknown:
         raise InvalidFilter(f"未対応の絞り込み: {', '.join(sorted(unknown))}")
-    if "status" in out and out["status"] not in READING_STATES:
-        raise InvalidFilter("status は unread / reading / finished")
+    if "status" in out and out["status"] not in STATUS_FILTERS:
+        raise InvalidFilter("status は unread / reading / finished / not_finished")
     return out
 
 
@@ -233,7 +234,10 @@ def _comparable(name: str, value: str) -> str:
 def matches_filters(values: dict[str, list[str]], state: str, filters: dict[str, str]) -> bool:
     for name, wanted in filters.items():
         if name == "status":
-            if state != wanted:
+            if wanted == "not_finished":
+                if state == "finished":
+                    return False
+            elif state != wanted:
                 return False
             continue
         target = _comparable(name, wanted)

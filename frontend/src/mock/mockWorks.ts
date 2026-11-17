@@ -305,7 +305,9 @@ export function createMockWorks(
       for (const k of Object.keys(facets) as WorkFilterName[]) facets[k] = [...new Set([...facets[k], ...vals[k]])].sort();
     }
     const status = params.get("status");
-    if (status && !["unread", "reading", "finished"].includes(status)) return res(422, { detail: "status は unread / reading / finished" });
+    if (status && !["unread", "reading", "finished", "not_finished"].includes(status)) {
+      return res(422, { detail: "status は unread / reading / finished / not_finished" });
+    }
     const terms = (params.get("q") ?? "").split(/\s+/).map(normalizeSearch).filter(Boolean);
     const shown = all.filter((w) => {
       if (laterOnly && !laterMarked(w.id)) return false;
@@ -317,6 +319,7 @@ export function createMockWorks(
         const wanted = params.get(k);
         if (wanted && !vals[k].some((v) => normalizeSearch(v) === normalizeSearch(wanted))) return false;
       }
+      if (status === "not_finished") return readingState(volumesOf(w, root)) !== "finished";
       return !status || readingState(volumesOf(w, root)) === status;
     });
     const byTitle = (a: MockWork, b: MockWork) => (a.title < b.title ? -1 : a.title > b.title ? 1 : a.id - b.id);

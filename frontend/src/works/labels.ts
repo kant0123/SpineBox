@@ -1,4 +1,4 @@
-import type { FieldInfo, LinkFailure, MergeEvidence, ReadingState, SourceName, WorkKind, WorkLink, WorkSource, WorkSummary } from "../api";
+import type { FieldInfo, LinkFailure, MergeEvidence, ReadingState, SourceName, WorkKind, WorkLink, WorkSource, WorkStatusFilter, WorkSummary } from "../api";
 
 const SOURCE_TEXT: Record<WorkSource, string> = {
   filename: "ファイル名から",
@@ -67,6 +67,20 @@ export function evidenceLines(ev: MergeEvidence): string[] {
 
 /** 読書状態の表示(#56) */
 export const READING_STATE_TEXT: Record<ReadingState, string> = { unread: "未読", reading: "読書中", finished: "既読" };
+
+/** 作品一覧の読書状態絞り込みの表示(#357) */
+export const WORK_STATUS_FILTER_TEXT: Record<WorkStatusFilter, string> = {
+  not_finished: "既読以外",
+  ...READING_STATE_TEXT,
+};
+
+/** 作品一覧の読書状態選択肢(既読以外を先頭に置く) */
+export const WORK_STATUS_FILTER_OPTIONS: { value: WorkStatusFilter; label: string }[] = [
+  { value: "not_finished", label: WORK_STATUS_FILTER_TEXT.not_finished },
+  { value: "unread", label: WORK_STATUS_FILTER_TEXT.unread },
+  { value: "reading", label: WORK_STATUS_FILTER_TEXT.reading },
+  { value: "finished", label: WORK_STATUS_FILTER_TEXT.finished },
+];
 
 /** 公開データベースの取得元の名前・サイト・利用している API(表示義務のあるクレジット) */
 export const SOURCE_SITES: Record<SourceName, { name: string; api: string; url: string }> = {

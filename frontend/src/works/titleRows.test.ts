@@ -44,7 +44,7 @@ describe("巻の進み具合", () => {
     expect(percentText({ progress: { page: 3, finished: false }, page_count: 0 })).toBe("—");
   });
 
-  it("未読 / 読書中 / 読了", () => {
+  it("未読 / 読書中 / 既読", () => {
     expect(volumeStatus({ progress: null })).toBe("unread");
     expect(volumeStatus({ progress: { page: 0, finished: false } })).toBe("reading");
     expect(volumeStatus({ progress: { page: 9, finished: true } })).toBe("finished");
@@ -89,7 +89,7 @@ describe("持っていない巻の発売日", () => {
 });
 
 describe("作品全体の進み具合", () => {
-  it("重複は 1 巻として数え、読んだページの割合と読了巻数を出す", () => {
+  it("重複は 1 巻として数え、読んだページの割合と既読巻数を出す", () => {
     const rows = buildTitleRows(work(
       [
         slot(1, [vol(1), vol(6, { progress: { page: 9, finished: true } })]), // 重複のうち読んだ方(10 / 10 ページ)
