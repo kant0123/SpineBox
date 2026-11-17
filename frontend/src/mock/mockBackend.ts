@@ -242,6 +242,10 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
   const sections = mockSections();
   /** 同じ作品の前後巻(#113)。リーダーのエッジから進む先 */
   const workIdOf = (vol: MockVolume) => vol.work_id ?? mockWorks.works.find((w) => w.volumeIds.includes(vol.id))?.id ?? null;
+  const workTitleOf = (vol: MockVolume) => {
+    const wid = workIdOf(vol);
+    return wid != null ? (mockWorks.works.find((w) => w.id === wid)?.title ?? null) : null;
+  };
   const adjacentOf = (vol: MockVolume, dir: "prev" | "next") => {
     const target = dir === "next" ? mockWorks.nextVolume(vol.id) : mockWorks.prevVolume(vol.id);
     return target ? { id: target.id, title: target.title, volume_number: target.volume_number, offline: target.offline } : null;
@@ -675,6 +679,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         encoding: v.format === "text" ? "cp932" : null,
         progress: v.progress, parent_id: null, volume_number: v.volume_number, findings: [],
         work_id: workIdOf(v),
+        work_title: workTitleOf(v),
         prev_volume: adjacentOf(v, "prev"),
         next_volume: adjacentOf(v, "next"),
         bookmarked: marks.volume.has(v.id),
@@ -700,6 +705,7 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         parent_id: v.parent_id,
         volume_number: v.volume_number,
         work_id: workIdOf(v),
+        work_title: workTitleOf(v),
         prev_volume: adjacentOf(v, "prev"),
         next_volume: adjacentOf(v, "next"),
         findings: v.findings,

@@ -161,6 +161,7 @@ def test_novels_are_listed_and_readable_to_the_end(make_client, tmp_path):
 
     detail, html = read_all(c, v["id"])
     assert detail["format"] == "epub" and detail["pages"] == [] and len(detail["sections"]) == 2
+    assert detail["work_title"] == "縦書き"
     assert "<ruby>本文<rt>ほんぶん</rt></ruby>" in html[0] and "第二章の最後の文" in html[1]
     assert c.get(f"/api/volumes/{v['id']}/sections/2").status_code == 404
     assert by_id(c, v["id"])["page_count"] == 2  # 開いたら区切りの数が入る

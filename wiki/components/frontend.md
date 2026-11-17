@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-15
+updated: 2026-11-18
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -61,7 +61,8 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **次の巻・前の巻へ移れる(#113, #338)。** 前後の巻はバックエンドが作品の一覧の並び(番号順 → 番号なしは名前順)から決める。同じ番号の重複は同じ巻として飛ばし、
   前後番号に重複があればその並びの 1 つ目を開く。前後の巻がオフラインのときは移動せず「次の巻/前の巻「<名前>」はオフラインです」を出す。
   小説も漫画も最終ページからさらに進むと次の巻へ、先頭ページからさらに戻ると前の巻へ移り、漫画にはヘッダーの「次の巻へ」のボタンもある(#324。[[manga-reader]])。移動の前に今の巻の位置(既読を含む)は後始末の `flush()` が送る。
-  漫画と小説の両方が `frontend/src/reader/nextVolume.ts:14 nextVolumeStep()` / `prevVolumeStep()` を使う
+  リーダーの表示タイトル・`document.title`・オフライン案内は `frontend/src/reader/useReaderTitle.ts:5 useReaderTitle()` / `frontend/src/works/titleRows.ts:41 displayVolumeTitle()` で作品の確定タイトル + 巻/話数に揃える(#351)。
+  漫画と小説の両方が `frontend/src/reader/nextVolume.ts:21 nextVolumeStep()` / `prevVolumeStep()` を使う
 - **画面の切り替えはハッシュ(`#/read/<id>`)。** バックエンドは `dist` を `/` で配信するだけでよく、深いパスを
   `index.html` へ振り向ける設定が要らない。ルーターのライブラリも入れていない。
   ただし共有されたリンクやブックマークが `/read/<id>`(パス)の形だと、バックエンドの SPA fallback で画面は開くがハッシュが空で一覧になる。

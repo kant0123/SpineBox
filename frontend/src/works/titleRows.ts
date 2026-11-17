@@ -1,7 +1,7 @@
 // 作品のタイトル一覧(#115)の行の組み立てと、行に出す値の決まり。WorkTitles.tsx から使う。
 // 画面を描かずに試せるよう、判定はここへ分ける。
 
-import type { FollowRelease, WorkDetail, WorkVolume } from "../api";
+import type { FollowRelease, VolumeNumber, WorkDetail, WorkVolume } from "../api";
 import { releasedText } from "../follows/Follows";
 
 /** 行の読書状態。未読 = まだ開いていない、読了 = 最後まで読んだ */
@@ -30,11 +30,19 @@ export function percentText(v: Pick<WorkVolume, "progress" | "page_count">): str
  * 巻の表示名「作品名 第N巻」。ファイル名の揺れ(英字・作者の括弧・アンダースコア)を出さない(#115)。
  * 番号の無い巻は、その巻の名前をそのまま出す(作品名だけでは見分けられないため)。
  */
-export function volumeTitle(workTitle: string, v: Pick<WorkVolume, "volume_number" | "title">): string {
+export function volumeTitle(workTitle: string, v: { title: string; volume_number?: VolumeNumber | null }): string {
   const n = v.volume_number;
   if (!n) return v.title;
   const unit = n.kind === "volume" ? "巻" : "話";
   return n.start === n.end ? `${workTitle} 第${n.start}${unit}` : `${workTitle} 第${n.start}〜${n.end}${unit}`;
+}
+
+/** リーダー等での表示名。作品の確定タイトルがあれば「作品名 第N巻」、無ければ元の巻名にフォールバックする(#351) */
+export function displayVolumeTitle(
+  v: { title: string; volume_number?: VolumeNumber | null },
+  workTitle: string | null | undefined,
+): string {
+  return workTitle ? volumeTitle(workTitle, v) : v.title;
 }
 
 export interface OwnedTitleRow {

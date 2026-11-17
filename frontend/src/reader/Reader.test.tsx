@@ -173,6 +173,16 @@ describe("manga-viewer に渡す設定", () => {
     expect(["light", "dark"]).toContain(opts.theme);
   });
 
+  it("作品タイトルと巻番号があれば正規化後タイトル(巻/話数付き)を渡し、document.title も更新する(#351)", async () => {
+    document.title = "元のタイトル";
+    const { opts, unmount } = await opened("6");
+    expect(opts.title).toBe("サンプル漫画 第1巻");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("サンプル漫画 第1巻");
+    expect(document.title).toBe("サンプル漫画 第1巻 | SpineBox");
+    unmount();
+    expect(document.title).toBe("元のタイトル");
+  });
+
   // 実物は内部メソッド(_preloadNearby・_renderSlots)を持つ。偽物に足して、ページ画像を近くだけ持たせる経路(#343)を通す
   describe("ライブラリがページ画像の出し入れに対応しているとき", () => {
     let proto: Record<string, unknown>;
@@ -333,7 +343,7 @@ describe("次の巻へのボタン(#113)", () => {
   it("次巻がオフラインならボタンは出すが、移動せずオフラインであることを出す", async () => {
     const { shadow } = await opened("2", {}, defaultVolumes().map((v) => (v.id === 3 ? { ...v, offline: true } : v)));
     fireEvent.click(shadow.querySelector(".spinebox-next-volume")!);
-    expect(await screen.findByText("次の巻「読了済みの巻」はオフラインです")).toBeTruthy();
+    expect(await screen.findByText("次の巻「サンプル漫画 第4巻」はオフラインです")).toBeTruthy();
     expect(window.location.hash).toBe("");
   });
 });
