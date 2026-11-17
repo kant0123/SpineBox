@@ -744,7 +744,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
                    sort: str | None = None, conn: sqlite3.Connection = Depends(get_conn)):
         """作品の一覧(見えている巻を持つ作品)。unassigned は作品に割り当てられていない巻の数。
 
-        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status は絞り込み。
+        q は全文検索(作品名・別名・著者・巻の名前・その他の項目)、author / kind / genre / tag / publisher / status(unread / reading / finished / not_finished) は絞り込み。
         library は蔵書の切り替え(#85。/api/libraries の id。その蔵書のフォルダの巻だけで数える。知らない id なら空)。
         read_later=1 は後で読む(#173)を付けた作品だけにする。
         sort は並び順(#273。title / recent_read / added_desc / added_asc / released_desc / released_asc / random)。

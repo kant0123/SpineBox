@@ -4,11 +4,11 @@
 import type { FollowRelease, WorkDetail, WorkVolume } from "../api";
 import { releasedText } from "../follows/Follows";
 
-/** 行の読書状態。未読 = まだ開いていない、読了 = 最後まで読んだ */
+/** 行の読書状態。未読 = まだ開いていない、既読 = 最後まで読んだ */
 export type TitleStatus = "unread" | "reading" | "finished";
 
 /** 凡例に出す状態の文言 */
-export const STATUS_TEXT: Record<TitleStatus, string> = { unread: "未読", reading: "読書中", finished: "読了" };
+export const STATUS_TEXT: Record<TitleStatus, string> = { unread: "未読", reading: "読書中", finished: "既読" };
 
 export function volumeStatus(v: Pick<WorkVolume, "progress">): TitleStatus {
   if (v.progress?.finished) return "finished";

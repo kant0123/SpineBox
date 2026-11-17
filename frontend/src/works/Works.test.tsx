@@ -130,9 +130,9 @@ describe("作品のタイトル一覧(#105 / #115)", () => {
     const legend = screen.getByRole("list", { name: "読書状態の凡例" });
     expect(legend.textContent).toContain("未読");
     expect(legend.textContent).toContain("読書中");
-    expect(legend.textContent).toContain("読了");
-    // 作品全体の進み具合(9 / 22 ページ・読了 1 / 3 巻)
-    expect(screen.getByText(/全体 41%\(9 \/ 22\)・読了 1 \/ 3 巻/)).toBeTruthy();
+    expect(legend.textContent).toContain("既読");
+    // 作品全体の進み具合(9 / 22 ページ・既読 1 / 3 巻)
+    expect(screen.getByText(/全体 41%\(9 \/ 22\)・既読 1 \/ 3 巻/)).toBeTruthy();
     // 欠け・最新巻はフォローの続刊の確認から出し、リーダーへは行かせない
     expect(within(items[2]).getByText("欠け")).toBeTruthy();
     expect(within(items[2]).getByText(/2014年1月 発売/)).toBeTruthy();
@@ -233,6 +233,7 @@ describe("作品の検索と絞り込み(#56)", () => {
   it("クエリ文字列は空の値を付けない", () => {
     expect(workQueryString({})).toBe("");
     expect(workQueryString({ q: " お気楽 ", author: "", status: "reading" })).toBe("?q=%E3%81%8A%E6%B0%97%E6%A5%BD&status=reading");
+    expect(workQueryString({ status: "not_finished" })).toBe("?status=not_finished");
     expect(workQueryString({ read_later: true })).toBe("?read_later=1");
     expect(workQueryString({ sort: "title" })).toBe("");
     expect(workQueryString({ sort: "recent_read" })).toBe("?sort=recent_read");
@@ -244,25 +245,47 @@ describe("作品の検索と絞り込み(#56)", () => {
     render(<App />);
     await screen.findByText("サンプル漫画");
     expect(cardTitles()).toHaveLength(4);
-    fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "sample" } }); // 別名で当たる
+    const searchInput = screen.getByLabelText("作品を検索") as HTMLInputElement;
+    expect(searchInput.getAttribute("autocorrect")).toBe("off");
+    expect(searchInput.getAttribute("autocapitalize")).toBe("none");
+    expect(searchInput.getAttribute("spellcheck")).toBe("false");
+
+    fireEvent.change(searchInput, { target: { value: "sample" } }); // 別名で当たる
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
     expect(screen.getByText(/1 件 \/ 全 4 作品/)).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("作品を検索"), { target: { value: "存在しない" } });
+    // 検索入力のクリア(×)ボタンで検索語だけ消せる
+    fireEvent.click(screen.getByRole("button", { name: "検索をクリア" }));
+    expect(searchInput.value).toBe("");
+    expect(document.activeElement).toBe(searchInput);
+    await waitFor(() => expect(cardTitles()).toHaveLength(4));
+
+    fireEvent.change(searchInput, { target: { value: "存在しない" } });
     expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();
     expect(screen.queryByText(/作品がありません。蔵書フォルダ/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "条件を消す" }));
     await waitFor(() => expect(cardTitles()).toHaveLength(4));
-    expect((screen.getByLabelText("作品を検索") as HTMLInputElement).value).toBe("");
+    expect(searchInput.value).toBe("");
   });
 
-  it("絞り込みは開いたときだけ出て、読書状態と項目で絞れる", async () => {
+  it("絞り込みは開いたときだけ出て、初期状態は既読以外で、読書状態と項目で絞れる", async () => {
     window.location.hash = "#/works";
     render(<App />);
     await screen.findByText("サンプル漫画");
     expect(screen.queryByLabelText("読書状態")).toBeNull(); // スマホ幅で邪魔にならないよう、初めは閉じている
-    fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
-    fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "unread" } });
+    // 初期状態は「既読以外」が適用されている
+    fireEvent.click(screen.getByRole("button", { name: "絞り込み(1)" }));
+    const statusSelect = screen.getByLabelText("読書状態") as HTMLSelectElement;
+    expect(statusSelect.value).toBe("not_finished");
+    expect(Array.from(statusSelect.options).map((o) => o.textContent)).toEqual([
+      "すべて",
+      "既読以外",
+      "未読",
+      "読書中",
+      "既読",
+    ]);
+
+    fireEvent.change(statusSelect, { target: { value: "unread" } });
     await waitFor(() => expect(cardTitles()).toEqual(["外付けの作品", "別の読み物", "ダンジョンに出会いを求めるのは間違っているだろうか外伝 ソード・オラトリア"]));
     expect(screen.getByRole("button", { name: "絞り込み(1)" })).toBeTruthy();
 
@@ -271,9 +294,12 @@ describe("作品の検索と絞り込み(#56)", () => {
     expect(screen.queryByLabelText("タグ")).toBeNull();
     fireEvent.change(screen.getByLabelText("種別"), { target: { value: "novel" } });
     await waitFor(() => expect(cardTitles()).toEqual(["別の読み物"]));
+    expect(screen.getByRole("button", { name: "絞り込み(2)" })).toBeTruthy();
+
     fireEvent.change(screen.getByLabelText("読書状態"), { target: { value: "reading" } });
     expect(await screen.findByText(/条件に合う作品がありません/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("種別"), { target: { value: "" } });
+    // 適用中チップから種別の条件だけを個別に解除できる
+    fireEvent.click(screen.getByRole("button", { name: "種別「小説」を解除" }));
     await waitFor(() => expect(cardTitles()).toEqual(["サンプル漫画"]));
     expect(within(document.querySelector(".work-card")!).getByText("読書中")).toBeTruthy();
   });
@@ -666,15 +692,20 @@ describe("作品カードのタイトルスクロールとタグ高さ(#266)", (
     expect(otherCard.querySelector(".work-reading-badge")).toBeNull();
   });
 
-  it("読了した作品の表紙に work-reading-badge.finished が「読了」として表示される(#353)", async () => {
+  it("既読の作品は初期表示の「既読以外」では除外され、解除すると work-reading-badge.finished が「既読」として表示される(#353, #357)", async () => {
     backend.handle("PUT", "/api/volumes/4/progress", JSON.stringify({ page: 11, finished: true }));
     window.location.hash = "#/works";
     render(<App />);
+    await screen.findByText("サンプル漫画");
+    expect(screen.queryByText("外付けの作品")).toBeNull();
+
+    // 「既読以外」のチップを外すと既読作品も表示される
+    fireEvent.click(screen.getByRole("button", { name: "読書状態「既読以外」を解除" }));
     const finishedCard = (await screen.findByText("外付けの作品")).closest("li")!;
     const badge = finishedCard.querySelector(".work-reading-badge");
     expect(badge).toBeTruthy();
     expect(badge?.classList.contains("finished")).toBe(true);
-    expect(badge?.textContent).toBe("読了");
-    expect(within(finishedCard).getByText("読了")).toBeTruthy();
+    expect(badge?.textContent).toBe("既読");
+    expect(within(finishedCard).getByText("既読")).toBeTruthy();
   });
 });

@@ -309,6 +309,9 @@ export interface WorkSummary {
 
 export type ReadingState = "unread" | "reading" | "finished";
 
+/** 作品一覧の読書状態フィルタ(ReadingState に加えて「既読以外」の not_finished を受け付ける) */
+export type WorkStatusFilter = ReadingState | "not_finished";
+
 /** 作品一覧の並び順(#273)。既定は title(作品名順) */
 export type WorkSort = "title" | "recent_read" | "added_desc" | "added_asc" | "released_desc" | "released_asc" | "random";
 
@@ -323,7 +326,7 @@ export interface WorkQuery {
   genre?: string;
   tag?: string;
   publisher?: string;
-  status?: ReadingState;
+  status?: WorkStatusFilter;
   /** 後で読む(#173)を付けた作品だけ */
   read_later?: boolean;
   /** 並び順(#273。省略・title は作品名順) */
