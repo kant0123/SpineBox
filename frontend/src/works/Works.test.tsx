@@ -709,3 +709,29 @@ describe("作品カードのタイトルスクロールとタグ高さ(#266)", (
     expect(within(finishedCard).getByText("既読")).toBeTruthy();
   });
 });
+
+describe("公開データベースの強制再取得(#352)", () => {
+  it("通常は force なしで取得し、チェックを入れたときだけ force=true を送り完了後に戻る", async () => {
+    const calls: string[] = [];
+    const stub = (globalThis as any).fetch as (url: string, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/api/works/1/metadata/fetch")) calls.push(url);
+      return stub(url, init);
+    });
+    window.location.hash = "#/works/1";
+    render(<App />);
+
+    const checkbox = (await screen.findByRole("checkbox", { name: "保存分を使わず再取得" })) as HTMLInputElement;
+    const button = screen.getByRole("button", { name: "情報を取得" });
+    expect(checkbox.checked).toBe(false);
+
+    fireEvent.click(button);
+    await waitFor(() => expect(calls).toEqual(["/api/works/1/metadata/fetch"]));
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+    fireEvent.click(button);
+    await waitFor(() => expect(calls).toEqual(["/api/works/1/metadata/fetch", "/api/works/1/metadata/fetch?force=true"]));
+    await waitFor(() => expect(checkbox.checked).toBe(false));
+  });
+});

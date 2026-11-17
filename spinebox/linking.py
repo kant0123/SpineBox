@@ -277,6 +277,16 @@ def _link_row(c, work_id: int, source: str):
     return c.execute("SELECT * FROM work_links WHERE work_id = ? AND source = ?", (work_id, source)).fetchone()
 
 
+def _evidence_dict(row) -> dict:
+    if row is None or not row["evidence"]:
+        return {}
+    try:
+        data = json.loads(row["evidence"])
+        return data if isinstance(data, dict) else {}
+    except ValueError:
+        return {}
+
+
 def _failure_json(outcome: SearchOutcome, at: str) -> str:
     f = outcome.failure
     return works._dumps({"kind": f.kind, "message": f.message, "status": f.status, "retry_after": f.retry_after, "at": at})
@@ -299,10 +309,11 @@ def _record_failure(conn, work_id: int, source: str, failure_json: str) -> None:
 
 
 def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[dict], known_kind: str | None,
-           hold: bool = False, numbers: list[int] | None = None) -> str:
+           hold: bool = False, numbers: list[int] | None = None, *, query_title: str | None = None) -> str:
     """成功した検索の結果を work_links に書く。利用者が選んだ連携は変えない(中身の更新だけ)。"""
     now = db.now()
     responses = _responses(outcome)
+    extra = {"query_title": query_title} if query_title is not None else {}
     with db.transaction(conn) as c:
         row = _link_row(c, work_id, source)
         by_id = {x["summary"]["source_id"]: x for x in cands}
@@ -310,14 +321,16 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
             # 利用者が選んだ連携。同じ候補が今回も見つかったときだけ中身を新しくする
             cand = by_id.get(row["source_id"])
             if cand is not None:
-                ev = {"summary": cand["summary"], "decision": "manual", "margin": None, "responses": responses}
+                ev = {"summary": cand["summary"], "decision": "manual", "margin": None, "responses": responses,
+                      **extra}
                 c.execute("""UPDATE work_links SET confidence = ?, evidence = ?, item = ?, failure = NULL,
                              attempted_at = ?, checked_at = ? WHERE work_id = ? AND source = ?""",
                           (cand["summary"]["score"], works._dumps(ev), works._dumps(cand["item"]), now, now,
                            work_id, source))
             else:
-                c.execute("UPDATE work_links SET failure = NULL, attempted_at = ?, checked_at = ? WHERE work_id = ? "
-                          "AND source = ?", (now, now, work_id, source))
+                ev = {**_evidence_dict(row), "responses": responses, **extra}
+                c.execute("UPDATE work_links SET evidence = ?, failure = NULL, attempted_at = ?, checked_at = ? "
+                          "WHERE work_id = ? AND source = ?", (works._dumps(ev), now, now, work_id, source))
             return "linked"
         kept = by_id.get(row["source_id"]) if row is not None and row["status"] == "linked" else None
         kind_ok = kept is not None and works.kind_compatible(known_kind, kept["summary"]["kind"])
@@ -333,7 +346,7 @@ def _store(conn, work_id: int, source: str, outcome: SearchOutcome, cands: list[
             status, chosen, shown, margin = decide(cands, known_kind, hold, numbers)
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin, "responses": responses,
-              "hold": "kind_unresolved" if hold and status == "pending" else None}
+              "hold": "kind_unresolved" if hold and status == "pending" else None, **extra}
         values = (status, chosen["summary"]["source_id"] if chosen else None,
                   chosen["summary"]["score"] if chosen else (shown[0]["summary"]["score"] if shown else None),
                   works._dumps(ev), works._dumps(chosen["item"]) if chosen else None,
@@ -362,11 +375,13 @@ def _settles(row) -> bool:
 
 
 def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
-               sources: tuple[str, ...] | None = None, *, quick: bool = False) -> FetchResult:
+               sources: tuple[str, ...] | None = None, *, quick: bool = False,
+               force: bool = False) -> FetchResult:
     """作品 1 つについて、有効な取得元を順に検索し、結果を work_links に記録して項目に反映する。
 
     取得元の失敗(タイムアウト・5xx・接続不可・429)や想定外の例外は、取得元ごとに記録して次へ進む
     (例外は呼び出し元へ出さない)。利用者が「該当なし」にした取得元には要求を出さない。
+    force=True のとき、または作品のタイトルが前回取得時から変わっているときは保存済み応答を使わず再取得する。
 
     quick(全作品をまとめて取るとき。#288): 取得元が `_settles()` の連携になったら、残りの取得元を引かず
     `skipped` で返す(行は作らない・変えない。`works_needing_fetch()` が飛ばした取得元を未取得に数えない)。
@@ -390,13 +405,16 @@ def fetch_work(conn: sqlite3.Connection, service: MetadataService, work_id: int,
         try:
             ctx = _context(conn, work_id)
             light = quick and (row is None or row["status"] not in ("linked", "pending"))
-            outcome = service.search(_query(name, ctx, light), [name])[0]
+            prev_title = _evidence_dict(row).get("query_title")
+            title_changed = prev_title is not None and prev_title != ctx.title
+            outcome = service.search(_query(name, ctx, light), [name], force=force or title_changed)[0]
             if not outcome.ok:
                 _record_failure(conn, work_id, name, _failure_json(outcome, db.now()))
                 result.sources[name] = "failed"
                 continue
             result.sources[name] = _store(conn, work_id, name, outcome, candidates_for(name, outcome, ctx), ctx.kind,
-                                          hold=name != "ndl" and kind_unresolved(conn, work_id), numbers=ctx.numbers)
+                                          hold=name != "ndl" and kind_unresolved(conn, work_id), numbers=ctx.numbers,
+                                          query_title=ctx.title)
             apply_work(conn, work_id)
             settled = quick and _settles(_link_row(conn, work_id, name))
         except Exception as e:  # noqa: BLE001 (取得の不具合でスキャン・閲覧・ほかの取得元を止めない)
@@ -426,9 +444,11 @@ def choose(conn: sqlite3.Connection, work_id: int, source: str, source_id: str |
         row = _link_row(c, work_id, source)
         if row is None:
             raise works.Conflict("この取得元はまだ取得していません")
+        prev = _evidence_dict(row)
+        extra = {"query_title": prev["query_title"]} if "query_title" in prev else {}
         if source_id is None:
             ev = {"summary": None, "decision": "manual_none", "margin": None,
-                  "responses": (json.loads(row["evidence"]) if row["evidence"] else {}).get("responses", [])}
+                  "responses": prev.get("responses", []), **extra}
             c.execute("""UPDATE work_links SET status = 'none', source_id = NULL, manual = 1, confidence = NULL,
                          evidence = ?, item = NULL WHERE work_id = ? AND source = ?""",
                       (works._dumps(ev), work_id, source))
@@ -437,8 +457,8 @@ def choose(conn: sqlite3.Connection, work_id: int, source: str, source_id: str |
             cand = next((x for x in cands if x["summary"]["source_id"] == source_id), None)
             if cand is None:
                 raise works.InvalidValue("その候補はありません。もう一度取得してください")
-            prev = json.loads(row["evidence"]) if row["evidence"] else {}
-            ev = {"summary": cand["summary"], "decision": "manual", "margin": None, "responses": prev.get("responses", [])}
+            ev = {"summary": cand["summary"], "decision": "manual", "margin": None,
+                  "responses": prev.get("responses", []), **extra}
             c.execute("""UPDATE work_links SET status = 'linked', source_id = ?, manual = 1, confidence = ?,
                          evidence = ?, item = ? WHERE work_id = ? AND source = ?""",
                       (source_id, cand["summary"]["score"], works._dumps(ev), works._dumps(cand["item"]), work_id,
@@ -456,7 +476,7 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
         if row is None or not row["manual"]:
             raise works.Conflict("この連携は手動で選ばれていません")
         cands = json.loads(row["candidates"]) if row["candidates"] else []
-        prev = json.loads(row["evidence"]) if row["evidence"] else {}
+        prev = _evidence_dict(row)
         # まず連携を外した状態(確認待ち)にする。手動の連携が決めた種別を、決め直しの前提に使わないため
         c.execute("""UPDATE work_links SET status = 'pending', source_id = NULL, manual = 0, item = NULL
                      WHERE work_id = ? AND source = ?""", (work_id, source))
@@ -466,10 +486,11 @@ def reset_link(conn: sqlite3.Connection, work_id: int, source: str) -> None:
         # 種別が決まっていなければ絞らない(ほかの候補が消えるのを避ける)。決まっていれば違う種別の候補は除く
         _rctx = _context(c, work_id)
         status, chosen, shown, margin = decide(cands, _rctx.kind, hold, _rctx.numbers)
+        extra = {"query_title": prev["query_title"]} if "query_title" in prev else {}
         ev = {"summary": chosen["summary"] if chosen else None,
               "decision": "auto" if status == "linked" else status, "margin": margin,
               "responses": prev.get("responses", []),
-              "hold": "kind_unresolved" if hold and status == "pending" else None}
+              "hold": "kind_unresolved" if hold and status == "pending" else None, **extra}
         c.execute("""UPDATE work_links SET status = ?, source_id = ?, manual = 0, confidence = ?, evidence = ?,
                      item = ?, candidates = ? WHERE work_id = ? AND source = ?""",
                   (status, chosen["summary"]["source_id"] if chosen else None,

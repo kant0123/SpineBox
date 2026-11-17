@@ -590,7 +590,13 @@ export function createMockWorks(
       if (!w) return res(404, { detail: "作品が見つかりません" });
       if (ex[3]) return resetField(w, ex[3]);
       if (ex[2] === "metadata/fetch") {
-        for (const l of w.links) l.attempted_at = "2026-11-02T02:00:00+00:00";
+        const force = new URLSearchParams(query).get("force") === "true";
+        for (const l of w.links) {
+          l.attempted_at = "2026-11-02T02:00:00+00:00";
+          if (force) {
+            l.responses = l.responses.map((r) => ({ ...r, fetched_at: "2026-11-02T02:00:00+00:00", from_cache: false, stale: false }));
+          }
+        }
         return res(200, detail(w));
       }
       const link = w.links.find((l) => l.source === ex[4]);

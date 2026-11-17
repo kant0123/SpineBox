@@ -1279,6 +1279,9 @@ a.dup-choice:hover { border-color: var(--accent); }
 .work-edit textarea, .work-edit select { min-inline-size: 0; }
 .work-edit .volume-meta button, .bib-field .volume-meta button { margin: 0 0 0 8px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.work-db-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.work-db-force { display: inline-flex; align-items: center; gap: 6px; min-block-size: 44px; font-size: 0.875rem; cursor: pointer; }
+.work-db-force:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
 .link-list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
 .link-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; min-inline-size: 0; }
 .link-card.link-pending { border-color: var(--warn); }

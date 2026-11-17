@@ -16,6 +16,7 @@ from metadata_fakes import BANGUMI_DETAIL, BANGUMI_SEARCH, MEDIAARTS, NDL, FakeC
 from spinebox import db, linking, works
 from spinebox.app import create_app
 from spinebox.config import MetadataSettings, load_settings
+from spinebox.metadata import MetadataService, SearchQuery
 from spinebox.metadata.http import HttpFetcher
 
 KAKU = "かくかくしかじか"
@@ -1209,3 +1210,83 @@ def test_reset_link_also_breaks_the_tie_by_the_owned_volumes(env_factory):
         conn.close()
     row = env.rows("SELECT status, source_id, manual FROM work_links WHERE work_id = ? AND source = 'ehentai'", wid)[0]
     assert (row["status"], row["source_id"], row["manual"]) == ("linked", "b", 0)
+
+
+def test_fetch_force_refetches_ignoring_saved_response(env_factory):
+    """作品ページの「情報を取得」で force=true を渡すと、TTL 内の保存済み応答を使わず再取得する。"""
+    env = env_factory("kaku", KAKU_FILES, sources=("ndl", "mediaarts"))
+    wid = env.work_id()
+    env.fetch(wid)
+    first_reqs = len(env.net.requests)
+
+    cached = env.fetch(wid)
+    assert len(env.net.requests) == first_reqs
+    assert all(r["from_cache"] for link in cached["links"] for r in link["responses"])
+
+    r = env.client.post(f"/api/works/{wid}/metadata/fetch?force=true")
+    assert r.status_code == 200
+    assert len(env.net.requests) > first_reqs
+    for link in r.json()["links"]:
+        assert link["responses"] and not any(resp["from_cache"] for resp in link["responses"])
+
+
+def test_title_change_refetches_without_using_saved_response(env_factory):
+    """タイトルが変わった後の「情報を取得」は、新しいタイトルの保存済み応答があっても使わず再取得する。"""
+    env = env_factory("kaku", KAKU_FILES, sources=("ndl", "mediaarts"))
+    wid = env.work_id()
+    env.fetch(wid)
+
+    # 変更後のタイトルの応答をあらかじめ metadata_responses に保存しておく
+    new_title = "別のタイトル"
+    conn = db.connect(env.settings.db_path)
+    try:
+        svc = MetadataService(env.settings.metadata, conn, transport=env.net.transport)
+        svc.search(SearchQuery(new_title, author="東村アキコ", kind="manga", limit=linking.NDL_LIMIT), ["ndl"])
+        svc.search(SearchQuery(new_title, author="東村アキコ", kind="manga"), ["mediaarts"])
+        svc.close()
+    finally:
+        conn.close()
+
+    before_reqs = len(env.net.requests)
+    assert env.client.patch(f"/api/works/{wid}", json={"title": new_title}).status_code == 200
+    r = env.client.post(f"/api/works/{wid}/metadata/fetch")
+    assert r.status_code == 200
+    assert len(env.net.requests) > before_reqs
+    for link in r.json()["links"]:
+        assert link["responses"] and not any(resp["from_cache"] for resp in link["responses"])
+
+    # 同じタイトルのまま再度取得すると、今度は保存分を使う
+    after_reqs = len(env.net.requests)
+    again = env.fetch(wid)
+    assert len(env.net.requests) == after_reqs
+    assert all(resp["from_cache"] for link in again["links"] for resp in link["responses"])
+
+
+def test_manual_link_title_change_updates_responses_when_candidate_missing(env_factory):
+    """手動で選んだ連携でも、タイトル変更後の取得で保存分を使わず再取得し、responses を更新する。"""
+    env = env_factory("okiraku", OKIRAKU_FILES)
+    wid = env.work_id()
+    env.fetch(wid)
+    ndl = env.link(env.work(wid), "ndl")
+    manga = next(c for c in ndl["candidates"] if c["kind"] == "manga")
+    env.client.post(f"/api/works/{wid}/links/ndl/choose", json={"source_id": manga["source_id"]})
+
+    # 手動選択の後にタイトルを変更し、新タイトルの応答がキャッシュにあっても使わないことを確認
+    new_title = "全く別の存在しないタイトル"
+    conn = db.connect(env.settings.db_path)
+    try:
+        svc = MetadataService(env.settings.metadata, conn, transport=env.net.transport)
+        svc.search(SearchQuery(new_title, limit=linking.NDL_LIMIT), ["ndl"])
+        svc.close()
+    finally:
+        conn.close()
+
+    before_reqs = len(env.net.requests)
+    assert env.client.patch(f"/api/works/{wid}", json={"title": new_title}).status_code == 200
+    r = env.client.post(f"/api/works/{wid}/metadata/fetch")
+    assert r.status_code == 200
+    assert len(env.net.requests) > before_reqs
+    ndl_after = env.link(r.json(), "ndl")
+    assert ndl_after["status"] == "linked" and ndl_after["manual"] is True
+    assert ndl_after["source_id"] == manga["source_id"]
+    assert ndl_after["responses"] and not any(resp["from_cache"] for resp in ndl_after["responses"])

@@ -46,8 +46,8 @@ class MetadataSource:
         raise NotImplementedError
 
     # --- 共通 ---
-    def search(self, query: SearchQuery) -> SearchOutcome:
-        run = _Run(self)
+    def search(self, query: SearchQuery, *, force: bool = False) -> SearchOutcome:
+        run = _Run(self, force=force)
         try:
             items = self._search(query, run)
         except FetchError as e:
@@ -68,8 +68,9 @@ class MetadataSource:
 class _Run:
     """1 回の検索の中で使った生応答の記録と、保存済み応答つきの取得。"""
 
-    def __init__(self, source: MetadataSource):
+    def __init__(self, source: MetadataSource, *, force: bool = False):
         self.source = source
+        self.force = force
         self.refs: list[ResponseRef] = []
         self.notes: list[str] = []
 
@@ -77,14 +78,14 @@ class _Run:
         self.notes.append(text)
 
     def fetch(self, request: SourceRequest, parse: Callable[[bytes], T]) -> T:
-        """保存済みの応答(有効期限内)があればそれを、無ければ取得して保存する。
+        """保存済みの応答(有効期限内)があればそれを、無ければ取得して保存する(force=True なら保存済みを使わない)。
 
         取得に失敗したとき、有効期限が切れた保存済み応答があればそれを使う(`stale`)。
         解釈できなかった応答は保存しない(保存済みのものが解釈できなければ捨てて取り直す)。
         """
         src = self.source
         stored = src.store.get(request)
-        if stored is not None and src.store.is_fresh(stored, src.settings.cache_ttl_days):
+        if not self.force and stored is not None and src.store.is_fresh(stored, src.settings.cache_ttl_days):
             try:
                 parsed = parse(stored.body)
             except ParseError:
