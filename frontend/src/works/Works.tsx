@@ -113,7 +113,11 @@ export function WorkCard({ work, onReadLaterChange, eager = false }: WorkCardPro
           )}
         </a>
         <NotifyDot work={work} />
-        {work.reading_state === "reading" && <span className="work-reading-badge">読書中</span>}
+        {(work.reading_state === "reading" || work.reading_state === "finished") && (
+          <span className={`work-reading-badge${work.reading_state === "finished" ? " finished" : ""}`}>
+            {work.reading_state === "finished" ? "読了" : "読書中"}
+          </span>
+        )}
         <ReadLaterButton id={work.id} initial={work.read_later ?? false} label={work.title} onChange={onReadLaterChange} />
       </div>
       <a className="work-link work-text-link" href={workTitlesHref(work.id)}>

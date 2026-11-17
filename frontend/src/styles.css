@@ -921,7 +921,7 @@ button.small::after {
   line-height: calc(22 / 16 * 1rem);
 }
 
-/* 作品カードの表紙に重ねる読書中バッジ: 通知ドット(左上)と干渉しないよう右上に配置(#270) */
+/* 作品カードの表紙に重ねる読書状態バッジ: 通知ドット(左上)と干渉しないよう右上に配置(#270, #353) */
 .work-reading-badge {
   position: absolute;
   top: 8px;
@@ -938,6 +938,11 @@ button.small::after {
   pointer-events: none;
   backdrop-filter: blur(4px);
   z-index: 2;
+}
+.work-reading-badge.finished {
+  background: var(--finished-bg);
+  color: var(--done);
+  border-color: var(--done);
 }
 /* 後で読む(#173)の重ね表示: 表紙の右下に被せる。アイコンのみ 32px 円で小さく見せ、::after で 44px の押し込み領域を持たせる */
 .work-cover-wrap { position: relative; }
