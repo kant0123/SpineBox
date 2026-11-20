@@ -219,9 +219,23 @@ def test_stopped_scan_does_not_mark_unseen_sources_missing(make_settings, tmp_pa
     settings = make_settings(lib)
     conn = db.open_db(settings.db_path)
     Scanner(conn, settings).scan()
+    # recheck=True: 実際に読み込むソースで on_source が呼ばれ、途中で止めても未走査を missing にしない
     seen = []
-    result = Scanner(conn, settings, should_stop=lambda: len(seen) >= 1, on_source=seen.append).scan()
+    result = Scanner(conn, settings, recheck=True, should_stop=lambda: len(seen) >= 1, on_source=seen.append).scan()
     assert result.stopped is True and seen == ["a.cbz"]
+    assert conn.execute("SELECT COUNT(*) FROM sources WHERE missing = 1").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM volumes WHERE missing = 0").fetchone()[0] == 3
+    # 通常スキャン(未変更): on_source は呼ばれないが should_stop はソースごとに確認され、途中停止でも missing にしない
+    checks = 0
+    seen_unchanged = []
+
+    def stop_on_second():
+        nonlocal checks
+        checks += 1
+        return checks >= 4  # ルート開始・ディレクトリ開始・1件目を通過し、2件目で停止
+
+    result2 = Scanner(conn, settings, should_stop=stop_on_second, on_source=seen_unchanged.append).scan()
+    assert result2.stopped is True and seen_unchanged == []
     assert conn.execute("SELECT COUNT(*) FROM sources WHERE missing = 1").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM volumes WHERE missing = 0").fetchone()[0] == 3
     conn.close()
@@ -694,3 +708,63 @@ def test_full_sync_plans_its_steps(app_env):
         JobContext.step = original
     assert job["status"] == "succeeded", job
     assert [s[:2] for s in seen] == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+
+def test_scan_skips_works_sync_when_unchanged_and_runs_when_needed(make_settings, tmp_path, monkeypatch):
+    """変化が無く未割り当て巻も無ければ works.sync を省略する(daily_scan / scan / POST /api/scan 共通)。"""
+    from spinebox import works
+
+    lib = tmp_path / "lib"
+    write_zip(lib / "作品A 第01巻.cbz", [("1.jpg", page_bytes("a1"))])
+    (lib / "solid.7z").write_bytes(b"7z\xbc\xaf\x27\x1c" + b"\x00" * 16)  # UnsupportedArchive が残っても無変更扱い
+    settings = no_network_settings(make_settings(lib))
+    client = TestClient(create_app(settings, frontend_dist=None))
+
+    sync_calls = []
+    real_sync = works.sync
+    monkeypatch.setattr(works, "sync", lambda conn: sync_calls.append(1) or real_sync(conn))
+
+    # 1. 初回 POST /api/scan: 新規ファイルあり -> works.sync 実行。応答キーは従来どおり
+    r = client.post("/api/scan")
+    assert r.status_code == 200
+    assert set(r.json()) == {"volumes", "offline_roots", "issues", "issues_total"}
+    assert len(sync_calls) == 1
+
+    # 2. 無変更の 2 回目 POST /api/scan & daily_scan ジョブ -> どちらも works.sync をスキップ
+    sync_calls.clear()
+    assert client.post("/api/scan").status_code == 200
+    assert sync_calls == []
+    job = wait_job(client, client.post("/api/jobs", json={"kind": "daily_scan"}).json()["id"])
+    assert job["status"] == "succeeded" and sync_calls == []
+
+    # 3. 未割り当ての一覧巻がある場合は無変更スキャンでも works.sync を実行して復旧する(POST /api/scan と daily_scan の両方)
+    conn = db.connect(settings.db_path)
+    with db.transaction(conn) as c:
+        c.execute("DELETE FROM work_volumes")
+    conn.close()
+    assert client.post("/api/scan").status_code == 200
+    assert len(sync_calls) == 1
+
+    sync_calls.clear()
+    conn = db.connect(settings.db_path)
+    with db.transaction(conn) as c:
+        c.execute("DELETE FROM work_volumes")
+    conn.close()
+    job = wait_job(client, client.post("/api/jobs", json={"kind": "daily_scan"}).json()["id"])
+    assert job["status"] == "succeeded" and len(sync_calls) == 1
+
+    # 復旧後の無変更スキャンは再びスキップ
+    sync_calls.clear()
+    job = wait_job(client, client.post("/api/jobs", json={"kind": "scan"}).json()["id"])
+    assert job["status"] == "succeeded" and sync_calls == []
+
+    # 4. maintenance(recheck=True)は無変更でも works.sync を実行する
+    job = wait_job(client, client.post("/api/jobs", json={"kind": "maintenance"}).json()["id"])
+    assert job["status"] == "succeeded" and len(sync_calls) == 1
+
+    # 5. ファイル追加ありの daily_scan は works.sync を実行する
+    sync_calls.clear()
+    write_zip(lib / "作品A 第02巻.cbz", [("1.jpg", page_bytes("a2"))])
+    job = wait_job(client, client.post("/api/jobs", json={"kind": "daily_scan"}).json()["id"])
+    assert job["status"] == "succeeded" and len(sync_calls) == 1
+    assert len(client.get("/api/volumes").json()) == 2

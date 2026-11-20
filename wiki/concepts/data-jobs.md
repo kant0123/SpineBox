@@ -1,7 +1,7 @@
 ---
 type: concept
 summary: データ管理とジョブ(#83)。スキャン・補完・表紙・解析・重複・名寄せ・受け入れの同期を 1 本ずつ動かす待ち行列と履歴(jobs 表)。依頼は待ち行列、その場で結果を返す API は他が動いていれば 409、中止は区切りで止める。1 本ずつにした理由と却下した代替案
-updated: 2026-11-15
+updated: 2026-11-20
 related: [overview, backend, frontend, duplicate-detection, cover-thumbnails, metadata-linking, volume-split, inbox, organize, follow]
 ---
 
@@ -16,9 +16,10 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | パス | 役割 |
 | --- | --- |
 | `spinebox/jobs.py:149 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
-| `spinebox/datajobs.py:93 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
-| `spinebox/app.py:345 run_job_now()` / `spinebox/app.py:645 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
-| `spinebox/scanner.py:303 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
+| `spinebox/datajobs.py:96 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
+| `spinebox/datajobs.py:187 sync_works_if_needed()` | スキャン後の名寄せ実行判定(`needs_works_sync()`)。`_scan_and_group()` と `POST /api/scan` で共用(#363) |
+| `spinebox/app.py:354 run_job_now()` / `spinebox/app.py:665 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/scanner.py:322 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:149 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 | `spinebox/jobs.py:111 plan()` | 複数の段のジョブの段の数。`step()` が段の番号を 1 つ進め、`step_index` / `step_count` で返す(#207) |
 
@@ -26,9 +27,9 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 
 | 種類(`kind`) | 画面の名前 | 中身 |
 | --- | --- | --- |
-| `daily_scan` / `scan` | 新しいファイルを取り込む / (一覧に出さない) | スキャン(変わっていないソースは開かない)+ 名寄せ。**今の SpineBox では同じ処理**(普段のスキャンがそのまま「新しいファイルの検出」になる)。#83 では Peach の項目に合わせて両方並べたが、#207 で違いを探して迷う元だったので `scan` は一覧から外した(`Kind.listed=False`。API の依頼・履歴の名前・一覧の「スキャン」は `scan` のまま) |
+| `daily_scan` / `scan` | 新しいファイルを取り込む / (一覧に出さない) | スキャン(未変更ソースとキャッシュ済みの決定的失敗は DB 書き込み 0・再オープン 0 で飛ばす。[[backend]])+ 必要なときだけ名寄せ(`sync_works_if_needed()` は `recheck=False` かつ `result.changed == False` かつ未割り当ての一覧巻が無いとき `works.sync` を省略する。#363。名寄せは本番 1,102 作品で 1 回 5.3 秒かかるため、無変更スキャンでの再計算を避ける一方、未割り当て巻の検査で前回名寄せ失敗時にも復旧できるようにしている。`POST /api/scan` も同じ判定を共用)。**今の SpineBox では同じ処理**(普段のスキャンがそのまま「新しいファイルの検出」になる)。#83 では Peach の項目に合わせて両方並べたが、#207 で違いを探して迷う元だったので `scan` は一覧から外した(`Kind.listed=False`。API の依頼・履歴の名前・一覧の「スキャン」は `scan` のまま) |
 | `daily_metadata` | 足りない作品情報を補う | `linking.works_needing_fetch()` の作品だけ取得。まとめて取る経路(これと `full_sync` / `metadata` / `metadata_thumbs` / `background_metadata`)は、連携したところで残りの取得元を引かない([[metadata-linking]] の「全作品をまとめて取るとき」) |
-| `maintenance` | 全ファイルを確かめ直す | `Scanner(recheck=True)`: サイズ・mtime が同じアーカイブ・EPUB の目次も読み直す。元ファイルが変わっていなければ中の巻の解析と開いて数えたページ数は残す(`_replace_volumes(keep_analysis=True)`)。見えないものは missing / offline の印だけ |
+| `maintenance` | 全ファイルを確かめ直す | `Scanner(recheck=True)`: サイズ・mtime が同じアーカイブ・EPUB やキャッシュ済みの決定的失敗(破損・上限超え・暗号化/空/破損 PDF)も読み直し、後段の名寄せ(`works.sync`)も必ず実行する。元ファイルが変わっていなければ中の巻の解析と開いて数えたページ数は残す(`_replace_volumes(keep_analysis=True)`)。見えないものは missing / offline の印だけ |
 | `full_sync` | ライブラリ全体を同期 | メンテナンス → 中の巻を調べる → 名寄せ → 補完待ちの取得(取得元が有効なら)→ 表紙。`plan(5)`(取得元が無効なら 4) |
 | `metadata_thumbs` / `metadata` / `thumbnails` | 情報と表紙 / 作品情報のみ(`all` で全作品)/ 表紙のみ | 取得と `Thumbnails.build()`。`metadata_thumbs` は `plan(2)` |
 | `analyze` | 中の巻を調べる | `Library.pending_analysis()` を一度だけ引いて全部 `analyze()`。読めない巻(7-Zip が無い・壊れた)は理由を記録して次へ |
@@ -49,7 +50,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 ## 進み具合(#207)
 
 - 複数の段を順に行うジョブは、始めに `JobContext.plan(n)` で段の数を決め、`step()` のたびに段の番号を 1 つ進める(段の数で止める)。段の数を決めないジョブは `step_index` / `step_count` が null で、画面は段の番号を出さない
-- スキャンは総数を先に数えない(ソースを数えるために蔵書を 2 回歩かない)ので、`done` だけが増える。画面は「N 件目」と不定のバーにする
+- スキャンは総数を先に数えない(ソースを数えるために蔵書を 2 回歩かない)ので、`done` だけが増える。画面は「N 件目」と不定のバーにする。`on_source` は実際に読み込むソース(新規・変更・`recheck=True`・再試行する失敗)だけで呼び、未変更で飛ばしたソースでは呼ばない(無変更スキャンでスキップ済みファイル名が進捗を埋めないため。#363)。`.zip` に包まれた EPUB を `_scan_archive()` から `_scan_novel()` へ委譲する経路も `notified=True` で二重通知を防ぐ。一方 `_stop()` による中止確認は未変更ソースも含めて毎ソース行うため、中止の応答性は落ちない
 
 ## 1 本ずつ・待ち行列の規則
 
@@ -67,7 +68,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 - **スキャンは中止で止めたルートの「見つからないソース」を missing にしない**(最後まで見ていないので、見えなかっただけの可能性がある。
   読めないサブフォルダの配下を missing にしないのと同じ理由。[[backend]])。止めるまでに見つけた巻は名寄せまで済ませる
 - 公開 DB の取得は中止・失敗でも最後に連携の反映(`_sync_works`)を走らせ、取得できた分を統合後の作品へ入れる
-- **取得の途中の名寄せは `SYNC_EVERY`(25)作品ごと**(`spinebox/datajobs.py:213 _metadata()`。#288)。名寄せは全作品を見直すので、本番(1,102 作品)で 1 回 5.3 秒かかり、
+- **取得の途中の名寄せは `SYNC_EVERY`(25)作品ごと**(`spinebox/datajobs.py:238 _metadata()`。#288)。名寄せは全作品を見直すので、本番(1,102 作品)で 1 回 5.3 秒かかり、
   作品ごとに走らせていたときは取得時間の 17% を占めた。途中の名寄せの役目は、取得で入った別名で統合された作品を残りの取得から外すことだけで、
   外れなくてもその作品を余分に取得するだけ(最後の名寄せが連携を統合後の作品へ移す)
 - DB の書き込みは 1 件ごとのトランザクションなので、途中で止めても壊れない(テスト `tests/test_jobs.py`)。蔵書は読むだけ

@@ -168,10 +168,34 @@ class DataJobs:
     def scan_summary(result: ScanResult) -> dict:
         return {"volumes": result.volumes, "offline_roots": result.offline_roots, "issues_total": result.issues_total}
 
+    @staticmethod
+    def needs_works_sync(c: sqlite3.Connection, result: ScanResult, *, recheck: bool = False) -> bool:
+        """スキャン後に名寄せ(works.sync)を走らせる必要があるか。
+
+        通常スキャンで変化が無く(`result.changed == False`)、一覧に出る未割り当て巻も無ければ省略する。
+        `recheck=True`(全ファイルを確かめ直す)は常に走らせる。未割り当て巻の有無を見るのは、
+        前回の名寄せ失敗などで取りこぼした巻を拾うため。
+        """
+        if recheck or result.changed:
+            return True
+        row = c.execute(
+            "SELECT 1 " + LISTED_VOLUMES_JOIN + LISTED_VOLUMES_WHERE
+            + " AND NOT EXISTS (SELECT 1 FROM work_volumes wv WHERE wv.volume_id = v.id) LIMIT 1"
+        ).fetchone()
+        return row is not None
+
+    def sync_works_if_needed(self, c: sqlite3.Connection, result: ScanResult, *, recheck: bool = False) -> bool:
+        """必要なときだけ名寄せを走らせ、実行したら True を返す。"""
+        if not self.needs_works_sync(c, result, recheck=recheck):
+            return False
+        self.sync_works(c)
+        return True
+
     def _scan_and_group(self, ctx: JobContext, c, *, recheck: bool = False) -> dict:
         ctx.step("ファイルのスキャン")
         result = self.scan(ctx, c, recheck=recheck)
-        self.sync_works(c)  # 途中で止めても、そこまでに見つけた巻は作品に割り当てる(名前の解析だけ)
+        # 途中で止めても、そこまでに見つけた巻は作品に割り当てる(変化無し・未割り当て無しなら省略)
+        self.sync_works_if_needed(c, result, recheck=recheck)
         ctx.check()  # 止めたスキャンは中止として残す(scanner は残りのソースを読まずに返っている)
         return self.scan_summary(result)
 

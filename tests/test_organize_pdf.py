@@ -291,8 +291,11 @@ def test_single_organize_pdf(env):
     assert not pdf_path.exists()
 
 
-def test_scan_unreadable_pdf_does_not_update_source_size_or_drop_existing(env):
-    """読めない PDF は sources.size/mtime を記録せず、既存の巻を missing にしない。"""
+def test_scan_unreadable_pdf_caches_failure_without_dropping_existing(env, monkeypatch):
+    """読めない PDF は既存巻・読書位置を残したまま stamp を記録して次回通常スキャンで開き直さない。"""
+    from spinebox.organize import pdf as pdf_mod
+    from spinebox.scanner import SCAN_VERSION
+
     root = env.root
     pdf_path = root / "漫画" / "破損テスト 1巻.pdf"
     make_simple_pdf(pdf_path, num_pages=2)
@@ -303,23 +306,49 @@ def test_scan_unreadable_pdf_does_not_update_source_size_or_drop_existing(env):
     assert src["size"] is not None
     vol = env.conn.execute("SELECT id, missing FROM volumes WHERE source_id = ?", (src["id"],)).fetchone()
     assert vol["missing"] == 0
+    env.conn.execute("INSERT INTO reading_progress (volume_id, page, finished, updated_at) VALUES (?, 1, 0, 'x')",
+                     (vol["id"],))
 
     # ファイルを破損させる
     pdf_path.write_bytes(b"not a pdf anymore")
     # mtime を進める
     st = pdf_path.stat()
     os.utime(pdf_path, (st.st_atime + 10, st.st_mtime + 10))
+    corrupt_stat = pdf_path.stat()
 
-    # 2 回目: 再スキャン。読めない PDF なので sources のサイズは更新されず既存巻も missing にならない
+    # 2 回目: 再スキャン。決定的な失敗として stamp は更新するが既存巻・読書位置は残す
     res = Scanner(env.conn, env.settings).scan()
     assert any("読めない" in iss["reason"] for iss in res.issues)
 
-    src_after = env.conn.execute("SELECT id, size, mtime_ns FROM sources WHERE id = ?", (src["id"],)).fetchone()
-    # 失敗したため、新しいサイズや mtime_ns は反映されない
-    assert src_after["size"] == src["size"]
+    src_after = env.conn.execute("SELECT id, size, mtime_ns, scan_version FROM sources WHERE id = ?",
+                                 (src["id"],)).fetchone()
+    assert src_after["size"] == corrupt_stat.st_size
+    assert src_after["mtime_ns"] == corrupt_stat.st_mtime_ns
+    assert src_after["scan_version"] == SCAN_VERSION
 
     vol_after = env.conn.execute("SELECT id, missing FROM volumes WHERE id = ?", (vol["id"],)).fetchone()
     assert vol_after["missing"] == 0  # missing にされない
+    assert env.conn.execute("SELECT page FROM reading_progress WHERE volume_id = ?", (vol["id"],)).fetchone()[0] == 1
+
+    # 3 回目: 通常スキャンでは inspect_pdf を呼ばずスキップする(issues と既存巻は残る)
+    calls = []
+    real_inspect = pdf_mod.inspect_pdf
+    monkeypatch.setattr(pdf_mod, "inspect_pdf", lambda p: calls.append(p.name) or real_inspect(p))
+    res3 = Scanner(env.conn, env.settings).scan()
+    assert calls == [] and res3.changed is False
+    assert any("読めない" in iss["reason"] for iss in res3.issues)
+
+    # recheck=True なら再検査し、それでも既存巻は消さない
+    Scanner(env.conn, env.settings, recheck=True).scan()
+    assert calls == ["破損テスト 1巻.pdf"]
+    assert env.conn.execute("SELECT missing FROM volumes WHERE id = ?", (vol["id"],)).fetchone()[0] == 0
+
+    # 正常な PDF に差し替えると通常スキャンで自動復帰する
+    make_simple_pdf(pdf_path, num_pages=3)
+    calls.clear()
+    res4 = Scanner(env.conn, env.settings).scan()
+    assert calls == ["破損テスト 1巻.pdf"] and res4.issues == []
+    assert env.conn.execute("SELECT page_count FROM volumes WHERE id = ?", (vol["id"],)).fetchone()[0] == 3
 
 
 def make_png_pdf(path: Path) -> Path:
