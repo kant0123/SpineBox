@@ -1,7 +1,7 @@
 ---
 type: component
 summary: アーカイブの目次読みと 1 エントリの読み出し。拡張子ではなく先頭のマジックバイトでの形式判定、zip の名前の復号順(UTF-8 フラグ → 0x7075 → cp932)、7-Zip CLI での 7z / rar の読み方と異常系、RAR4 の化けた Unicode 名を OEM 名(cp932)で直す規則、危険なエントリ名と展開上限、ページ表からの読み直し
-updated: 2026-11-11
+updated: 2026-11-20
 related: [overview, backend, extraction-cache, server-setup, volume-split, duplicate-detection, novel-reader, organize]
 ---
 
@@ -38,7 +38,7 @@ related: [overview, backend, extraction-cache, server-setup, volume-split, dupli
 - 中身と拡張子が食い違えば中身に従う。.cbr でも中身が zip なら zipfile で読む(7-Zip なしで読め、名前の復号も zip の規則になる)。
   7-Zip は拡張子が違っても中身で開く(7-Zip 23.01 で終了コード 0 を確認)ので、`-t` で形式を固定していない
 - 中身が rar / 7z で 7-Zip が無ければ `UnsupportedArchive`「未対応(中身は rar。拡張子は .cbz): 7-Zip が見つからない」。
-  スキャンは理由を記録してサイズ・mtime を更新しないので、7-Zip を入れて再スキャンすれば拾う
+  環境依存の失敗なのでスキャンは理由を記録してサイズ・mtime を更新せず、7-Zip を入れて再スキャンすれば拾う(対照的に、子クラス `UnsupportedArchive` を除く決定的な `ArchiveError`・`LimitExceeded` はサイズ・mtime・`SCAN_VERSION` を記録して通常スキャンで開き直さない。[[backend]])
 - 先頭で分からない zip / cbz(自己解凍形式・先頭に別物が付いた zip・短すぎる・壊れた)はまず zipfile で開き、駄目なら 7-Zip でも
   目次まで読んでみる。どちらでも開けなければ両方の理由を付けた `ArchiveError`(= 従来どおり「読めないアーカイブ」で飛ばす)。
   zipfile で開けたものに 7-Zip は呼ばない
@@ -138,7 +138,8 @@ RAR4 のファイル名は「OEM 名のバイト列」と、フラグ 0x200 の�
 - 拒否: `..` を含む・絶対パス(`/` `\`)・ドライブ文字(`C:`)・UNC(`\\server`)・NUL・空。目次の段階でスキップし、
   `scan_issues`(内側アーカイブなら `container_path` 付き)に理由を残す。安全な名前も区切りを `/` に正規化するだけで、パスには使わない
 - 上限(`[limits]`): 1 アーカイブのエントリ数・展開後サイズの合計(目次の宣言値)・1 エントリの展開サイズ・入れ子の深さ。
-  アーカイブ全体の上限超えは `LimitExceeded` でアーカイブごとスキップ。1 エントリは読み出し時に宣言値と実際の書き出し量の両方で判定する
+  アーカイブ全体の上限超えは `LimitExceeded` でアーカイブごとスキップ。1 エントリは読み出し時に宣言値と実際の書き出し量の両方で判定する。
+  `LimitExceeded` はスキャン時に `(size, mtime_ns, SCAN_VERSION)` ごとキャッシュされるため、設定の `[limits]` を引き上げた後に以前飛ばしたアーカイブを取り込むには「全ファイルを確かめ直す」(`recheck=True`)を実行する([[backend]])
 - 合計サイズの既定を 64 GiB と大きめにしているのは、全巻を 1 つにまとめた外側アーカイブが実在するため。
   目次の宣言値を見るだけでスキャンでは展開しないので、ここは壊れた・異常なヘッダを弾く役
 - 入れ子の深さは「外側の中の内側」を 1 と数える。既定 3(実データが 7z → rar → rar → zip)。超えた入れ子は開かず `scan_issues` に残す

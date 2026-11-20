@@ -90,6 +90,8 @@ class ScanResult:
     issues_total: int = 0
     # 中止の依頼で途中で止めた(残りのソースは読んでいない。見つからないソースの missing 化もしていない)
     stopped: bool = False
+    # 1 件でもソースの新規登録・更新・復帰・missing 化・offline 化が起きたか
+    changed: bool = False
 
 
 @dataclass(frozen=True)
@@ -289,13 +291,22 @@ def _walk(top: Path, onerror: Callable[[OSError], None]):
             yield from _walk(os.path.join(top, d), onerror)
 
 
+@dataclass
+class _RootState:
+    """1 ルートの走査中に使い回す既存の sources・フォルダ volumes のキャッシュと復帰対象。"""
+    sources: dict[str, sqlite3.Row]
+    folder_volumes: dict[int, list[int | None]]
+    reconnected_ids: list[int] = field(default_factory=list)
+
+
 class Scanner:
     """recheck=True は、サイズ・mtime が前回と同じアーカイブ・EPUB の目次も読み直す(データ管理の「メンテナンス」)。
     元ファイルが変わっていなければ、中の巻の解析はそのまま使う。
 
     should_stop は中止の依頼(データ管理のジョブ。#83)。ソースの区切りで見て、真なら残りを読まずに止める。
     止めたルートは最後まで見ていないので、見つからなかったソースを missing にしない。
-    on_source は読む前のソースの相対パスを受け取る(進み具合の表示用。例外を投げない関数を渡す)。
+    on_source は実際に読み込むソース(新規・変更・recheck・再試行)の相対パスを受け取る
+    (進み具合の表示用。未変更でスキップしたソースでは呼ばない。例外を投げない関数を渡す)。
     """
 
     def __init__(self, conn: sqlite3.Connection, settings: Settings, *, recheck: bool = False,
@@ -306,11 +317,45 @@ class Scanner:
         self.should_stop = should_stop
         self.on_source = on_source
         self.stopped = False
+        self._changed = False
 
     def _stop(self) -> bool:
         if not self.stopped and self.should_stop is not None and self.should_stop():
             self.stopped = True
         return self.stopped
+
+    def _notify_source(self, rel: str) -> None:
+        if self.on_source is not None:
+            self.on_source(rel)
+
+    def _mark_reconnected(self, source_id: int, state: _RootState) -> None:
+        state.reconnected_ids.append(source_id)
+        self._changed = True
+
+    @staticmethod
+    def _source_state_changed(existing: sqlite3.Row | None, kind: str) -> bool:
+        return (existing is None or bool(existing["offline"]) or bool(existing["missing"])
+                or existing["kind"] != kind)
+
+    def _preload_root(self, root_id: int) -> _RootState:
+        """ルート配下の既存 sources とフォルダ volumes を 2 回の SELECT でまとめて読む。"""
+        sources = {
+            r["rel_path"]: r
+            for r in self.conn.execute(
+                "SELECT id, rel_path, kind, size, mtime_ns, scan_version, offline, missing "
+                "FROM sources WHERE root_id = ?",
+                (root_id,),
+            )
+        }
+        folder_volumes: dict[int, list[int | None]] = defaultdict(list)
+        for r in self.conn.execute(
+            "SELECT v.source_id, v.page_count FROM volumes v "
+            "JOIN sources s ON s.id = v.source_id "
+            "WHERE s.root_id = ? AND s.kind = 'folder' AND v.parent_id IS NULL AND v.missing = 0",
+            (root_id,),
+        ):
+            folder_volumes[r["source_id"]].append(r["page_count"])
+        return _RootState(sources=sources, folder_volumes=folder_volumes)
 
     # --- ルート -------------------------------------------------------------
 
@@ -341,14 +386,16 @@ class Scanner:
         return self.scan(inbox=True)
 
     def scan(self, *, inbox: bool = False) -> ScanResult:
+        self._changed = False
         result = ScanResult(volumes=0)
-        with db.transaction(self.conn) as c:
-            # ソースに結び付かない問題(読めなかったフォルダなど)は毎回の走査で作り直す。
-            # 蔵書の走査と受け入れフォルダの走査は互いの記録を消さない
-            prefixes = self._inbox_prefixes()
-            stale = [r["id"] for r in c.execute("SELECT id, entry_name FROM scan_issues WHERE source_id IS NULL")
-                     if _under_any(r["entry_name"] or "", prefixes) == inbox]
-            c.executemany("DELETE FROM scan_issues WHERE id = ?", [(i,) for i in stale])
+        # ソースに結び付かない問題(読めなかったフォルダなど)は毎回の走査で作り直す。
+        # 蔵書の走査と受け入れフォルダの走査は互いの記録を消さない
+        prefixes = self._inbox_prefixes()
+        stale = [r["id"] for r in self.conn.execute("SELECT id, entry_name FROM scan_issues WHERE source_id IS NULL")
+                 if _under_any(r["entry_name"] or "", prefixes) == inbox]
+        if stale:
+            with db.transaction(self.conn) as c:
+                c.executemany("DELETE FROM scan_issues WHERE id = ?", [(i,) for i in stale])
         for root_id, root in self._sync_roots(inbox):
             if self._stop():
                 break
@@ -372,6 +419,7 @@ class Scanner:
         result.issues, result.issues_total = collect_issues(
             self.conn, inbox=inbox, inbox_prefixes=self._inbox_prefixes())
         result.stopped = self.stopped
+        result.changed = self._changed
         return result
 
     def _inbox_prefixes(self) -> tuple[str, ...]:
@@ -399,17 +447,20 @@ class Scanner:
             self._unexpected(e, f"問題を記録できなかった: {safe_text(path)}")
 
     def _source_failed(self, root_id: int, path: str, rel: str, kind: str, reason: str,
-                       exc: Exception | None = None) -> None:
+                       exc: Exception | None = None, *, state: _RootState) -> None:
         """ソース 1 つを読めなかったことを記録する。既存の巻・サイズ・mtime には触れない(次回また試す)。"""
         path = str(path).replace("\\", "/")
         shown = safe_text(path)
         if exc is not None:
             self._unexpected(exc, f"{shown} のスキャンに失敗")
             reason = f"{reason}: {describe_exception(exc)}"
+        existing = state.sources.get(rel)
         try:
             with db.transaction(self.conn) as c:
                 src = self._upsert_source(c, root_id, rel, kind)
                 record_issues(c, src["id"], None, [Skip(None, safe_text(reason))])
+            if self._source_state_changed(existing, kind):
+                self._changed = True
         except Exception as e:  # noqa: BLE001 (名前が DB に入らない等。ソースに結び付けずに残す)
             if isinstance(e, sqlite3.OperationalError):
                 raise
@@ -424,10 +475,15 @@ class Scanner:
 
     def _mark_root_offline(self, root_id: int) -> None:
         with db.transaction(self.conn) as c:
+            row = c.execute("SELECT online FROM library_roots WHERE id = ?", (root_id,)).fetchone()
+            was_online = bool(row and row["online"])
             c.execute("UPDATE library_roots SET online = 0, last_checked_at = ? WHERE id = ?", (db.now(), root_id))
-            c.execute("UPDATE sources SET offline = 1 WHERE root_id = ?", (root_id,))
+            cur = c.execute("UPDATE sources SET offline = 1 WHERE root_id = ? AND offline = 0", (root_id,))
+            if was_online or cur.rowcount > 0:
+                self._changed = True
 
     def _scan_root(self, root_id: int, root: Path) -> None:
+        state = self._preload_root(root_id)
         found: set[str] = set()
         error_dirs: list[str] = []
         complete = True  # 見つからないソースを missing にしてよいほど、全体を見終えたか
@@ -457,12 +513,10 @@ class Scanner:
             if self._stop():
                 complete = False  # 残りを見ていない
                 return
-            if self.on_source is not None:
-                self.on_source(rel)
             try:
                 action(rel)
             except Exception as e:  # noqa: BLE001 (ソース 1 つの想定外で、スキャン全体を止めない)
-                self._source_failed(root_id, path, rel, kind, "想定外のエラー", e)
+                self._source_failed(root_id, path, rel, kind, "想定外のエラー", e, state=state)
 
         excluded = self._excluded_dirs(root)
         try:
@@ -478,7 +532,7 @@ class Scanner:
                 if images:
                     visit("folder", dirpath,
                           lambda rel, dirpath=dirpath, images=images, entries=entries:
-                          self._scan_folder(root_id, root, rel, Path(dirpath), images, entries))
+                          self._scan_folder(root_id, root, rel, Path(dirpath), images, entries, state))
                 for name in sorted(filenames):
                     ext = exts[name]
                     fmt = NOVEL_FORMATS.get(ext)
@@ -489,13 +543,19 @@ class Scanner:
                     if fmt and fmt != FORMAT_EPUB and (reason := software_doc_reason(name, filenames)):
                         self._record_pathless(full, reason)
                         continue
+                    entry = entries[name]
                     if fmt == FORMAT_EPUB or (fmt and not images):  # 画像のあるフォルダの .txt は添え物
                         visit("archive", full,
-                              lambda rel, full=full, fmt=fmt: self._scan_novel(root_id, rel, Path(full), fmt))
+                              lambda rel, full=full, fmt=fmt, entry=entry:
+                              self._scan_novel(root_id, rel, Path(full), fmt, entry, state))
                     elif is_archive:
-                        visit("archive", full, lambda rel, full=full: self._scan_archive(root_id, rel, Path(full)))
+                        visit("archive", full,
+                              lambda rel, full=full, entry=entry:
+                              self._scan_archive(root_id, rel, Path(full), entry, state))
                     elif name.lower().endswith(".pdf"):
-                        visit("archive", full, lambda rel, full=full: self._scan_pdf(root_id, rel, Path(full)))
+                        visit("archive", full,
+                              lambda rel, full=full, entry=entry:
+                              self._scan_pdf(root_id, rel, Path(full), entry, state))
         except Exception as e:  # noqa: BLE001 (走査そのものの想定外。途中までの結果は残す)
             complete = False
             self._unexpected(e, f"蔵書フォルダ {safe_text(root)} の走査を中断")
@@ -504,11 +564,20 @@ class Scanner:
         def under_error_dir(rel: str) -> bool:
             return any(e == "" or rel == e or rel.startswith(e + "/") for e in error_dirs)
 
+        missing_ids = [
+            existing["id"]
+            for rel, existing in state.sources.items()
+            if complete and rel not in found and not under_error_dir(rel)
+            and (not existing["missing"] or existing["offline"])
+        ]
         with db.transaction(self.conn) as c:
-            if complete:
-                for sid, rel in c.execute("SELECT id, rel_path FROM sources WHERE root_id = ?", (root_id,)).fetchall():
-                    if rel not in found and not under_error_dir(rel):
-                        c.execute("UPDATE sources SET missing = 1, offline = 0 WHERE id = ?", (sid,))
+            if state.reconnected_ids:
+                c.executemany("UPDATE sources SET offline = 0, missing = 0 WHERE id = ?",
+                              [(sid,) for sid in state.reconnected_ids])
+            if missing_ids:
+                c.executemany("UPDATE sources SET missing = 1, offline = 0 WHERE id = ?",
+                              [(sid,) for sid in missing_ids])
+                self._changed = True
             now = db.now()
             c.execute("UPDATE library_roots SET online = 1, last_checked_at = ?, last_online_at = ? WHERE id = ?",
                       (now, now, root_id))
@@ -557,11 +626,13 @@ class Scanner:
         return c.execute("SELECT * FROM sources WHERE root_id = ? AND rel_path = ?", (root_id, rel)).fetchone()
 
     def _scan_folder(self, root_id: int, root: Path, rel: str, path: Path, images: list[str],
-                     entries: dict[str, os.DirEntry] | None = None) -> None:
+                     entries: dict[str, os.DirEntry], state: _RootState) -> None:
         try:
             st = path.stat()
         except OSError as e:
-            self._source_failed(root_id, str(path), rel, "folder", f"読めないフォルダ: {describe_exception(e)}")
+            self._notify_source(rel)
+            self._source_failed(root_id, str(path), rel, "folder", f"読めないフォルダ: {describe_exception(e)}",
+                                state=state)
             return
         size = 0
         readable: list[str] = []
@@ -569,17 +640,22 @@ class Scanner:
         for f in images:
             try:
                 # 列挙で得た情報を使う(Windows では追加のシステムコールが要らない。27 万枚を 1 枚ずつ stat しない)
-                entry = entries.get(f) if entries else None
-                size += entry.stat().st_size if entry is not None else (path / f).stat().st_size
+                size += entries[f].stat().st_size
                 readable.append(f)
             except OSError as e:  # 壊れたリンクなど。そのファイルだけ数えない
                 unreadable.append(Skip(safe_text(f), f"読めない画像: {describe_exception(e)}"))
         if not readable:
+            self._notify_source(rel)
             self._source_failed(root_id, str(path), rel, "folder",
-                                "読める画像が 1 枚も無い: " + "; ".join(s.reason for s in unreadable[:3]))
+                                "読める画像が 1 枚も無い: " + "; ".join(s.reason for s in unreadable[:3]),
+                                state=state)
             return
-        if not self.recheck and self._folder_unchanged(root_id, rel, size, st.st_mtime_ns, len(readable), readable):
+        existing = state.sources.get(rel)
+        if not self.recheck and self._folder_unchanged(existing, size, st.st_mtime_ns, len(readable), readable, state):
+            if existing["offline"] or existing["missing"]:
+                self._mark_reconnected(existing["id"], state)
             return  # 前回から変わっていない。書かない
+        self._notify_source(rel)
         # 表紙画像だけのフォルダは巻にしない(#180)
         if all(is_cover(f) for f in readable):
             with db.transaction(self.conn) as c:
@@ -587,6 +663,7 @@ class Scanner:
                 self._replace_volumes(c, src["id"], [])
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+            self._changed = True
             return
         name = path.name if rel else (root.name or str(root))
         title = fix_mojibake(name)[0]
@@ -598,41 +675,46 @@ class Scanner:
             self._replace_volumes(c, src["id"], [spec])
             c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                       (size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+        self._changed = True
 
-    def _folder_unchanged(self, root_id: int, rel: str, size: int, mtime_ns: int, count: int,
-                          readable: list[str]) -> bool:
+    def _folder_unchanged(self, existing: sqlite3.Row | None, size: int, mtime_ns: int, count: int,
+                          readable: list[str], state: _RootState) -> bool:
         """画像のフォルダの巻が前回の記録と同じか(合計サイズ・フォルダの mtime・版・枚数が一致)。"""
-        src = self.conn.execute("SELECT * FROM sources WHERE root_id = ? AND rel_path = ? AND kind = 'folder'",
-                                (root_id, rel)).fetchone()
-        if (src is None or src["missing"] or src["offline"] or src["size"] != size
-                or src["mtime_ns"] != mtime_ns or src["scan_version"] != SCAN_VERSION):
+        if (existing is None or existing["kind"] != "folder" or existing["size"] != size
+                or existing["mtime_ns"] != mtime_ns or existing["scan_version"] != SCAN_VERSION):
             return False
-        vols = self.conn.execute("SELECT page_count FROM volumes WHERE source_id = ? AND parent_id IS NULL "
-                                 "AND missing = 0", (src["id"],)).fetchall()
+        vols = state.folder_volumes.get(existing["id"], [])
         if all(is_cover(f) for f in readable):
             return not vols  # 表紙だけのフォルダは巻にしない
-        return len(vols) == 1 and vols[0]["page_count"] == count
+        return len(vols) == 1 and vols[0] == count
 
-    def _scan_archive(self, root_id: int, rel: str, path: Path) -> None:
+    def _scan_archive(self, root_id: int, rel: str, path: Path,
+                      entry: os.DirEntry, state: _RootState) -> None:
         try:
-            st = path.stat()
+            st = entry.stat()
         except OSError as e:
-            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
+            self._notify_source(rel)
+            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}",
+                                state=state)
             return
-        with db.transaction(self.conn) as c:
-            src = self._upsert_source(c, root_id, rel, "archive")
-        unchanged = (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
-                     and src["scan_version"] == SCAN_VERSION)
+        existing = state.sources.get(rel)
+        unchanged = (existing is not None and existing["kind"] == "archive"
+                     and existing["size"] == st.st_size and existing["mtime_ns"] == st.st_mtime_ns
+                     and existing["scan_version"] == SCAN_VERSION)
         if unchanged and not self.recheck:
+            if existing["offline"] or existing["missing"]:
+                self._mark_reconnected(existing["id"], state)
             return  # 前回から変わっていない。開かない
+        self._notify_source(rel)
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
+        record_stamp = False
         try:
             with open_archive(path, sevenzip_path=self.settings.sevenzip_path) as reader:
                 listing = list_entries(reader, self.settings.limits)
             # 拡張子に関わらず、META-INF/container.xml を含むアーカイブは EPUB 小説として扱う(#178)
             if any(e.name == EPUB_CONTAINER for e in listing.entries):
-                self._scan_novel(root_id, rel, path, FORMAT_EPUB)
+                self._scan_novel(root_id, rel, path, FORMAT_EPUB, entry, state, st=st, notified=True)
                 return
             issues.extend(listing.skipped)
             specs, more = archive_volume_specs(listing, path.name, self.settings.limits)
@@ -642,38 +724,58 @@ class Scanner:
             issues.extend(more)
             if not specs:
                 issues.append(Skip(None, "巻にできるもの(画像のあるフォルダ・内側のアーカイブ)が見つからない"))
+            record_stamp = True
         except UnsupportedArchive as e:
+            # 7-Zip 未設定など環境依存の失敗は stamp を記録せず次回スキャンで再挑戦する(ArchiveError より先に捕まえる)
             issues.append(Skip(None, safe_text(e)))
         except LimitExceeded as e:
             issues.append(Skip(None, safe_text(f"展開上限によりスキップ: {e}")))
+            record_stamp = True
         except ArchiveError as e:
             issues.append(Skip(None, safe_text(f"読めないアーカイブ: {e}")))
+            record_stamp = True
         except Exception as e:  # noqa: BLE001 (想定外の形のアーカイブ。サイズ・mtime は更新せず次回また試す)
             specs = None
+            record_stamp = False
             self._unexpected(e, f"アーカイブ {safe_text(path)} を読めなかった")
             issues.append(Skip(None, f"読めないアーカイブ(想定外のエラー): {describe_exception(e)}"))
         with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "archive")
             record_issues(c, src["id"], None, issues)
             if specs is not None:
                 self._replace_volumes(c, src["id"], specs, keep_analysis=unchanged)
+            if record_stamp:
+                # 決定的な失敗(破損・上限超え)は既存巻を残したまま stamp を記録して次回通常スキャンで飛ばす
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
-            # 読めなかったときはサイズ・mtime を更新しない(次のスキャンで再挑戦する。既存の巻はそのまま)
+        if record_stamp or self._source_state_changed(existing, "archive"):
+            self._changed = True
 
-    def _scan_novel(self, root_id: int, rel: str, path: Path, fmt: str) -> None:
+    def _scan_novel(self, root_id: int, rel: str, path: Path, fmt: str,
+                    entry: os.DirEntry, state: _RootState, *,
+                    st: os.stat_result | None = None, notified: bool = False) -> None:
         """小説のファイルを 1 巻として登録する。EPUB は目次だけ読み、テキストは中身を読まない。"""
-        try:
-            st = path.stat()
-        except OSError as e:
-            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
+        if st is None:
+            try:
+                st = entry.stat()
+            except OSError as e:
+                self._notify_source(rel)
+                self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}",
+                                    state=state)
+                return
+        existing = state.sources.get(rel)
+        unchanged = (existing is not None and existing["kind"] == "archive"
+                     and existing["size"] == st.st_size and existing["mtime_ns"] == st.st_mtime_ns
+                     and existing["scan_version"] == SCAN_VERSION)
+        if unchanged and not self.recheck:
+            if existing["offline"] or existing["missing"]:
+                self._mark_reconnected(existing["id"], state)
             return
-        with db.transaction(self.conn) as c:
-            src = self._upsert_source(c, root_id, rel, "archive")
-        if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
-                and src["scan_version"] == SCAN_VERSION and not self.recheck):
-            return
+        if not notified:
+            self._notify_source(rel)
         issues: list[Skip] = []
         specs: list[VolumeSpec] | None = None
+        record_stamp = False
         ancestors = PurePosixPath(rel).parts[:-1] if rel else ()
         spec = VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem", None, fmt,
                           ancestors=ancestors)
@@ -685,18 +787,29 @@ class Scanner:
                     if not issues:
                         spec = self._with_epub_meta(spec, path, reader)
                 specs = [] if issues else [spec]  # 危険な名前を含む・container.xml の無い EPUB は巻にしない
+                record_stamp = True
+            except UnsupportedArchive as e:
+                # UnsupportedArchive は ArchiveError の子クラスなので必ず先に捕まえる(次回再挑戦させる)
+                issues.append(Skip(None, safe_text(e)))
             except LimitExceeded as e:
                 issues.append(Skip(None, safe_text(f"展開上限によりスキップ: {e}")))
+                record_stamp = True
             except ArchiveError as e:
                 issues.append(Skip(None, safe_text(f"読めない EPUB: {e}")))
+                record_stamp = True
         else:
             specs = [spec]
+            record_stamp = True
         with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "archive")
             record_issues(c, src["id"], None, issues)
             if specs is not None:
                 self._replace_volumes(c, src["id"], specs)
+            if record_stamp:
                 c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
                           (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+        if record_stamp or self._source_state_changed(existing, "archive"):
+            self._changed = True
 
     def _with_epub_meta(self, spec: VolumeSpec, path: Path, reader) -> VolumeSpec:
         """OPF の書誌を巻に足す(#251)。読めなければ(ベストエフォート)ファイル名のまま。
@@ -723,18 +836,25 @@ class Scanner:
         return dataclasses.replace(spec, title=title, page_count=page_count, format=fmt, meta=info or None,
                                    epub_sections=epub_sections)
 
-    def _scan_pdf(self, root_id: int, rel: str, path: Path) -> None:
+    def _scan_pdf(self, root_id: int, rel: str, path: Path,
+                  entry: os.DirEntry, state: _RootState) -> None:
         """PDF ファイルを 1 巻として登録する。ページ数と暗号化の有無を調べる。"""
         try:
-            st = path.stat()
+            st = entry.stat()
         except OSError as e:
-            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}")
+            self._notify_source(rel)
+            self._source_failed(root_id, str(path), rel, "archive", f"読めないファイル: {describe_exception(e)}",
+                                state=state)
             return
-        with db.transaction(self.conn) as c:
-            src = self._upsert_source(c, root_id, rel, "archive")
-        if (src["size"] == st.st_size and src["mtime_ns"] == st.st_mtime_ns
-                and src["scan_version"] == SCAN_VERSION and not self.recheck):
+        existing = state.sources.get(rel)
+        unchanged = (existing is not None and existing["kind"] == "archive"
+                     and existing["size"] == st.st_size and existing["mtime_ns"] == st.st_mtime_ns
+                     and existing["scan_version"] == SCAN_VERSION)
+        if unchanged and not self.recheck:
+            if existing["offline"] or existing["missing"]:
+                self._mark_reconnected(existing["id"], state)
             return
+        self._notify_source(rel)
         from .organize.pdf import inspect_pdf
         page_count, problems = inspect_pdf(path)
         issues = [Skip(None, safe_text(p)) for p in problems]
@@ -744,11 +864,14 @@ class Scanner:
             specs = [VolumeSpec(None, "", fix_mojibake(path.stem)[0], _fs_name_bytes(path.name), "filesystem",
                                 page_count, FORMAT_PDF, ancestors=ancestors)]
         with db.transaction(self.conn) as c:
+            src = self._upsert_source(c, root_id, rel, "archive")
             record_issues(c, src["id"], None, issues)
             if specs is not None:
                 self._replace_volumes(c, src["id"], specs)
-                c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
-                          (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+            # 暗号化・0 ページ・破損 PDF は既存巻を残したまま stamp を記録し、次回通常スキャンで開き直さない
+            c.execute("UPDATE sources SET size = ?, mtime_ns = ?, scan_version = ?, scanned_at = ? WHERE id = ?",
+                      (st.st_size, st.st_mtime_ns, SCAN_VERSION, db.now(), src["id"]))
+        self._changed = True
 
     def _replace_volumes(self, c, source_id: int, specs: list[VolumeSpec], *, keep_analysis: bool = False) -> None:
         """巻を (container_path, entry_prefix) で突き合わせて更新する。消えた巻は missing にするだけ。

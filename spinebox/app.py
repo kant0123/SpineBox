@@ -461,7 +461,7 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
             try:
                 ctx.step("ファイルのスキャン")
                 result = data_jobs.scan(ctx, c)
-                _sync_works(c)  # 名前の解析だけ。内側のアーカイブは取り出さない
+                data_jobs.sync_works_if_needed(c, result)  # 名前の解析だけ。変化無し・未割り当て無しなら省略
                 ctx.check()
                 found["result"] = result
                 return data_jobs.scan_summary(result)
