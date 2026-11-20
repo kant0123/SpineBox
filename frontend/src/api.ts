@@ -121,6 +121,25 @@ export interface ScanIssue {
   reason: string;
 }
 
+export type ScanIssueKind = "scan" | "analysis";
+export type ScanIssueStatus = "active" | "offline" | "missing" | "disabled" | "inbox";
+export type ScanIssueScope = "all" | "active" | "analysis" | "inactive" | "inbox";
+
+export interface ScanIssueRecord extends ScanIssue {
+  id: string;
+  kind: ScanIssueKind;
+  status: ScanIssueStatus;
+  recorded_at: string;
+}
+
+export interface ScanIssueList {
+  items: ScanIssueRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+  counts: Record<ScanIssueScope, number>;
+}
+
 export interface ScanResult {
   volumes: number;
   offline_roots: string[];
@@ -1034,6 +1053,15 @@ export const api = {
       body: JSON.stringify({ value, starred }),
     }),
   stats: (library?: string | null) => request<LibraryStats>(`/api/stats${libraryQuery(library)}`),
+  listScanIssues: (params: { scope?: ScanIssueScope; q?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.scope) qs.set("scope", params.scope);
+    if (params.q && params.q.trim()) qs.set("q", params.q.trim());
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params.offset !== undefined) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<ScanIssueList>(`/api/scan-issues${suffix}`);
+  },
   serverSettings: () => request<ServerSettings>("/api/settings"),
   getVolume: (id: VolumeId) => request<VolumeDetail>(`/api/volumes/${vid(id)}`),
   scan: () => request<ScanResult>("/api/scan", { method: "POST" }),

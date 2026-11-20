@@ -1,7 +1,7 @@
 // 管理の統計タブ(#85)。数はすべて GET /api/stats(DB と展開キャッシュの今の状態)。蔵書の切り替えに従う。
 import { useEffect, useState } from "react";
 import { api, type CacheUsage, type LibraryStats } from "../api";
-import { duplicatesHref } from "../route";
+import { adminHref, duplicatesHref } from "../route";
 import { useLibraryScope } from "../shell/libraryScope";
 import { formatBytes, formatCount } from "./format";
 
@@ -78,7 +78,7 @@ export function Stats() {
         <Tile label="欠けのある作品" value={w.with_missing} />
         <Tile label="表紙なし" value={w.no_cover} note="まだ表紙を作っていない作品" />
         <Tile label="作品にならなかった巻" value={stats.unassigned_volumes} />
-        <Tile label="読めなかったもの" value={stats.scan_issues} note="すべての蔵書(前回のスキャン)" />
+        <Tile label="読めなかったもの" value={stats.scan_issues} href={adminHref("issues")} note="すべての蔵書(一覧を見る)" />
       </ul>
       <h2>キャッシュ</h2>
       <ul className="stat-grid">

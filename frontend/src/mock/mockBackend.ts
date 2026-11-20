@@ -10,6 +10,8 @@ import type {
   OrganizeItem,
   OrganizeOp,
   ScanIssue,
+  ScanIssueRecord,
+  ScanIssueScope,
   ThumbnailBuildState,
   VolumeDetail,
   VolumeSummary,
@@ -45,6 +47,10 @@ export interface MockOptions {
   settingsFailure?: boolean;
   /** `POST /api/scan` の「読めなかったもの」。省略すると 2 件 */
   scanIssues?: ScanIssue[];
+  /** `GET /api/scan-issues` 用の全件レコード。省略すると既定のサンプル一覧 */
+  scanIssueRecords?: ScanIssueRecord[];
+  /** `GET /api/scan-issues` を失敗させる */
+  scanIssuesFailure?: boolean;
   /** `POST /api/scan` を失敗させる(サーバーの `detail` を画面に出す確認用) */
   scanFailure?: { status: number; detail: string };
   /** 見開きスキャン(横長 1400x1000 SVG)を返す巻 ID(ブラウザ確認用) */
@@ -619,6 +625,108 @@ export function createMockBackend(volumes: MockVolume[] = defaultVolumes(), opti
         offline_roots: volumes.some((v) => v.offline) ? ["E:/漫画"] : [],
         issues,
         issues_total: issues.length,
+      });
+    }
+    if (method === "GET" && path === "/api/scan-issues") {
+      if (options.scanIssuesFailure) return json(500, { detail: "取得に失敗しました" });
+      const qs = new URLSearchParams(rawPath.split("?")[1] ?? "");
+      const scope = (qs.get("scope") ?? "all") as ScanIssueScope;
+      const validScopes: ScanIssueScope[] = ["all", "active", "analysis", "inactive", "inbox"];
+      if (!validScopes.includes(scope)) return json(422, { detail: `未対応の scope です: ${scope}` });
+      const limit = Number(qs.get("limit") ?? "100");
+      const offset = Number(qs.get("offset") ?? "0");
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500) return json(422, { detail: "limit は 1〜500 の範囲で指定してください" });
+      if (!Number.isInteger(offset) || offset < 0) return json(422, { detail: "offset は 0 以上で指定してください" });
+      const q = qs.get("q") ?? "";
+
+      const records: ScanIssueRecord[] = options.scanIssueRecords ?? (
+        options.scanIssues
+          ? options.scanIssues.map((x, idx) => ({
+              ...x,
+              id: `scan:${idx + 1}`,
+              kind: "scan" as const,
+              status: "active" as const,
+              recorded_at: "2026-11-20T03:00:00+00:00",
+            }))
+          : [
+              ...defaultScanIssues().map((x, idx) => ({
+                ...x,
+                id: `scan:${idx + 1}`,
+                kind: "scan" as const,
+                status: "active" as const,
+                recorded_at: `2026-11-20T03:0${idx}:00+00:00`,
+              })),
+              {
+                id: "analysis:1",
+                kind: "analysis" as const,
+                status: "active" as const,
+                path: "E:/本/作者C/まとめ.7z",
+                container_path: "v01.rar",
+                entry_name: null,
+                reason: "壊れたアーカイブ: Data Error",
+                recorded_at: "2026-11-19T12:00:00+00:00",
+              },
+              {
+                id: "scan:3",
+                kind: "scan" as const,
+                status: "offline" as const,
+                path: "F:/外付け本棚/旧データ.rar",
+                container_path: null,
+                entry_name: null,
+                reason: "未対応の形式です (7-Zip が見つかりません)",
+                recorded_at: "2026-11-18T08:30:00+00:00",
+              },
+              {
+                id: "scan:4",
+                kind: "scan" as const,
+                status: "missing" as const,
+                path: "E:/本/削除済み.cbz",
+                container_path: null,
+                entry_name: null,
+                reason: "読めないアーカイブ: 展開上限を超えました",
+                recorded_at: "2026-11-17T15:10:00+00:00",
+              },
+              {
+                id: "scan:5",
+                kind: "scan" as const,
+                status: "inbox" as const,
+                path: "E:/受け入れ/未整理.zip",
+                container_path: null,
+                entry_name: null,
+                reason: "巻にできるもの(画像のあるフォルダ・内側のアーカイブ)が見つからない",
+                recorded_at: "2026-11-16T09:00:00+00:00",
+              },
+            ]
+      );
+
+      const bucket = (r: ScanIssueRecord): Exclude<ScanIssueScope, "all"> => {
+        if (r.status === "offline" || r.status === "missing" || r.status === "disabled") return "inactive";
+        if (r.status === "inbox") return "inbox";
+        if (r.kind === "analysis") return "analysis";
+        return "active";
+      };
+      const counts: Record<ScanIssueScope, number> = { all: records.length, active: 0, analysis: 0, inactive: 0, inbox: 0 };
+      for (const r of records) counts[bucket(r)] += 1;
+
+      const sorted = [...records].sort((a, b) => {
+        const dt = (b.recorded_at || "").localeCompare(a.recorded_at || "");
+        if (dt !== 0) return dt;
+        return a.path.localeCompare(b.path) || (a.container_path ?? "").localeCompare(b.container_path ?? "") || (a.entry_name ?? "").localeCompare(b.entry_name ?? "") || a.id.localeCompare(b.id);
+      });
+      const scoped = scope === "all" ? sorted : sorted.filter((r) => bucket(r) === scope);
+      const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const filtered = terms.length === 0
+        ? scoped
+        : scoped.filter((r) => {
+            const hay = [r.path, r.container_path, r.entry_name, r.reason].filter(Boolean).join(" ").toLowerCase();
+            return terms.every((t) => hay.includes(t));
+          });
+      return json(200, {
+        items: filtered.slice(offset, offset + limit),
+        total: filtered.length,
+        limit,
+        offset,
+        counts,
       });
     }
     if (path === "/api/duplicates" && method === "GET") {

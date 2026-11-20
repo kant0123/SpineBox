@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 
 | パス | 役割 |
 | --- | --- |
-| `spinebox/app.py:263 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
+| `spinebox/app.py:264 create_app` | API の全体。例外 → HTTP ステータスの対応もここ |
 | `spinebox/app.py recover_interrupted_organize()` | 起動時(lifespan の先頭)に、実行・元に戻すの途中で止まった整理を戻す(#36。[[organize]])。失敗しても起動は止めない |
 | `spinebox/__main__.py:17 main` | 起動。`--print-bind` は起動せず `host port` を出す(常駐ラッパーが孤児の検出に使う。[[server-setup]]) |
 | `spinebox/buildinfo.py:14 current_commit` | `/healthz` が出す稼働中コミット。git → `.git` 直読みの順で、解決できなければ None |
@@ -31,6 +31,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/scanner.py:485 _scan_root` | ルートの既存ソース事前読み込み・走査・復帰と missing のまとめ更新。ソース単位の例外の捕まえ方もここ |
 | `spinebox/scanner.py:449 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
 | `spinebox/scanner.py:971 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:1053 list_all_issues()` | 管理の「読めなかったもの」タブ用に、`scan_issues` の過去分と `volumes.analysis_error` を含む全件を絞り込み・ページ送り付きで返す(#364) |
 | `spinebox/library.py:180 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻)。2 回目以降は RAM 層のページ表から読み、書庫を開き直さない(#297。[[extraction-cache]]) |
 | `spinebox/library.py:93 _PageTable` | 同じ版の巻のページ表(RAM 層)。ページ名と、zip の `ZipInfo` / 7z の目次・リーダーの作り直し方を持つ。元ファイルの版が変わったときと展開キャッシュが消えたときに捨てる |
 | `spinebox/library.py:604 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:159 parse_number`([[volume-split]]) |
@@ -68,6 +69,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/works/facets/{name}?library` | 著者・タグ・出版社などの一覧(#85 / #117)`{"name", "values": [{"value", "count", "starred"}]}`。`count` はその値を持つ作品の数、`starred` はスター(お気に入り)が付いているか、値の名前順。`name` は `author` / `kind` / `genre` / `tag` / `publisher`(他は 404) |
 | `PUT /api/works/facets/{name}/star` | 著者・タグ・出版社などの値にスターを付ける / 外す(#117)。body `{"value": str, "starred": bool}` → `{"name", "value", "starred", "created_at"}`。表記の揺れは `search._facet_key()` で同じ値として扱い、付け直しても `created_at` は変えない。未対応の `name` は 404、空の `value` は 422 |
 | `GET /api/stats?library` | 管理の統計タブ(#85)`{"library_id", "works", "volumes", "pages", "unassigned_volumes", "duplicate_candidates", "scan_issues", "cache": {"disk", "memory", "thumbnails"}}`。数え方は `spinebox/stats.py`。`scan_issues` とキャッシュは `library` で絞らない |
+| `GET /api/scan-issues?scope&q&limit&offset` | 管理の「読めなかったもの」タブ(#364)。`scan_issues`(有効・オフライン・missing・外した蔵書・受け入れ)と `volumes.analysis_error` の全件から `{"items": [{"id", "kind" (`scan` / `analysis`), "status" (`active` / `offline` / `missing` / `disabled` / `inbox`), "path", "container_path", "entry_name", "reason", "recorded_at"}], "total", "limit", "offset", "counts": {"all", "active", "analysis", "inactive", "inbox"}}` を返す(読み取り専用)。`scope` は `all` / `active` / `analysis` / `inactive` / `inbox`、`q` は空白区切り AND、`limit` 既定 100(最大 500)。不正な値は 422。`counts.active` は統計の `scan_issues` と一致する |
 | `GET /api/settings` | 好みタブに出すサーバーの設定(読み取りだけ)`{"untranslated_terms", "cache_limit_bytes", "memory_cache_limit_bytes", "metadata_sources", "metadata_default_sources", "metadata_all_sources", "metadata_background"}`。`metadata_sources` はどれかの蔵書で使う取得元、`metadata_default_sources` は設定ファイルの取得元(蔵書で指定していないときの既定)、`metadata_all_sources` は蔵書で選べる取得元 `[{"name", "label"}]`(#316) |
 | `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)・`bookmarked`(作品の印。各巻にも `bookmarked`)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
 | `POST /api/works/{id}/fields/{field}/reset` | 手動の項目を自動に戻す(直す前の値、無ければ空にして公開 DB の値を入れ直す)。手動でない項目・直す前の名前が無い作品名は 409 |
@@ -156,7 +158,7 @@ DB を開けなければ 503 + `ok: false`(異常を 200 で隠さない)。`com
 - **決定的な失敗と環境依存・一時的な失敗でスタンプ(`size`/`mtime_ns`/`SCAN_VERSION`)の扱いを分ける(#363)。**
   - **決定的な失敗**(`UnsupportedArchive` を除く `ArchiveError`、`LimitExceeded`、`inspect_pdf` が問題または 0 ページを返した暗号化・空・破損 PDF): 同一ファイルでは毎回同じ失敗になるため、`scan_issues` の記録と合わせて `sources` の `size`・`mtime_ns`・`SCAN_VERSION` も更新し、次の通常スキャン(`recheck=False`)では開き直さず飛ばす。**`_replace_volumes()` は呼ばない**ので既存の巻・読書位置は残る(PR #219)。ファイル変化・`SCAN_VERSION` 更新・`recheck=True`(「全ファイルを確かめ直す」)で再検査する。設定の `[limits]` を引き上げた後に上限超えファイルを拾い直すには `recheck=True` が要る
   - **環境依存・一時的・想定外の失敗**(`UnsupportedArchive`(7-Zip 未設定等)、`OSError`、想定外の `Exception`): 従来どおり `size`・`mtime_ns`・`SCAN_VERSION` を更新せず既存の巻も残すため、次の通常スキャンで自動再挑戦する(`sevenzip_path` を直して再スキャンすれば拾える)。**落とし穴:** `spinebox/archive/base.py:29 UnsupportedArchive` は `ArchiveError` の子クラスなので、`_scan_archive()` / `_scan_novel()` では必ず `UnsupportedArchive` を `ArchiveError` より先に捕まえる(逆にすると 7-Zip 未設定がキャッシュされて自動復帰しなくなる)
-- **無変更の通常スキャンでは名寄せ(`works.sync`)をスキップする(#363)。** `POST /api/scan`(`spinebox/app.py:455 scan()`)と `DataJobs._scan_and_group()` は `spinebox/datajobs.py:187 sync_works_if_needed()` を共有し、`recheck=False` かつ `result.changed == False` かつ `work_volumes` 未割り当ての一覧対象巻が無いときは `works.sync` / `linking.apply_all` を走らせない([[data-jobs]])。`ScanResult.changed` は内部フラグで、`POST /api/scan` の JSON 応答のキー(`volumes`, `offline_roots`, `issues`, `issues_total`)は変えていない
+- **無変更の通常スキャンでは名寄せ(`works.sync`)をスキップする(#363)。** `POST /api/scan`(`spinebox/app.py:456 scan()`)と `DataJobs._scan_and_group()` は `spinebox/datajobs.py:187 sync_works_if_needed()` を共有し、`recheck=False` かつ `result.changed == False` かつ `work_volumes` 未割り当ての一覧対象巻が無いときは `works.sync` / `linking.apply_all` を走らせない([[data-jobs]])。`ScanResult.changed` は内部フラグで、`POST /api/scan` の JSON 応答のキー(`volumes`, `offline_roots`, `issues`, `issues_total`)は変えていない
 - `scan_issues` は再導出できる記録なので、ソースを読み直すたびに置き換える(DELETE してよい唯一の表)
 - **読み取りの API は、変化が無ければ書き込みロックを取らない(#296)。** ページ画像・作品ページはジョブの長い書き込みトランザクションの後ろに並ぶので、
   内側アーカイブの巻を開くときの `scan_issues` の記録(`spinebox/library.py _open_inner()`)は前回と同じ内容なら書かず、

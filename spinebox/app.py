@@ -37,7 +37,8 @@ from .organize.intake import MAX_NUMBER, Decision, Intake
 from .organize.organizer import OperationNotFound, OrganizeError, Organizer, RangeError, RangeNotFound
 from .organize.template import PARAMETERS, PRESETS, NameTemplate, TemplateError, range_examples
 from .pages import media_type, natural_key
-from .scanner import LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE, inbox_prefixes, safe_text
+from .scanner import (DEFAULT_ISSUES_LIMIT, ISSUE_SCOPES, LISTED_VOLUMES_JOIN, LISTED_VOLUMES_WHERE,
+                      MAX_ISSUES_LIMIT, inbox_prefixes, list_all_issues, safe_text)
 from .thumbs import ThumbnailUnavailable, Thumbnails
 
 log = logging.getLogger(__name__)
@@ -787,6 +788,19 @@ def create_app(settings: Settings, frontend_dist: Path | None = DEFAULT_FRONTEND
         """管理の統計タブ(#85)の数値。library は蔵書の切り替え(読めなかったもの・キャッシュは絞らない)。"""
         return stats.collect(conn, library_id=library, thumbs=thumbs, disk=cache, memory=memory, thumb_store=thumbs.store,
                              inbox_prefixes=inbox_prefixes(settings))
+
+    @app.get("/api/scan-issues")
+    def get_scan_issues(scope: str = "all", q: str = "", limit: int = DEFAULT_ISSUES_LIMIT, offset: int = 0,
+                        conn: sqlite3.Connection = Depends(get_conn)):
+        """管理の「読めなかったもの」タブ(#364): 過去分や中の巻の解析エラーを含む全件を絞り込み・ページ送り付きで返す。"""
+        if scope not in ISSUE_SCOPES:
+            raise HTTPException(422, f"未対応の scope です: {scope}")
+        if limit < 1 or limit > MAX_ISSUES_LIMIT:
+            raise HTTPException(422, f"limit は 1〜{MAX_ISSUES_LIMIT} の範囲で指定してください")
+        if offset < 0:
+            raise HTTPException(422, "offset は 0 以上で指定してください")
+        return list_all_issues(conn, scope=scope, q=q, limit=limit, offset=offset,
+                               inbox_prefixes=inbox_prefixes(settings))
 
     @app.get("/api/settings")
     def get_settings(conn: sqlite3.Connection = Depends(get_conn)):

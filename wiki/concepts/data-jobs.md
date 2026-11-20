@@ -18,7 +18,7 @@ Peach(動画向けのローカルメディア管理アプリ)の「スキャン�
 | `spinebox/jobs.py:149 JobRunner` | 待ち行列・1 本ずつの実行・中止・履歴(`jobs` 表)。`submit()` / `run_now()` / `run_background()` / `cancel()` |
 | `spinebox/datajobs.py:96 DataJobs` | ジョブの中身と画面の一覧(`KINDS`)・対象の件数(`catalog()`)。`build()` が種類ごとの関数を組み立てる |
 | `spinebox/datajobs.py:187 sync_works_if_needed()` | スキャン後の名寄せ実行判定(`needs_works_sync()`)。`_scan_and_group()` と `POST /api/scan` で共用(#363) |
-| `spinebox/app.py:353 run_job_now()` / `spinebox/app.py:664 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
+| `spinebox/app.py:354 run_job_now()` / `spinebox/app.py:665 _start_legacy()` | 既存のボタンの API をジョブの上で動かす結線 |
 | `spinebox/scanner.py:322 _stop()` | スキャンの中止(`should_stop`)と、目次の読み直し(`recheck`) |
 | `frontend/src/data/DataJobs.tsx:149 DataJobs()` | 画面。モックは `frontend/src/mock/mockJobs.ts` |
 | `spinebox/jobs.py:111 plan()` | 複数の段のジョブの段の数。`step()` が段の番号を 1 つ進め、`step_index` / `step_count` で返す(#207) |

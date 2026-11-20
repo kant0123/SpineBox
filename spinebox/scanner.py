@@ -1012,3 +1012,127 @@ def record_issues(c, source_id: int, container_path: str | None, issues: list[Sk
     c.executemany(
         "INSERT INTO scan_issues (source_id, container_path, entry_name, reason, recorded_at) VALUES (?, ?, ?, ?, ?)",
         [(source_id, container_path, s.entry_name, s.reason, now) for s in issues])
+
+
+ISSUE_SCOPES = frozenset({"all", "active", "analysis", "inactive", "inbox"})
+DEFAULT_ISSUES_LIMIT = 100
+MAX_ISSUES_LIMIT = 500
+
+
+def _source_issue_status(root_enabled: int, source_missing: int, source_offline: int, root_inbox: int,
+                         *, volume_missing: int = 0) -> str:
+    """読めなかったもの一覧でのレコード状態。collect_issues() の有効判定と一致させる。"""
+    if root_enabled == 0:
+        return "disabled"
+    if source_missing == 1 or volume_missing == 1:
+        return "missing"
+    if source_offline == 1:
+        return "offline"
+    if root_inbox == 1:
+        return "inbox"
+    return "active"
+
+
+def _issue_bucket(item: dict) -> str:
+    """区分ごとの排他的な分類。active の件数は collect_issues(inbox=False) の総数と一致する。"""
+    if item["status"] in ("offline", "missing", "disabled"):
+        return "inactive"
+    if item["status"] == "inbox":
+        return "inbox"
+    if item["kind"] == "analysis":
+        return "analysis"
+    return "active"
+
+
+def _issue_matches(item: dict, terms: list[str]) -> bool:
+    haystack = " ".join(p for p in (item["path"], item["container_path"], item["entry_name"], item["reason"])
+                        if p).casefold()
+    return all(t in haystack for t in terms)
+
+
+def list_all_issues(conn: sqlite3.Connection, *, scope: str = "all", q: str = "",
+                    limit: int = DEFAULT_ISSUES_LIMIT, offset: int = 0,
+                    inbox_prefixes: tuple[str, ...] = ()) -> dict:
+    """DB に記録されているすべての「読めなかったもの」(過去分・解析エラーを含む)を絞り込みとページ送り付きで返す。"""
+    if scope not in ISSUE_SCOPES:
+        raise ValueError(f"未対応の scope です: {scope}")
+    if limit < 1 or limit > MAX_ISSUES_LIMIT:
+        raise ValueError(f"limit は 1〜{MAX_ISSUES_LIMIT} の範囲で指定してください")
+    if offset < 0:
+        raise ValueError("offset は 0 以上で指定してください")
+
+    items: list[dict] = []
+    scan_rows = conn.execute(
+        """SELECT i.id, i.source_id, i.container_path, i.entry_name, i.reason, i.recorded_at,
+                  s.rel_path, s.missing AS source_missing, s.offline AS source_offline,
+                  r.path AS root_path, r.enabled AS root_enabled, r.inbox AS root_inbox
+           FROM scan_issues i
+           LEFT JOIN sources s ON s.id = i.source_id
+           LEFT JOIN library_roots r ON r.id = s.root_id"""
+    ).fetchall()
+    for r in scan_rows:
+        if r["source_id"] is None:
+            path = r["entry_name"] or ""
+            entry_name = None
+            status = "inbox" if _under_any(path, inbox_prefixes) else "active"
+        else:
+            root_path = (r["root_path"] or "").replace("\\", "/").rstrip("/")
+            path = f"{root_path}/{r['rel_path']}" if r["rel_path"] else root_path
+            entry_name = r["entry_name"]
+            status = _source_issue_status(r["root_enabled"], r["source_missing"], r["source_offline"], r["root_inbox"])
+        items.append({
+            "id": f"scan:{r['id']}",
+            "kind": "scan",
+            "status": status,
+            "path": path,
+            "container_path": r["container_path"],
+            "entry_name": entry_name,
+            "reason": r["reason"],
+            "recorded_at": r["recorded_at"],
+        })
+
+    analysis_rows = conn.execute(
+        """SELECT v.id, v.container_path, v.entry_prefix, v.analysis_error, v.missing AS volume_missing, v.updated_at,
+                  s.rel_path, s.missing AS source_missing, s.offline AS source_offline,
+                  r.path AS root_path, r.enabled AS root_enabled, r.inbox AS root_inbox
+           FROM volumes v
+           JOIN sources s ON s.id = v.source_id
+           JOIN library_roots r ON r.id = s.root_id
+           WHERE v.analysis_error IS NOT NULL"""
+    ).fetchall()
+    for r in analysis_rows:
+        root_path = (r["root_path"] or "").replace("\\", "/").rstrip("/")
+        path = f"{root_path}/{r['rel_path']}" if r["rel_path"] else root_path
+        status = _source_issue_status(r["root_enabled"], r["source_missing"], r["source_offline"], r["root_inbox"],
+                                      volume_missing=r["volume_missing"])
+        items.append({
+            "id": f"analysis:{r['id']}",
+            "kind": "analysis",
+            "status": status,
+            "path": path,
+            "container_path": r["container_path"],
+            "entry_name": r["entry_prefix"] or None,
+            "reason": r["analysis_error"],
+            "recorded_at": r["updated_at"],
+        })
+
+    counts = {"all": len(items), "active": 0, "analysis": 0, "inactive": 0, "inbox": 0}
+    for it in items:
+        counts[_issue_bucket(it)] += 1
+
+    items.sort(key=lambda x: (x["path"], x["container_path"] or "", x["entry_name"] or "", x["id"]))
+    items.sort(key=lambda x: x["recorded_at"] or "", reverse=True)
+
+    filtered = items if scope == "all" else [it for it in items if _issue_bucket(it) == scope]
+    terms = [t.casefold() for t in q.split() if t]
+    if terms:
+        filtered = [it for it in filtered if _issue_matches(it, terms)]
+
+    total = len(filtered)
+    return {
+        "items": filtered[offset:offset + limit],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "counts": counts,
+    }
