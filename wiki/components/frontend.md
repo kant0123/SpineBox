@@ -1,7 +1,7 @@
 ---
 type: component
 summary: 蔵書一覧とリーダーのブラウザ側(frontend/)。Peach と同じ画面構成(常に表示するサイドバー・管理のタブ)、作品カード → タイトル一覧 → 作品の管理ページの導線、読書位置のページ番号の規則、巻情報の読み込み待ち・取得失敗の表示、ライト/ダーク、モック API、CI への組み込み
-updated: 2026-11-18
+updated: 2026-11-20
 related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-split, organize, duplicate-detection, work-grouping, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -22,7 +22,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | `frontend/src/shell/AppShell.tsx:29 AppShell()` | アプリの骨組み(#85)。サイドバー `frontend/src/shell/Sidebar.tsx:74 Sidebar()`(ナビの並びは `NAV_ITEMS`、既存の画面をどのナビの下に置くかは `activeNav()`)と本文。リーダーだけはこの外で全画面(`frontend/src/App.tsx`) |
 | `frontend/src/shell/libraryScope.tsx LibraryScopeProvider()` | 蔵書の切り替え。選んだ蔵書(フォルダのグループ。#313)を作品一覧・巻の一覧・著者などの一覧・統計の `library` に渡す。`reload()` で取り直せる(管理の蔵書タブの変更をサイドバーへすぐ映す) |
 | `frontend/src/shell/theme.ts:46 useTheme()` | ライト/ダーク。描画前の適用は `frontend/src/main.tsx` の `applyTheme(loadTheme())` |
-| `frontend/src/admin/Admin.tsx:31 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:18 Preferences()`。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
+| `frontend/src/admin/Admin.tsx:37 Admin()` | 管理(`#/admin/<tab>`)。統計 `frontend/src/admin/Stats.tsx:35 Stats()`・好み `frontend/src/admin/Preferences.tsx:18 Preferences()`・読めなかったもの `frontend/src/admin/ScanIssues.tsx:67 ScanIssues()`(#364)。スキャンと補完 `frontend/src/admin/panels.tsx:10 DataPanel()`・整理 `frontend/src/admin/panels.tsx:15 OrganizePanel()`(#84 の `OrganizeFilesSection` と整理の履歴 `OrganizeHistory` の `embedded`)・フォロー管理(#87 の `FollowManage`)・タスクセンター(#83)。375px でタブの列が横に流れるため、開いたタブが隠れない位置まで送る(#149) |
 | `frontend/src/browse/FacetList.tsx:19 FacetList()` | 著者・タグ・出版社の一覧(`#/authors` 等)→ 選ぶと `#/authors/<値>` の作品一覧。項目ごとにスター(★/☆)を付け外しでき、スター付きを上部に優先表示する(#117) |
 | `frontend/src/reader/Reader.tsx:35 Reader()` | リーダー画面。巻情報の取得・読み込み待ち・取得失敗の後、漫画は `frontend/src/reader/MangaReader.tsx:44 MangaReader()`([[manga-reader]])、小説は `NovelReader()` へ |
 | `frontend/src/reader/layout.ts` | タップ/スワイプ/キーの判定の純粋関数(小説のリーダーが使う。漫画はライブラリが操作を受ける) |
@@ -193,7 +193,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 | メディアライブラリの切り替え(すべてのメディアライブラリ) | 蔵書の切り替え(すべての蔵書 / 蔵書ルートごと。`GET /api/libraries`) |
 | ホーム・JAV・出演者・タグ・レーベル | ホーム(作品一覧)・漫画・小説(`#/manga` `#/novels`。種別で絞った作品一覧)・著者・タグ・出版社(値の一覧 → その値の作品一覧) |
 | フォロー・ブックマーク | フォロー(`#/follows`。#87)・ブックマーク(`#/bookmarks`。#86)。どちらも単独の画面をそのままサイドバーの中に出す |
-| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統計・好み・スキャンと補完・整理・フォロー管理・タスクセンター(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `libraries` / `data` / `organize` / `follows` / `tasks`。蔵書タブ #313 は SpineBox で足した)。統合の提案は確認へ移し、整理はデータ管理から独立させた(#207) |
+| 管理: 統計・好み・データ管理・統合・フォロー管理・タスクセンター | 統計・好み・蔵書・スキャンと補完・整理・フォロー管理・タスクセンター・読めなかったもの(`#/admin`・`#/admin/<tab>`。tab は `preferences` / `libraries` / `data` / `organize` / `follows` / `tasks` / `issues`。蔵書タブ #313 と読めなかったものタブ #364 は SpineBox で足した)。統合の提案は確認へ移し、整理はデータ管理から独立させた(#207) |
 | (無し) | 確認(`#/review/<tab>`。#207)。サイドバーの管理の上に件数のバッジつきで置く |
 | 下: ライト/ダーク・テーマ・設定 | 下: ライト/ダーク・設定(= 管理の好みタブ)。パレットの切り替えは無い |
 
@@ -226,7 +226,7 @@ related: [inbox, metadata-linking, overview, local-ci, server-setup, volume-spli
 - **好みタブの各項目の置き場所:** テーマ・リーダーの既定(表紙単独・小説の文字サイズ)は端末ごと(`localStorage`。小説の文字サイズはリーダーの中で変えたものと同じ鍵)。表紙単独は次に巻を開くときから効く。見開きの切替は #136 で廃止した([[manga-reader]])。
   スマホと PC で好みが違うのが普通なため。未翻訳のジャンル・タグを出すか(`untranslated_terms`)・キャッシュの上限・取得元はサーバーの設定ファイルの値で、
   画面では読み取りだけ(`GET /api/settings`)。DB に入る値や容量が変わる設定を、LAN の別端末から認証なしで変えられるようにしないため
-- **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)
+- **統計タブの数はすべてサーバーが数える(`GET /api/stats`。[[backend]])。** 画面で一覧を数え直さない(一覧は絞り込み・蔵書の切り替えで見え方が変わるため)。「読めなかったもの」タイルからは管理の「読めなかったもの」タブ(`#/admin/issues`、`GET /api/scan-issues`)へ移れ、前回スキャン分だけでなく過去分(オフライン・見つからない・外した蔵書・受け入れ)や中の巻の解析エラーも含めて範囲絞り込み・キーワード検索・ページ送りで全件確認できる(#364)
 - **管理のタブへの組み込み(`frontend/src/admin/panels.tsx`)。** フォロー管理は `FollowManage`(`embedded` で見出しを外す)、スキャンと補完・タスクセンターは `DataJobs`(下)、整理は `OrganizeFilesSection` と `OrganizeHistory`(`embedded`)と受け入れへの入口。
   #207 で「ほかの画面」の節を廃止した(重複の候補は確認へ、整理の履歴は整理タブへ。受け入れは利用が少なく扱いを決めていないので、整理タブの末尾に入口だけ置く)。
   作品一覧のヘッダーにあった「情報を補完」「表紙を作る」「名寄せを取り直す」も、スキャンと補完のタブ(旧データ管理)へ集約した(#102)。

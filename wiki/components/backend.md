@@ -1,7 +1,7 @@
 ---
 type: component
 summary: FastAPI のバックエンド(設定・DB・スキャン・閲覧 API)。フロントと共有する API 契約と、蔵書レコードを消さない offline / missing の扱い
-updated: 2026-11-18
+updated: 2026-11-20
 related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, server-setup, volume-split, organize, duplicate-detection, work-grouping, metadata-clients, metadata-sources, novel-reader, work-search, cover-thumbnails, bookmarks, follow, data-jobs, manga-reader]
 ---
 
@@ -31,6 +31,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `spinebox/scanner.py:429 _scan_root` | ルートの走査と、見つからなくなったソースの missing 化。ソース単位の例外の捕まえ方もここ |
 | `spinebox/scanner.py:400 _source_failed` | 想定外の例外・読めなかったソースの記録(`scan_issues`)。止めてよい例外は `_unexpected` |
 | `spinebox/scanner.py:834 collect_issues` | `POST /api/scan` が返す「読めなかったもの」の組み立て |
+| `spinebox/scanner.py:930 list_all_issues()` | 管理の「読めなかったもの」タブ用に、`scan_issues` の過去分と `volumes.analysis_error` を含む全件を絞り込み・ページ送り付きで返す(#364) |
 | `spinebox/library.py:180 open` | 巻を開いてページを並べる(画像フォルダ / アーカイブ内フォルダ / 内側アーカイブ / 分解で作った子の巻)。2 回目以降は RAM 層のページ表から読み、書庫を開き直さない(#297。[[extraction-cache]]) |
 | `spinebox/library.py:93 _PageTable` | 同じ版の巻のページ表(RAM 層)。ページ名と、zip の `ZipInfo` / 7z の目次・リーダーの作り直し方を持つ。元ファイルの版が変わったときと展開キャッシュが消えたときに捨てる |
 | `spinebox/library.py:604 analyze` | 巻への分解。登録と食い違いは `spinebox/analysis.py`、名前の巻番号の候補は `spinebox/naming.py:159 parse_number`([[volume-split]]) |
@@ -68,6 +69,7 @@ related: [inbox, metadata-linking, overview, archive-reading, extraction-cache, 
 | `GET /api/works/facets/{name}?library` | 著者・タグ・出版社などの一覧(#85 / #117)`{"name", "values": [{"value", "count", "starred"}]}`。`count` はその値を持つ作品の数、`starred` はスター(お気に入り)が付いているか、値の名前順。`name` は `author` / `kind` / `genre` / `tag` / `publisher`(他は 404) |
 | `PUT /api/works/facets/{name}/star` | 著者・タグ・出版社などの値にスターを付ける / 外す(#117)。body `{"value": str, "starred": bool}` → `{"name", "value", "starred", "created_at"}`。表記の揺れは `search._facet_key()` で同じ値として扱い、付け直しても `created_at` は変えない。未対応の `name` は 404、空の `value` は 422 |
 | `GET /api/stats?library` | 管理の統計タブ(#85)`{"library_id", "works", "volumes", "pages", "unassigned_volumes", "duplicate_candidates", "scan_issues", "cache": {"disk", "memory", "thumbnails"}}`。数え方は `spinebox/stats.py`。`scan_issues` とキャッシュは `library` で絞らない |
+| `GET /api/scan-issues?scope&q&limit&offset` | 管理の「読めなかったもの」タブ(#364)。`scan_issues`(有効・オフライン・missing・外した蔵書・受け入れ)と `volumes.analysis_error` の全件から `{"items": [{"id", "kind" (`scan` / `analysis`), "status" (`active` / `offline` / `missing` / `disabled` / `inbox`), "path", "container_path", "entry_name", "reason", "recorded_at"}], "total", "limit", "offset", "counts": {"all", "active", "analysis", "inactive", "inbox"}}` を返す(読み取り専用)。`scope` は `all` / `active` / `analysis` / `inactive` / `inbox`、`q` は空白区切り AND、`limit` 既定 100(最大 500)。不正な値は 422。`counts.active` は統計の `scan_issues` と一致する |
 | `GET /api/settings` | 好みタブに出すサーバーの設定(読み取りだけ)`{"untranslated_terms", "cache_limit_bytes", "memory_cache_limit_bytes", "metadata_sources", "metadata_default_sources", "metadata_all_sources", "metadata_background"}`。`metadata_sources` はどれかの蔵書で使う取得元、`metadata_default_sources` は設定ファイルの取得元(蔵書で指定していないときの既定)、`metadata_all_sources` は蔵書で選べる取得元 `[{"name", "label"}]`(#316) |
 | `GET /api/works/{id}` / `PATCH` | 作品の詳細(`slots`・`unnumbered`・`numbers`・`proposals`・`merges`・`fields`(項目ごとの値・出所・手動・確信度・取得元)・`links`(取得元ごとの連携・候補・失敗)・`bookmarked`(作品の印。各巻にも `bookmarked`)付き)。PATCH は `{"title"?, "author"?, "kind"?, "publisher"?, "genres"?, "tags"?}` を手動で保存(空の作品名・不正な種別は 422)。統合で消えた id は 404 |
 | `POST /api/works/{id}/fields/{field}/reset` | 手動の項目を自動に戻す(直す前の値、無ければ空にして公開 DB の値を入れ直す)。手動でない項目・直す前の名前が無い作品名は 409 |

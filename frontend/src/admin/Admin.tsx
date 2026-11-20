@@ -5,6 +5,7 @@ import { adminHref, type AdminTab } from "../route";
 import { DataPanel, FollowsPanel, OrganizePanel, TasksPanel } from "./panels";
 import { Libraries } from "./Libraries";
 import { Preferences } from "./Preferences";
+import { ScanIssues } from "./ScanIssues";
 import { Stats } from "./Stats";
 
 export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
@@ -15,6 +16,7 @@ export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   organize: "整理",
   follows: "フォロー管理",
   tasks: "タスクセンター",
+  issues: "読めなかったもの",
 };
 
 /**
@@ -29,6 +31,7 @@ const PANELS: Record<AdminTab, ComponentType> = {
   organize: OrganizePanel,
   follows: FollowsPanel,
   tasks: TasksPanel,
+  issues: ScanIssues,
 };
 
 export function Admin({ tab }: { tab: AdminTab }) {

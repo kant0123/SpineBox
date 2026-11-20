@@ -303,11 +303,11 @@ describe("著者・タグ・出版社の一覧", () => {
 });
 
 describe("管理", () => {
-  it("タブが統計・好み・蔵書・スキャンと補完・整理・フォロー管理・タスクセンターの順に並ぶ(統合は確認へ移した)", async () => {
+  it("タブが統計・好み・蔵書・スキャンと補完・整理・フォロー管理・タスクセンター・読めなかったものの順に並ぶ(統合は確認へ移した)", async () => {
     window.location.hash = "#/admin";
     render(<App />);
     const tabs = within(screen.getByRole("navigation", { name: "管理のタブ" })).getAllByRole("link");
-    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "蔵書", "スキャンと補完", "整理", "フォロー管理", "タスクセンター"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["統計", "好み", "蔵書", "スキャンと補完", "整理", "フォロー管理", "タスクセンター", "読めなかったもの"]);
     expect(tabs.map((t) => t.getAttribute("href"))).toEqual([
       "#/admin",
       "#/admin/preferences",
@@ -316,6 +316,7 @@ describe("管理", () => {
       "#/admin/organize",
       "#/admin/follows",
       "#/admin/tasks",
+      "#/admin/issues",
     ]);
     expect(tabs[0].getAttribute("aria-current")).toBe("page");
     await navigate("#/admin/data");
@@ -328,6 +329,8 @@ describe("管理", () => {
     expect(await screen.findByRole("heading", { name: "履歴" })).toBeTruthy(); // #83 のタスクセンター
     await navigate("#/admin/follows");
     expect(await screen.findByRole("button", { name: "すべての続刊を調べる" })).toBeTruthy(); // #87 のフォロー管理
+    await navigate("#/admin/issues");
+    expect(await screen.findByRole("heading", { name: "読めなかったもの" })).toBeTruthy(); // #364 の読めなかったもの
     await navigate("#/admin/proposals");
     expect(await screen.findByRole("button", { name: "同じ作品として統合" })).toBeTruthy(); // 統合の提案
   });
@@ -335,12 +338,17 @@ describe("管理", () => {
   it("統計は API の数を出し、蔵書の切り替えに従う", async () => {
     window.location.hash = "#/admin";
     render(<App />);
-    const tile = async (label: string) => (await screen.findByText(label)).closest<HTMLElement>(".stat-tile")!;
+    const tile = async (label: string) => {
+      const statsPanel = (await screen.findByRole("heading", { name: "蔵書" })).closest("div")!;
+      return within(statsPanel).getByText(label).closest<HTMLElement>(".stat-tile")!;
+    };
     expect(within(await tile("作品")).getByText("4")).toBeTruthy();
     expect(within(await tile("巻")).getByText("8")).toBeTruthy();
     expect(within(await tile("オフラインの巻")).getByText("1")).toBeTruthy();
     expect(within(await tile("重複の候補")).getByText("1")).toBeTruthy();
-    expect(within(await tile("読めなかったもの")).getByText("2")).toBeTruthy();
+    const issuesTile = await tile("読めなかったもの");
+    expect(within(issuesTile).getByText("2")).toBeTruthy();
+    expect(within(issuesTile).getByRole("link").getAttribute("href")).toBe("#/admin/issues");
     expect(within(await tile("展開キャッシュ(ディスク)")).getByText("734 MB")).toBeTruthy();
     expect(screen.getByText("対象: すべての蔵書")).toBeTruthy();
     const select = within(sidebar()).getByLabelText("蔵書") as HTMLSelectElement;
