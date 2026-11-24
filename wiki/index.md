@@ -51,7 +51,7 @@ Wiki 全ページのカタログ。質問に答えるとき・作業に着手す
 
 ## Operations — 運用手順・障害対応 (`operations/`)
 
-- [[local-ci]] — Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件
+- [[local-ci]] — Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件。Actions の起動条件(main への push と PR だけ)と、CI が遅いときの見つけ方
 - [[server-setup]] — サーバー機(Windows)での初回セットアップ、タスクスケジューラへの常駐登録、LAN 公開(ファイアウォール)、更新手順、python を孤児にしない仕組み、ログの場所。開発機で確かめた範囲とサーバー機での確認待ちの範囲
 <!-- wiki-index:end -->
 
