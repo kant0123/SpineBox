@@ -1,7 +1,7 @@
 ---
 type: operation
-summary: Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件
-updated: 2026-11-16
+summary: Actions が課金・上限でジョブを起動しないとき、CI を手元で回して結果を commit status で PR に載せる手順と、代替を認める条件。Actions の起動条件(main への push と PR だけ)と、CI が遅いときの見つけ方
+updated: 2026-11-25
 related: [overview, frontend]
 ---
 
@@ -19,11 +19,25 @@ GitHub Actions がジョブを起動しない(課金・使用上限)ときに、
   結果かが機械的に分からない。
 - **代替を認めるのは「起動しなかった」チェックだけ**(`review/gemini_review.py` `excused_by_local_ci()`)。
   Actions で実際に動いて落ちたチェックをローカルの成功で上書きすると、環境差で落ちている不具合を見逃す。
-  push と pull_request で同名の実行が 2 つ付くので、片方でも実際に落ちていれば代替しない。
+  同名の実行が複数付きうる(main への push と PR、取り消し前後など)ので、1 つでも実際に落ちていれば代替しない。
 - **検査の中身は `scripts/ci_local.py` `jobs()` が正。** `.github/workflows/test.yml` もこれを `--no-report` で呼ぶ。
   二箇所に書くと、ローカルでは通るのに Actions では違うものを見ている状態が生まれる。
   ジョブ名は Actions の `jobs:` 直下のキーと一致させる(`local/<名前>` で対応づけるため。`tests/test_ci_local.py` が検査する)。
   `wiki-lint` だけは `.github/workflows/wiki-lint.yml` が直接 `node scripts/wiki-lint.js` を呼ぶ(同じコマンド)。
+
+- **Actions の `tests` は main への push と pull_request だけで起動する**(`.github/workflows/test.yml`)。
+  以前は全ブランチの push でも起動し、PR ブランチでは同じ検査が 2 回走って使用量が倍になっていた(#369)。
+  同じ ref で新しく push されると古い head の実行は `concurrency` で取り消す。レビューが見るのは最新 head の
+  チェックだけなので、取り消された実行は判定に残らない。PR を作る前のブランチは CI が走らないので、
+  確かめたいときは `--no-report` で手元で回す。
+
+## CI の時間
+
+`tests` ジョブはほぼ全部が pytest。1 テストだけ 30 秒・60 秒ちょうどかかっていたら、SQLite のロック待ちで
+`spinebox/db.py` `connect()` の `timeout=30` に達している。#369 ではテスト補助関数が `BEGIN IMMEDIATE` の中で
+API を呼び、API 側の検索索引の追いつき(書き込み)がそのロックを待っていた(4 テストで約 210 秒、1 回 6 分の CI の 6 割)。
+**テストで DB に直接書くときは、API 呼び出しをトランザクションの外へ出す。**
+遅いテストは Actions のログの各行の時刻の差で見つかる(`gh run view <id> --log`)。
 
 ## 前提
 

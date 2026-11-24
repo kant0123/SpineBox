@@ -48,11 +48,14 @@ def work(client, title, **params):
 
 
 def set_fields(settings, title_to_fields, client):
+    # 作品 ID は書き込みロックを取る前に API で引く。BEGIN IMMEDIATE の中で API を呼ぶと、API 側の
+    # 索引の追いつき (書き込み) がこのロックを待ち、db.connect の timeout (30 秒) まで止まる (#369)。
+    ids = {title: work(client, title)["id"] for title in title_to_fields}
     conn = db.connect(settings.db_path)
     try:
         with db.transaction(conn) as c:
             for title, fields in title_to_fields.items():
-                wid = work(client, title)["id"]
+                wid = ids[title]
                 for field, value in fields.items():
                     c.execute("""INSERT INTO work_fields (work_id, field, value, source, manual, updated_at)
                                  VALUES (?, ?, ?, 'public_db', 0, ?)""", (wid, field, value, db.now()))
